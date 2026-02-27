@@ -1,43 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Save to PIA</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">⚡</div>
-      <h1>PIA</h1>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Save to PIA</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="logo">⚡</div>
+        <h1>PIA</h1>
+      </div>
+
+      <div id="page-info" class="page-info">
+        <p id="page-title" class="page-title">Loading...</p>
+        <p id="page-url" class="page-url"></p>
+      </div>
+
+      <div class="field">
+        <label for="topics">Topics (comma-separated)</label>
+        <input type="text" id="topics" placeholder="e.g. AI, Web Dev, Design" />
+      </div>
+
+      <div class="field">
+        <label for="notes">Quick note (optional)</label>
+        <textarea id="notes" rows="2" placeholder="Why is this interesting?"></textarea>
+      </div>
+
+      <button id="save-btn" class="save-btn">Save to PIA</button>
+
+      <div id="status" class="status hidden"></div>
+
+      <div id="recent" class="recent hidden">
+        <p class="recent-label">Recently saved</p>
+        <div id="recent-list"></div>
+      </div>
     </div>
 
-    <div id="page-info" class="page-info">
-      <p id="page-title" class="page-title">Loading...</p>
-      <p id="page-url" class="page-url"></p>
-    </div>
-
-    <div class="field">
-      <label for="topics">Topics (comma-separated)</label>
-      <input type="text" id="topics" placeholder="e.g. AI, Web Dev, Design">
-    </div>
-
-    <div class="field">
-      <label for="notes">Quick note (optional)</label>
-      <textarea id="notes" rows="2" placeholder="Why is this interesting?"></textarea>
-    </div>
-
-    <button id="save-btn" class="save-btn">Save to PIA</button>
-
-    <div id="status" class="status hidden"></div>
-
-    <div id="recent" class="recent hidden">
-      <p class="recent-label">Recently saved</p>
-      <div id="recent-list"></div>
-    </div>
-  </div>
-
-  <script src="popup.js"></script>
-</body>
+    <script src="popup.js"></script>
+  </body>
 </html>

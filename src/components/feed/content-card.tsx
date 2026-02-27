@@ -71,13 +71,7 @@ function timeAgo(dateStr: string): string {
   return `${diffDays}d ago`;
 }
 
-export function ContentCard({
-  item,
-  compact = false,
-}: {
-  item: ContentItem;
-  compact?: boolean;
-}) {
+export function ContentCard({ item, compact = false }: { item: ContentItem; compact?: boolean }) {
   const SourceIcon = sourceIcons[item.sourceType];
 
   if (compact) {
@@ -86,9 +80,7 @@ export function ContentCard({
         href={`/feed/${item.id}`}
         className="flex items-center gap-4 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
       >
-        <SourceIcon
-          className={`h-4 w-4 shrink-0 ${sourceColors[item.sourceType]}`}
-        />
+        <SourceIcon className={`h-4 w-4 shrink-0 ${sourceColors[item.sourceType]}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span
@@ -105,10 +97,7 @@ export function ContentCard({
               {item.duration}
             </Badge>
           )}
-          <Badge
-            variant="outline"
-            className={`text-[10px] ${priorityColors[item.priority]}`}
-          >
+          <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
             {item.priority}
           </Badge>
           <span className="text-xs text-muted-foreground w-14 text-right">
@@ -127,9 +116,7 @@ export function ContentCard({
         <CardContent className="p-5">
           <div className="flex items-start gap-3">
             <div className="mt-1 shrink-0">
-              <SourceIcon
-                className={`h-5 w-5 ${sourceColors[item.sourceType]}`}
-              />
+              <SourceIcon className={`h-5 w-5 ${sourceColors[item.sourceType]}`} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
@@ -145,9 +132,7 @@ export function ContentCard({
                   {item.priority}
                 </Badge>
               </div>
-              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                {item.summary}
-              </p>
+              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{item.summary}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="text-[10px]">
                   {sourceLabels[item.sourceType]}
@@ -159,11 +144,7 @@ export function ContentCard({
                   </Badge>
                 )}
                 {item.topics.slice(0, 3).map((topic) => (
-                  <Badge
-                    key={topic}
-                    variant="outline"
-                    className="text-[10px]"
-                  >
+                  <Badge key={topic} variant="outline" className="text-[10px]">
                     {topic}
                   </Badge>
                 ))}

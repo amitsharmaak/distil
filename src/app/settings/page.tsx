@@ -32,18 +32,14 @@ const sourceIcons: Record<string, React.ElementType> = {
 };
 
 export default function SettingsPage() {
-  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">(
-    "detailed"
-  );
+  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
   const [pollingFrequency, setPollingFrequency] = useState("15");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
-          Configure your PIA preferences
-        </p>
+        <p className="text-muted-foreground">Configure your PIA preferences</p>
       </div>
 
       <Tabs defaultValue="accounts">
@@ -114,18 +110,14 @@ export default function SettingsPage() {
                 <label className="text-sm font-medium">Summary Length</label>
                 <div className="flex gap-2">
                   <Button
-                    variant={
-                      summaryLength === "brief" ? "default" : "outline"
-                    }
+                    variant={summaryLength === "brief" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSummaryLength("brief")}
                   >
                     Brief
                   </Button>
                   <Button
-                    variant={
-                      summaryLength === "detailed" ? "default" : "outline"
-                    }
+                    variant={summaryLength === "detailed" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSummaryLength("detailed")}
                   >
@@ -140,9 +132,7 @@ export default function SettingsPage() {
               <Separator />
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Polling Frequency (minutes)
-                </label>
+                <label className="text-sm font-medium">Polling Frequency (minutes)</label>
                 <Input
                   type="number"
                   value={pollingFrequency}
@@ -159,9 +149,7 @@ export default function SettingsPage() {
               <Separator />
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Priority Weights
-                </label>
+                <label className="text-sm font-medium">Priority Weights</label>
                 <div className="space-y-3">
                   {[
                     {
@@ -180,15 +168,10 @@ export default function SettingsPage() {
                       value: 60,
                     },
                   ].map((weight) => (
-                    <div
-                      key={weight.label}
-                      className="flex items-center justify-between"
-                    >
+                    <div key={weight.label} className="flex items-center justify-between">
                       <div>
                         <p className="text-sm">{weight.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {weight.desc}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{weight.desc}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-24 rounded-full bg-muted">
@@ -197,9 +180,7 @@ export default function SettingsPage() {
                             style={{ width: `${weight.value}%` }}
                           />
                         </div>
-                        <span className="text-xs text-muted-foreground w-8">
-                          {weight.value}%
-                        </span>
+                        <span className="text-xs text-muted-foreground w-8">{weight.value}%</span>
                       </div>
                     </div>
                   ))}
@@ -228,9 +209,7 @@ export default function SettingsPage() {
                     />
                     <div>
                       <p className="text-sm font-medium">{topic.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {topic.itemCount} items
-                      </p>
+                      <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -254,9 +233,7 @@ export default function SettingsPage() {
         <TabsContent value="notifications" className="space-y-4 mt-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Notification Preferences
-              </CardTitle>
+              <CardTitle className="text-base">Notification Preferences</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {[
@@ -281,15 +258,10 @@ export default function SettingsPage() {
                   enabled: false,
                 },
               ].map((pref) => (
-                <div
-                  key={pref.label}
-                  className="flex items-center justify-between"
-                >
+                <div key={pref.label} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">{pref.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {pref.desc}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{pref.desc}</p>
                   </div>
                   <Button variant="outline" size="sm">
                     {pref.enabled ? "On" : "Off"}

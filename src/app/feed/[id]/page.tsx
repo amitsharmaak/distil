@@ -1,6 +1,14 @@
-"use client";
+/**
+ * Item detail page — /feed/[id]
+ *
+ * Shows the full details of a single content item: title, metadata, summary,
+ * full content (if available), and a list of related items sharing the same topics.
+ *
+ * This is an async Server Component. It fetches data directly from the database
+ * without going through an HTTP round-trip, which is the idiomatic App Router
+ * pattern for pages that have no client-side interactivity.
+ */
 
-import { use } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -16,13 +24,16 @@ import {
   Linkedin,
   Globe,
   Link as LinkIcon,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { mockItems } from "@/lib/mock-data";
-import { SourceType } from "@/lib/types";
+import { getItemById, getItems } from "@/lib/db";
+import type { SourceType } from "@/lib/types";
+
+// ── Source icon + label mappings ───────────────────────────────────────────────
 
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
@@ -50,14 +61,15 @@ const priorityColors: Record<string, string> = {
   low: "bg-green-500/10 text-green-600 border-green-200",
 };
 
-export default function ItemDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = use(params);
-  const item = mockItems.find((i) => i.id === id);
+// ── Page component ─────────────────────────────────────────────────────────────
 
+export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  // Fetch the item directly from SQLite — no HTTP call needed in server context.
+  const item = getItemById(id);
+
+  // If the item doesn't exist, show a simple 404 message.
   if (!item) {
     return (
       <div className="py-12 text-center">
@@ -70,16 +82,15 @@ export default function ItemDetailPage({
   }
 
   const SourceIcon = sourceIcons[item.sourceType];
-  const relatedItems = mockItems
-    .filter(
-      (i) =>
-        i.id !== item.id &&
-        i.topics.some((t) => item.topics.includes(t))
-    )
+
+  // Find items that share at least one topic with this item.
+  const relatedItems = getItems()
+    .filter((i) => i.id !== item.id && i.topics.some((t) => item.topics.includes(t)))
     .slice(0, 3);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {/* Back navigation */}
       <Link
         href="/feed"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -87,16 +98,15 @@ export default function ItemDetailPage({
         <ArrowLeft className="h-4 w-4" /> Back to feed
       </Link>
 
+      {/* Item header: badges, title, metadata, topics */}
       <div>
+        {/* Badges row */}
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="secondary" className="gap-1 text-xs">
             <SourceIcon className="h-3 w-3" />
             {sourceLabels[item.sourceType]}
           </Badge>
-          <Badge
-            variant="outline"
-            className={`text-xs ${priorityColors[item.priority]}`}
-          >
+          <Badge variant="outline" className={`text-xs ${priorityColors[item.priority]}`}>
             {item.priority} priority
           </Badge>
           {item.contentType !== "article" && (
@@ -111,8 +121,10 @@ export default function ItemDetailPage({
           )}
         </div>
 
+        {/* Title */}
         <h1 className="text-2xl font-bold tracking-tight">{item.title}</h1>
 
+        {/* Author, publication, date */}
         <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
           {item.author && <span>{item.author}</span>}
           {item.author && item.publication && <span>·</span>}
@@ -122,6 +134,7 @@ export default function ItemDetailPage({
           <span>{new Date(item.createdAt).toLocaleDateString()}</span>
         </div>
 
+        {/* Topic badges */}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {item.topics.map((topic) => (
             <Badge key={topic} variant="outline" className="text-xs">
@@ -133,10 +146,11 @@ export default function ItemDetailPage({
 
       <Separator />
 
-      {/* AI Summary */}
+      {/* AI Summary card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            {/* Zap icon for "AI" indicator */}
             <div className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center">
               <Zap className="h-3 w-3 text-primary" />
             </div>
@@ -144,16 +158,12 @@ export default function ItemDetailPage({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {item.summary}
-          </p>
-          {item.fullContent && (
-            <p className="mt-4 text-sm leading-relaxed">{item.fullContent}</p>
-          )}
+          <p className="text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
+          {item.fullContent && <p className="mt-4 text-sm leading-relaxed">{item.fullContent}</p>}
         </CardContent>
       </Card>
 
-      {/* Video/Podcast embed placeholder */}
+      {/* Video/Podcast embed placeholder for non-article content */}
       {item.contentType !== "article" && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center p-12">
@@ -172,19 +182,20 @@ export default function ItemDetailPage({
         </Card>
       )}
 
-      {/* Actions */}
+      {/* Action buttons */}
       <div className="flex gap-3">
         <Button variant="outline" className="gap-2" asChild>
           <a href={item.url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" /> View Original
           </a>
         </Button>
+        {/* Deep Research is a future feature — button is non-functional for now */}
         <Button variant="default" className="gap-2">
           <Search className="h-4 w-4" /> Deep Research
         </Button>
       </div>
 
-      {/* Related Items */}
+      {/* Related items */}
       {relatedItems.length > 0 && (
         <>
           <Separator />
@@ -201,23 +212,18 @@ export default function ItemDetailPage({
                   >
                     <RelIcon className="h-4 w-4 text-muted-foreground" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium line-clamp-1">
-                        {related.title}
-                      </p>
+                      <p className="text-sm font-medium line-clamp-1">{related.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {related.author} · {related.publication}
                       </p>
                     </div>
+                    {/* Show shared topic tags */}
                     <div className="flex gap-1">
                       {related.topics
                         .filter((t) => item.topics.includes(t))
                         .slice(0, 2)
                         .map((t) => (
-                          <Badge
-                            key={t}
-                            variant="secondary"
-                            className="text-[10px]"
-                          >
+                          <Badge key={t} variant="secondary" className="text-[10px]">
                             {t}
                           </Badge>
                         ))}
@@ -230,24 +236,5 @@ export default function ItemDetailPage({
         </>
       )}
     </div>
-  );
-}
-
-function Zap(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
-    </svg>
   );
 }

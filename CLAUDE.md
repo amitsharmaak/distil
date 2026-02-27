@@ -6,57 +6,149 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (WhatsApp, Slack, Gmail, LinkedIn, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
 
-**Current state:** Frontend shell with mock data. No backend or real source integrations yet.
+**Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. Mock data auto-seeds the DB on first run.
 
 ## Tech Stack
 
 - **Next.js 16** (App Router) with TypeScript
 - **Tailwind CSS v4** + **shadcn/ui** for components
 - **lucide-react** for icons
+- **better-sqlite3** for local SQLite database
+- **Jest** + **React Testing Library** for tests
+- **Prettier** + **ESLint** for formatting and linting
 - **Chrome Extension** (Manifest V3) in `browser-extension/`
+
+## Quick Start (new developer setup)
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy the example env file and configure if needed
+cp .env.example .env.local
+# (The defaults work for local development — no changes needed)
+
+# 3. Start the dev server
+npm run dev
+# → Opens at http://localhost:3000
+# → SQLite database is created at data/pia.db on first run
+# → 15 mock items are auto-seeded if the DB is empty
+```
 
 ## Commands
 
 ```bash
-npm run dev      # Start dev server at localhost:3000
-npm run build    # Production build (also runs TypeScript checks)
-npm run lint     # ESLint
+npm run dev           # Start dev server at localhost:3000
+npm run build         # Production build (TypeScript checks included)
+npm run start         # Start production server
+npm run lint          # ESLint + Prettier check
+npm run format        # Auto-format all files with Prettier
+npm run format:check  # Check formatting without writing
+npm test              # Run all tests
+npm run test:watch    # Run tests in watch mode
+npm run test:coverage # Run tests with coverage report
 ```
+
+## Environment Variables
+
+All config is driven by environment variables. Copy `.env.example` to `.env.local` to configure locally.
+
+| Variable                   | Default                 | Purpose                            |
+| -------------------------- | ----------------------- | ---------------------------------- |
+| `DB_PATH`                  | `./data/pia.db`         | Path to the SQLite database file   |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls |
+
+**Security rules:**
+
+- Never commit `.env.local` (it is gitignored)
+- Never commit `data/pia.db` (personal data — gitignored)
+- `.env.example` must only contain placeholder values, never real secrets
 
 ## Architecture
 
 ### Web App (`src/`)
 
 - `src/app/` — Next.js App Router pages (Dashboard, Feed, Topics, Sources, Settings)
+- `src/app/api/items/` — REST API: GET/POST `/api/items`, PATCH/DELETE `/api/items/[id]`
 - `src/components/` — Organized by feature: `layout/`, `dashboard/`, `feed/`, `topics/`, `sources/`, `ui/`
+- `src/lib/config.ts` — Central config module (all env vars exported from here)
+- `src/lib/db.ts` — SQLite singleton, schema init, seed, CRUD helpers (server-only)
+- `src/lib/og.ts` — Open Graph metadata fetcher (server-only)
 - `src/lib/types.ts` — Core TypeScript interfaces (`ContentItem`, `Topic`, `Source`, `AgentSettings`)
-- `src/lib/mock-data.ts` — Mock data powering all pages (replace with real API calls later)
+- `src/lib/mock-data.ts` — Mock data used for DB seeding on first run
 - `src/lib/utils.ts` — shadcn utility (cn function)
+
+### Data Flow
+
+- **Server Components** (Dashboard page, Feed detail page): call `getItems()` / `getItemById()` from `db.ts` directly — no HTTP
+- **Client Components** (Feed list, Topics, Sources): fetch from `/api/items` via the `config.apiBaseUrl`
+- **Browser Extension**: POSTs to `http://localhost:3000/api/items` (or `PIA_API_URL` in extension config)
+
+### Database
+
+SQLite file at `data/pia.db` (gitignored). Schema: single `items` table matching `ContentItem` type.
+
+- `topics` stored as JSON string, deserialized on read
+- `isRead` stored as 0/1 integer, converted to boolean on read
+- WAL mode enabled for concurrent read performance
+- Seeded with 15 mock items on first run (if table is empty)
 
 ### Layout
 
-All pages share a root layout with a collapsible sidebar (`components/layout/sidebar.tsx`) and top bar with search (`components/layout/topbar.tsx`). The sidebar drives navigation via `usePathname()`.
+All pages share a root layout with a collapsible sidebar (`components/layout/sidebar.tsx`) and top bar with search (`components/layout/topbar.tsx`).
 
 ### Content Model
 
-Everything revolves around `ContentItem` which has: source type, content type (article/video/podcast), topics array, priority level, and read state. Items are filterable by all these dimensions on the Feed page.
+Everything revolves around `ContentItem` which has: source type, content type (article/video/podcast), topics array, priority level, and read state.
 
 ### Browser Extension (`browser-extension/`)
 
-Standalone Chrome MV3 extension. Saves pages to `chrome.storage.local`. Not yet connected to the web app backend — will send to PIA API in a future phase.
+Chrome MV3 extension. On save: POSTs to the PIA API. Falls back to `chrome.storage.local` if the API is unreachable (items flagged `pendingSync: true` for future sync).
 
-## Iterative Build Approach
+## Testing
 
-This project is built incrementally. Future phases (not yet implemented):
-1. Local storage backend (SQLite or JSON file) + API routes
-2. Source connectors added one at a time (Gmail first, then others)
-3. AI agent integration (Claude API) for summarization and prioritization
-4. Video/podcast transcription + summarization
-5. Deep research agent
+Tests live in `__tests__/` directories next to the files they test.
+
+```
+src/lib/__tests__/og.test.ts           # OG fetcher unit tests
+src/lib/__tests__/db.test.ts           # DB CRUD unit tests
+src/app/api/items/__tests__/route.test.ts         # GET/POST API tests
+src/app/api/items/[id]/__tests__/route.test.ts    # PATCH/DELETE API tests
+src/components/dashboard/__tests__/              # Dashboard component tests
+```
+
+- DB tests use `DB_PATH=":memory:"` for isolation — never touch real `data/pia.db`
+- Component tests use `@jest-environment jsdom` docblock
+- Run `npm test` before committing changes to verify no regressions
 
 ## Conventions
 
-- shadcn/ui components live in `src/components/ui/` — add new ones via `npx shadcn@latest add <component>`
+- shadcn/ui components live in `src/components/ui/` — add via `npx shadcn@latest add <component>`
 - Source icons and colors are mapped via `Record<SourceType, ...>` objects in components that need them
-- Time formatting uses local `timeAgo()` helper functions (not yet extracted to a shared util)
-- All pages are client components (`"use client"`) since they use React state for interactivity
+- `db.ts` is server-only — never import it from `"use client"` components
+- Client components use `config.apiBaseUrl` (from `src/lib/config.ts`) for API calls
+- Time formatting uses local `timeAgo()` helper functions (not yet extracted to shared util)
+- Dashboard and detail pages are Server Components (no `"use client"`)
+- Feed list, Topics, Sources pages are Client Components (interactive filters / fetch on mount)
+
+## Deployment
+
+To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
+
+1. **Set environment variables** in your deployment dashboard:
+   - `DB_PATH` → path on a **persistent volume** (e.g. `/mnt/data/pia.db`). Without a persistent volume, the DB will be wiped on each deploy.
+   - `NEXT_PUBLIC_API_BASE_URL` → your deployed URL (e.g. `https://pia.yourdomain.com`)
+
+2. **Build command:** `npm run build`
+3. **Start command:** `npm run start`
+
+4. **Browser extension:** update `PIA_API_URL` in `browser-extension/background.js` and `browser-extension/popup.js` to point to the deployed URL.
+
+## Iterative Build Roadmap
+
+1. ✅ Frontend shell with mock data
+2. ✅ SQLite backend + API routes + browser extension connector
+3. ⬜ Source connectors (Gmail first, then Slack, RSS, etc.)
+4. ⬜ AI agent integration (Claude API) for summarization and prioritization
+5. ⬜ Video/podcast transcription + summarization
+6. ⬜ Deep research agent
