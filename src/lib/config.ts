@@ -38,4 +38,19 @@ export const config = {
    * Used to gate dev-only behavior (e.g. verbose logging).
    */
   env: process.env.NODE_ENV ?? "development",
+
+  /**
+   * Google OAuth2 credentials for Gmail integration.
+   * Obtain from Google Cloud Console → APIs & Services → Credentials.
+   * NEVER commit real values — store in .env.local only.
+   */
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+
+  /**
+   * Must exactly match the redirect URI registered in Google Cloud Console.
+   */
+  googleRedirectUri:
+    process.env.GOOGLE_REDIRECT_URI ??
+    "http://localhost:3000/api/auth/gmail/callback",
 } as const;

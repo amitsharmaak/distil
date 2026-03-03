@@ -109,6 +109,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_priority ON items(priority);
   CREATE INDEX IF NOT EXISTS idx_items_source   ON items(sourceType);
   CREATE INDEX IF NOT EXISTS idx_items_is_read  ON items(isRead);
+
+  -- OAuth token storage for source connectors (Gmail, etc.).
+  -- One row per provider; access_token is refreshed in-place via upsertOAuthToken.
+  CREATE TABLE IF NOT EXISTS oauth_tokens (
+    provider      TEXT PRIMARY KEY,
+    access_token  TEXT NOT NULL,
+    refresh_token TEXT,
+    expiry_date   INTEGER,   -- Unix timestamp in ms (matches Google's format)
+    email         TEXT,
+    updated_at    TEXT NOT NULL
+  );
 `);
 
 // ── Seeding ────────────────────────────────────────────────────────────────────
@@ -358,6 +369,55 @@ export function deleteItem(id: string): boolean {
   const result = db.prepare("DELETE FROM items WHERE id = ?").run(id);
   // `changes` is the number of rows affected; 0 means nothing was deleted.
   return result.changes > 0;
+}
+
+// ── OAuth token helpers ────────────────────────────────────────────────────────
+
+/** Shape of a row in the oauth_tokens table. */
+export interface OAuthTokenRow {
+  provider: string;
+  access_token: string;
+  refresh_token: string | null;
+  expiry_date: number | null;
+  email: string | null;
+  updated_at: string;
+}
+
+/**
+ * Returns the stored OAuth token row for a provider, or undefined if none.
+ */
+export function getOAuthToken(provider: string): OAuthTokenRow | undefined {
+  return db
+    .prepare("SELECT * FROM oauth_tokens WHERE provider = ?")
+    .get(provider) as OAuthTokenRow | undefined;
+}
+
+/**
+ * Inserts or replaces the OAuth token for a provider.
+ * Uses INSERT OR REPLACE so reconnecting always overwrites stale tokens.
+ */
+export function upsertOAuthToken(
+  provider: string,
+  data: {
+    access_token: string;
+    refresh_token?: string | null;
+    expiry_date?: number | null;
+    email?: string | null;
+  },
+): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO oauth_tokens
+      (provider, access_token, refresh_token, expiry_date, email, updated_at)
+    VALUES
+      (@provider, @access_token, @refresh_token, @expiry_date, @email, @updated_at)
+  `).run({
+    provider,
+    access_token: data.access_token,
+    refresh_token: data.refresh_token ?? null,
+    expiry_date: data.expiry_date ?? null,
+    email: data.email ?? null,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 // Export the raw db instance for advanced use cases (e.g. transactions in tests).

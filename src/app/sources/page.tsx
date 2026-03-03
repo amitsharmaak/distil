@@ -4,11 +4,11 @@
  * Sources page — manage connected information sources and manually add links.
  *
  * The source card grid uses mockSources for display (no DB table for Sources yet —
- * that's a future phase). The "Quick Add Links" section is fully wired to the
- * POST /api/items endpoint so manually pasted or dragged URLs are saved for real.
+ * that's a future phase). The Gmail card is wired to real OAuth + sync endpoints.
+ * The "Quick Add Links" section is fully wired to the POST /api/items endpoint.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Mail,
   Hash,
@@ -22,6 +22,7 @@ import {
   XCircle,
   Upload,
   Clock,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +36,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-// mockSources used for source card display only — no real Source DB table yet.
+// mockSources used for non-Gmail source card display only — no real Source DB table yet.
 import { mockSources } from "@/lib/mock-data";
 import type { SourceType } from "@/lib/types";
 import { config } from "@/lib/config";
+import type { GmailStatusResponse } from "@/app/api/auth/gmail/status/route";
 
 // ── Source icon map ────────────────────────────────────────────────────────────
 
@@ -124,12 +126,65 @@ export default function SourcesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Gmail connection state
+  const [gmailStatus, setGmailStatus] = useState<GmailStatusResponse | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
+
+  // ── Gmail status fetch ──────────────────────────────────────────────────────
+
+  const fetchGmailStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/auth/gmail/status`);
+      if (res.ok) setGmailStatus(await res.json());
+    } catch (err) {
+      console.error("Failed to fetch Gmail status:", err);
+    }
+  }, []);
+
+  // Fetch Gmail connection status on mount.
+  useEffect(() => {
+    fetchGmailStatus();
+  }, [fetchGmailStatus]);
+
+  // After OAuth redirect, re-fetch status and clean up the URL query param.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "gmail") {
+      fetchGmailStatus();
+      window.history.replaceState({}, "", "/sources");
+    }
+  }, [fetchGmailStatus]);
+
+  // ── Gmail sync ──────────────────────────────────────────────────────────────
+
+  const syncGmail = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/gmail/sync`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncResult({ count: data.count });
+        // Re-fetch status so lastSync timestamp updates.
+        await fetchGmailStatus();
+      } else {
+        console.error("Gmail sync failed:", data.error);
+      }
+    } catch (err) {
+      console.error("Network error during Gmail sync:", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // ── Link saving ─────────────────────────────────────────────────────────────
 
   /**
    * Sends a URL to the API as a manual link.
    * On success, adds the URL to the recently-saved list.
-   * On failure, logs the error — a toast/error state can be added later.
    */
   const saveUrl = async (url: string) => {
     const trimmed = url.trim();
@@ -150,7 +205,6 @@ export default function SourcesPage() {
       });
 
       if (res.ok) {
-        // Show the URL in the recently-saved list so the user gets feedback.
         setSavedLinks((prev) => [trimmed, ...prev]);
       } else {
         console.error("Failed to save link:", await res.text());
@@ -190,7 +244,7 @@ export default function SourcesPage() {
           <p className="text-muted-foreground">Manage your connected information sources</p>
         </div>
 
-        {/* Add Source dialog — Connect buttons are future-phase */}
+        {/* Add Source dialog */}
         <Dialog>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -204,6 +258,56 @@ export default function SourcesPage() {
             <div className="space-y-3 pt-2">
               {availableIntegrations.map((integration) => {
                 const IconComponent = sourceIcons[integration.icon];
+
+                // Gmail: use real OAuth status instead of mock data.
+                if (integration.type === "gmail") {
+                  return (
+                    <div
+                      key={integration.type}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3"
+                    >
+                      <IconComponent className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{integration.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {gmailStatus?.connected
+                            ? gmailStatus.email ?? "Connected"
+                            : integration.description}
+                        </p>
+                      </div>
+                      {gmailStatus?.connected ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={syncGmail}
+                            disabled={syncing}
+                            className="gap-1"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                            {syncing ? "Syncing…" : "Sync Now"}
+                          </Button>
+                          {syncResult !== null && (
+                            <span className="text-[10px] text-green-600">
+                              {syncResult.count} new items
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            window.location.href = "/api/auth/gmail";
+                          }}
+                        >
+                          Connect
+                        </Button>
+                      )}
+                    </div>
+                  );
+                }
+
+                // All other integrations: static placeholder.
                 const isConnected = mockSources.some(
                   (s) => s.type === integration.type && s.isConnected
                 );
@@ -234,45 +338,117 @@ export default function SourcesPage() {
 
       {/* Connected source cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {mockSources.map((source) => {
-          const IconComponent = sourceIcons[source.icon];
-          return (
-            <Card key={source.id}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-muted p-2">
-                      <IconComponent className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">{source.name}</h3>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {source.isConnected ? (
-                          <CheckCircle2 className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <XCircle className="h-3 w-3 text-red-500" />
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {source.isConnected ? "Connected" : "Disconnected"}
-                        </span>
-                      </div>
+        {/* Gmail card — uses real connection status */}
+        {gmailStatus !== null && (
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-muted p-2">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">Gmail</h3>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {gmailStatus.connected ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <XCircle className="h-3 w-3 text-red-500" />
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {gmailStatus.connected
+                          ? gmailStatus.email ?? "Connected"
+                          : "Not connected"}
+                      </span>
                     </div>
                   </div>
                 </div>
-                <Separator className="my-3" />
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{source.itemCount} items</span>
-                  {source.lastSynced && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {timeAgo(source.lastSynced)}
-                    </span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                {gmailStatus.connected && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={syncGmail}
+                    disabled={syncing}
+                    className="h-7 px-2"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                  </Button>
+                )}
+              </div>
+              <Separator className="my-3" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                {gmailStatus.connected ? (
+                  <>
+                    {syncResult !== null && (
+                      <span className="text-green-600">{syncResult.count} new items synced</span>
+                    )}
+                    {syncResult === null && <span>Newsletters &amp; digests</span>}
+                    {gmailStatus.lastSync && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {timeAgo(gmailStatus.lastSync)}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      window.location.href = "/api/auth/gmail";
+                    }}
+                  >
+                    Connect Gmail
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Mock source cards for all non-Gmail sources */}
+        {mockSources
+          .filter((s) => s.type !== "gmail")
+          .map((source) => {
+            const IconComponent = sourceIcons[source.icon];
+            return (
+              <Card key={source.id}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-muted p-2">
+                        <IconComponent className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">{source.name}</h3>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {source.isConnected ? (
+                            <CheckCircle2 className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <XCircle className="h-3 w-3 text-red-500" />
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {source.isConnected ? "Connected" : "Disconnected"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <Separator className="my-3" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{source.itemCount} items</span>
+                    {source.lastSynced && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {timeAgo(source.lastSynced)}
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
       </div>
 
       {/* Quick Add Links — fully wired to POST /api/items */}
