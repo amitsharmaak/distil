@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (WhatsApp, Slack, Gmail, LinkedIn, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
+PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (Slack, Gmail, LinkedIn, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
 
 **Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. Mock data auto-seeds the DB on first run.
 

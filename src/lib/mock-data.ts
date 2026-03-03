@@ -66,21 +66,6 @@ export const mockItems: ContentItem[] = [
     createdAt: "2026-02-25T06:45:00Z",
   },
   {
-    id: "5",
-    title: "Building Production-Ready MCP Servers",
-    summary:
-      "Practical guide to building Model Context Protocol servers that can handle real-world tool use at scale. Covers connection pooling, error handling, and security best practices.",
-    sourceType: "whatsapp",
-    contentType: "article",
-    topics: ["MCP", "AI Infrastructure", "Developer Tools"],
-    author: "Alex Rivera",
-    publication: "Dev.to",
-    url: "https://example.com/mcp-servers-production",
-    priority: "medium",
-    isRead: true,
-    createdAt: "2026-02-24T18:30:00Z",
-  },
-  {
     id: "6",
     title: "The Lex Fridman Podcast: Sam Altman on GPT-5",
     summary:
@@ -173,21 +158,6 @@ export const mockItems: ContentItem[] = [
     createdAt: "2026-02-22T20:00:00Z",
   },
   {
-    id: "12",
-    title: "IPL 2026 Auction Analysis: Data-Driven Team Building",
-    summary:
-      "Statistical analysis of IPL 2026 auction strategies. Which teams used data science effectively, how player valuations were modeled, and predictions for the season.",
-    sourceType: "whatsapp",
-    contentType: "article",
-    topics: ["Cricket", "IPL", "Sports Analytics"],
-    author: "Rahul Dravid",
-    publication: "ESPNcricinfo",
-    url: "https://example.com/ipl-auction-2026",
-    priority: "low",
-    isRead: true,
-    createdAt: "2026-02-22T14:30:00Z",
-  },
-  {
     id: "13",
     title: "Claude's Extended Thinking: A Developer's Guide",
     summary:
@@ -266,15 +236,6 @@ export const mockSources: Source[] = [
     lastSynced: "2026-02-26T08:15:00Z",
     itemCount: 31,
     icon: "Hash",
-  },
-  {
-    id: "3",
-    type: "whatsapp",
-    name: "WhatsApp",
-    isConnected: true,
-    lastSynced: "2026-02-26T07:45:00Z",
-    itemCount: 12,
-    icon: "MessageCircle",
   },
   {
     id: "4",

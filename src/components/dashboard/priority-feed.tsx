@@ -12,7 +12,6 @@ import Link from "next/link";
 import {
   Mail,
   Hash,
-  MessageCircle,
   Twitter,
   Linkedin,
   Globe,
@@ -31,7 +30,6 @@ import type { ContentItem, SourceType, ContentType } from "@/lib/types";
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
-  whatsapp: MessageCircle,
   twitter: Twitter,
   linkedin: Linkedin,
   "browser-extension": Globe,
@@ -42,7 +40,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
 const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
-  whatsapp: "text-green-500",
   twitter: "text-sky-500",
   linkedin: "text-blue-600",
   "browser-extension": "text-orange-500",

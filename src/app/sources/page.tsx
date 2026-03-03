@@ -12,7 +12,6 @@ import { useState, useCallback, useEffect } from "react";
 import {
   Mail,
   Hash,
-  MessageCircle,
   Twitter,
   Linkedin,
   Globe,
@@ -47,7 +46,6 @@ import type { GmailStatusResponse } from "@/app/api/auth/gmail/status/route";
 const sourceIcons: Record<string, React.ElementType> = {
   Mail,
   Hash,
-  MessageCircle,
   Twitter,
   Linkedin,
   Globe,
@@ -73,12 +71,6 @@ const availableIntegrations: {
     name: "Slack",
     description: "Monitor channels for shared articles and discussions",
     icon: "Hash",
-  },
-  {
-    type: "whatsapp",
-    name: "WhatsApp",
-    description: "Import links shared in your WhatsApp groups and chats",
-    icon: "MessageCircle",
   },
   {
     type: "twitter",

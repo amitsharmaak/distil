@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   Mail,
   Hash,
-  MessageCircle,
   Twitter,
   Linkedin,
   Globe,
@@ -20,7 +19,6 @@ import { ContentItem, SourceType, ContentType } from "@/lib/types";
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
-  whatsapp: MessageCircle,
   twitter: Twitter,
   linkedin: Linkedin,
   "browser-extension": Globe,
@@ -30,7 +28,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
 const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
-  whatsapp: "text-green-500",
   twitter: "text-sky-500",
   linkedin: "text-blue-600",
   "browser-extension": "text-orange-500",
@@ -40,7 +37,6 @@ const sourceColors: Record<SourceType, string> = {
 const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
-  whatsapp: "WhatsApp",
   twitter: "Twitter",
   linkedin: "LinkedIn",
   "browser-extension": "Extension",
@@ -72,7 +68,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export function ContentCard({ item, compact = false }: { item: ContentItem; compact?: boolean }) {
-  const SourceIcon = sourceIcons[item.sourceType];
+  const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
 
   if (compact) {
     return (

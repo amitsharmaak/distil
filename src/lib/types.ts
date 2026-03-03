@@ -1,5 +1,4 @@
 export type SourceType =
-  | "whatsapp"
   | "slack"
   | "gmail"
   | "linkedin"
