@@ -53,4 +53,12 @@ export const config = {
   googleRedirectUri:
     process.env.GOOGLE_REDIRECT_URI ??
     "http://localhost:3000/api/auth/gmail/callback",
+
+  /**
+   * Google Gemini API key for AI integration.
+   * Used for summarization, prioritization, preference learning, and deep research.
+   * Obtain from https://aistudio.google.com/app/apikey
+   * NEVER commit real values — store in .env.local only.
+   */
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
 } as const;

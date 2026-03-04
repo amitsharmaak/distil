@@ -57,6 +57,7 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 | -------------------------- | ----------------------- | ---------------------------------- |
 | `DB_PATH`                  | `./data/pia.db`         | Path to the SQLite database file   |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls |
+| `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for summarization, prioritization, research |
 
 **Security rules:**
 
@@ -77,6 +78,26 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 - `src/lib/types.ts` — Core TypeScript interfaces (`ContentItem`, `Topic`, `Source`, `AgentSettings`)
 - `src/lib/mock-data.ts` — Mock data used for DB seeding on first run
 - `src/lib/utils.ts` — shadcn utility (cn function)
+- `src/lib/ai/` — AI agent modules (server-only):
+  - `client.ts` — Google Gemini SDK singleton (`generateText`, `generateTextWithSearch`)
+  - `summarize.ts` — Content summarization with Gemini
+  - `prioritize.ts` — Hybrid heuristic + AI feed scoring
+  - `research.ts` — Deep research with Google Search grounding
+  - `preferences.ts` — Preference learning from feedback
+  - `prompts.ts` — All prompt templates
+  - `types.ts` — AI-specific TypeScript interfaces
+
+### AI Agent System
+
+The AI agent system uses Google Gemini (`gemini-2.5-flash`) for:
+1. **Summarization** — generates markdown summaries for content items (brief/detailed modes)
+2. **Feedback & Learning** — tracks user like/dislike with reasons, builds preference profile
+3. **Prioritization** — scores items using learned preferences (heuristic + optional AI ranking)
+4. **Deep Research** — multi-step research with live web search, produces cited markdown reports
+
+API routes: `POST /api/ai/summarize`, `GET /api/ai/summary/[itemId]`, `POST /api/ai/feedback`, `GET /api/ai/feedback/[itemId]`, `POST /api/ai/prioritize`, `GET/PUT /api/ai/preferences`, `POST /api/ai/research`, `GET /api/ai/research/[id]`
+
+Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `user_settings`
 
 ### Data Flow
 
@@ -86,12 +107,20 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 
 ### Database
 
-SQLite file at `data/pia.db` (gitignored). Schema: single `items` table matching `ContentItem` type.
+SQLite file at `data/pia.db` (gitignored). Tables:
 
+- `items` — content items matching `ContentItem` type (+ `ai_priority_score` column)
+- `ai_summaries` — AI-generated markdown summaries (one per item)
+- `feedback` — user like/dislike with optional reason
+- `research_reports` — deep research outputs with status tracking
+- `user_settings` — key-value store for agent config and learned preferences
+- `oauth_tokens` — OAuth credentials for source connectors
+
+Notes:
 - `topics` stored as JSON string, deserialized on read
 - `isRead` stored as 0/1 integer, converted to boolean on read
 - WAL mode enabled for concurrent read performance
-- Seeded with 15 mock items on first run (if table is empty)
+- Seeded with 13 mock items on first run (if table is empty)
 
 ### Layout
 
@@ -130,6 +159,9 @@ src/components/dashboard/__tests__/              # Dashboard component tests
 - Time formatting uses local `timeAgo()` helper functions (not yet extracted to shared util)
 - Dashboard and detail pages are Server Components (no `"use client"`)
 - Feed list, Topics, Sources pages are Client Components (interactive filters / fetch on mount)
+- `src/lib/ai/` modules are server-only — never import from `"use client"` components
+- AI-generated content is rendered as markdown using `react-markdown` + `remark-gfm`
+- AI prompts are centralized in `src/lib/ai/prompts.ts` for easy iteration
 
 ## Deployment
 
@@ -148,7 +180,7 @@ To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
 
 1. ✅ Frontend shell with mock data
 2. ✅ SQLite backend + API routes + browser extension connector
-3. ⬜ Source connectors (Gmail first, then Slack, RSS, etc.)
-4. ⬜ AI agent integration (Claude API) for summarization and prioritization
+3. ✅ Source connectors (Gmail newsletters via OAuth2)
+4. ✅ AI agent integration (Gemini API) — summarization, feedback, prioritization, deep research
 5. ⬜ Video/podcast transcription + summarization
-6. ⬜ Deep research agent
+6. ⬜ Additional source connectors (Slack, RSS, etc.)

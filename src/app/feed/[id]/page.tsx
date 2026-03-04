@@ -1,12 +1,15 @@
 /**
  * Item detail page — /feed/[id]
  *
- * Shows the full details of a single content item: title, metadata, summary,
- * full content (if available), and a list of related items sharing the same topics.
+ * Shows the full details of a single content item: title, metadata, AI summary,
+ * feedback buttons, and a list of related items sharing the same topics.
  *
  * This is an async Server Component. It fetches data directly from the database
  * without going through an HTTP round-trip, which is the idiomatic App Router
  * pattern for pages that have no client-side interactivity.
+ *
+ * Interactive parts (AI summary generation, feedback) are Client Components
+ * rendered within this server page.
  */
 
 import Link from "next/link";
@@ -15,30 +18,29 @@ import {
   ExternalLink,
   Play,
   Headphones,
-  Search,
   Clock,
   Mail,
   Hash,
-  MessageCircle,
   Twitter,
   Linkedin,
   Globe,
   Link as LinkIcon,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getItemById, getItems } from "@/lib/db";
+import { getItemById, getItems, getAISummary, getFeedback } from "@/lib/db";
 import type { SourceType } from "@/lib/types";
+import { AISummary } from "@/components/feed/ai-summary";
+import { FeedbackButtons } from "@/components/feed/feedback-buttons";
+import { DeepResearch } from "@/components/feed/deep-research";
 
 // ── Source icon + label mappings ───────────────────────────────────────────────
 
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
-  whatsapp: MessageCircle,
   twitter: Twitter,
   linkedin: Linkedin,
   "browser-extension": Globe,
@@ -48,7 +50,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
 const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
-  whatsapp: "WhatsApp",
   twitter: "Twitter",
   linkedin: "LinkedIn",
   "browser-extension": "Browser Extension",
@@ -81,7 +82,11 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     );
   }
 
-  const SourceIcon = sourceIcons[item.sourceType];
+  const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
+
+  // Check for an existing AI summary and feedback.
+  const cachedSummary = getAISummary(item.id);
+  const existingFeedback = getFeedback(item.id);
 
   // Find items that share at least one topic with this item.
   const relatedItems = getItems()
@@ -104,7 +109,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         <div className="flex items-center gap-2 mb-3">
           <Badge variant="secondary" className="gap-1 text-xs">
             <SourceIcon className="h-3 w-3" />
-            {sourceLabels[item.sourceType]}
+            {sourceLabels[item.sourceType] ?? item.sourceType}
           </Badge>
           <Badge variant="outline" className={`text-xs ${priorityColors[item.priority]}`}>
             {item.priority} priority
@@ -146,22 +151,23 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
       <Separator />
 
-      {/* AI Summary card */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            {/* Zap icon for "AI" indicator */}
-            <div className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center">
-              <Zap className="h-3 w-3 text-primary" />
-            </div>
-            AI Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
-          {item.fullContent && <p className="mt-4 text-sm leading-relaxed">{item.fullContent}</p>}
-        </CardContent>
-      </Card>
+      {/* AI Summary — Client Component for interactive generation */}
+      <AISummary
+        itemId={item.id}
+        ogSummary={item.summary}
+        fullContent={item.fullContent}
+        initialAISummary={cachedSummary?.summary ?? null}
+      />
+
+      {/* Feedback — like/dislike with optional reason */}
+      <FeedbackButtons
+        itemId={item.id}
+        initialFeedback={
+          existingFeedback
+            ? { rating: existingFeedback.rating, reason: existingFeedback.reason }
+            : null
+        }
+      />
 
       {/* Video/Podcast embed placeholder for non-article content */}
       {item.contentType !== "article" && (
@@ -189,10 +195,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <ExternalLink className="h-4 w-4" /> View Original
           </a>
         </Button>
-        {/* Deep Research is a future feature — button is non-functional for now */}
-        <Button variant="default" className="gap-2">
-          <Search className="h-4 w-4" /> Deep Research
-        </Button>
+        <DeepResearch itemId={item.id} defaultQuery={item.title} />
       </div>
 
       {/* Related items */}
@@ -203,7 +206,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <h2 className="text-lg font-semibold mb-3">Related</h2>
             <div className="space-y-2">
               {relatedItems.map((related) => {
-                const RelIcon = sourceIcons[related.sourceType];
+                const RelIcon = sourceIcons[related.sourceType] ?? Globe;
                 return (
                   <Link
                     key={related.id}

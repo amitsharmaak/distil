@@ -120,7 +120,59 @@ db.exec(`
     email         TEXT,
     updated_at    TEXT NOT NULL
   );
+
+  -- AI-generated summaries, kept separate from the OG-tag summary on items.
+  CREATE TABLE IF NOT EXISTS ai_summaries (
+    id          TEXT PRIMARY KEY,
+    item_id     TEXT NOT NULL UNIQUE,
+    summary     TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    prompt_type TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_summaries_item ON ai_summaries(item_id);
+
+  -- User feedback on content items (like/dislike with optional reason).
+  CREATE TABLE IF NOT EXISTS feedback (
+    id         TEXT PRIMARY KEY,
+    item_id    TEXT NOT NULL,
+    rating     INTEGER NOT NULL,
+    reason     TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_feedback_item    ON feedback(item_id);
+  CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
+
+  -- Deep research report outputs.
+  CREATE TABLE IF NOT EXISTS research_reports (
+    id           TEXT PRIMARY KEY,
+    item_id      TEXT,
+    query        TEXT NOT NULL,
+    report       TEXT NOT NULL DEFAULT '',
+    sources      TEXT NOT NULL DEFAULT '[]',
+    model        TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    created_at   TEXT NOT NULL,
+    completed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_research_item ON research_reports(item_id);
+
+  -- Key-value store for user settings (agent config, learned preferences).
+  CREATE TABLE IF NOT EXISTS user_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
+
+// Add ai_priority_score column to items (idempotent — ignore if already exists).
+try {
+  db.exec("ALTER TABLE items ADD COLUMN ai_priority_score REAL");
+} catch {
+  // Column already exists — safe to ignore.
+}
 
 // ── Seeding ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +230,7 @@ interface DbRow {
   createdAt: string;
   duration: string | null;
   thumbnailUrl: string | null;
+  ai_priority_score: number | null;
 }
 
 /**
@@ -247,8 +300,8 @@ export interface ItemFilters {
   isRead?: boolean;
   /** Return at most this many items. */
   limit?: number;
-  /** Sort order: "recent" (newest first) or "priority" (high → low → medium → read). */
-  sort?: "recent" | "priority";
+  /** Sort order: "recent" (newest first), "priority" (high → low → medium → read), or "ai_priority" (by AI score). */
+  sort?: "recent" | "priority" | "ai_priority";
 }
 
 // ── Exported CRUD helpers ──────────────────────────────────────────────────────
@@ -284,12 +337,16 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  // Sort order: newest first by default, or by priority level.
-  const orderClause =
-    filters.sort === "priority"
-      ? // Map priority text to a numeric rank for ordering: high=1, medium=2, low=3.
-        "ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, createdAt DESC"
-      : "ORDER BY createdAt DESC";
+  // Sort order: newest first by default, by priority level, or by AI priority score.
+  let orderClause: string;
+  if (filters.sort === "priority") {
+    orderClause =
+      "ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, createdAt DESC";
+  } else if (filters.sort === "ai_priority") {
+    orderClause = "ORDER BY COALESCE(ai_priority_score, 0) DESC, createdAt DESC";
+  } else {
+    orderClause = "ORDER BY createdAt DESC";
+  }
 
   const limitClause = filters.limit ? `LIMIT ${filters.limit}` : "";
 
@@ -418,6 +475,173 @@ export function upsertOAuthToken(
     email: data.email ?? null,
     updated_at: new Date().toISOString(),
   });
+}
+
+// ── AI Summary helpers ───────────────────────────────────────────────────────
+
+export interface AISummaryRow {
+  id: string;
+  item_id: string;
+  summary: string;
+  model: string;
+  prompt_type: string;
+  created_at: string;
+}
+
+export function getAISummary(itemId: string): AISummaryRow | undefined {
+  return db
+    .prepare("SELECT * FROM ai_summaries WHERE item_id = ?")
+    .get(itemId) as AISummaryRow | undefined;
+}
+
+export function upsertAISummary(data: {
+  id: string;
+  itemId: string;
+  summary: string;
+  model: string;
+  promptType: string;
+}): AISummaryRow {
+  db.prepare(`
+    INSERT OR REPLACE INTO ai_summaries (id, item_id, summary, model, prompt_type, created_at)
+    VALUES (@id, @item_id, @summary, @model, @prompt_type, @created_at)
+  `).run({
+    id: data.id,
+    item_id: data.itemId,
+    summary: data.summary,
+    model: data.model,
+    prompt_type: data.promptType,
+    created_at: new Date().toISOString(),
+  });
+  return getAISummary(data.itemId)!;
+}
+
+// ── Feedback helpers ─────────────────────────────────────────────────────────
+
+export interface FeedbackRow {
+  id: string;
+  item_id: string;
+  rating: number;
+  reason: string | null;
+  created_at: string;
+}
+
+export function insertFeedback(data: {
+  id: string;
+  itemId: string;
+  rating: number;
+  reason?: string;
+}): FeedbackRow {
+  db.prepare(`
+    INSERT INTO feedback (id, item_id, rating, reason, created_at)
+    VALUES (@id, @item_id, @rating, @reason, @created_at)
+  `).run({
+    id: data.id,
+    item_id: data.itemId,
+    rating: data.rating,
+    reason: data.reason ?? null,
+    created_at: new Date().toISOString(),
+  });
+  return db.prepare("SELECT * FROM feedback WHERE id = ?").get(data.id) as FeedbackRow;
+}
+
+export function getFeedback(itemId: string): FeedbackRow | undefined {
+  return db
+    .prepare("SELECT * FROM feedback WHERE item_id = ? ORDER BY created_at DESC LIMIT 1")
+    .get(itemId) as FeedbackRow | undefined;
+}
+
+export function getAllFeedback(): FeedbackRow[] {
+  return db
+    .prepare("SELECT * FROM feedback ORDER BY created_at DESC")
+    .all() as FeedbackRow[];
+}
+
+// ── Research report helpers ──────────────────────────────────────────────────
+
+export interface ResearchReportRow {
+  id: string;
+  item_id: string | null;
+  query: string;
+  report: string;
+  sources: string; // JSON array
+  model: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export function insertResearchReport(data: {
+  id: string;
+  itemId?: string;
+  query: string;
+  model: string;
+}): ResearchReportRow {
+  db.prepare(`
+    INSERT INTO research_reports (id, item_id, query, model, created_at)
+    VALUES (@id, @item_id, @query, @model, @created_at)
+  `).run({
+    id: data.id,
+    item_id: data.itemId ?? null,
+    query: data.query,
+    model: data.model,
+    created_at: new Date().toISOString(),
+  });
+  return getResearchReport(data.id)!;
+}
+
+export function getResearchReport(id: string): ResearchReportRow | undefined {
+  return db
+    .prepare("SELECT * FROM research_reports WHERE id = ?")
+    .get(id) as ResearchReportRow | undefined;
+}
+
+export function updateResearchReport(
+  id: string,
+  patch: { report?: string; sources?: string; status?: string; completedAt?: string },
+): ResearchReportRow | undefined {
+  const existing = getResearchReport(id);
+  if (!existing) return undefined;
+
+  db.prepare(`
+    UPDATE research_reports SET
+      report       = @report,
+      sources      = @sources,
+      status       = @status,
+      completed_at = @completed_at
+    WHERE id = @id
+  `).run({
+    id,
+    report: patch.report ?? existing.report,
+    sources: patch.sources ?? existing.sources,
+    status: patch.status ?? existing.status,
+    completed_at: patch.completedAt ?? existing.completed_at,
+  });
+
+  return getResearchReport(id);
+}
+
+// ── User settings helpers ────────────────────────────────────────────────────
+
+export function getUserSetting(key: string): string | undefined {
+  const row = db
+    .prepare("SELECT value FROM user_settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value;
+}
+
+export function setUserSetting(key: string, value: string): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO user_settings (key, value, updated_at)
+    VALUES (@key, @value, @updated_at)
+  `).run({ key, value, updated_at: new Date().toISOString() });
+}
+
+// ── AI priority score helper ─────────────────────────────────────────────────
+
+export function updateItemPriorityScore(id: string, score: number, priority: Priority): void {
+  db.prepare(
+    "UPDATE items SET ai_priority_score = @score, priority = @priority WHERE id = @id",
+  ).run({ id, score, priority });
 }
 
 // Export the raw db instance for advanced use cases (e.g. transactions in tests).
