@@ -9,7 +9,6 @@ const sourceOptions: { value: SourceType; label: string }[] = [
   { value: "gmail", label: "Gmail" },
   { value: "slack", label: "Slack" },
   { value: "twitter", label: "Twitter" },
-  { value: "linkedin", label: "LinkedIn" },
   { value: "browser-extension", label: "Extension" },
   { value: "manual", label: "Manual" },
 ];

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open /Users/amitsharma/projects/pia/.env.local)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(git add package.json package-lock.json src/app/sources/page.tsx src/lib/config.ts src/lib/db.ts src/app/api/auth/ src/app/api/gmail/ src/lib/connectors/)",
+      "Bash(git add CLAUDE.md src/app/sources/page.tsx src/components/dashboard/activity-timeline.tsx src/components/dashboard/priority-feed.tsx src/components/feed/content-card.tsx src/components/feed/feed-filters.tsx src/lib/mock-data.ts src/lib/types.ts)",
+      "Bash(ls -la /Users/amitsharma/projects/pia/src/app/api/items/[id]/__tests__/)",
+      "Bash(npm install @anthropic-ai/sdk react-markdown remark-gfm)",
+      "Bash(npx shadcn@latest add textarea skeleton --yes)"
+    ],
+    "additionalDirectories": [
+      "/Users/amitsharma/projects/pia/src/app/api/ai/research",
+      "/Users/amitsharma/projects/pia/src/app/research"
+    ]
+  }
+}

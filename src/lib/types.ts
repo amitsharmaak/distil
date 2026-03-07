@@ -1,7 +1,6 @@
 export type SourceType =
   | "slack"
   | "gmail"
-  | "linkedin"
   | "twitter"
   | "manual"
   | "browser-extension";
@@ -9,6 +8,11 @@ export type SourceType =
 export type ContentType = "article" | "video" | "podcast";
 
 export type Priority = "high" | "medium" | "low";
+
+export interface ExtractedLink {
+  text: string;
+  url: string;
+}
 
 export interface ContentItem {
   id: string;
@@ -26,6 +30,10 @@ export interface ContentItem {
   createdAt: string;
   duration?: string;
   thumbnailUrl?: string;
+  /** Hyperlinks extracted from article body on ingestion. */
+  extractedLinks?: ExtractedLink[];
+  /** AI-generated summary (joined from ai_summaries table on read). */
+  aiSummary?: string;
 }
 
 export interface Topic {
@@ -44,6 +52,19 @@ export interface Source {
   lastSynced?: string;
   itemCount: number;
   icon: string;
+}
+
+export interface Notification {
+  id: string;
+  itemId: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPreferences {
+  highPriorityItems: boolean;
 }
 
 export interface AgentSettings {

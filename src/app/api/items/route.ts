@@ -18,6 +18,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getItems, insertItem } from "@/lib/db";
 import { fetchOG } from "@/lib/og";
+import { extractContent } from "@/lib/content-extractor";
+import { generateSummary } from "@/lib/ai/summarize";
+import { createNotificationIfEnabled } from "@/lib/notifications";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -140,12 +143,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Fetch Open Graph metadata ───────────────────────────────────────────
-    // This enriches the item automatically — the user doesn't need to type a
-    // title or description. If the fetch fails, og will contain all nulls and
-    // we fall back to whatever the caller provided.
+    // ── Fetch OG metadata and extract full content in parallel ─────────────
+    // Both fetch the URL independently with their own timeouts. If either
+    // fails, it returns nulls/null — the item is still created with whatever
+    // data is available.
 
-    const og = await fetchOG(url.trim());
+    const trimmedUrl = url.trim();
+    const [og, extraction] = await Promise.all([
+      fetchOG(trimmedUrl),
+      extractContent(trimmedUrl),
+    ]);
 
     // ── Build the new item ──────────────────────────────────────────────────
 
@@ -166,19 +173,32 @@ export async function POST(request: NextRequest) {
       sourceType: sourceType as SourceType,
       contentType: (body.contentType as ContentType) ?? "article",
       topics: Array.isArray(body.topics) ? (body.topics as string[]) : [],
-      author: og.author ?? undefined,
+      author: og.author ?? extraction?.byline ?? undefined,
       publication: og.siteName ?? undefined,
-      url: url.trim(),
+      url: trimmedUrl,
       priority: (body.priority as Priority) ?? "medium",
       isRead: false,
       createdAt: new Date().toISOString(),
       // Optional fields from OG.
       thumbnailUrl: og.image ?? undefined,
+      // Full content and extracted links from Readability.
+      fullContent: extraction?.content ?? undefined,
+      extractedLinks: extraction?.extractedLinks ?? undefined,
     };
 
     // ── Persist and respond ─────────────────────────────────────────────────
 
     const inserted = insertItem(newItem);
+
+    // Create in-app notification for high-priority items (if preference enabled).
+    createNotificationIfEnabled(inserted);
+
+    // Fire-and-forget: generate AI summary in the background.
+    // The response returns immediately; the summary is cached in ai_summaries
+    // and will appear on the next detail page / feed card load.
+    generateSummary(inserted.id, { length: "brief" }).catch((err) => {
+      console.error("[POST /api/items] Background summary failed:", inserted.id, err);
+    });
 
     return NextResponse.json({ item: inserted }, { status: 201, headers: CORS_HEADERS });
   } catch (error) {

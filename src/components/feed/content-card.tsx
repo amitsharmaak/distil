@@ -5,7 +5,6 @@ import {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
   Play,
@@ -20,7 +19,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
   twitter: Twitter,
-  linkedin: Linkedin,
   "browser-extension": Globe,
   manual: LinkIcon,
 };
@@ -29,7 +27,6 @@ const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
   twitter: "text-sky-500",
-  linkedin: "text-blue-600",
   "browser-extension": "text-orange-500",
   manual: "text-gray-500",
 };
@@ -38,7 +35,6 @@ const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
   twitter: "Twitter",
-  linkedin: "LinkedIn",
   "browser-extension": "Extension",
   manual: "Manual",
 };
@@ -48,6 +44,19 @@ const priorityColors: Record<string, string> = {
   medium: "bg-amber-500/10 text-amber-600 border-amber-200",
   low: "bg-green-500/10 text-green-600 border-green-200",
 };
+
+/** Strips markdown formatting to produce plain preview text. */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`[^`]+`/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .trim();
+}
 
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3.5 w-3.5" />;
@@ -128,7 +137,9 @@ export function ContentCard({ item, compact = false }: { item: ContentItem; comp
                   {item.priority}
                 </Badge>
               </div>
-              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{item.summary}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
+                {item.aiSummary ? stripMarkdown(item.aiSummary).slice(0, 200) : item.summary}
+              </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="text-[10px]">
                   {sourceLabels[item.sourceType]}

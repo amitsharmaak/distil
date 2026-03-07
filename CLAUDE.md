@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (Slack, Gmail, LinkedIn, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
+PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (Slack, Gmail, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
 
 **Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. Mock data auto-seeds the DB on first run.
 
@@ -184,3 +184,139 @@ To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
 4. ✅ AI agent integration (Gemini API) — summarization, feedback, prioritization, deep research
 5. ⬜ Video/podcast transcription + summarization
 6. ⬜ Additional source connectors (Slack, RSS, etc.)
+
+## Directory Structure
+
+```
+pia/
+├── .claude/
+│   ├── settings.json
+│   └── settings.local.json
+├── .env.example
+├── .gitignore
+├── .prettierignore
+├── .prettierrc
+├── CLAUDE.md
+├── README.md
+├── browser-extension/
+│   ├── background.js
+│   ├── icons/
+│   │   ├── icon16.png
+│   │   ├── icon48.png
+│   │   └── icon128.png
+│   ├── manifest.json
+│   ├── popup.css
+│   ├── popup.html
+│   └── popup.js
+├── components.json
+├── eslint.config.mjs
+├── jest.config.ts
+├── jest.setup.ts
+├── next-env.d.ts
+├── next.config.ts
+├── package.json
+├── package-lock.json
+├── postcss.config.mjs
+├── public/
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── ai/
+│   │   │   │   ├── feedback/
+│   │   │   │   │   ├── [itemId]/route.ts
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── preferences/route.ts
+│   │   │   │   ├── prioritize/route.ts
+│   │   │   │   ├── research/
+│   │   │   │   │   ├── [id]/route.ts
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── summarize/route.ts
+│   │   │   │   └── summary/[itemId]/route.ts
+│   │   │   ├── auth/gmail/
+│   │   │   │   ├── callback/route.ts
+│   │   │   │   ├── route.ts
+│   │   │   │   └── status/route.ts
+│   │   │   ├── gmail/sync/route.ts
+│   │   │   └── items/
+│   │   │       ├── [id]/
+│   │   │       │   ├── __tests__/route.test.ts
+│   │   │       │   └── route.ts
+│   │   │       ├── __tests__/route.test.ts
+│   │   │       └── route.ts
+│   │   ├── feed/
+│   │   │   ├── [id]/page.tsx
+│   │   │   └── page.tsx
+│   │   ├── research/[id]/page.tsx
+│   │   ├── settings/page.tsx
+│   │   ├── sources/page.tsx
+│   │   ├── topics/page.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── dashboard/
+│   │   │   ├── __tests__/
+│   │   │   │   ├── priority-feed.test.tsx
+│   │   │   │   └── stats-overview.test.tsx
+│   │   │   ├── activity-timeline.tsx
+│   │   │   ├── priority-feed.tsx
+│   │   │   └── stats-overview.tsx
+│   │   ├── feed/
+│   │   │   ├── ai-summary.tsx
+│   │   │   ├── content-card.tsx
+│   │   │   ├── deep-research.tsx
+│   │   │   ├── feed-filters.tsx
+│   │   │   └── feedback-buttons.tsx
+│   │   ├── layout/
+│   │   │   ├── sidebar.tsx
+│   │   │   └── topbar.tsx
+│   │   ├── sources/          (empty — sources page is self-contained)
+│   │   ├── topics/           (empty — topics page is self-contained)
+│   │   └── ui/
+│   │       ├── avatar.tsx
+│   │       ├── badge.tsx
+│   │       ├── button.tsx
+│   │       ├── card.tsx
+│   │       ├── dialog.tsx
+│   │       ├── dropdown-menu.tsx
+│   │       ├── input.tsx
+│   │       ├── scroll-area.tsx
+│   │       ├── select.tsx
+│   │       ├── separator.tsx
+│   │       ├── sheet.tsx
+│   │       ├── skeleton.tsx
+│   │       ├── tabs.tsx
+│   │       ├── textarea.tsx
+│   │       └── tooltip.tsx
+│   └── lib/
+│       ├── __tests__/
+│       │   ├── db.test.ts
+│       │   └── og.test.ts
+│       ├── ai/
+│       │   ├── __tests__/
+│       │   │   ├── prioritize.test.ts
+│       │   │   ├── prompts.test.ts
+│       │   │   └── summarize.test.ts
+│       │   ├── client.ts
+│       │   ├── preferences.ts
+│       │   ├── prioritize.ts
+│       │   ├── prompts.ts
+│       │   ├── research.ts
+│       │   ├── summarize.ts
+│       │   └── types.ts
+│       ├── connectors/
+│       │   └── gmail.ts
+│       ├── config.ts
+│       ├── db.ts
+│       ├── mock-data.ts
+│       ├── og.ts
+│       ├── types.ts
+│       └── utils.ts
+└── tsconfig.json
+```

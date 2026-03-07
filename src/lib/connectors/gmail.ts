@@ -17,6 +17,7 @@ import { google, gmail_v1 } from "googleapis";
 
 import { config } from "@/lib/config";
 import { getOAuthToken, upsertOAuthToken, insertItem, db } from "@/lib/db";
+import { createNotificationIfEnabled } from "@/lib/notifications";
 import type { ContentItem, Priority } from "@/lib/types";
 
 // Gmail API scope — read-only access is all we need.
@@ -176,7 +177,9 @@ export async function syncNewsletters(): Promise<ContentItem[]> {
       .get(item.url);
     if (existing) continue;
 
-    inserted.push(insertItem(item));
+    const newItem = insertItem(item);
+    createNotificationIfEnabled(newItem);
+    inserted.push(newItem);
   }
 
   return inserted;

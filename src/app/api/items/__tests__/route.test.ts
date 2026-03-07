@@ -10,6 +10,21 @@
 // Use in-memory SQLite for all tests in this file.
 process.env.DB_PATH = ":memory:";
 
+// Mock content-extractor (jsdom is ESM-only and breaks Jest CJS transform).
+jest.mock("@/lib/content-extractor", () => ({
+  extractContent: jest.fn().mockResolvedValue(null),
+}));
+
+// Mock AI summarizer so POST doesn't fire real Gemini calls.
+jest.mock("@/lib/ai/summarize", () => ({
+  generateSummary: jest.fn().mockResolvedValue({ summary: "mock", cached: false }),
+}));
+
+// Mock notifications so POST doesn't try to create real notifications.
+jest.mock("@/lib/notifications", () => ({
+  createNotificationIfEnabled: jest.fn(),
+}));
+
 import { NextRequest } from "next/server";
 
 // Import DB helpers to set up and tear down test data.

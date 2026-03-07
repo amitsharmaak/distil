@@ -13,7 +13,6 @@ import {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
   Play,
@@ -31,7 +30,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
   twitter: Twitter,
-  linkedin: Linkedin,
   "browser-extension": Globe,
   manual: LinkIcon,
 };
@@ -41,7 +39,6 @@ const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
   twitter: "text-sky-500",
-  linkedin: "text-blue-600",
   "browser-extension": "text-orange-500",
   manual: "text-gray-500",
 };
@@ -97,7 +94,7 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
 
       <CardContent className="space-y-3">
         {priorityItems.map((item) => {
-          const SourceIcon = sourceIcons[item.sourceType];
+          const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
           return (
             <Link
               key={item.id}

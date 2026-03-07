@@ -13,7 +13,6 @@ import {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
   Plus,
@@ -47,7 +46,6 @@ const sourceIcons: Record<string, React.ElementType> = {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link: LinkIcon,
 };
@@ -77,12 +75,6 @@ const availableIntegrations: {
     name: "Twitter / X",
     description: "Follow topics and threads from your Twitter feed",
     icon: "Twitter",
-  },
-  {
-    type: "linkedin",
-    name: "LinkedIn",
-    description: "Track posts and articles from your LinkedIn network",
-    icon: "Linkedin",
   },
   {
     type: "browser-extension",

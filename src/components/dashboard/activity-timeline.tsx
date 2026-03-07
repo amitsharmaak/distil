@@ -12,7 +12,6 @@ import {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
 } from "lucide-react";
@@ -26,7 +25,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
   twitter: Twitter,
-  linkedin: Linkedin,
   "browser-extension": Globe,
   manual: LinkIcon,
 };
@@ -36,7 +34,6 @@ const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500 bg-red-500/10",
   slack: "text-purple-500 bg-purple-500/10",
   twitter: "text-sky-500 bg-sky-500/10",
-  linkedin: "text-blue-600 bg-blue-600/10",
   "browser-extension": "text-orange-500 bg-orange-500/10",
   manual: "text-gray-500 bg-gray-500/10",
 };
@@ -86,8 +83,8 @@ export function ActivityTimeline({ items }: ActivityTimelineProps) {
       <CardContent>
         <div className="space-y-4">
           {recentItems.map((item, i) => {
-            const SourceIcon = sourceIcons[item.sourceType];
-            const colors = sourceColors[item.sourceType];
+            const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
+            const colors = sourceColors[item.sourceType] ?? "text-gray-500 bg-gray-500/10";
 
             return (
               <div key={item.id} className="flex gap-3">

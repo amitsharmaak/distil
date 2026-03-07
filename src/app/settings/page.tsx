@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Mail,
   Hash,
   MessageCircle,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
   Shield,
@@ -20,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockSources, mockTopics } from "@/lib/mock-data";
+import { config } from "@/lib/config";
 
 const sourceIcons: Record<string, React.ElementType> = {
   Mail,
   Hash,
   MessageCircle,
   Twitter,
-  Linkedin,
   Globe,
   Link: LinkIcon,
 };
@@ -34,6 +33,25 @@ const sourceIcons: Record<string, React.ElementType> = {
 export default function SettingsPage() {
   const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
   const [pollingFrequency, setPollingFrequency] = useState("15");
+  const [highPriorityEnabled, setHighPriorityEnabled] = useState(true);
+
+  // Load notification preference from backend on mount.
+  useEffect(() => {
+    fetch(`${config.apiBaseUrl}/api/notifications/preferences`)
+      .then((res) => res.json())
+      .then((data) => setHighPriorityEnabled(data.highPriorityItems))
+      .catch(() => {});
+  }, []);
+
+  async function toggleHighPriority() {
+    const newVal = !highPriorityEnabled;
+    setHighPriorityEnabled(newVal);
+    await fetch(`${config.apiBaseUrl}/api/notifications/preferences`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ highPriorityItems: newVal }),
+    });
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -236,36 +254,46 @@ export default function SettingsPage() {
               <CardTitle className="text-base">Notification Preferences</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* High priority — functional toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">High priority items</p>
+                  <p className="text-xs text-muted-foreground">
+                    Get notified when high-priority content arrives
+                  </p>
+                </div>
+                <Button
+                  variant={highPriorityEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleHighPriority}
+                >
+                  {highPriorityEnabled ? "On" : "Off"}
+                </Button>
+              </div>
+
+              {/* Remaining preferences — coming soon */}
               {[
-                {
-                  label: "High priority items",
-                  desc: "Get notified when high-priority content arrives",
-                  enabled: true,
-                },
                 {
                   label: "Daily digest",
                   desc: "Receive a summary of the day's content each morning",
-                  enabled: true,
                 },
                 {
                   label: "New source content",
                   desc: "Notify when a new source starts syncing",
-                  enabled: false,
                 },
                 {
                   label: "Trend alerts",
                   desc: "Alert when a topic is trending across sources",
-                  enabled: false,
                 },
               ].map((pref) => (
-                <div key={pref.label} className="flex items-center justify-between">
+                <div key={pref.label} className="flex items-center justify-between opacity-50">
                   <div>
                     <p className="text-sm font-medium">{pref.label}</p>
                     <p className="text-xs text-muted-foreground">{pref.desc}</p>
                   </div>
-                  <Button variant="outline" size="sm">
-                    {pref.enabled ? "On" : "Off"}
-                  </Button>
+                  <Badge variant="secondary" className="text-[10px]">
+                    Coming soon
+                  </Badge>
                 </div>
               ))}
             </CardContent>

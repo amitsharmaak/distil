@@ -165,11 +165,30 @@ db.exec(`
     value      TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  -- In-app notifications (e.g. high-priority item alerts).
+  CREATE TABLE IF NOT EXISTS notifications (
+    id         TEXT PRIMARY KEY,
+    item_id    TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    message    TEXT NOT NULL DEFAULT '',
+    is_read    INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
 `);
 
 // Add ai_priority_score column to items (idempotent — ignore if already exists).
 try {
   db.exec("ALTER TABLE items ADD COLUMN ai_priority_score REAL");
+} catch {
+  // Column already exists — safe to ignore.
+}
+
+// Add extracted_links column to items (idempotent — ignore if already exists).
+try {
+  db.exec("ALTER TABLE items ADD COLUMN extracted_links TEXT");
 } catch {
   // Column already exists — safe to ignore.
 }
@@ -193,10 +212,12 @@ if (rowCount === 0) {
   const insertStmt = db.prepare(`
     INSERT OR IGNORE INTO items
       (id, title, summary, fullContent, sourceType, contentType, topics,
-       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl)
+       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl,
+       extracted_links)
     VALUES
       (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
-       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl)
+       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
+       @extracted_links)
   `);
 
   const seedAll = db.transaction((items: ContentItem[]) => {
@@ -231,6 +252,8 @@ interface DbRow {
   duration: string | null;
   thumbnailUrl: string | null;
   ai_priority_score: number | null;
+  extracted_links: string | null; // JSON string
+  ai_summary_text: string | null; // from LEFT JOIN ai_summaries
 }
 
 /**
@@ -256,6 +279,8 @@ function deserialize(row: DbRow): ContentItem {
     createdAt: row.createdAt,
     duration: row.duration ?? undefined,
     thumbnailUrl: row.thumbnailUrl ?? undefined,
+    extractedLinks: row.extracted_links ? JSON.parse(row.extracted_links) : undefined,
+    aiSummary: row.ai_summary_text ?? undefined,
   };
 }
 
@@ -283,6 +308,7 @@ function serialize(item: ContentItem): Record<string, unknown> {
     createdAt: item.createdAt,
     duration: item.duration ?? null,
     thumbnailUrl: item.thumbnailUrl ?? null,
+    extracted_links: item.extractedLinks ? JSON.stringify(item.extractedLinks) : null,
   };
 }
 
@@ -319,19 +345,19 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
   const params: Record<string, unknown> = {};
 
   if (filters.sourceType) {
-    conditions.push("sourceType = @sourceType");
+    conditions.push("items.sourceType = @sourceType");
     params.sourceType = filters.sourceType;
   }
   if (filters.contentType) {
-    conditions.push("contentType = @contentType");
+    conditions.push("items.contentType = @contentType");
     params.contentType = filters.contentType;
   }
   if (filters.priority) {
-    conditions.push("priority = @priority");
+    conditions.push("items.priority = @priority");
     params.priority = filters.priority;
   }
   if (filters.isRead !== undefined) {
-    conditions.push("isRead = @isRead");
+    conditions.push("items.isRead = @isRead");
     params.isRead = filters.isRead ? 1 : 0;
   }
 
@@ -341,16 +367,17 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
   let orderClause: string;
   if (filters.sort === "priority") {
     orderClause =
-      "ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, createdAt DESC";
+      "ORDER BY CASE items.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, items.createdAt DESC";
   } else if (filters.sort === "ai_priority") {
-    orderClause = "ORDER BY COALESCE(ai_priority_score, 0) DESC, createdAt DESC";
+    orderClause = "ORDER BY COALESCE(items.ai_priority_score, 0) DESC, items.createdAt DESC";
   } else {
-    orderClause = "ORDER BY createdAt DESC";
+    orderClause = "ORDER BY items.createdAt DESC";
   }
 
   const limitClause = filters.limit ? `LIMIT ${filters.limit}` : "";
 
-  const sql = `SELECT * FROM items ${whereClause} ${orderClause} ${limitClause}`.trim();
+  const sql =
+    `SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id ${whereClause} ${orderClause} ${limitClause}`.trim();
   const rows = db.prepare(sql).all(params) as DbRow[];
   return rows.map(deserialize);
 }
@@ -359,7 +386,11 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
  * Returns a single item by its ID, or undefined if not found.
  */
 export function getItemById(id: string): ContentItem | undefined {
-  const row = db.prepare("SELECT * FROM items WHERE id = ?").get(id) as DbRow | undefined;
+  const row = db
+    .prepare(
+      "SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id WHERE items.id = ?",
+    )
+    .get(id) as DbRow | undefined;
   return row ? deserialize(row) : undefined;
 }
 
@@ -371,10 +402,12 @@ export function insertItem(item: ContentItem): ContentItem {
   const stmt = db.prepare(`
     INSERT INTO items
       (id, title, summary, fullContent, sourceType, contentType, topics,
-       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl)
+       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl,
+       extracted_links)
     VALUES
       (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
-       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl)
+       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
+       @extracted_links)
   `);
   stmt.run(serialize(item));
   // Re-fetch from DB to return the canonical stored version.
@@ -397,20 +430,21 @@ export function updateItem(id: string, patch: Partial<ContentItem>): ContentItem
 
   const stmt = db.prepare(`
     UPDATE items SET
-      title        = @title,
-      summary      = @summary,
-      fullContent  = @fullContent,
-      sourceType   = @sourceType,
-      contentType  = @contentType,
-      topics       = @topics,
-      author       = @author,
-      publication  = @publication,
-      url          = @url,
-      priority     = @priority,
-      isRead       = @isRead,
-      createdAt    = @createdAt,
-      duration     = @duration,
-      thumbnailUrl = @thumbnailUrl
+      title           = @title,
+      summary         = @summary,
+      fullContent     = @fullContent,
+      sourceType      = @sourceType,
+      contentType     = @contentType,
+      topics          = @topics,
+      author          = @author,
+      publication     = @publication,
+      url             = @url,
+      priority        = @priority,
+      isRead          = @isRead,
+      createdAt       = @createdAt,
+      duration        = @duration,
+      thumbnailUrl    = @thumbnailUrl,
+      extracted_links = @extracted_links
     WHERE id = @id
   `);
   stmt.run(serialize(merged));
@@ -642,6 +676,64 @@ export function updateItemPriorityScore(id: string, score: number, priority: Pri
   db.prepare(
     "UPDATE items SET ai_priority_score = @score, priority = @priority WHERE id = @id",
   ).run({ id, score, priority });
+}
+
+// ── Notification helpers ──────────────────────────────────────────────────────
+
+import type { Notification } from "./types";
+
+export function insertNotification(data: {
+  id: string;
+  itemId: string;
+  title: string;
+  message: string;
+}): void {
+  db.prepare(`
+    INSERT INTO notifications (id, item_id, title, message, created_at)
+    VALUES (@id, @item_id, @title, @message, @created_at)
+  `).run({
+    id: data.id,
+    item_id: data.itemId,
+    title: data.title,
+    message: data.message,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getNotifications(limit = 20): Notification[] {
+  const rows = db
+    .prepare("SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as Array<{
+    id: string;
+    item_id: string;
+    title: string;
+    message: string;
+    is_read: number;
+    created_at: string;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    itemId: r.item_id,
+    title: r.title,
+    message: r.message,
+    isRead: r.is_read === 1,
+    createdAt: r.created_at,
+  }));
+}
+
+export function getUnreadNotificationCount(): number {
+  const row = db
+    .prepare("SELECT COUNT(*) as c FROM notifications WHERE is_read = 0")
+    .get() as { c: number };
+  return row.c;
+}
+
+export function markNotificationRead(id: string): void {
+  db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ?").run(id);
+}
+
+export function markAllNotificationsRead(): void {
+  db.prepare("UPDATE notifications SET is_read = 1 WHERE is_read = 0").run();
 }
 
 // Export the raw db instance for advanced use cases (e.g. transactions in tests).

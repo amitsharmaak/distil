@@ -8,7 +8,7 @@ export const mockItems: ContentItem[] = [
       "A comprehensive look at how AI agents are transforming enterprise workflows, from customer support to internal operations. Companies like Salesforce and Microsoft are leading the charge with autonomous agent frameworks that can handle multi-step tasks without human intervention.",
     fullContent:
       "AI agents represent a fundamental shift in how enterprise software works. Unlike traditional automation that follows rigid rules, AI agents can reason about tasks, break them into steps, and adapt when things don't go as planned...",
-    sourceType: "linkedin",
+    sourceType: "manual",
     contentType: "article",
     topics: ["AI Agents", "Enterprise Software", "Automation"],
     author: "Sarah Chen",
@@ -101,7 +101,7 @@ export const mockItems: ContentItem[] = [
     title: "How Dream11 Scaled to 200M Users with Event-Driven Architecture",
     summary:
       "Engineering deep-dive into Dream11's migration from a monolithic architecture to event-driven microservices, handling 50M concurrent users during IPL peak.",
-    sourceType: "linkedin",
+    sourceType: "manual",
     contentType: "article",
     topics: ["System Design", "Microservices", "Scale"],
     author: "Amit Kumar",
@@ -245,14 +245,6 @@ export const mockSources: Source[] = [
     lastSynced: "2026-02-26T08:30:00Z",
     itemCount: 45,
     icon: "Twitter",
-  },
-  {
-    id: "5",
-    type: "linkedin",
-    name: "LinkedIn",
-    isConnected: false,
-    itemCount: 0,
-    icon: "Linkedin",
   },
   {
     id: "6",

@@ -22,7 +22,6 @@ import {
   Mail,
   Hash,
   Twitter,
-  Linkedin,
   Globe,
   Link as LinkIcon,
 } from "lucide-react";
@@ -30,11 +29,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getItemById, getItems, getAISummary, getFeedback } from "@/lib/db";
+import { getItemById, getItems, getFeedback } from "@/lib/db";
 import type { SourceType } from "@/lib/types";
 import { AISummary } from "@/components/feed/ai-summary";
 import { FeedbackButtons } from "@/components/feed/feedback-buttons";
 import { DeepResearch } from "@/components/feed/deep-research";
+import { ReaderView } from "@/components/feed/reader-view";
+import { VideoEmbed } from "@/components/feed/video-embed";
 
 // ── Source icon + label mappings ───────────────────────────────────────────────
 
@@ -42,7 +43,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
   twitter: Twitter,
-  linkedin: Linkedin,
   "browser-extension": Globe,
   manual: LinkIcon,
 };
@@ -51,7 +51,6 @@ const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
   twitter: "Twitter",
-  linkedin: "LinkedIn",
   "browser-extension": "Browser Extension",
   manual: "Manual Link",
 };
@@ -84,8 +83,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
 
-  // Check for an existing AI summary and feedback.
-  const cachedSummary = getAISummary(item.id);
+  // Check for existing feedback (AI summary now comes from getItemById LEFT JOIN).
   const existingFeedback = getFeedback(item.id);
 
   // Find items that share at least one topic with this item.
@@ -156,7 +154,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         itemId={item.id}
         ogSummary={item.summary}
         fullContent={item.fullContent}
-        initialAISummary={cachedSummary?.summary ?? null}
+        initialAISummary={item.aiSummary ?? null}
       />
 
       {/* Feedback — like/dislike with optional reason */}
@@ -169,32 +167,36 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         }
       />
 
-      {/* Video/Podcast embed placeholder for non-article content */}
-      {item.contentType !== "article" && (
+      {/* Video embed (YouTube / Twitter) or podcast placeholder */}
+      {item.contentType === "video" ? (
+        <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
+      ) : item.contentType === "podcast" ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center p-12">
             <div className="rounded-full bg-primary/10 p-4">
-              {item.contentType === "video" ? (
-                <Play className="h-8 w-8 text-primary" />
-              ) : (
-                <Headphones className="h-8 w-8 text-primary" />
-              )}
+              <Headphones className="h-8 w-8 text-primary" />
             </div>
-            <p className="mt-3 text-sm font-medium">
-              {item.contentType === "video" ? "Watch Video" : "Listen to Podcast"}
-            </p>
+            <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
             <p className="text-xs text-muted-foreground">{item.duration}</p>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       {/* Action buttons */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Button variant="outline" className="gap-2" asChild>
           <a href={item.url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" /> View Original
           </a>
         </Button>
+        <ReaderView
+          title={item.title}
+          author={item.author}
+          publication={item.publication}
+          createdAt={item.createdAt}
+          fullContent={item.fullContent ?? ""}
+          extractedLinks={item.extractedLinks ?? []}
+        />
         <DeepResearch itemId={item.id} defaultQuery={item.title} />
       </div>
 
