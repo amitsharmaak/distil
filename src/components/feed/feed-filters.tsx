@@ -8,7 +8,6 @@ import { SourceType, ContentType, Priority } from "@/lib/types";
 const sourceOptions: { value: SourceType; label: string }[] = [
   { value: "gmail", label: "Gmail" },
   { value: "slack", label: "Slack" },
-  { value: "twitter", label: "Twitter" },
   { value: "browser-extension", label: "Extension" },
   { value: "manual", label: "Manual" },
 ];

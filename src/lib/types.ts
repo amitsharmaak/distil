@@ -1,7 +1,6 @@
 export type SourceType =
   | "slack"
   | "gmail"
-  | "twitter"
   | "manual"
   | "browser-extension";
 

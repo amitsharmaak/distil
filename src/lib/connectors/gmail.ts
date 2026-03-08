@@ -16,7 +16,12 @@
 import { google, gmail_v1 } from "googleapis";
 
 import { config } from "@/lib/config";
-import { getOAuthToken, upsertOAuthToken, insertItem, db } from "@/lib/db";
+import {
+  getOAuthToken,
+  upsertOAuthToken,
+  insertItem,
+  getItemByNormalizedUrl,
+} from "@/lib/db";
 import { createNotificationIfEnabled } from "@/lib/notifications";
 import type { ContentItem, Priority } from "@/lib/types";
 
@@ -171,11 +176,8 @@ export async function syncNewsletters(): Promise<ContentItem[]> {
     const item = buildContentItem(full.data, msg.id);
     if (!item) continue;
 
-    // Skip if a ContentItem with this URL already exists (dedup).
-    const existing = db
-      .prepare("SELECT id FROM items WHERE url = ?")
-      .get(item.url);
-    if (existing) continue;
+    // Skip if a ContentItem with this URL already exists (normalized dedup).
+    if (getItemByNormalizedUrl(item.url)) continue;
 
     const newItem = insertItem(item);
     createNotificationIfEnabled(newItem);

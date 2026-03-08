@@ -5,7 +5,6 @@ import {
   Mail,
   Hash,
   MessageCircle,
-  Twitter,
   Globe,
   Link as LinkIcon,
   Shield,
@@ -18,28 +17,84 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockSources, mockTopics } from "@/lib/mock-data";
 import { config } from "@/lib/config";
+import type { ContentItem } from "@/lib/types";
 
 const sourceIcons: Record<string, React.ElementType> = {
   Mail,
   Hash,
   MessageCircle,
-  Twitter,
   Globe,
   Link: LinkIcon,
 };
+
+interface DerivedSource {
+  type: string;
+  name: string;
+  icon: string;
+  itemCount: number;
+}
+
+interface DerivedTopic {
+  name: string;
+  itemCount: number;
+  color: string;
+}
+
+const SOURCE_META: Record<string, { name: string; icon: string }> = {
+  gmail: { name: "Gmail", icon: "Mail" },
+  slack: { name: "Slack", icon: "Hash" },
+  "browser-extension": { name: "Browser Extension", icon: "Globe" },
+  manual: { name: "Manual Links", icon: "Link" },
+};
+
+const TOPIC_COLORS = [
+  "#8B5CF6", "#06B6D4", "#F59E0B", "#10B981", "#EF4444",
+  "#3B82F6", "#84CC16", "#EC4899", "#6366F1", "#F97316",
+];
 
 export default function SettingsPage() {
   const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
   const [pollingFrequency, setPollingFrequency] = useState("15");
   const [highPriorityEnabled, setHighPriorityEnabled] = useState(true);
+  const [sources, setSources] = useState<DerivedSource[]>([]);
+  const [topics, setTopics] = useState<DerivedTopic[]>([]);
 
-  // Load notification preference from backend on mount.
   useEffect(() => {
     fetch(`${config.apiBaseUrl}/api/notifications/preferences`)
       .then((res) => res.json())
       .then((data) => setHighPriorityEnabled(data.highPriorityItems))
+      .catch(() => {});
+
+    fetch(`${config.apiBaseUrl}/api/items`)
+      .then((res) => res.json())
+      .then((data: { items: ContentItem[] }) => {
+        const srcMap = new Map<string, number>();
+        const topicMap = new Map<string, number>();
+        for (const item of data.items) {
+          srcMap.set(item.sourceType, (srcMap.get(item.sourceType) || 0) + 1);
+          for (const t of item.topics) {
+            topicMap.set(t, (topicMap.get(t) || 0) + 1);
+          }
+        }
+        setSources(
+          Array.from(srcMap.entries()).map(([type, count]) => ({
+            type,
+            name: SOURCE_META[type]?.name ?? type,
+            icon: SOURCE_META[type]?.icon ?? "Globe",
+            itemCount: count,
+          }))
+        );
+        setTopics(
+          Array.from(topicMap.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, count], i) => ({
+              name,
+              itemCount: count,
+              color: TOPIC_COLORS[i % TOPIC_COLORS.length],
+            }))
+        );
+      })
       .catch(() => {});
   }, []);
 
@@ -83,36 +138,31 @@ export default function SettingsPage() {
               <CardTitle className="text-base">Connected Accounts</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockSources.map((source) => {
-                const IconComponent = sourceIcons[source.icon];
-                return (
-                  <div
-                    key={source.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <IconComponent className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium">{source.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {source.itemCount} items synced
-                        </p>
+              {sources.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  No connected accounts yet. Add sources from the Sources page.
+                </p>
+              ) : (
+                sources.map((source) => {
+                  const IconComponent = sourceIcons[source.icon];
+                  return (
+                    <div
+                      key={source.type}
+                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <IconComponent className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{source.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {source.itemCount} items synced
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={source.isConnected ? "default" : "secondary"}
-                        className="text-[10px]"
-                      >
-                        {source.isConnected ? "Connected" : "Disconnected"}
-                      </Badge>
-                      <Button variant="outline" size="sm">
-                        {source.isConnected ? "Disconnect" : "Connect"}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -215,34 +265,29 @@ export default function SettingsPage() {
               <CardTitle className="text-base">Managed Topics</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {mockTopics.map((topic) => (
-                <div
-                  key={topic.id}
-                  className="flex items-center justify-between rounded-lg border border-border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: topic.color }}
-                    />
-                    <div>
-                      <p className="text-sm font-medium">{topic.name}</p>
-                      <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
+              {topics.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  No topics yet. Topics appear automatically as you add content.
+                </p>
+              ) : (
+                topics.map((topic) => (
+                  <div
+                    key={topic.name}
+                    className="flex items-center justify-between rounded-lg border border-border p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: topic.color }}
+                      />
+                      <div>
+                        <p className="text-sm font-medium">{topic.name}</p>
+                        <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={topic.isActive ? "default" : "secondary"}
-                      className="text-[10px]"
-                    >
-                      {topic.isActive ? "Active" : "Paused"}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      {topic.isActive ? "Pause" : "Resume"}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
         </TabsContent>

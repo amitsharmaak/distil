@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   Mail,
   Hash,
-  Twitter,
   Globe,
   Link as LinkIcon,
   Play,
@@ -18,7 +17,6 @@ import { ContentItem, SourceType, ContentType } from "@/lib/types";
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
-  twitter: Twitter,
   "browser-extension": Globe,
   manual: LinkIcon,
 };
@@ -26,7 +24,6 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
 const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
-  twitter: "text-sky-500",
   "browser-extension": "text-orange-500",
   manual: "text-gray-500",
 };
@@ -34,7 +31,6 @@ const sourceColors: Record<SourceType, string> = {
 const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
-  twitter: "Twitter",
   "browser-extension": "Extension",
   manual: "Manual",
 };

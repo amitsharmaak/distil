@@ -61,4 +61,18 @@ export const config = {
    * NEVER commit real values — store in .env.local only.
    */
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+
+  /**
+   * Slack Bot Token (xoxb-...) for reading channel messages.
+   * Obtain from https://api.slack.com/apps after creating a Slack App.
+   * Required scopes: channels:history, channels:read, users:read.
+   * NEVER commit real values — store in .env.local only.
+   */
+  slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",
+
+  /**
+   * Comma-separated list of Slack channel names to monitor for shared links.
+   * Example: "general,engineering,random"
+   */
+  slackChannels: process.env.SLACK_CHANNELS ?? "",
 } as const;

@@ -16,11 +16,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getItems, insertItem } from "@/lib/db";
+import { getItems, insertItem, getItemByNormalizedUrl } from "@/lib/db";
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 import { generateSummary } from "@/lib/ai/summarize";
 import { createNotificationIfEnabled } from "@/lib/notifications";
+import { isTwitterUrl } from "@/lib/utils";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ export function GET(request: NextRequest) {
       isRead: searchParams.get("unread") === "true" ? false : undefined,
       limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
       sort: (searchParams.get("sort") as "recent" | "priority") ?? undefined,
+      query: searchParams.get("q") ?? undefined,
     };
 
     const items = getItems(filters);
@@ -143,12 +145,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const trimmedUrl = url.trim();
+
+    // ── Dedup check ──────────────────────────────────────────────────────────
+    const existingItem = getItemByNormalizedUrl(trimmedUrl);
+    if (existingItem) {
+      return NextResponse.json(
+        { item: existingItem, duplicate: true },
+        { status: 200, headers: CORS_HEADERS },
+      );
+    }
+
     // ── Fetch OG metadata and extract full content in parallel ─────────────
     // Both fetch the URL independently with their own timeouts. If either
     // fails, it returns nulls/null — the item is still created with whatever
     // data is available.
 
-    const trimmedUrl = url.trim();
+    const isTwitter = isTwitterUrl(trimmedUrl);
+
     const [og, extraction] = await Promise.all([
       fetchOG(trimmedUrl),
       extractContent(trimmedUrl),
@@ -156,17 +170,13 @@ export async function POST(request: NextRequest) {
 
     // ── Build the new item ──────────────────────────────────────────────────
 
-    // Caller-provided title takes precedence over OG title.
     const title =
-      (typeof body.title === "string" ? body.title.trim() : null) ?? og.title ?? url.trim(); // last resort: use the URL itself as title
+      (typeof body.title === "string" ? body.title.trim() : null) ?? og.title ?? url.trim();
 
-    // Notes from the browser extension become the item's summary.
-    // Fall back to the OG description.
     const summary =
       (typeof body.notes === "string" ? body.notes.trim() : null) ?? og.description ?? "";
 
     const newItem: ContentItem = {
-      // Unique ID using the Web Crypto API (available in Node.js 18+ / Next.js).
       id: crypto.randomUUID(),
       title,
       summary,
@@ -193,12 +203,13 @@ export async function POST(request: NextRequest) {
     // Create in-app notification for high-priority items (if preference enabled).
     createNotificationIfEnabled(inserted);
 
-    // Fire-and-forget: generate AI summary in the background.
-    // The response returns immediately; the summary is cached in ai_summaries
-    // and will appear on the next detail page / feed card load.
-    generateSummary(inserted.id, { length: "brief" }).catch((err) => {
-      console.error("[POST /api/items] Background summary failed:", inserted.id, err);
-    });
+    // Fire-and-forget: generate AI summary in the background for long-form content.
+    // Twitter/X posts are short-form — skip summarization and show original content.
+    if (!isTwitter) {
+      generateSummary(inserted.id, { length: "brief" }).catch((err) => {
+        console.error("[POST /api/items] Background summary failed:", inserted.id, err);
+      });
+    }
 
     return NextResponse.json({ item: inserted }, { status: 201, headers: CORS_HEADERS });
   } catch (error) {

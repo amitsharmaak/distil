@@ -4,8 +4,7 @@
  * This module is responsible for:
  * 1. Opening (or creating) the SQLite database file.
  * 2. Initialising the schema on every startup (idempotent CREATE IF NOT EXISTS).
- * 3. Seeding the mock data on the very first run (when the table is empty).
- * 4. Exporting typed CRUD helpers used by API routes and Server Components.
+ * 3. Exporting typed CRUD helpers used by API routes and Server Components.
  *
  * ⚠️  SERVER-SIDE ONLY — never import this module from a "use client" component.
  *     Client components must access data through the API routes (/api/items).
@@ -21,8 +20,30 @@ import fs from "fs";
 import path from "path";
 
 import { config } from "./config";
-import { mockItems } from "./mock-data";
 import type { ContentItem, Priority, SourceType, ContentType } from "./types";
+import { normalizeUrl } from "./utils";
+
+// ── Internal helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Sanitizes a user-supplied search query for safe use with SQLite FTS5 MATCH.
+ * - Strips FTS5 special characters that could cause parse errors.
+ * - Removes bare FTS operator keywords (NOT, AND, OR) which are invalid alone.
+ * - Appends a prefix wildcard (*) to each token for prefix matching.
+ * Returns an empty string if no valid tokens remain (caller should skip FTS).
+ */
+function sanitizeFtsQuery(q: string): string {
+  const FTS_OPERATORS = new Set(['NOT', 'AND', 'OR']);
+  return q
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(t => t.replace(/["'*\[\](){}^~?:!@#$%&=+|<>\\]/g, ''))
+    .filter(t => t.length > 0)
+    .filter(t => !FTS_OPERATORS.has(t.toUpperCase()))
+    .map(t => t + '*')
+    .join(' ');
+}
 
 // ── Connection singleton ───────────────────────────────────────────────────────
 
@@ -96,7 +117,8 @@ db.exec(`
     topics       TEXT NOT NULL DEFAULT '[]',
     author       TEXT,
     publication  TEXT,
-    url          TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    normalized_url TEXT,
     priority     TEXT NOT NULL DEFAULT 'medium',
     isRead       INTEGER NOT NULL DEFAULT 0,
     createdAt    TEXT NOT NULL,
@@ -193,40 +215,88 @@ try {
   // Column already exists — safe to ignore.
 }
 
-// ── Seeding ────────────────────────────────────────────────────────────────────
+// Add normalized_url column to items (idempotent — ignore if already exists).
+try {
+  db.exec("ALTER TABLE items ADD COLUMN normalized_url TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
 
-/**
- * Seed the database with mock data on the very first run.
- * This check runs once at module load time. If the table already has rows
- * (subsequent startups), seeding is skipped entirely.
- */
-const rowCount = (db.prepare("SELECT COUNT(*) as c FROM items").get() as { c: number }).c;
+// Backfill normalized_url for existing rows, deduplicate, then create index.
+{
+  const rows = db
+    .prepare("SELECT id, url FROM items WHERE normalized_url IS NULL")
+    .all() as { id: string; url: string }[];
+  if (rows.length > 0) {
+    const update = db.prepare(
+      "UPDATE items SET normalized_url = @normalizedUrl WHERE id = @id",
+    );
+    const backfill = db.transaction(() => {
+      for (const row of rows) {
+        update.run({ id: row.id, normalizedUrl: normalizeUrl(row.url) });
+      }
+    });
+    backfill();
 
-if (rowCount === 0) {
-  // Use a transaction to insert all mock items atomically.
-  //
-  // INSERT OR IGNORE (not plain INSERT) is used so that if two build
-  // workers or hot-reload cycles race to seed at the same time, the
-  // second worker's inserts silently succeed without a UNIQUE constraint
-  // error — the rows that already exist are simply skipped.
-  const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO items
-      (id, title, summary, fullContent, sourceType, contentType, topics,
-       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl,
-       extracted_links)
-    VALUES
-      (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
-       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
-       @extracted_links)
+    // Remove duplicates: keep the earliest item per normalized_url.
+    db.exec(`
+      DELETE FROM items WHERE id NOT IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (
+            PARTITION BY normalized_url ORDER BY createdAt ASC
+          ) AS rn FROM items
+        ) WHERE rn = 1
+      )
+    `);
+  }
+}
+
+// Create unique index on normalized_url (after backfill and dedup).
+try {
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_normalized_url ON items(normalized_url)",
+  );
+} catch {
+  // Index already exists — safe to ignore.
+}
+
+// ── FTS5 virtual table + triggers ──────────────────────────────────────────────
+
+// Create the FTS5 virtual table and its sync triggers (idempotent).
+try {
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+      item_id UNINDEXED,
+      title,
+      summary,
+      topics
+    );
+    CREATE TRIGGER IF NOT EXISTS items_fts_ai AFTER INSERT ON items BEGIN
+      INSERT INTO items_fts(item_id, title, summary, topics)
+      VALUES (new.id, new.title, new.summary, new.topics);
+    END;
+    CREATE TRIGGER IF NOT EXISTS items_fts_ad AFTER DELETE ON items BEGIN
+      DELETE FROM items_fts WHERE item_id = old.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS items_fts_au AFTER UPDATE ON items BEGIN
+      DELETE FROM items_fts WHERE item_id = old.id;
+      INSERT INTO items_fts(item_id, title, summary, topics)
+      VALUES (new.id, new.title, new.summary, new.topics);
+    END;
   `);
+} catch {
+  // Already exists — safe to ignore.
+}
 
-  const seedAll = db.transaction((items: ContentItem[]) => {
-    for (const item of items) {
-      insertStmt.run(serialize(item));
-    }
-  });
-
-  seedAll(mockItems);
+// Backfill FTS index for any existing items not yet indexed.
+try {
+  db.exec(`
+    INSERT INTO items_fts(item_id, title, summary, topics)
+    SELECT id, title, summary, topics FROM items
+    WHERE id NOT IN (SELECT item_id FROM items_fts);
+  `);
+} catch {
+  // Backfill failed (e.g. FTS table not available) — safe to ignore.
 }
 
 // ── Serialization helpers ──────────────────────────────────────────────────────
@@ -328,6 +398,8 @@ export interface ItemFilters {
   limit?: number;
   /** Sort order: "recent" (newest first), "priority" (high → low → medium → read), or "ai_priority" (by AI score). */
   sort?: "recent" | "priority" | "ai_priority";
+  /** Full-text search query. Searches title, summary, and topics via FTS5. */
+  query?: string;
 }
 
 // ── Exported CRUD helpers ──────────────────────────────────────────────────────
@@ -340,6 +412,60 @@ export interface ItemFilters {
  * post-filtering in this function.
  */
 export function getItems(filters: ItemFilters = {}): ContentItem[] {
+  // Determine whether to use the FTS code path.
+  const ftsQuery = filters.query ? sanitizeFtsQuery(filters.query) : "";
+  const useFts = ftsQuery.length > 0;
+
+  if (useFts) {
+    // ── FTS code path — ALL params are positional (?) ──────────────────────
+    // better-sqlite3 does not allow mixing named (@name) and positional (?)
+    // params in the same statement, so we use only positional params here.
+    const positionalParams: unknown[] = [];
+    const conditions: string[] = [];
+
+    if (filters.sourceType) {
+      conditions.push("items.sourceType = ?");
+      positionalParams.push(filters.sourceType);
+    }
+    if (filters.contentType) {
+      conditions.push("items.contentType = ?");
+      positionalParams.push(filters.contentType);
+    }
+    if (filters.priority) {
+      conditions.push("items.priority = ?");
+      positionalParams.push(filters.priority);
+    }
+    if (filters.isRead !== undefined) {
+      conditions.push("items.isRead = ?");
+      positionalParams.push(filters.isRead ? 1 : 0);
+    }
+
+    const whereClause =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")} AND items_fts MATCH ?`
+        : "WHERE items_fts MATCH ?";
+
+    // MATCH param is always last before LIMIT.
+    positionalParams.push(ftsQuery);
+
+    const limitClause = filters.limit ? "LIMIT ?" : "";
+    if (filters.limit) positionalParams.push(filters.limit);
+
+    const sql = `
+      SELECT items.*, ai_summaries.summary AS ai_summary_text
+      FROM items
+      INNER JOIN items_fts ON items.id = items_fts.item_id
+      LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id
+      ${whereClause}
+      ORDER BY rank, items.createdAt DESC
+      ${limitClause}
+    `.trim();
+
+    const rows = db.prepare(sql).all(...positionalParams) as DbRow[];
+    return rows.map(deserialize);
+  }
+
+  // ── Non-FTS code path — named params (@name) ────────────────────────────
   // Build WHERE clauses dynamically based on which filters are provided.
   const conditions: string[] = [];
   const params: Record<string, unknown> = {};
@@ -395,21 +521,48 @@ export function getItemById(id: string): ContentItem | undefined {
 }
 
 /**
+ * Returns the existing item if a row with the same normalized URL already
+ * exists, or undefined if the URL is new.
+ */
+export function getItemByNormalizedUrl(url: string): ContentItem | undefined {
+  const norm = normalizeUrl(url);
+  const row = db
+    .prepare(
+      `SELECT items.*, ai_summaries.summary AS ai_summary_text
+       FROM items
+       LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id
+       WHERE items.normalized_url = ?`,
+    )
+    .get(norm) as DbRow | undefined;
+  return row ? deserialize(row) : undefined;
+}
+
+/**
  * Inserts a new item into the database and returns it.
  * The caller must supply a fully-formed ContentItem (including id and createdAt).
+ *
+ * A normalized_url is automatically computed and stored for deduplication.
+ * If a row with the same normalized URL already exists, the insert is
+ * skipped and the existing item is returned.
  */
 export function insertItem(item: ContentItem): ContentItem {
+  const norm = normalizeUrl(item.url);
+
+  const existing = getItemByNormalizedUrl(item.url);
+  if (existing) return existing;
+
+  const serialized = serialize(item);
   const stmt = db.prepare(`
     INSERT INTO items
       (id, title, summary, fullContent, sourceType, contentType, topics,
-       author, publication, url, priority, isRead, createdAt, duration, thumbnailUrl,
+       author, publication, url, normalized_url, priority, isRead, createdAt, duration, thumbnailUrl,
        extracted_links)
     VALUES
       (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
-       @author, @publication, @url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
+       @author, @publication, @url, @normalized_url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
        @extracted_links)
   `);
-  stmt.run(serialize(item));
+  stmt.run({ ...serialized, normalized_url: norm });
   // Re-fetch from DB to return the canonical stored version.
   return getItemById(item.id)!;
 }

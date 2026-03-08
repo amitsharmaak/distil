@@ -23,10 +23,10 @@ export function summarizePrompt(
   const formatInstructions =
     length === "brief"
       ? `Format your response as:
-1. A **TL;DR** in 2-3 sentences
+1. A 2-3 sentence overview paragraph (no heading)
 2. **Key Points** as 3-5 bullet points`
       : `Format your response as:
-1. A **TL;DR** in 2-3 sentences
+1. A 2-3 sentence overview paragraph (no heading)
 2. **Key Points** as 5-8 bullet points
 3. **Why This Matters** — a short paragraph on significance and implications
 4. **Notable Quotes** — 1-3 key quotes if available in the content`;

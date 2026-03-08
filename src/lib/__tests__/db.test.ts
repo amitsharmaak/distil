@@ -19,14 +19,17 @@ import type { ContentItem } from "../types";
 
 /** Minimal valid ContentItem for test insertion. */
 function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
+  // Generate a unique id and url so URL-based deduplication never collapses
+  // two distinct test items into one.
+  const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return {
-    id: `test-${Date.now()}-${Math.random()}`,
+    id: `test-${uid}`,
     title: "Test Article",
     summary: "A test summary.",
     sourceType: "manual",
     contentType: "article",
     topics: ["Test"],
-    url: "https://example.com",
+    url: `https://example.com/${uid}`,
     priority: "medium",
     isRead: false,
     createdAt: new Date().toISOString(),
@@ -236,5 +239,132 @@ describe("deleteItem", () => {
 
   it("returns false for a non-existent id", () => {
     expect(deleteItem("phantom")).toBe(false);
+  });
+});
+
+// ── FTS5 full-text search ─────────────────────────────────────────────────────
+
+describe("getItems — FTS5 full-text search", () => {
+  it("returns item matching a title keyword", () => {
+    insertItem(makeItem({ id: "fts-title", title: "Quantum Computing Advances" }));
+    insertItem(makeItem({ id: "fts-other", title: "Cooking Recipes" }));
+
+    const results = getItems({ query: "Quantum" });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("fts-title");
+  });
+
+  it("returns item matching a summary keyword", () => {
+    insertItem(
+      makeItem({
+        id: "fts-summary",
+        title: "Generic Title",
+        summary: "This article covers photosynthesis in detail.",
+      }),
+    );
+    insertItem(makeItem({ id: "fts-other2", title: "Another Article", summary: "Nothing relevant." }));
+
+    const results = getItems({ query: "photosynthesis" });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("fts-summary");
+  });
+
+  it("returns item matching a topics keyword", () => {
+    // topics is stored as JSON string: '["AI","Tech"]'
+    insertItem(
+      makeItem({
+        id: "fts-topics",
+        title: "Some Title",
+        topics: ["MachineLearning", "Tech"],
+      }),
+    );
+    insertItem(
+      makeItem({
+        id: "fts-topics-other",
+        title: "Other Title",
+        topics: ["Cooking", "Food"],
+      }),
+    );
+
+    const results = getItems({ query: "MachineLearning" });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("fts-topics");
+  });
+
+  it("returns empty array when no items match the query", () => {
+    insertItem(makeItem({ id: "fts-nomatch", title: "Completely Irrelevant Content" }));
+
+    const results = getItems({ query: "xyznonexistentterm" });
+    expect(results).toHaveLength(0);
+  });
+
+  it("FTS operator keyword alone (NOT) does not throw and returns all items", () => {
+    insertItem(makeItem({ id: "fts-op1", title: "First Article" }));
+    insertItem(makeItem({ id: "fts-op2", title: "Second Article" }));
+
+    // 'NOT' alone sanitizes to empty string → falls back to non-FTS path
+    expect(() => getItems({ query: "NOT" })).not.toThrow();
+    const results = getItems({ query: "NOT" });
+    expect(results).toHaveLength(2);
+  });
+
+  it("FTS operator keyword alone (OR) does not throw and returns all items", () => {
+    insertItem(makeItem({ id: "fts-or1", title: "Alpha Article" }));
+
+    expect(() => getItems({ query: "OR" })).not.toThrow();
+    const results = getItems({ query: "OR" });
+    expect(results).toHaveLength(1);
+  });
+
+  it("empty query string returns all items without FTS", () => {
+    insertItem(makeItem({ id: "fts-empty1", title: "Item One" }));
+    insertItem(makeItem({ id: "fts-empty2", title: "Item Two" }));
+
+    const results = getItems({ query: "" });
+    expect(results).toHaveLength(2);
+  });
+
+  it("multi-word query matches items containing ALL tokens", () => {
+    insertItem(
+      makeItem({
+        id: "fts-multi-match",
+        title: "Machine Learning basics",
+        summary: "An intro to machine learning techniques.",
+      }),
+    );
+    insertItem(
+      makeItem({
+        id: "fts-multi-nomatch",
+        title: "Machine tools for woodworking",
+        summary: "Using machine tools.",
+      }),
+    );
+
+    // Both tokens 'machine*' and 'learning*' must be present
+    const results = getItems({ query: "machine learning" });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("fts-multi-match");
+  });
+
+  it("FTS query combined with sourceType filter returns only matching items", () => {
+    insertItem(
+      makeItem({
+        id: "fts-combined-gmail",
+        title: "Blockchain Revolution",
+        sourceType: "gmail",
+      }),
+    );
+    insertItem(
+      makeItem({
+        id: "fts-combined-slack",
+        title: "Blockchain Update",
+        sourceType: "slack",
+      }),
+    );
+
+    const results = getItems({ query: "Blockchain", sourceType: "gmail" });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("fts-combined-gmail");
+    expect(results[0].sourceType).toBe("gmail");
   });
 });

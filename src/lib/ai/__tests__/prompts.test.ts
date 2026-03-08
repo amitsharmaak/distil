@@ -86,9 +86,8 @@ describe("summarizePrompt", () => {
   });
 
   describe("brief format", () => {
-    it("requests TL;DR and Key Points sections", () => {
+    it("requests Key Points section", () => {
       const prompt = summarizePrompt(techCrunchItem, "brief");
-      expect(prompt).toContain("TL;DR");
       expect(prompt).toContain("Key Points");
     });
 
@@ -100,9 +99,8 @@ describe("summarizePrompt", () => {
   });
 
   describe("detailed format", () => {
-    it("requests all four sections", () => {
+    it("requests Key Points, Why This Matters, and Notable Quotes sections", () => {
       const prompt = summarizePrompt(techCrunchItem, "detailed");
-      expect(prompt).toContain("TL;DR");
       expect(prompt).toContain("Key Points");
       expect(prompt).toContain("Why This Matters");
       expect(prompt).toContain("Notable Quotes");

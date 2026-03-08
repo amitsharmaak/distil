@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSummary } from "@/lib/ai/summarize";
 import { getItemById } from "@/lib/db";
+import { isTwitterUrl } from "@/lib/utils";
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
 export async function POST(req: NextRequest) {
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest) {
     const item = getItemById(itemId);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    }
+
+    if (isTwitterUrl(item.url)) {
+      return NextResponse.json(
+        { error: "AI summaries are not available for Twitter/X posts" },
+        { status: 400 },
+      );
     }
 
     const result = await generateSummary(itemId, { length, force });

@@ -3,12 +3,9 @@
 /**
  * Topics page — browse and filter content by topic.
  *
- * Shows a grid of topic cards. Clicking a topic fetches items tagged with
- * that topic from the API and displays them as a filtered feed.
- *
- * The topic card list (names, colors, counts) still uses mockTopics for now —
- * a dedicated Topics table will be added in a future phase. The items within
- * each topic are loaded live from the API.
+ * Shows a grid of topic cards derived from actual item data. Clicking a topic
+ * filters items tagged with that topic. A dedicated Topics table will be added
+ * in a future phase.
  */
 
 import { useState, useEffect } from "react";
@@ -25,12 +22,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-// mockTopics used for topic card display (name, color, active state).
-// Items within each topic are fetched live from the API.
-import { mockTopics } from "@/lib/mock-data";
 import { ContentCard } from "@/components/feed/content-card";
 import type { ContentItem } from "@/lib/types";
 import { config } from "@/lib/config";
+
+const TOPIC_COLORS = [
+  "#8B5CF6", "#06B6D4", "#F59E0B", "#10B981", "#EF4444",
+  "#3B82F6", "#84CC16", "#EC4899", "#6366F1", "#F97316",
+];
+
+interface DerivedTopic {
+  name: string;
+  itemCount: number;
+  color: string;
+}
 
 export default function TopicsPage() {
   // ── State ───────────────────────────────────────────────────────────────────
@@ -38,9 +43,14 @@ export default function TopicsPage() {
   /** The topic name the user has drilled into, or null for the grid view. */
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
 
-  /** Items fetched for the currently selected topic. */
+  /** All items fetched from the API. */
+  const [allItems, setAllItems] = useState<ContentItem[]>([]);
+  /** Topics derived from actual item data. */
+  const [topics, setTopics] = useState<DerivedTopic[]>([]);
+
+  /** Items filtered for the currently selected topic. */
   const [topicItems, setTopicItems] = useState<ContentItem[]>([]);
-  const [loadingItems, setLoadingItems] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   /** New topic dialog state. */
   const [newTopic, setNewTopic] = useState("");
@@ -48,30 +58,41 @@ export default function TopicsPage() {
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
-  /**
-   * When a topic is selected, fetch all items and filter client-side by topic
-   * name. This avoids a dedicated /api/items?topic= endpoint for now — the full
-   * item list is small enough to filter in memory.
-   */
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${config.apiBaseUrl}/api/items`)
+      .then((res) => res.json())
+      .then((data: { items: ContentItem[] }) => {
+        setAllItems(data.items);
+        const countMap = new Map<string, number>();
+        for (const item of data.items) {
+          for (const t of item.topics) {
+            countMap.set(t, (countMap.get(t) || 0) + 1);
+          }
+        }
+        const derived: DerivedTopic[] = Array.from(countMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, count], i) => ({
+            name,
+            itemCount: count,
+            color: TOPIC_COLORS[i % TOPIC_COLORS.length],
+          }));
+        setTopics(derived);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
   useEffect(() => {
     if (!selectedTopic) {
       setTopicItems([]);
       return;
     }
-
-    setLoadingItems(true);
-    fetch(`${config.apiBaseUrl}/api/items`)
-      .then((res) => res.json())
-      .then((data: { items: ContentItem[] }) => {
-        // Filter items that have the selected topic (case-insensitive match).
-        const filtered = data.items.filter((item) =>
-          item.topics.some((t) => t.toLowerCase() === selectedTopic.toLowerCase())
-        );
-        setTopicItems(filtered);
-        setLoadingItems(false);
-      })
-      .catch(() => setLoadingItems(false));
-  }, [selectedTopic]);
+    const filtered = allItems.filter((item) =>
+      item.topics.some((t) => t.toLowerCase() === selectedTopic.toLowerCase())
+    );
+    setTopicItems(filtered);
+  }, [selectedTopic, allItems]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -119,7 +140,9 @@ export default function TopicsPage() {
         </Dialog>
       </div>
 
-      {selectedTopic ? (
+      {loading ? (
+        <div className="py-8 text-center text-muted-foreground">Loading…</div>
+      ) : selectedTopic ? (
         // ── Topic drill-down view ────────────────────────────────────────────
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -131,9 +154,7 @@ export default function TopicsPage() {
           </div>
 
           <div className="space-y-3">
-            {loadingItems ? (
-              <div className="py-8 text-center text-muted-foreground">Loading…</div>
-            ) : topicItems.length === 0 ? (
+            {topicItems.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
                 No items found for this topic yet.
               </div>
@@ -142,28 +163,27 @@ export default function TopicsPage() {
             )}
           </div>
         </div>
+      ) : topics.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground">
+          <p>No topics yet.</p>
+          <p className="text-sm mt-1">Topics will appear here automatically as you add content.</p>
+        </div>
       ) : (
         // ── Topic grid view ──────────────────────────────────────────────────
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mockTopics.map((topic) => (
+          {topics.map((topic) => (
             <Card
-              key={topic.id}
+              key={topic.name}
               className="cursor-pointer transition-colors hover:bg-accent/50"
               onClick={() => setSelectedTopic(topic.name)}
             >
               <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    {/* Coloured dot matching the topic's configured color */}
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: topic.color }}
-                    />
-                    <h3 className="font-semibold">{topic.name}</h3>
-                  </div>
-                  <Badge variant={topic.isActive ? "default" : "secondary"} className="text-[10px]">
-                    {topic.isActive ? "Active" : "Paused"}
-                  </Badge>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: topic.color }}
+                  />
+                  <h3 className="font-semibold">{topic.name}</h3>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
                   {topic.itemCount} items collected

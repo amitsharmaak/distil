@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (Slack, Gmail, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
 
-**Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. Mock data auto-seeds the DB on first run.
+**Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. The database starts empty; content is added via connectors (Gmail, Slack) and manual links.
 
 ## Tech Stack
 
@@ -31,8 +31,7 @@ cp .env.example .env.local
 # 3. Start the dev server
 npm run dev
 # → Opens at http://localhost:3000
-# → SQLite database is created at data/pia.db on first run
-# → 15 mock items are auto-seeded if the DB is empty
+# → SQLite database is created at data/pia.db on first run (starts empty)
 ```
 
 ## Commands
@@ -58,6 +57,8 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 | `DB_PATH`                  | `./data/pia.db`         | Path to the SQLite database file   |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls |
 | `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for summarization, prioritization, research |
+| `SLACK_BOT_TOKEN`          | *(none)*                | Slack Bot Token for channel message sync |
+| `SLACK_CHANNELS`           | `general`               | Comma-separated channel names to monitor |
 
 **Security rules:**
 
@@ -76,7 +77,6 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 - `src/lib/db.ts` — SQLite singleton, schema init, seed, CRUD helpers (server-only)
 - `src/lib/og.ts` — Open Graph metadata fetcher (server-only)
 - `src/lib/types.ts` — Core TypeScript interfaces (`ContentItem`, `Topic`, `Source`, `AgentSettings`)
-- `src/lib/mock-data.ts` — Mock data used for DB seeding on first run
 - `src/lib/utils.ts` — shadcn utility (cn function)
 - `src/lib/ai/` — AI agent modules (server-only):
   - `client.ts` — Google Gemini SDK singleton (`generateText`, `generateTextWithSearch`)
@@ -104,6 +104,7 @@ Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `user_sett
 - **Server Components** (Dashboard page, Feed detail page): call `getItems()` / `getItemById()` from `db.ts` directly — no HTTP
 - **Client Components** (Feed list, Topics, Sources): fetch from `/api/items` via the `config.apiBaseUrl`
 - **Browser Extension**: POSTs to `http://localhost:3000/api/items` (or `PIA_API_URL` in extension config)
+- **Slack Connector**: `POST /api/slack/sync` calls `syncSlackMessages()` which fetches channel messages via Slack Web API
 
 ### Database
 
@@ -120,7 +121,7 @@ Notes:
 - `topics` stored as JSON string, deserialized on read
 - `isRead` stored as 0/1 integer, converted to boolean on read
 - WAL mode enabled for concurrent read performance
-- Seeded with 13 mock items on first run (if table is empty)
+- Database starts empty; no mock data seeding
 
 ### Layout
 
@@ -133,6 +134,13 @@ Everything revolves around `ContentItem` which has: source type, content type (a
 ### Browser Extension (`browser-extension/`)
 
 Chrome MV3 extension. On save: POSTs to the PIA API. Falls back to `chrome.storage.local` if the API is unreachable (items flagged `pendingSync: true` for future sync).
+
+### Slack Integration
+
+- Bot Token auth (no OAuth flow — token configured directly in `.env.local`)
+- Sync: `POST /api/slack/sync` fetches messages with URLs from configured channels
+- Core logic: `src/lib/connectors/slack.ts` — Slack connector (Bot Token + Web API)
+- Requires `SLACK_BOT_TOKEN` and `SLACK_CHANNELS` in `.env.local`
 
 ## Testing
 
@@ -183,7 +191,7 @@ To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
 3. ✅ Source connectors (Gmail newsletters via OAuth2)
 4. ✅ AI agent integration (Gemini API) — summarization, feedback, prioritization, deep research
 5. ⬜ Video/podcast transcription + summarization
-6. ⬜ Additional source connectors (Slack, RSS, etc.)
+6. 🔄 Additional source connectors (✅ Slack, ⬜ RSS, etc.)
 
 ## Directory Structure
 
@@ -242,6 +250,9 @@ pia/
 │   │   │   │   ├── route.ts
 │   │   │   │   └── status/route.ts
 │   │   │   ├── gmail/sync/route.ts
+│   │   │   ├── slack/
+│   │   │   │   ├── status/route.ts
+│   │   │   │   └── sync/route.ts
 │   │   │   └── items/
 │   │   │       ├── [id]/
 │   │   │       │   ├── __tests__/route.test.ts
@@ -311,10 +322,10 @@ pia/
 │       │   ├── summarize.ts
 │       │   └── types.ts
 │       ├── connectors/
-│       │   └── gmail.ts
+│       │   ├── gmail.ts
+│       │   └── slack.ts
 │       ├── config.ts
 │       ├── db.ts
-│       ├── mock-data.ts
 │       ├── og.ts
 │       ├── types.ts
 │       └── utils.ts

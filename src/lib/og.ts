@@ -28,9 +28,145 @@ export interface OGData {
   siteName: string | null;
 }
 
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** Checks whether a URL points to a Twitter/X post. */
+function isTwitterUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace("www.", "");
+    return host === "twitter.com" || host === "x.com";
+  } catch {
+    return false;
+  }
+}
+
 /** Returns an OGData object where every field is null. Used as a fallback. */
 function emptyOGData(): OGData {
   return { title: null, description: null, image: null, author: null, siteName: null };
+}
+
+/**
+ * Extracts a tweet ID from a Twitter/X URL.
+ * Supports: twitter.com/user/status/ID, x.com/user/status/ID (with optional query params).
+ */
+function extractTweetId(url: string): string | null {
+  const match = url.match(/\/status\/(\d+)/);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Fetches tweet metadata using two strategies in parallel:
+ * 1. fxtwitter API — returns full, untruncated tweet text (including long/note tweets),
+ *    author info, and media. This is the primary source.
+ * 2. Crawler OG tags — Twitter serves images via OG tags to crawler UAs.
+ *    Used as a fallback and for tweet preview images.
+ *
+ * Results are merged: fxtwitter for full text + author, OG for images as fallback.
+ */
+async function fetchTwitterMetadata(url: string): Promise<OGData> {
+  const tweetId = extractTweetId(url);
+
+  const [fxResult, ogFallback] = await Promise.all([
+    tweetId ? fetchFxTwitter(tweetId) : Promise.resolve(emptyOGData()),
+    fetchTwitterOGFallback(url),
+  ]);
+
+  return {
+    title: fxResult.title ?? ogFallback.title,
+    description: fxResult.description ?? ogFallback.description,
+    image: fxResult.image ?? ogFallback.image,
+    author: fxResult.author ?? ogFallback.author,
+    siteName: fxResult.siteName ?? ogFallback.siteName ?? "X",
+  };
+}
+
+/**
+ * Fetches full tweet data from the fxtwitter API.
+ * This handles Twitter Blue long-form "note tweets" that other APIs truncate.
+ */
+async function fetchFxTwitter(tweetId: string): Promise<OGData> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(`https://api.fxtwitter.com/status/${tweetId}`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+
+    clearTimeout(timeoutId);
+    if (!response.ok) return emptyOGData();
+
+    const data = (await response.json()) as {
+      tweet?: {
+        text?: string;
+        author?: { name?: string; screen_name?: string };
+        media?: { photos?: Array<{ url?: string }> };
+      };
+    };
+
+    const tweet = data.tweet;
+    if (!tweet) return emptyOGData();
+
+    const authorName = tweet.author?.name ?? null;
+    const image = tweet.media?.photos?.[0]?.url ?? null;
+
+    return {
+      title: authorName ? `${authorName} on X` : null,
+      description: tweet.text ?? null,
+      image,
+      author: authorName,
+      siteName: "X",
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return emptyOGData();
+  }
+}
+
+/**
+ * Fallback: fetches OG tags from Twitter using a crawler UA.
+ * The description will be truncated for long tweets, but provides images
+ * and basic metadata when fxtwitter is unavailable.
+ */
+async function fetchTwitterOGFallback(url: string): Promise<OGData> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "Twitterbot/1.0", Accept: "text/html" },
+    });
+
+    clearTimeout(timeoutId);
+    if (!response.ok) return emptyOGData();
+
+    const html = await response.text();
+
+    const getMeta = (property: string): string | null => {
+      const p1 = new RegExp(
+        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"
+      );
+      const p2 = new RegExp(
+        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, "i"
+      );
+      const match = html.match(p1) ?? html.match(p2);
+      return match?.[1]?.trim() ?? null;
+    };
+
+    return {
+      title: getMeta("og:title"),
+      description: getMeta("og:description"),
+      image: getMeta("og:image"),
+      author: null,
+      siteName: getMeta("og:site_name") ?? "X",
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return emptyOGData();
+  }
 }
 
 /**
@@ -43,6 +179,8 @@ function emptyOGData(): OGData {
  * - Handles both attribute orderings of <meta> tags:
  *     <meta property="og:title" content="...">   (property first)
  *     <meta content="..." property="og:title">   (content first)
+ * - Twitter/X URLs use the public oEmbed API instead of scraping, since
+ *   Twitter blocks most non-browser requests.
  * - Never throws: all errors (network, timeout, non-200, parse) are caught
  *   and result in emptyOGData() so the caller always gets a safe response.
  *
@@ -50,7 +188,10 @@ function emptyOGData(): OGData {
  * @returns OGData with whatever could be extracted; null for missing fields.
  */
 export async function fetchOG(url: string): Promise<OGData> {
-  // Set up a 5-second timeout via AbortController.
+  if (isTwitterUrl(url)) {
+    return fetchTwitterMetadata(url);
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
 
@@ -58,16 +199,13 @@ export async function fetchOG(url: string): Promise<OGData> {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        // Identify ourselves politely; some sites block requests with no UA.
-        "User-Agent": "PIA/1.0 (link preview; +https://github.com/pia-app/pia)",
-        // We only need the HTML, not binary assets.
+        "User-Agent": BROWSER_USER_AGENT,
         Accept: "text/html",
       },
     });
 
     clearTimeout(timeoutId);
 
-    // Non-OK responses (4xx, 5xx) are not worth trying to parse.
     if (!response.ok) {
       return emptyOGData();
     }
@@ -84,12 +222,10 @@ export async function fetchOG(url: string): Promise<OGData> {
      * The `i` flag makes matching case-insensitive for robustness.
      */
     const getMeta = (property: string): string | null => {
-      // Pattern 1: property/name attribute appears before content attribute.
       const pattern1 = new RegExp(
         `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
         "i"
       );
-      // Pattern 2: content attribute appears before property/name attribute.
       const pattern2 = new RegExp(
         `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
         "i"
@@ -99,24 +235,17 @@ export async function fetchOG(url: string): Promise<OGData> {
       return match?.[1]?.trim() ?? null;
     };
 
-    // Extract the <title> tag as a fallback when og:title is missing.
     const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const titleTagValue = titleTagMatch?.[1]?.trim() ?? null;
 
     return {
-      // Prefer og:title over the plain <title> tag.
       title: getMeta("og:title") ?? titleTagValue,
-      // Prefer og:description over the standard meta description.
       description: getMeta("og:description") ?? getMeta("description"),
-      // Thumbnail image for the item card.
       image: getMeta("og:image"),
-      // article:author is used by many news/blog sites; fall back to generic author meta.
       author: getMeta("article:author") ?? getMeta("author"),
-      // Publication/site name (e.g. "The Verge", "Hacker News").
       siteName: getMeta("og:site_name"),
     };
   } catch {
-    // Any error (network failure, timeout abort, parse error) → safe empty result.
     clearTimeout(timeoutId);
     return emptyOGData();
   }

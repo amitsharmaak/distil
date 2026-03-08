@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search, Bell } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Search, Bell, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,8 +12,43 @@ import { NotificationPanel } from "@/components/notifications/notification-panel
 import { config } from "@/lib/config";
 
 export function Topbar() {
+  const router = useRouter();
+  const [searchValue, setSearchValue] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchValue(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim() === '') {
+      router.push('/feed');
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      router.push(`/feed?q=${encodeURIComponent(value.trim())}`);
+    }, 300);
+  }, [router]);
+
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      const v = searchValue.trim();
+      router.push(v ? `/feed?q=${encodeURIComponent(v)}` : '/feed');
+    }
+    if (e.key === 'Escape') {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSearchValue('');
+      router.push('/feed');
+    }
+  }, [router, searchValue]);
+
+  const handleSearchClear = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchValue('');
+    router.push('/feed');
+  }, [router]);
 
   const fetchCount = useCallback(() => {
     fetch(`${config.apiBaseUrl}/api/notifications`)
@@ -36,7 +72,22 @@ export function Topbar() {
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="relative flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input placeholder="Search articles, topics, authors..." className="pl-9" />
+        <Input
+          placeholder="Search articles, topics, authors..."
+          className="pl-9 pr-8"
+          value={searchValue}
+          onChange={handleSearchChange}
+          onKeyDown={handleSearchKeyDown}
+        />
+        {searchValue && (
+          <button
+            onClick={handleSearchClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="ml-auto flex items-center gap-3">

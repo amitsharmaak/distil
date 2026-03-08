@@ -3,8 +3,7 @@
 /**
  * Sources page — manage connected information sources and manually add links.
  *
- * The source card grid uses mockSources for display (no DB table for Sources yet —
- * that's a future phase). The Gmail card is wired to real OAuth + sync endpoints.
+ * Gmail and Slack cards are wired to real OAuth + sync endpoints.
  * The "Quick Add Links" section is fully wired to the POST /api/items endpoint.
  */
 
@@ -12,7 +11,6 @@ import { useState, useCallback, useEffect } from "react";
 import {
   Mail,
   Hash,
-  Twitter,
   Globe,
   Link as LinkIcon,
   Plus,
@@ -34,18 +32,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-// mockSources used for non-Gmail source card display only — no real Source DB table yet.
-import { mockSources } from "@/lib/mock-data";
 import type { SourceType } from "@/lib/types";
 import { config } from "@/lib/config";
 import type { GmailStatusResponse } from "@/app/api/auth/gmail/status/route";
+
+interface SlackStatusResponse {
+  connected: boolean;
+  teamName: string | null;
+}
 
 // ── Source icon map ────────────────────────────────────────────────────────────
 
 const sourceIcons: Record<string, React.ElementType> = {
   Mail,
   Hash,
-  Twitter,
   Globe,
   Link: LinkIcon,
 };
@@ -69,12 +69,6 @@ const availableIntegrations: {
     name: "Slack",
     description: "Monitor channels for shared articles and discussions",
     icon: "Hash",
-  },
-  {
-    type: "twitter",
-    name: "Twitter / X",
-    description: "Follow topics and threads from your Twitter feed",
-    icon: "Twitter",
   },
   {
     type: "browser-extension",
@@ -115,6 +109,17 @@ export default function SourcesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
 
+  // Slack connection state
+  const [slackStatus, setSlackStatus] = useState<SlackStatusResponse | null>(null);
+  const [slackSyncing, setSlackSyncing] = useState(false);
+  const [slackSyncResult, setSlackSyncResult] = useState<{
+    count: number;
+    unresolvedChannels?: string[];
+  } | null>(null);
+
+  // Per-source item counts from the API
+  const [sourceCounts, setSourceCounts] = useState<Record<string, number>>({});
+
   // ── Gmail status fetch ──────────────────────────────────────────────────────
 
   const fetchGmailStatus = useCallback(async () => {
@@ -126,10 +131,38 @@ export default function SourcesPage() {
     }
   }, []);
 
-  // Fetch Gmail connection status on mount.
+  // ── Slack status fetch ──────────────────────────────────────────────────────
+
+  const fetchSlackStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/slack/status`);
+      if (res.ok) setSlackStatus(await res.json());
+    } catch (err) {
+      console.error("Failed to fetch Slack status:", err);
+    }
+  }, []);
+
+  // Fetch Gmail and Slack connection status + source counts on mount.
   useEffect(() => {
     fetchGmailStatus();
-  }, [fetchGmailStatus]);
+    fetchSlackStatus();
+
+    (async () => {
+      try {
+        const res = await fetch(`${config.apiBaseUrl}/api/items`);
+        if (res.ok) {
+          const data = await res.json();
+          const counts: Record<string, number> = {};
+          for (const item of data.items ?? []) {
+            counts[item.sourceType] = (counts[item.sourceType] ?? 0) + 1;
+          }
+          setSourceCounts(counts);
+        }
+      } catch {
+        // non-critical
+      }
+    })();
+  }, [fetchGmailStatus, fetchSlackStatus]);
 
   // After OAuth redirect, re-fetch status and clean up the URL query param.
   useEffect(() => {
@@ -161,6 +194,32 @@ export default function SourcesPage() {
       console.error("Network error during Gmail sync:", err);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // ── Slack sync ──────────────────────────────────────────────────────────────
+
+  const syncSlack = async () => {
+    setSlackSyncing(true);
+    setSlackSyncResult(null);
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/slack/sync`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSlackSyncResult({
+          count: data.count,
+          unresolvedChannels: data.unresolvedChannels,
+        });
+        await fetchSlackStatus();
+      } else {
+        console.error("Slack sync failed:", data.error);
+      }
+    } catch (err) {
+      console.error("Network error during Slack sync:", err);
+    } finally {
+      setSlackSyncing(false);
     }
   };
 
@@ -291,10 +350,63 @@ export default function SourcesPage() {
                   );
                 }
 
-                // All other integrations: static placeholder.
-                const isConnected = mockSources.some(
-                  (s) => s.type === integration.type && s.isConnected
-                );
+                // Slack: use real connection status.
+                if (integration.type === "slack") {
+                  return (
+                    <div
+                      key={integration.type}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3"
+                    >
+                      <IconComponent className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{integration.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {slackStatus?.connected
+                            ? slackStatus.teamName ?? "Connected"
+                            : integration.description}
+                        </p>
+                      </div>
+                      {slackStatus?.connected ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={syncSlack}
+                            disabled={slackSyncing}
+                            className="gap-1"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`}
+                            />
+                            {slackSyncing ? "Syncing…" : "Sync Now"}
+                          </Button>
+                          {slackSyncResult !== null && (
+                            <span className="text-[10px] text-green-600">
+                              {slackSyncResult.count} new items
+                            </span>
+                          )}
+                          {slackSyncResult?.unresolvedChannels?.length ? (
+                            <span className="text-[10px] text-amber-600">
+                              Channel{slackSyncResult.unresolvedChannels.length > 1 ? "s" : ""} not
+                              found: {slackSyncResult.unresolvedChannels.join(", ")}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-end gap-1">
+                          <Button size="sm" disabled>
+                            Connect
+                          </Button>
+                          <span className="text-[10px] text-muted-foreground">
+                            Add SLACK_BOT_TOKEN to .env.local
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // All other integrations: not yet implemented.
                 return (
                   <div
                     key={integration.type}
@@ -305,12 +417,8 @@ export default function SourcesPage() {
                       <p className="text-sm font-medium">{integration.name}</p>
                       <p className="text-xs text-muted-foreground">{integration.description}</p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant={isConnected ? "secondary" : "default"}
-                      disabled={isConnected}
-                    >
-                      {isConnected ? "Connected" : "Connect"}
+                    <Button size="sm" disabled>
+                      Coming Soon
                     </Button>
                   </div>
                 );
@@ -391,13 +499,78 @@ export default function SourcesPage() {
           </Card>
         )}
 
-        {/* Mock source cards for all non-Gmail sources */}
-        {mockSources
-          .filter((s) => s.type !== "gmail")
-          .map((source) => {
-            const IconComponent = sourceIcons[source.icon];
+        {/* Slack card — uses real connection status */}
+        {slackStatus !== null && (
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-muted p-2">
+                    <Hash className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">Slack</h3>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {slackStatus.connected ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <XCircle className="h-3 w-3 text-red-500" />
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {slackStatus.connected
+                          ? slackStatus.teamName ?? "Connected"
+                          : "Not configured"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {slackStatus.connected && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={syncSlack}
+                    disabled={slackSyncing}
+                    className="h-7 px-2"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`} />
+                  </Button>
+                )}
+              </div>
+              <Separator className="my-3" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                {slackStatus.connected ? (
+                  <>
+                    {slackSyncResult !== null && (
+                      <span className="text-green-600">
+                        {slackSyncResult.count} new items synced
+                      </span>
+                    )}
+                    {slackSyncResult?.unresolvedChannels?.length ? (
+                      <span className="text-amber-600">
+                        {slackSyncResult.unresolvedChannels.join(", ")} not found — use channel IDs
+                        or add groups:read scope
+                      </span>
+                    ) : null}
+                    {slackSyncResult === null && <span>Channels &amp; threads</span>}
+                  </>
+                ) : (
+                  <span>Add SLACK_BOT_TOKEN to .env.local</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Dynamic cards for other active sources */}
+        {Object.entries(sourceCounts)
+          .filter(([type]) => type !== "gmail" && type !== "slack")
+          .map(([type, count]) => {
+            const meta = availableIntegrations.find((i) => i.type === type);
+            const IconComponent = sourceIcons[meta?.icon ?? "Link"] ?? LinkIcon;
+            const label =
+              meta?.name ?? (type === "browser-extension" ? "Browser Extension" : type === "manual" ? "Manual Links" : type);
             return (
-              <Card key={source.id}>
+              <Card key={type}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -405,29 +578,17 @@ export default function SourcesPage() {
                         <IconComponent className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">{source.name}</h3>
+                        <h3 className="font-semibold text-sm">{label}</h3>
                         <div className="flex items-center gap-1 mt-0.5">
-                          {source.isConnected ? (
-                            <CheckCircle2 className="h-3 w-3 text-green-500" />
-                          ) : (
-                            <XCircle className="h-3 w-3 text-red-500" />
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {source.isConnected ? "Connected" : "Disconnected"}
-                          </span>
+                          <CheckCircle2 className="h-3 w-3 text-green-500" />
+                          <span className="text-xs text-muted-foreground">Active</span>
                         </div>
                       </div>
                     </div>
                   </div>
                   <Separator className="my-3" />
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{source.itemCount} items</span>
-                    {source.lastSynced && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {timeAgo(source.lastSynced)}
-                      </span>
-                    )}
+                  <div className="text-xs text-muted-foreground">
+                    {count} {count === 1 ? "item" : "items"} saved
                   </div>
                 </CardContent>
               </Card>
