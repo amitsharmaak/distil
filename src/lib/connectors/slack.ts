@@ -31,6 +31,7 @@ import {
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 import { generateSummary } from "@/lib/ai/summarize";
+import { autoTagItem } from "@/lib/ai/tagger";
 import { createNotificationIfEnabled } from "@/lib/notifications";
 import { isTwitterUrl } from "@/lib/utils";
 import type { ContentItem } from "@/lib/types";
@@ -261,7 +262,7 @@ export async function syncSlackMessages(): Promise<{
           summary: og.description ?? "",
           sourceType: "slack",
           contentType: "article",
-          topics: [channel.name],
+          topics: [],
           url,
           priority: "medium",
           isRead: false,
@@ -289,6 +290,11 @@ export async function syncSlackMessages(): Promise<{
             );
           });
         }
+
+        // Fire-and-forget: auto-tag items so topics are content-derived.
+        autoTagItem(newItem.id, newItem.title, newItem.summary).catch((err) => {
+          console.error("[slack] Background auto-tag failed:", newItem.id, err);
+        });
       }
     }
   }

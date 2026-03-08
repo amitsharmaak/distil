@@ -15,12 +15,15 @@ import {
 import { config } from "@/lib/config";
 
 interface DeepResearchProps {
-  itemId: string;
+  /** Optional — omit when starting research from the research page. */
+  itemId?: string;
   /** Pre-filled query (usually the item title). */
   defaultQuery: string;
+  /** Custom trigger element; defaults to "Deep Research" button. */
+  children?: React.ReactNode;
 }
 
-export function DeepResearch({ itemId, defaultQuery }: DeepResearchProps) {
+export function DeepResearch({ itemId, defaultQuery, children }: DeepResearchProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(defaultQuery);
@@ -36,7 +39,7 @@ export function DeepResearch({ itemId, defaultQuery }: DeepResearchProps) {
       const res = await fetch(`${config.apiBaseUrl}/api/ai/research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), itemId }),
+        body: JSON.stringify({ query: query.trim(), ...(itemId && { itemId }) }),
       });
 
       if (!res.ok) {
@@ -57,9 +60,11 @@ export function DeepResearch({ itemId, defaultQuery }: DeepResearchProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="default" className="gap-2">
-          <Search className="h-4 w-4" /> Deep Research
-        </Button>
+        {children ?? (
+          <Button variant="default" className="gap-2">
+            <Search className="h-4 w-4" /> Deep Research
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>

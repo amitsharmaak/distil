@@ -7,6 +7,7 @@ import {
   Rss,
   Hash,
   Plug,
+  Search,
   Settings,
   Zap,
   ChevronLeft,
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/topics", label: "Topics", icon: Hash },
   { href: "/sources", label: "Sources", icon: Plug },
+  { href: "/research", label: "Research", icon: Search },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -9,6 +9,12 @@ import { render, screen } from "@testing-library/react";
 import { PriorityFeed } from "../priority-feed";
 import type { ContentItem } from "@/lib/types";
 
+// MarkReadButton calls useRouter internally. Mock the component to avoid
+// needing a full Next.js router context in unit tests.
+jest.mock("@/components/feed/mark-read-button", () => ({
+  MarkReadButton: () => null,
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {

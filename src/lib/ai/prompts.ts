@@ -6,9 +6,20 @@
  */
 
 import type { ContentItem } from "@/lib/types";
-import type { FeedbackWithItem, UserPreferenceProfile } from "./types";
+import type {
+  FeedbackWithItem,
+  SummaryOutput,
+  UserPreferenceProfile,
+} from "./types";
 
 // ── Summarization ────────────────────────────────────────────────────────────
+
+const SUMMARY_OUTPUT_SCHEMA = `{
+  "overview": "2-3 sentence overview paragraph",
+  "keyPoints": ["point 1", "point 2", "..."],
+  "whyItMatters": "optional short paragraph on significance (detailed mode only)",
+  "notableQuotes": ["optional quote 1", "optional quote 2"]
+}`;
 
 export function summarizePrompt(
   item: ContentItem,
@@ -22,14 +33,14 @@ export function summarizePrompt(
 
   const formatInstructions =
     length === "brief"
-      ? `Format your response as:
-1. A 2-3 sentence overview paragraph (no heading)
-2. **Key Points** as 3-5 bullet points`
-      : `Format your response as:
-1. A 2-3 sentence overview paragraph (no heading)
-2. **Key Points** as 5-8 bullet points
-3. **Why This Matters** — a short paragraph on significance and implications
-4. **Notable Quotes** — 1-3 key quotes if available in the content`;
+      ? `- overview: 2-3 sentence overview paragraph
+- keyPoints (Key Points): array of 3-5 bullet points
+- whyItMatters: omit or leave empty
+- notableQuotes: omit or leave empty`
+      : `- overview: 2-3 sentence overview paragraph
+- keyPoints (Key Points): array of 5-8 bullet points
+- whyItMatters (Why This Matters): short paragraph on significance and implications
+- notableQuotes (Notable Quotes): 1-3 key quotes if available in the content`;
 
   return `You are a content summarizer for a personal information aggregator. Your job is to create clear, insightful summaries that help the reader quickly understand the key information.
 
@@ -46,7 +57,48 @@ ${contentSection}
 ## Instructions
 ${formatInstructions}
 
-Use clean markdown formatting. Be concise but informative. Focus on what the reader needs to know, not filler.`;
+Output a JSON object with this exact structure. Output ONLY the JSON object, no other text:
+${SUMMARY_OUTPUT_SCHEMA}`;
+}
+
+export function chunkSummarizePrompt(
+  chunk: string,
+  chunkIndex: number,
+  totalChunks: number,
+): string {
+  return `You are summarizing a chunk of a longer document. This is chunk ${chunkIndex + 1} of ${totalChunks}.
+
+## Chunk Content
+${chunk}
+
+## Instructions
+Summarize this chunk concisely. Focus on the main ideas, key facts, and important details. Output a JSON object with this exact structure. Output ONLY the JSON object, no other text:
+${SUMMARY_OUTPUT_SCHEMA}`;
+}
+
+export function synthesizeChunkSummariesPrompt(
+  chunkSummaries: string[],
+  item: ContentItem,
+): string {
+  const summariesText = chunkSummaries
+    .map((s, i) => `### Chunk ${i + 1}\n${s}`)
+    .join("\n\n");
+
+  return `You are synthesizing multiple chunk summaries into a single coherent summary for a longer document.
+
+## Document Metadata
+- **Title:** ${item.title}
+- **Author:** ${item.author ?? "Unknown"}
+- **Publication:** ${item.publication ?? "Unknown"}
+- **Type:** ${item.contentType}
+- **Topics:** ${item.topics.join(", ") || "None specified"}
+
+## Chunk Summaries (JSON objects)
+${summariesText}
+
+## Instructions
+Combine these chunk summaries into one unified summary. Deduplicate overlapping points, preserve the most important information, and create a coherent narrative. Output a JSON object with this exact structure. Output ONLY the JSON object, no other text:
+${SUMMARY_OUTPUT_SCHEMA}`;
 }
 
 // ── Preference Analysis ──────────────────────────────────────────────────────
@@ -167,4 +219,28 @@ Write a well-structured research report in markdown with:
 4. **Conclusion** — summary and suggested next steps for the reader
 
 Use clean, professional markdown formatting. Include source links where they were provided in the findings. Write for a knowledgeable reader who wants depth but also clarity.`;
+}
+
+export function researchGapsPrompt(query: string, findings: string): string {
+  return `You are a research assistant reviewing initial findings to identify knowledge gaps.
+
+## Original Research Question
+${query}
+
+## Initial Research Findings
+${findings}
+
+## Instructions
+Review the findings above. Identify 1-2 specific gaps or unanswered questions that would significantly improve the research if investigated further. Focus on:
+- Missing or thin coverage on important aspects
+- Contradictory or unclear information that needs verification
+- Recent developments that may not be fully captured
+
+Output a JSON object with this exact structure:
+{
+  "gaps": ["gap question 1", "gap question 2"]
+}
+
+If the findings are already comprehensive, use an empty array: { "gaps": [] }
+Output ONLY the JSON object, no other text.`;
 }

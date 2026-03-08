@@ -21,6 +21,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { ContentItem, SourceType, ContentType } from "@/lib/types";
+import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 // ── Source icon + color mappings ───────────────────────────────────────────────
 
@@ -105,17 +106,20 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
 
               {/* Item details */}
               <div className="flex-1 min-w-0">
-                {/* Title + priority badge */}
+                {/* Title + priority badge + mark-read */}
                 <div className="flex items-start gap-2">
                   <h3 className="text-sm font-medium leading-snug line-clamp-1 flex-1">
                     {item.title}
                   </h3>
-                  <Badge
-                    variant="outline"
-                    className={`shrink-0 text-[10px] ${priorityColors[item.priority]}`}
-                  >
-                    {item.priority}
-                  </Badge>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${priorityColors[item.priority]}`}
+                    >
+                      {item.priority}
+                    </Badge>
+                    <MarkReadButton itemId={item.id} isRead={item.isRead} />
+                  </div>
                 </div>
 
                 {/* Summary excerpt */}

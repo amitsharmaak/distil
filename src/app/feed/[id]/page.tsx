@@ -32,13 +32,14 @@ import { Separator } from "@/components/ui/separator";
 import { getItemById, getItems, getFeedback, updateItem } from "@/lib/db";
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
-import { isTwitterUrl } from "@/lib/utils";
+import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
 import { AISummary } from "@/components/feed/ai-summary";
 import { FeedbackButtons } from "@/components/feed/feedback-buttons";
 import { DeepResearch } from "@/components/feed/deep-research";
 import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
+import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 // ── Source icon + label mappings ───────────────────────────────────────────────
 
@@ -220,6 +221,9 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
 
+  // Determine rendering strategy based on URL.
+  const strategy = detectStrategy(item.url);
+
   // Check for existing feedback (AI summary now comes from getItemById LEFT JOIN).
   const existingFeedback = getFeedback(item.id);
 
@@ -250,7 +254,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       />
 
       {/* Item header */}
-      {isTwitterUrl(item.url) ? (
+      {strategy.detail.showTweetRenderer ? (
         <>
           {/* Twitter: compact header — just badges, then straight into the tweet */}
           <div className="flex items-center gap-2">
@@ -318,12 +322,14 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           </div>
 
           <Separator />
-          <AISummary
-            itemId={item.id}
-            ogSummary={item.summary}
-            fullContent={item.fullContent}
-            initialAISummary={item.aiSummary ?? null}
-          />
+          {strategy.detail.showAISummary && (
+            <AISummary
+              itemId={item.id}
+              ogSummary={item.summary}
+              fullContent={item.fullContent}
+              initialAISummary={item.aiSummary ?? null}
+            />
+          )}
         </>
       )}
 
@@ -338,7 +344,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       />
 
       {/* Video embed (YouTube / Twitter) or podcast placeholder */}
-      {item.contentType === "video" ? (
+      {strategy.detail.showEmbedPlayer ? (
         <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
       ) : item.contentType === "podcast" ? (
         <Card>
@@ -354,6 +360,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
+        <MarkReadButton itemId={item.id} isRead={item.isRead} showLabel />
         <Button variant="outline" size="sm" className="gap-2" asChild>
           <a href={item.url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" /> View Original
