@@ -182,14 +182,17 @@ describe("generateSummary — cache behaviour", () => {
   });
 
   it("bypasses cache when the cached prompt_type does not match the requested length", async () => {
-    mockGetAISummary.mockReturnValue({
+    const briefRow = {
       id: "sum-cached-3",
       item_id: techCrunchItem.id,
       summary: mockBriefSummary,
       model: "gemini-2.5-flash",
       prompt_type: "brief",
       created_at: new Date().toISOString(),
-    });
+    };
+    mockGetAISummary.mockImplementation(
+      (_id: string, type?: string) => (type === "brief" ? briefRow : undefined),
+    );
 
     mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
 

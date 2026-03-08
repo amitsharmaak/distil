@@ -1,13 +1,19 @@
-import { NextResponse } from "next/server";
-import { getAISummary } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { getAISummary, getAISummaries } from "@/lib/db";
 
 /** GET /api/ai/summary/[itemId] — Get cached AI summary for an item. */
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ itemId: string }> },
 ) {
   const { itemId } = await params;
-  const summary = getAISummary(itemId);
+  const type = req.nextUrl.searchParams.get("type") as "brief" | "detailed" | null;
 
-  return NextResponse.json({ summary: summary ?? null });
+  if (type) {
+    const summary = getAISummary(itemId, type);
+    return NextResponse.json({ summary: summary ?? null });
+  }
+
+  const summaries = getAISummaries(itemId);
+  return NextResponse.json({ summaries });
 }

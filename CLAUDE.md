@@ -8,6 +8,26 @@ PIA (Personal Information Aggregator) is a web app that consolidates information
 
 **Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. The database starts empty; content is added via connectors (Gmail, Slack) and manual links.
 
+## Context Management
+
+When working in this codebase:
+
+- **Use subagents for exploration** — launch an Explore subagent for any task that
+  requires searching across files, finding patterns, or understanding unfamiliar
+  modules. Do not read multiple files serially in the main conversation thread.
+
+- **Delegate research & multi-file analysis** — when a task touches more than 3
+  files or requires understanding how subsystems connect (e.g., the AI pipeline,
+  connector architecture, database schema), delegate to a subagent rather than
+  loading all files into the main context.
+
+- **Return only summarized insights** — subagents should return structured
+  summaries (key functions, relevant patterns, architectural decisions), not raw
+  file contents. The main context receives the digest, not the source material.
+
+These rules keep the main context window lean on a growing codebase and ensure
+multi-step tasks stay within token budgets.
+
 ## Tech Stack
 
 - **Next.js 16** (App Router) with TypeScript
