@@ -25,16 +25,16 @@ export interface ModelAssignment {
 
 /** Optimal model for each task when all providers are available. */
 export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
-  summarize: { provider: "gemini", model: "gemini-2.5-flash" },
+  summarize: { provider: "gemini", model: "gemini-3-flash-preview" },
   "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   prioritize: { provider: "openai", model: "gpt-4o-mini" },
   "research-plan": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
-  "research-search": { provider: "gemini", model: "gemini-2.5-flash" },
+  "research-search": { provider: "gemini", model: "gemini-3-flash-preview" },
   "research-synthesize": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   "research-gaps": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   "preference-analysis": { provider: "openai", model: "gpt-4o-mini" },
   "auto-tag": { provider: "openai", model: "gpt-4o-mini" },
-  "dedup-check": { provider: "gemini", model: "gemini-2.5-flash-lite" },
+  "dedup-check": { provider: "gemini", model: "	gemini-3.1-flash-lite-preview" },
 };
 
 /** Best model for each task when only ONE provider is available. */

@@ -13,7 +13,8 @@ interface AISummaryProps {
   itemId: string;
   ogSummary: string;
   fullContent?: string;
-  initialAISummary?: string | null;
+  initialBriefSummary?: string | null;
+  initialDetailedSummary?: string | null;
 }
 
 type ViewMode = "ai" | "original";
@@ -162,13 +163,16 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
   );
 }
 
-export function AISummary({ itemId, ogSummary, fullContent, initialAISummary }: AISummaryProps) {
-  const [briefSummary, setBriefSummary] = useState<string | null>(initialAISummary ?? null);
-  const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
-  const [summaryLength, setSummaryLength] = useState<SummaryLength>("brief");
+export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
+  const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
+  const [detailedSummary, setDetailedSummary] = useState<string | null>(initialDetailedSummary ?? null);
+  const hasInitialSummary = !!(initialBriefSummary || initialDetailedSummary);
+  const [summaryLength, setSummaryLength] = useState<SummaryLength>(
+    !initialBriefSummary && initialDetailedSummary ? "detailed" : "brief",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(initialAISummary ? "ai" : "original");
+  const [viewMode, setViewMode] = useState<ViewMode>(hasInitialSummary ? "ai" : "original");
 
   const aiSummary = summaryLength === "brief" ? briefSummary : detailedSummary;
 

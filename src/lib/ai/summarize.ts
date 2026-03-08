@@ -103,8 +103,8 @@ export async function generateSummary(
   const length = options.length ?? "brief";
 
   if (!options.force) {
-    const existing = getAISummary(itemId);
-    if (existing && existing.prompt_type === length) {
+    const existing = getAISummary(itemId, length);
+    if (existing) {
       return { summary: existing.summary, cached: true };
     }
   }

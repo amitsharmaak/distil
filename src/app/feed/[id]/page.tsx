@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getItemById, getItems, getFeedback, updateItem } from "@/lib/db";
+import { getItemById, getItems, getFeedback, getAISummaries, updateItem } from "@/lib/db";
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 import { detectStrategy } from "@/lib/content-strategies";
@@ -224,7 +224,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
   // Determine rendering strategy based on URL.
   const strategy = detectStrategy(item.url);
 
-  // Check for existing feedback (AI summary now comes from getItemById LEFT JOIN).
+  // Fetch both brief and detailed AI summaries for this item.
+  const aiSummaries = getAISummaries(item.id);
   const existingFeedback = getFeedback(item.id);
 
   // Fetch the full feed to determine prev/next navigation and related items.
@@ -327,7 +328,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
               itemId={item.id}
               ogSummary={item.summary}
               fullContent={item.fullContent}
-              initialAISummary={item.aiSummary ?? null}
+              initialBriefSummary={aiSummaries.brief ?? null}
+              initialDetailedSummary={aiSummaries.detailed ?? null}
             />
           )}
         </>

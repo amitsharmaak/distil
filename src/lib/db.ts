@@ -144,14 +144,16 @@ db.exec(`
   );
 
   -- AI-generated summaries, kept separate from the OG-tag summary on items.
+  -- One row per (item, prompt_type) so brief and detailed can coexist.
   CREATE TABLE IF NOT EXISTS ai_summaries (
     id          TEXT PRIMARY KEY,
-    item_id     TEXT NOT NULL UNIQUE,
+    item_id     TEXT NOT NULL,
     summary     TEXT NOT NULL,
     model       TEXT NOT NULL,
     prompt_type TEXT NOT NULL,
     created_at  TEXT NOT NULL,
-    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+    UNIQUE(item_id, prompt_type)
   );
   CREATE INDEX IF NOT EXISTS idx_ai_summaries_item ON ai_summaries(item_id);
 
@@ -236,6 +238,32 @@ try {
   db.exec("ALTER TABLE research_reports ADD COLUMN progress TEXT");
 } catch {
   // Column already exists — safe to ignore.
+}
+
+// Migrate ai_summaries: change UNIQUE(item_id) → UNIQUE(item_id, prompt_type)
+// so both brief and detailed summaries can coexist for the same item.
+{
+  const info = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_summaries'")
+    .get() as { sql: string } | undefined;
+  if (info?.sql && /item_id\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(info.sql)) {
+    db.exec(`
+      CREATE TABLE ai_summaries_new (
+        id          TEXT PRIMARY KEY,
+        item_id     TEXT NOT NULL,
+        summary     TEXT NOT NULL,
+        model       TEXT NOT NULL,
+        prompt_type TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+        UNIQUE(item_id, prompt_type)
+      );
+      INSERT INTO ai_summaries_new SELECT * FROM ai_summaries;
+      DROP TABLE ai_summaries;
+      ALTER TABLE ai_summaries_new RENAME TO ai_summaries;
+      CREATE INDEX IF NOT EXISTS idx_ai_summaries_item ON ai_summaries(item_id);
+    `);
+  }
 }
 
 // Backfill normalized_url for existing rows, deduplicate, then create index.
@@ -471,7 +499,7 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
       SELECT items.*, ai_summaries.summary AS ai_summary_text
       FROM items
       INNER JOIN items_fts ON items.id = items_fts.item_id
-      LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id
+      LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id AND ai_summaries.prompt_type = 'brief'
       ${whereClause}
       ORDER BY rank, items.createdAt DESC
       ${limitClause}
@@ -519,7 +547,7 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
   const limitClause = filters.limit ? `LIMIT ${filters.limit}` : "";
 
   const sql =
-    `SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id ${whereClause} ${orderClause} ${limitClause}`.trim();
+    `SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id AND ai_summaries.prompt_type = 'brief' ${whereClause} ${orderClause} ${limitClause}`.trim();
   const rows = db.prepare(sql).all(params) as DbRow[];
   return rows.map(deserialize);
 }
@@ -530,7 +558,7 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
 export function getItemById(id: string): ContentItem | undefined {
   const row = db
     .prepare(
-      "SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id WHERE items.id = ?",
+      "SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id AND ai_summaries.prompt_type = 'brief' WHERE items.id = ?",
     )
     .get(id) as DbRow | undefined;
   return row ? deserialize(row) : undefined;
@@ -546,7 +574,7 @@ export function getItemByNormalizedUrl(url: string): ContentItem | undefined {
     .prepare(
       `SELECT items.*, ai_summaries.summary AS ai_summary_text
        FROM items
-       LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id
+       LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id AND ai_summaries.prompt_type = 'brief'
        WHERE items.normalized_url = ?`,
     )
     .get(norm) as DbRow | undefined;
@@ -691,10 +719,32 @@ export interface AISummaryRow {
   created_at: string;
 }
 
-export function getAISummary(itemId: string): AISummaryRow | undefined {
+export function getAISummary(
+  itemId: string,
+  promptType?: "brief" | "detailed",
+): AISummaryRow | undefined {
+  if (promptType) {
+    return db
+      .prepare("SELECT * FROM ai_summaries WHERE item_id = ? AND prompt_type = ?")
+      .get(itemId, promptType) as AISummaryRow | undefined;
+  }
   return db
-    .prepare("SELECT * FROM ai_summaries WHERE item_id = ?")
+    .prepare("SELECT * FROM ai_summaries WHERE item_id = ? ORDER BY created_at DESC LIMIT 1")
     .get(itemId) as AISummaryRow | undefined;
+}
+
+export function getAISummaries(
+  itemId: string,
+): { brief?: string; detailed?: string } {
+  const rows = db
+    .prepare("SELECT summary, prompt_type FROM ai_summaries WHERE item_id = ?")
+    .all(itemId) as { summary: string; prompt_type: string }[];
+  const result: { brief?: string; detailed?: string } = {};
+  for (const row of rows) {
+    if (row.prompt_type === "brief") result.brief = row.summary;
+    else if (row.prompt_type === "detailed") result.detailed = row.summary;
+  }
+  return result;
 }
 
 export function upsertAISummary(data: {
@@ -715,7 +765,7 @@ export function upsertAISummary(data: {
     prompt_type: data.promptType,
     created_at: new Date().toISOString(),
   });
-  return getAISummary(data.itemId)!;
+  return getAISummary(data.itemId, data.promptType as "brief" | "detailed")!;
 }
 
 // ── Feedback helpers ─────────────────────────────────────────────────────────
