@@ -7,7 +7,7 @@
  * SERVER-SIDE ONLY — never import from "use client" components.
  */
 
-import { generateText, FAST_MODEL } from "./client";
+import { generateText } from "./router";
 import { preferenceAnalysisPrompt } from "./prompts";
 import {
   getAllFeedback,
@@ -15,12 +15,11 @@ import {
   getUserSetting,
   setUserSetting,
 } from "@/lib/db";
-import type { UserPreferenceProfile, FeedbackWithItem, DEFAULT_PREFERENCES } from "./types";
+import type { UserPreferenceProfile, FeedbackWithItem } from "./types";
 
 const PREFERENCES_KEY = "agent_preferences";
 const CONFIG_KEY = "agent_config";
 
-/** Returns the current user preference profile, or defaults if none exists. */
 export function getPreferences(): UserPreferenceProfile {
   const raw = getUserSetting(PREFERENCES_KEY);
   if (!raw) {
@@ -36,14 +35,13 @@ export function getPreferences(): UserPreferenceProfile {
   return JSON.parse(raw) as UserPreferenceProfile;
 }
 
-/** Saves the preference profile to user_settings. */
 function savePreferences(prefs: UserPreferenceProfile): void {
   setUserSetting(PREFERENCES_KEY, JSON.stringify(prefs));
 }
 
 /**
  * Analyzes all feedback + item data and updates the preference profile.
- * Uses Gemini Flash for fast, cheap analysis.
+ * Uses the fast preference-analysis model via the AI router.
  */
 export async function updatePreferencesFromFeedback(): Promise<UserPreferenceProfile> {
   const allFeedback = getAllFeedback();
@@ -52,7 +50,6 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
     return getPreferences();
   }
 
-  // Join feedback with item data.
   const feedbackWithItems: FeedbackWithItem[] = [];
   for (const fb of allFeedback) {
     const item = getItemById(fb.item_id);
@@ -76,10 +73,8 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
   }
 
   const prompt = preferenceAnalysisPrompt(feedbackWithItems);
+  const text = await generateText(prompt, "preference-analysis");
 
-  const text = await generateText(prompt, FAST_MODEL);
-
-  // Parse the JSON response from Gemini.
   const parsed = JSON.parse(text) as Omit<UserPreferenceProfile, "lastUpdated">;
 
   const preferences: UserPreferenceProfile = {
@@ -91,12 +86,10 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
   return preferences;
 }
 
-/** Returns the raw agent config JSON, or undefined. */
 export function getAgentConfig(): string | undefined {
   return getUserSetting(CONFIG_KEY);
 }
 
-/** Saves agent config (from Settings page). */
 export function saveAgentConfig(configJson: string): void {
   setUserSetting(CONFIG_KEY, configJson);
 }

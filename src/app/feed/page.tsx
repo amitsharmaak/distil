@@ -37,8 +37,8 @@ function FeedPageContent() {
   const [selectedTypes, setSelectedTypes] = useState<ContentType[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([]);
 
-  /** When false, already-read items are hidden. */
-  const [showRead, setShowRead] = useState(true);
+  /** When false, already-read items are hidden. Defaults to unread-only. */
+  const [showRead, setShowRead] = useState(false);
 
   /** Full-text search query from URL search params. */
   const searchParams = useSearchParams();
@@ -74,16 +74,20 @@ function FeedPageContent() {
    * Each filter is skipped when its selection is empty (show-all behaviour).
    */
   const filteredItems = items.filter((item) => {
-    // Source filter: if any sources are selected, the item's sourceType must match one.
     if (selectedSources.length > 0 && !selectedSources.includes(item.sourceType)) return false;
-    // Content type filter.
     if (selectedTypes.length > 0 && !selectedTypes.includes(item.contentType)) return false;
-    // Priority filter.
     if (selectedPriorities.length > 0 && !selectedPriorities.includes(item.priority)) return false;
-    // Read/unread toggle: hide read items when showRead is false.
-    if (!showRead && item.isRead) return false;
+    // Search always shows both read and unread; otherwise respect the toggle.
+    if (!searchQuery && !showRead && item.isRead) return false;
     return true;
   });
+
+  /** Optimistically mark an item as read in local state. */
+  function handleMarkRead(id: string) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
+    );
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -127,7 +131,12 @@ function FeedPageContent() {
           </div>
         ) : (
           filteredItems.map((item) => (
-            <ContentCard key={item.id} item={item} compact={viewMode === "compact"} />
+            <ContentCard
+              key={item.id}
+              item={item}
+              compact={viewMode === "compact"}
+              onMarkRead={handleMarkRead}
+            />
           ))
         )}
       </div>

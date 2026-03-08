@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { insertFeedback, getItemById } from "@/lib/db";
+import { updatePreferencesFromFeedback } from "@/lib/ai/preferences";
+import { reprioritize } from "@/lib/ai/prioritize";
 
 /** POST /api/ai/feedback — Submit feedback on a content item. */
 export async function POST(req: NextRequest) {
@@ -30,6 +32,16 @@ export async function POST(req: NextRequest) {
       rating,
       reason,
     });
+
+    // Fire-and-forget: update preferences and re-prioritize after feedback
+    (async () => {
+      try {
+        await updatePreferencesFromFeedback();
+        await reprioritize(false);
+      } catch (err) {
+        console.error("[feedback] Background preference/priority update failed:", err);
+      }
+    })();
 
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {

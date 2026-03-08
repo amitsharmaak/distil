@@ -11,10 +11,12 @@ process.env.DB_PATH = ":memory:";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-jest.mock("../client", () => ({
+jest.mock("../router", () => ({
   generateText: jest.fn(),
-  DEFAULT_MODEL: "gemini-2.5-flash",
-  FAST_MODEL: "gemini-2.5-flash-lite",
+  generateJSON: jest.fn(),
+  getEffectiveModel: jest.fn(() => ({ provider: "gemini", model: "gemini-2.5-flash" })),
+  getAvailableProviders: jest.fn(() => ["gemini"]),
+  generateTextWithSearch: jest.fn(),
 }));
 
 jest.mock("@/lib/db", () => ({
@@ -32,7 +34,7 @@ jest.mock("../preferences", () => ({
 import { reprioritize } from "../prioritize";
 import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
 import { getPreferences } from "../preferences";
-import { generateText } from "../client";
+import { generateText } from "../router";
 import type { ContentItem } from "@/lib/types";
 import type { UserPreferenceProfile } from "../types";
 

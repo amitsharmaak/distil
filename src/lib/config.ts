@@ -63,6 +63,20 @@ export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
 
   /**
+   * OpenAI API key for GPT models.
+   * Obtain from https://platform.openai.com/api-keys
+   * NEVER commit real values — store in .env.local only.
+   */
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+
+  /**
+   * Anthropic API key for Claude models.
+   * Obtain from https://console.anthropic.com/settings/keys
+   * NEVER commit real values — store in .env.local only.
+   */
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+
+  /**
    * Slack Bot Token (xoxb-...) for reading channel messages.
    * Obtain from https://api.slack.com/apps after creating a Slack App.
    * Required scopes: channels:history, channels:read, users:read.

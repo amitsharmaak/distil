@@ -12,7 +12,9 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MarkReadButton } from "@/components/feed/mark-read-button";
 import { ContentItem, SourceType, ContentType } from "@/lib/types";
+import { detectStrategy } from "@/lib/content-strategies";
 
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
@@ -72,8 +74,17 @@ function timeAgo(dateStr: string): string {
   return `${diffDays}d ago`;
 }
 
-export function ContentCard({ item, compact = false }: { item: ContentItem; compact?: boolean }) {
+export function ContentCard({
+  item,
+  compact = false,
+  onMarkRead,
+}: {
+  item: ContentItem;
+  compact?: boolean;
+  onMarkRead?: (id: string) => void;
+}) {
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
+  const strategy = detectStrategy(item.url);
 
   if (compact) {
     return (
@@ -104,6 +115,13 @@ export function ContentCard({ item, compact = false }: { item: ContentItem; comp
           <span className="text-xs text-muted-foreground w-14 text-right">
             {timeAgo(item.createdAt)}
           </span>
+          {!item.isRead && (
+            <MarkReadButton
+              itemId={item.id}
+              isRead={item.isRead}
+              onRead={() => onMarkRead?.(item.id)}
+            />
+          )}
         </div>
       </Link>
     );
@@ -115,7 +133,7 @@ export function ContentCard({ item, compact = false }: { item: ContentItem; comp
         className={`transition-colors hover:bg-accent/50 ${!item.isRead ? "border-l-2 border-l-primary" : ""}`}
       >
         <CardContent className="p-5">
-          <div className="flex items-start gap-3">
+<div className="flex items-start gap-3">
             <div className="mt-1 shrink-0">
               <SourceIcon className={`h-5 w-5 ${sourceColors[item.sourceType]}`} />
             </div>
@@ -126,15 +144,26 @@ export function ContentCard({ item, compact = false }: { item: ContentItem; comp
                 >
                   {item.title}
                 </h3>
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 text-[10px] ${priorityColors[item.priority]}`}
-                >
-                  {item.priority}
-                </Badge>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${priorityColors[item.priority]}`}
+                  >
+                    {item.priority}
+                  </Badge>
+                  {!item.isRead && (
+                    <MarkReadButton
+                      itemId={item.id}
+                      isRead={item.isRead}
+                      onRead={() => onMarkRead?.(item.id)}
+                    />
+                  )}
+                </div>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                {item.aiSummary ? stripMarkdown(item.aiSummary).slice(0, 200) : item.summary}
+                {item.aiSummary
+                  ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
+                  : item.summary}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="text-[10px]">

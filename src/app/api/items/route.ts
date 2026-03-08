@@ -17,11 +17,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getItems, insertItem, getItemByNormalizedUrl } from "@/lib/db";
+import { hybridSearch } from "@/lib/ai/search";
 import { fetchOG } from "@/lib/og";
+import type { OGData } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 import { generateSummary } from "@/lib/ai/summarize";
+import { autoTagItem } from "@/lib/ai/tagger";
+import { embedItem } from "@/lib/ai/embeddings";
 import { createNotificationIfEnabled } from "@/lib/notifications";
-import { isTwitterUrl } from "@/lib/utils";
+import { detectStrategy } from "@/lib/content-strategies";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -63,7 +67,7 @@ export function OPTIONS() {
  * Response shape:
  *   { items: ContentItem[], total: number }
  */
-export function GET(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
 
@@ -79,7 +83,13 @@ export function GET(request: NextRequest) {
       query: searchParams.get("q") ?? undefined,
     };
 
-    const items = getItems(filters);
+    let items: ContentItem[];
+    if (filters.query) {
+      const { query, ...otherFilters } = filters;
+      items = await hybridSearch(query!, otherFilters);
+    } else {
+      items = getItems(filters);
+    }
 
     return NextResponse.json({ items, total: items.length }, { headers: CORS_HEADERS });
   } catch (error) {
@@ -147,6 +157,9 @@ export async function POST(request: NextRequest) {
 
     const trimmedUrl = url.trim();
 
+    // ── Detect content strategy ──────────────────────────────────────────────
+    const strategy = detectStrategy(trimmedUrl);
+
     // ── Dedup check ──────────────────────────────────────────────────────────
     const existingItem = getItemByNormalizedUrl(trimmedUrl);
     if (existingItem) {
@@ -156,16 +169,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Fetch OG metadata and extract full content in parallel ─────────────
-    // Both fetch the URL independently with their own timeouts. If either
-    // fails, it returns nulls/null — the item is still created with whatever
+    // ── Fetch OG metadata, extract full content, and enrich metadata in parallel ─
+    // All three fetch the URL independently with their own timeouts. If any
+    // fails, it returns nulls/{} — the item is still created with whatever
     // data is available.
 
-    const isTwitter = isTwitterUrl(trimmedUrl);
-
-    const [og, extraction] = await Promise.all([
+    const [og, extraction, enriched] = await Promise.all([
       fetchOG(trimmedUrl),
-      extractContent(trimmedUrl),
+      strategy.extractContent ? extractContent(trimmedUrl) : Promise.resolve(null),
+      strategy.enrichMetadata(trimmedUrl, { title: null, description: null, image: null, author: null, siteName: null } satisfies OGData),
     ]);
 
     // ── Build the new item ──────────────────────────────────────────────────
@@ -176,22 +188,32 @@ export async function POST(request: NextRequest) {
     const summary =
       (typeof body.notes === "string" ? body.notes.trim() : null) ?? og.description ?? "";
 
+    // Resolve contentType: use strategy-detected type unless it's "article",
+    // in which case fall back to the caller-supplied value or default to "article".
+    const contentType: ContentType =
+      strategy.contentType !== "article"
+        ? strategy.contentType
+        : ((body.contentType as ContentType) ?? "article");
+
     const newItem: ContentItem = {
       id: crypto.randomUUID(),
       title,
       summary,
       sourceType: sourceType as SourceType,
-      contentType: (body.contentType as ContentType) ?? "article",
+      contentType,
       topics: Array.isArray(body.topics) ? (body.topics as string[]) : [],
-      author: og.author ?? extraction?.byline ?? undefined,
-      publication: og.siteName ?? undefined,
+      // OG author takes priority; fall back to extracted byline, then enriched metadata.
+      author: og.author ?? extraction?.byline ?? enriched.author ?? undefined,
+      // OG site name takes priority; fall back to enriched metadata.
+      publication: og.siteName ?? enriched.publication ?? undefined,
       url: trimmedUrl,
       priority: (body.priority as Priority) ?? "medium",
       isRead: false,
       createdAt: new Date().toISOString(),
-      // Optional fields from OG.
-      thumbnailUrl: og.image ?? undefined,
-      // Full content and extracted links from Readability.
+      // Enriched thumbnail takes priority (higher quality for YouTube oEmbed);
+      // for non-enriched strategies enriched.thumbnailUrl is undefined, so ogData.image wins.
+      thumbnailUrl: enriched.thumbnailUrl ?? og.image ?? undefined,
+      // Full content and extracted links from Readability (only when extractContent is true).
       fullContent: extraction?.content ?? undefined,
       extractedLinks: extraction?.extractedLinks ?? undefined,
     };
@@ -203,13 +225,25 @@ export async function POST(request: NextRequest) {
     // Create in-app notification for high-priority items (if preference enabled).
     createNotificationIfEnabled(inserted);
 
-    // Fire-and-forget: generate AI summary in the background for long-form content.
-    // Twitter/X posts are short-form — skip summarization and show original content.
-    if (!isTwitter) {
+    // Fire-and-forget: generate AI summary in the background.
+    // Strategy controls whether summarization is appropriate for this content type.
+    if (strategy.generateAISummary) {
       generateSummary(inserted.id, { length: "brief" }).catch((err) => {
         console.error("[POST /api/items] Background summary failed:", inserted.id, err);
       });
     }
+
+    // Fire-and-forget: auto-tag items that have no topics.
+    if (inserted.topics.length === 0) {
+      autoTagItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
+        console.error("[POST /api/items] Background auto-tag failed:", inserted.id, err);
+      });
+    }
+
+    // Fire-and-forget: embed item for semantic deduplication.
+    embedItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
+      console.error("[POST /api/items] Background embedding failed:", inserted.id, err);
+    });
 
     return NextResponse.json({ item: inserted }, { status: 201, headers: CORS_HEADERS });
   } catch (error) {

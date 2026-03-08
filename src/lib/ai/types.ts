@@ -60,6 +60,14 @@ export interface ScoredItem {
   priority: "high" | "medium" | "low";
 }
 
+/** Structured output from AI summarization (JSON mode). */
+export interface SummaryOutput {
+  overview: string;
+  keyPoints: string[];
+  whyItMatters?: string;
+  notableQuotes?: string[];
+}
+
 /** Feedback entry joined with its corresponding item data. */
 export interface FeedbackWithItem {
   feedbackId: string;

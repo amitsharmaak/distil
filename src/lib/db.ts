@@ -199,6 +199,15 @@ db.exec(`
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
+  -- Item embeddings for semantic deduplication and search.
+  CREATE TABLE IF NOT EXISTS item_embeddings (
+    item_id    TEXT PRIMARY KEY,
+    embedding  TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+  );
 `);
 
 // Add ai_priority_score column to items (idempotent — ignore if already exists).
@@ -218,6 +227,13 @@ try {
 // Add normalized_url column to items (idempotent — ignore if already exists).
 try {
   db.exec("ALTER TABLE items ADD COLUMN normalized_url TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+
+// Add progress column to research_reports (idempotent — ignore if already exists).
+try {
+  db.exec("ALTER TABLE research_reports ADD COLUMN progress TEXT");
 } catch {
   // Column already exists — safe to ignore.
 }
@@ -755,6 +771,7 @@ export interface ResearchReportRow {
   status: string;
   created_at: string;
   completed_at: string | null;
+  progress: string | null;
 }
 
 export function insertResearchReport(data: {
@@ -784,7 +801,13 @@ export function getResearchReport(id: string): ResearchReportRow | undefined {
 
 export function updateResearchReport(
   id: string,
-  patch: { report?: string; sources?: string; status?: string; completedAt?: string },
+  patch: {
+    report?: string;
+    sources?: string;
+    status?: string;
+    completedAt?: string;
+    progress?: string | null;
+  },
 ): ResearchReportRow | undefined {
   const existing = getResearchReport(id);
   if (!existing) return undefined;
@@ -794,7 +817,8 @@ export function updateResearchReport(
       report       = @report,
       sources      = @sources,
       status       = @status,
-      completed_at = @completed_at
+      completed_at = @completed_at,
+      progress     = @progress
     WHERE id = @id
   `).run({
     id,
@@ -802,9 +826,16 @@ export function updateResearchReport(
     sources: patch.sources ?? existing.sources,
     status: patch.status ?? existing.status,
     completed_at: patch.completedAt ?? existing.completed_at,
+    progress: patch.progress !== undefined ? patch.progress : existing.progress ?? null,
   });
 
   return getResearchReport(id);
+}
+
+export function getResearchReports(limit = 20): ResearchReportRow[] {
+  return db
+    .prepare("SELECT * FROM research_reports ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as ResearchReportRow[];
 }
 
 // ── User settings helpers ────────────────────────────────────────────────────
@@ -887,6 +918,43 @@ export function markNotificationRead(id: string): void {
 
 export function markAllNotificationsRead(): void {
   db.prepare("UPDATE notifications SET is_read = 1 WHERE is_read = 0").run();
+}
+
+// ── Item embedding helpers ────────────────────────────────────────────────────
+
+export function getItemEmbedding(
+  itemId: string,
+): { item_id: string; embedding: string; model: string; created_at: string } | undefined {
+  return db.prepare("SELECT * FROM item_embeddings WHERE item_id = ?").get(itemId) as
+    | { item_id: string; embedding: string; model: string; created_at: string }
+    | undefined;
+}
+
+export function upsertItemEmbedding(
+  itemId: string,
+  embedding: number[],
+  model: string,
+): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO item_embeddings (item_id, embedding, model, created_at)
+    VALUES (@item_id, @embedding, @model, @created_at)
+  `).run({
+    item_id: itemId,
+    embedding: JSON.stringify(embedding),
+    model,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getRecentEmbeddings(
+  daysBack = 30,
+): Array<{ item_id: string; embedding: string }> {
+  const cutoff = new Date(
+    Date.now() - daysBack * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  return db.prepare(
+    "SELECT item_id, embedding FROM item_embeddings WHERE created_at > ? ORDER BY created_at DESC",
+  ).all(cutoff) as Array<{ item_id: string; embedding: string }>;
 }
 
 // Export the raw db instance for advanced use cases (e.g. transactions in tests).
