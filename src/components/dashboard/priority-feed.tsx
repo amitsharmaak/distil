@@ -96,7 +96,7 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
           return (
             <Link
               key={item.id}
-              href={`/feed/${item.id}`}
+              href={`/feed/${item.id}?filter=unread`}
               className="group flex gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
             >
               {/* Source icon */}

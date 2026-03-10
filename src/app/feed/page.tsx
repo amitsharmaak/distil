@@ -32,17 +32,17 @@ function FeedPageContent() {
   /** Card layout vs compact list layout toggle. */
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
 
+  /** Full-text search query from URL search params. */
+  const searchParams = useSearchParams();
+  const searchQuery = searchParams.get('q') ?? '';
+
   /** Active filter selections — empty array means "show all". */
   const [selectedSources, setSelectedSources] = useState<SourceType[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<ContentType[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([]);
 
-  /** When false, already-read items are hidden. Defaults to unread-only. */
-  const [showRead, setShowRead] = useState(false);
-
-  /** Full-text search query from URL search params. */
-  const searchParams = useSearchParams();
-  const searchQuery = searchParams.get('q') ?? '';
+  /** When false, already-read items are hidden. Initialized from ?showRead=true param. */
+  const [showRead, setShowRead] = useState(searchParams.get('showRead') === 'true');
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -136,6 +136,7 @@ function FeedPageContent() {
               item={item}
               compact={viewMode === "compact"}
               onMarkRead={handleMarkRead}
+              filter={showRead ? "all" : "unread"}
             />
           ))
         )}

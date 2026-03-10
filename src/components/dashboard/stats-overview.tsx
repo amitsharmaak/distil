@@ -9,6 +9,7 @@
  * so it does NOT require "use client".
  */
 
+import Link from "next/link";
 import { FileText, Eye, Plug, Hash } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { ContentItem } from "@/lib/types";
@@ -41,55 +42,56 @@ export function StatsOverview({ items }: StatsOverviewProps) {
     {
       label: "Total Items",
       value: String(totalItems),
-      change: `${items.filter((i) => !i.isRead).length} unread`,
       icon: FileText,
       color: "text-indigo-600",
       bg: "bg-indigo-50",
+      href: "/feed?showRead=true",
     },
     {
       label: "Unread",
       value: String(unreadCount),
-      change: `${unreadPercent}% of total`,
       icon: Eye,
       color: "text-amber-600",
       bg: "bg-amber-50",
+      href: "/feed",
     },
     {
       label: "Sources",
       value: String(uniqueSources),
-      change: uniqueSources === 1 ? "1 active" : `${uniqueSources} active`,
       icon: Plug,
       color: "text-emerald-600",
       bg: "bg-emerald-50",
+      href: "/sources",
     },
     {
       label: "Topics",
       value: String(uniqueTopics),
-      change: uniqueTopics === 1 ? "1 tracked" : `${uniqueTopics} tracked`,
       icon: Hash,
       color: "text-violet-600",
       bg: "bg-violet-50",
+      href: "/topics",
     },
   ];
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
-        <Card key={stat.label}>
-          <CardContent className="flex items-center gap-4 p-5">
-            {/* Icon badge */}
-            <div className={`rounded-lg p-2.5 ${stat.bg}`}>
-              <stat.icon className={`h-5 w-5 ${stat.color}`} />
-            </div>
+        <Link key={stat.label} href={stat.href} className="block">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="flex items-center gap-3 p-3">
+              {/* Icon badge */}
+              <div className={`rounded-lg p-2 ${stat.bg}`}>
+                <stat.icon className={`h-4 w-4 ${stat.color}`} />
+              </div>
 
-            {/* Stat text */}
-            <div>
-              <p className="text-2xl font-bold">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.change}</p>
-            </div>
-          </CardContent>
-        </Card>
+              {/* Stat text */}
+              <div>
+                <p className="text-xl font-bold leading-none">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       ))}
     </div>
   );

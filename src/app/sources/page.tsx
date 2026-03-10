@@ -120,6 +120,9 @@ export default function SourcesPage() {
   // Per-source item counts from the API
   const [sourceCounts, setSourceCounts] = useState<Record<string, number>>({});
 
+  // True once both Gmail and Slack status fetches have settled (success or error).
+  const [statusesLoaded, setStatusesLoaded] = useState(false);
+
   // ── Gmail status fetch ──────────────────────────────────────────────────────
 
   const fetchGmailStatus = useCallback(async () => {
@@ -142,12 +145,10 @@ export default function SourcesPage() {
     }
   }, []);
 
-  // Fetch Gmail and Slack connection status + source counts on mount.
+  // Fetch Gmail status, Slack status, and source counts together.
+  // All three must resolve before any cards render (no staggered pop-in).
   useEffect(() => {
-    fetchGmailStatus();
-    fetchSlackStatus();
-
-    (async () => {
+    const fetchSourceCounts = async () => {
       try {
         const res = await fetch(`${config.apiBaseUrl}/api/items`);
         if (res.ok) {
@@ -161,7 +162,11 @@ export default function SourcesPage() {
       } catch {
         // non-critical
       }
-    })();
+    };
+
+    Promise.all([fetchGmailStatus(), fetchSlackStatus(), fetchSourceCounts()]).then(() =>
+      setStatusesLoaded(true),
+    );
   }, [fetchGmailStatus, fetchSlackStatus]);
 
   // After OAuth redirect, re-fetch status and clean up the URL query param.
@@ -429,7 +434,10 @@ export default function SourcesPage() {
       </div>
 
       {/* Connected source cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {!statusesLoaded && (
+        <div className="py-8 text-center text-muted-foreground">Loading sources…</div>
+      )}
+      <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3${statusesLoaded ? "" : " hidden"}`}>
         {/* Gmail card — uses real connection status */}
         {gmailStatus !== null && (
           <Card>
