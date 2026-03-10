@@ -172,8 +172,15 @@ function TweetContent({
 
 // ── Page component ─────────────────────────────────────────────────────────────
 
-export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ItemDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const { id } = await params;
+  const { filter } = await searchParams;
 
   // Fetch the item directly from SQLite — no HTTP call needed in server context.
   const item = getItemById(id);
@@ -229,29 +236,32 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
   const existingFeedback = getFeedback(item.id);
 
   // Fetch the full feed to determine prev/next navigation and related items.
+  // When `filter` is "all", navigate across all items; otherwise restrict to unread.
   const allItems = getItems();
-  const currentIndex = allItems.findIndex((i) => i.id === item.id);
-  const prevItem = currentIndex > 0 ? allItems[currentIndex - 1] : null;
-  const nextItem = currentIndex < allItems.length - 1 ? allItems[currentIndex + 1] : null;
+  const navItems = filter === "all" ? allItems : allItems.filter((i) => !i.isRead || i.id === item.id);
+  const currentIndex = navItems.findIndex((i) => i.id === item.id);
+  const prevItem = currentIndex > 0 ? navItems[currentIndex - 1] : null;
+  const nextItem = currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
 
-  const relatedItems = allItems
-    .filter((i) => i.id !== item.id && i.topics.some((t) => item.topics.includes(t)))
-    .slice(0, 3);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      {/* Back navigation */}
-      <Link
-        href="/feed"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to feed
-      </Link>
+      {/* Back navigation + sticky mark-read */}
+      <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-background/80 backdrop-blur-sm flex items-center justify-between">
+        <Link
+          href="/feed"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to feed
+        </Link>
+        <MarkReadButton itemId={item.id} isRead={item.isRead} showLabel />
+      </div>
 
       {/* Keyboard-only prev/next navigation (arrow keys) */}
       <ArticleNavigation
         prevId={prevItem?.id ?? null}
         nextId={nextItem?.id ?? null}
+        filter={filter}
       />
 
       {/* Item header */}
@@ -362,7 +372,6 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-3">
-        <MarkReadButton itemId={item.id} isRead={item.isRead} showLabel />
         <Button variant="outline" size="sm" className="gap-2" asChild>
           <a href={item.url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" /> View Original
@@ -371,46 +380,6 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         <DeepResearch itemId={item.id} defaultQuery={item.title} />
       </div>
 
-      {/* Related items */}
-      {relatedItems.length > 0 && (
-        <>
-          <Separator />
-          <div>
-            <h2 className="text-lg font-semibold mb-3">Related</h2>
-            <div className="space-y-2">
-              {relatedItems.map((related) => {
-                const RelIcon = sourceIcons[related.sourceType] ?? Globe;
-                return (
-                  <Link
-                    key={related.id}
-                    href={`/feed/${related.id}`}
-                    className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
-                  >
-                    <RelIcon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium line-clamp-1">{related.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {related.author} · {related.publication}
-                      </p>
-                    </div>
-                    {/* Show shared topic tags */}
-                    <div className="flex gap-1">
-                      {related.topics
-                        .filter((t) => item.topics.includes(t))
-                        .slice(0, 2)
-                        .map((t) => (
-                          <Badge key={t} variant="secondary" className="text-[10px]">
-                            {t}
-                          </Badge>
-                        ))}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
 
     </div>
   );

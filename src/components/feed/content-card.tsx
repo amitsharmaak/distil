@@ -78,18 +78,21 @@ export function ContentCard({
   item,
   compact = false,
   onMarkRead,
+  filter,
 }: {
   item: ContentItem;
   compact?: boolean;
   onMarkRead?: (id: string) => void;
+  filter?: string;
 }) {
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const strategy = detectStrategy(item.url);
+  const filterSuffix = filter ? `?filter=${filter}` : "";
 
   if (compact) {
     return (
       <Link
-        href={`/feed/${item.id}`}
+        href={`/feed/${item.id}${filterSuffix}`}
         className="flex items-center gap-4 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
       >
         <SourceIcon className={`h-4 w-4 shrink-0 ${sourceColors[item.sourceType]}`} />
@@ -128,7 +131,7 @@ export function ContentCard({
   }
 
   return (
-    <Link href={`/feed/${item.id}`}>
+    <Link href={`/feed/${item.id}${filterSuffix}`}>
       <Card
         className={`transition-colors hover:bg-accent/50 ${!item.isRead ? "border-l-2 border-l-primary" : ""}`}
       >
