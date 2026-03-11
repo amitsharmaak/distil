@@ -84,7 +84,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
   const sections = useMemo(() => parseSummarySections(content), [content]);
 
   return (
-    <div className="pia-ai-summary space-y-6">
+    <div className="distil-ai-summary space-y-6">
       {sections.map(({ title, body, key }) => {
         if (!body) return null;
         const baseProse =
@@ -333,7 +333,7 @@ export function AISummary({ itemId, isRead, ogSummary, fullContent, initialBrief
           <div>
             {processedContent ? (
               <div
-                className="pia-reader prose dark:prose-invert max-w-none prose-p:my-4 prose-p:leading-7 prose-headings:mt-8 prose-headings:mb-4 prose-li:my-1.5 prose-blockquote:my-4 prose-img:rounded-lg prose-img:my-6 prose-pre:my-4 prose-hr:my-8 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
+                className="distil-reader prose dark:prose-invert max-w-none prose-p:my-4 prose-p:leading-7 prose-headings:mt-8 prose-headings:mb-4 prose-li:my-1.5 prose-blockquote:my-4 prose-img:rounded-lg prose-img:my-6 prose-pre:my-4 prose-hr:my-8 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
                 dangerouslySetInnerHTML={{ __html: processedContent }}
               />
             ) : (

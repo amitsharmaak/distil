@@ -15,7 +15,7 @@
 import pino from "pino";
 
 const globalForLogger = globalThis as typeof globalThis & {
-  __piaLogger?: pino.Logger;
+  __distilLogger?: pino.Logger;
 };
 
 const logLevel = process.env.LOG_LEVEL ?? "info";
@@ -43,11 +43,11 @@ function createLogger(): pino.Logger {
   return pino({ level: logLevel });
 }
 
-const logger: pino.Logger = globalForLogger.__piaLogger ?? createLogger();
+const logger: pino.Logger = globalForLogger.__distilLogger ?? createLogger();
 
 // Persist to globalThis in non-production so hot reloads reuse the instance.
 if (process.env.NODE_ENV !== "production") {
-  globalForLogger.__piaLogger = logger;
+  globalForLogger.__distilLogger = logger;
 }
 
 // ── Child loggers per subsystem ──────────────────────────────────────────────

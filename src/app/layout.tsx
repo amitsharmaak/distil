@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PIA — Personal Information Aggregator",
+  title: "Distil — Your Intelligent Information Hub",
   description: "Your intelligent information hub",
 };
 

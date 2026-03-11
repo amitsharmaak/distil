@@ -14,7 +14,7 @@ import { filterPII } from "@/lib/pii-filter";
 const MAX_ITERATIONS = 10;
 const MAX_TOOL_CALLS_PER_TURN = 3;
 
-const SYSTEM_PROMPT = `You are PIA, a personal information assistant. Your goal is to help the user stay informed without being overwhelmed. You triage incoming content, surface what matters, and answer questions about the user's knowledge base.
+const SYSTEM_PROMPT = `You are Distil, a personal information assistant. Your goal is to help the user stay informed without being overwhelmed. You triage incoming content, surface what matters, and answer questions about the user's knowledge base.
 
 Rules:
 - Never fabricate information. If unsure, say "I don't have enough information."

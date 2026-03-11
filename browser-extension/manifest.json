@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PIA — Save to PIA",
+  "name": "Distil — Save to Distil",
   "version": "1.0.0",
-  "description": "Save any webpage to your Personal Information Aggregator with one click",
+  "description": "Save any webpage to Distil with one click",
   "permissions": ["activeTab", "contextMenus", "storage"],
   "action": {
     "default_popup": "popup.html",

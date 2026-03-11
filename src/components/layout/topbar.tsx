@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 import { ChatPanel } from "@/components/agent/chat-panel";
@@ -80,7 +80,7 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* AgentBar: search + Ask PIA */}
+      {/* AgentBar: search + Ask Distil */}
       <div className="relative flex flex-1 max-w-md items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -103,7 +103,7 @@ export function Topbar() {
         </div>
         <Sheet open={chatOpen} onOpenChange={setChatOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="shrink-0" aria-label="Ask PIA">
+            <Button variant="outline" size="icon" className="shrink-0" aria-label="Ask Distil">
               <Bot className="h-4 w-4" />
             </Button>
           </SheetTrigger>
@@ -112,11 +112,12 @@ export function Topbar() {
             className="flex flex-col w-full sm:max-w-xl p-0 gap-0"
             showCloseButton={true}
           >
+            <SheetTitle className="sr-only">Distil Agent</SheetTitle>
             <Tabs defaultValue="chat" className="flex flex-col h-full">
               <TabsList className="w-full justify-start rounded-none border-b px-4 h-12">
                 <TabsTrigger value="chat" className="gap-2">
                   <Bot className="h-4 w-4" />
-                  Ask PIA
+                  Ask Distil
                 </TabsTrigger>
                 <TabsTrigger value="activity" className="gap-2">
                   <Activity className="h-4 w-4" />
@@ -155,7 +156,9 @@ export function Topbar() {
         </Popover>
 
         <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary text-primary-foreground text-sm">AS</AvatarFallback>
+          <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </AvatarFallback>
         </Avatar>
       </div>
     </header>

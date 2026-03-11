@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_ORIGINS_ENV = process.env.PIA_ALLOWED_ORIGINS ?? "";
+const ALLOWED_ORIGINS_ENV = process.env.DISTIL_ALLOWED_ORIGINS ?? "";
 const IS_DEV = process.env.NODE_ENV !== "production";
 
 function getAllowedOrigins(): string[] {

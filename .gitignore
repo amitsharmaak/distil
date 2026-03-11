@@ -1,9 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# PIA local database — never commit personal data
-/data/pia.db
-/data/pia.db-shm
-/data/pia.db-wal
+# Distil local database — never commit personal data
+/data/distil.db
+/data/distil.db-shm
+/data/distil.db-wal
 
 # Environment variables — copy .env.example to .env.local, never commit .env.local
 .env.local
@@ -31,6 +31,12 @@
 # misc
 .DS_Store
 *.pem
+
+# Claude / AI agent config (developer-specific)
+.claude/
+
+# Eval results (generated)
+evals/results/*.json
 
 # debug
 npm-debug.log*

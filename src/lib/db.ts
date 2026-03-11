@@ -52,13 +52,13 @@ function sanitizeFtsQuery(q: string): string {
  * This is the recommended pattern for singletons in Next.js (same as Prisma).
  */
 const globalForDb = globalThis as typeof globalThis & {
-  __piaDb?: Database.Database;
+  __distilDb?: Database.Database;
 };
 
 /**
  * Resolve the database file path.
  * - In tests, DB_PATH is set to ":memory:" for an isolated in-memory database.
- * - In development/production, defaults to ./data/pia.db (see config.ts).
+ * - In development/production, defaults to ./data/distil.db (see config.ts).
  */
 const DB_PATH = config.dbPath;
 
@@ -78,11 +78,11 @@ if (DB_PATH !== ":memory:") {
  * Reuse an existing connection if one was already created this process
  * (handles Next.js hot reloads in development).
  */
-const db: Database.Database = globalForDb.__piaDb ?? new Database(DB_PATH);
+const db: Database.Database = globalForDb.__distilDb ?? new Database(DB_PATH);
 
 // Persist to globalThis in non-production so hot reloads reuse the connection.
 if (config.env !== "production") {
-  globalForDb.__piaDb = db;
+  globalForDb.__distilDb = db;
 }
 
 // ── Performance settings ───────────────────────────────────────────────────────
