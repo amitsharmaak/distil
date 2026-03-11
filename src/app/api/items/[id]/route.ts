@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { updateItem, deleteItem } from "@/lib/db";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ item: updated }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[PATCH /api/items/:id] Unexpected error:", error);
+    apiLogger.error({ err: error }, "PATCH /api/items/:id unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS }
@@ -117,7 +118,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[DELETE /api/items/:id] Unexpected error:", error);
+    apiLogger.error({ err: error }, "DELETE /api/items/:id unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS }

@@ -8,9 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { config } from "@/lib/config";
+import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 interface AISummaryProps {
   itemId: string;
+  isRead: boolean;
   ogSummary: string;
   fullContent?: string;
   initialBriefSummary?: string | null;
@@ -163,7 +165,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
   );
 }
 
-export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
+export function AISummary({ itemId, isRead, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
   const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(initialDetailedSummary ?? null);
   const hasInitialSummary = !!(initialBriefSummary || initialDetailedSummary);
@@ -294,6 +296,7 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
                 </Button>
               </>
             )}
+            <MarkReadButton itemId={itemId} isRead={isRead} showLabel />
           </div>
         </div>
       </CardHeader>

@@ -210,6 +210,118 @@ db.exec(`
     created_at TEXT NOT NULL,
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
   );
+
+  -- Audit log for all AI and tool operations.
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id          TEXT PRIMARY KEY,
+    action      TEXT NOT NULL,
+    tool_name   TEXT,
+    input_hash  TEXT,
+    output_hash TEXT,
+    model       TEXT,
+    provider    TEXT,
+    tokens_in   INTEGER,
+    tokens_out  INTEGER,
+    cost        REAL,
+    latency_ms  INTEGER,
+    trace_id    TEXT,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_audit_log_trace   ON audit_log(trace_id);
+
+  -- Workflow run state tracking.
+  CREATE TABLE IF NOT EXISTS workflow_runs (
+    id           TEXT PRIMARY KEY,
+    workflow_type TEXT NOT NULL,
+    item_id      TEXT,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    current_step TEXT,
+    steps_json   TEXT NOT NULL DEFAULT '[]',
+    error        TEXT,
+    trace_id     TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_workflow_runs_status  ON workflow_runs(status);
+  CREATE INDEX IF NOT EXISTS idx_workflow_runs_item    ON workflow_runs(item_id);
+  CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(created_at DESC);
+
+  -- Agent action log for explainability.
+  CREATE TABLE IF NOT EXISTS agent_actions (
+    id          TEXT PRIMARY KEY,
+    workflow_id TEXT,
+    action_type TEXT NOT NULL,
+    tool_name   TEXT,
+    input       TEXT,
+    output      TEXT,
+    reasoning   TEXT,
+    status      TEXT NOT NULL DEFAULT 'completed',
+    trace_id    TEXT,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (workflow_id) REFERENCES workflow_runs(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_actions_workflow ON agent_actions(workflow_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_actions_created  ON agent_actions(created_at DESC);
+
+  -- Approval queue for agent write operations.
+  CREATE TABLE IF NOT EXISTS approval_queue (
+    id           TEXT PRIMARY KEY,
+    workflow_id  TEXT,
+    action_type  TEXT NOT NULL,
+    description  TEXT NOT NULL,
+    payload      TEXT NOT NULL DEFAULT '{}',
+    status       TEXT NOT NULL DEFAULT 'pending',
+    decided_at   TEXT,
+    decided_by   TEXT,
+    trace_id     TEXT,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (workflow_id) REFERENCES workflow_runs(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_approval_queue_status  ON approval_queue(status);
+  CREATE INDEX IF NOT EXISTS idx_approval_queue_created ON approval_queue(created_at DESC);
+
+  -- Chat conversations for the conversational query agent.
+  CREATE TABLE IF NOT EXISTS chat_conversations (
+    id         TEXT PRIMARY KEY,
+    title      TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id              TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role            TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    citations       TEXT,
+    tool_calls      TEXT,
+    created_at      TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at);
+
+  -- Job queue for background task processing.
+  CREATE TABLE IF NOT EXISTS job_queue (
+    id          TEXT PRIMARY KEY,
+    job_type    TEXT NOT NULL,
+    payload     TEXT NOT NULL DEFAULT '{}',
+    status      TEXT NOT NULL DEFAULT 'pending',
+    priority    INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    last_error  TEXT,
+    locked_at   TEXT,
+    locked_by   TEXT,
+    run_after   TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    completed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_job_queue_status  ON job_queue(status, priority DESC, created_at);
+  CREATE INDEX IF NOT EXISTS idx_job_queue_type    ON job_queue(job_type);
 `);
 
 // Add ai_priority_score column to items (idempotent — ignore if already exists).
@@ -1005,6 +1117,304 @@ export function getRecentEmbeddings(
   return db.prepare(
     "SELECT item_id, embedding FROM item_embeddings WHERE created_at > ? ORDER BY created_at DESC",
   ).all(cutoff) as Array<{ item_id: string; embedding: string }>;
+}
+
+// ── Audit log helpers ─────────────────────────────────────────────────────────
+
+export function insertAuditLog(data: {
+  id: string;
+  action: string;
+  toolName?: string;
+  inputHash?: string;
+  outputHash?: string;
+  model?: string;
+  provider?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  cost?: number;
+  latencyMs?: number;
+  traceId?: string;
+}): void {
+  db.prepare(`
+    INSERT INTO audit_log (id, action, tool_name, input_hash, output_hash, model, provider,
+      tokens_in, tokens_out, cost, latency_ms, trace_id, created_at)
+    VALUES (@id, @action, @tool_name, @input_hash, @output_hash, @model, @provider,
+      @tokens_in, @tokens_out, @cost, @latency_ms, @trace_id, @created_at)
+  `).run({
+    id: data.id,
+    action: data.action,
+    tool_name: data.toolName ?? null,
+    input_hash: data.inputHash ?? null,
+    output_hash: data.outputHash ?? null,
+    model: data.model ?? null,
+    provider: data.provider ?? null,
+    tokens_in: data.tokensIn ?? null,
+    tokens_out: data.tokensOut ?? null,
+    cost: data.cost ?? null,
+    latency_ms: data.latencyMs ?? null,
+    trace_id: data.traceId ?? null,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getAuditLogs(limit = 50): Array<Record<string, unknown>> {
+  return db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?").all(limit) as Array<Record<string, unknown>>;
+}
+
+export function getDailyAuditStats(): { totalCost: number; totalCalls: number; totalTokens: number } {
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(cost), 0) as totalCost,
+           COUNT(*) as totalCalls,
+           COALESCE(SUM(tokens_in + tokens_out), 0) as totalTokens
+    FROM audit_log WHERE created_at >= ?
+  `).get(today + "T00:00:00.000Z") as { totalCost: number; totalCalls: number; totalTokens: number };
+  return row;
+}
+
+// ── Workflow run helpers ──────────────────────────────────────────────────────
+
+export function insertWorkflowRun(data: {
+  id: string;
+  workflowType: string;
+  itemId?: string;
+  traceId?: string;
+}): void {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO workflow_runs (id, workflow_type, item_id, status, trace_id, created_at, updated_at)
+    VALUES (@id, @workflow_type, @item_id, 'pending', @trace_id, @created_at, @updated_at)
+  `).run({
+    id: data.id,
+    workflow_type: data.workflowType,
+    item_id: data.itemId ?? null,
+    trace_id: data.traceId ?? null,
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+export function updateWorkflowRun(id: string, patch: {
+  status?: string;
+  currentStep?: string;
+  stepsJson?: string;
+  error?: string;
+  completedAt?: string;
+}): void {
+  const existing = db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!existing) return;
+  db.prepare(`
+    UPDATE workflow_runs SET
+      status = @status, current_step = @current_step, steps_json = @steps_json,
+      error = @error, completed_at = @completed_at, updated_at = @updated_at
+    WHERE id = @id
+  `).run({
+    id,
+    status: patch.status ?? existing.status,
+    current_step: patch.currentStep ?? existing.current_step,
+    steps_json: patch.stepsJson ?? existing.steps_json,
+    error: patch.error ?? existing.error,
+    completed_at: patch.completedAt ?? existing.completed_at,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export function getWorkflowRun(id: string): Record<string, unknown> | undefined {
+  return db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+}
+
+export function getWorkflowRuns(filters: { status?: string; workflowType?: string; limit?: number } = {}): Array<Record<string, unknown>> {
+  const conditions: string[] = [];
+  const params: Record<string, unknown> = {};
+  if (filters.status) { conditions.push("status = @status"); params.status = filters.status; }
+  if (filters.workflowType) { conditions.push("workflow_type = @workflowType"); params.workflowType = filters.workflowType; }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = filters.limit ?? 20;
+  return db.prepare(`SELECT * FROM workflow_runs ${where} ORDER BY created_at DESC LIMIT ${limit}`).all(params) as Array<Record<string, unknown>>;
+}
+
+// ── Agent action helpers ─────────────────────────────────────────────────────
+
+export function insertAgentAction(data: {
+  id: string;
+  workflowId?: string;
+  actionType: string;
+  toolName?: string;
+  input?: string;
+  output?: string;
+  reasoning?: string;
+  status?: string;
+  traceId?: string;
+}): void {
+  db.prepare(`
+    INSERT INTO agent_actions (id, workflow_id, action_type, tool_name, input, output, reasoning, status, trace_id, created_at)
+    VALUES (@id, @workflow_id, @action_type, @tool_name, @input, @output, @reasoning, @status, @trace_id, @created_at)
+  `).run({
+    id: data.id,
+    workflow_id: data.workflowId ?? null,
+    action_type: data.actionType,
+    tool_name: data.toolName ?? null,
+    input: data.input ?? null,
+    output: data.output ?? null,
+    reasoning: data.reasoning ?? null,
+    status: data.status ?? "completed",
+    trace_id: data.traceId ?? null,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getAgentActions(filters: { workflowId?: string; limit?: number } = {}): Array<Record<string, unknown>> {
+  if (filters.workflowId) {
+    return db.prepare("SELECT * FROM agent_actions WHERE workflow_id = ? ORDER BY created_at DESC LIMIT ?")
+      .all(filters.workflowId, filters.limit ?? 50) as Array<Record<string, unknown>>;
+  }
+  return db.prepare("SELECT * FROM agent_actions ORDER BY created_at DESC LIMIT ?")
+    .all(filters.limit ?? 50) as Array<Record<string, unknown>>;
+}
+
+// ── Approval queue helpers ────────────────────────────────────────────────────
+
+export function insertApproval(data: {
+  id: string;
+  workflowId?: string;
+  actionType: string;
+  description: string;
+  payload: string;
+  traceId?: string;
+}): void {
+  db.prepare(`
+    INSERT INTO approval_queue (id, workflow_id, action_type, description, payload, trace_id, created_at)
+    VALUES (@id, @workflow_id, @action_type, @description, @payload, @trace_id, @created_at)
+  `).run({
+    id: data.id,
+    workflow_id: data.workflowId ?? null,
+    action_type: data.actionType,
+    description: data.description,
+    payload: data.payload,
+    trace_id: data.traceId ?? null,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getPendingApprovals(limit = 20): Array<Record<string, unknown>> {
+  return db.prepare("SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?")
+    .all(limit) as Array<Record<string, unknown>>;
+}
+
+export function resolveApproval(id: string, status: "approved" | "rejected"): void {
+  db.prepare("UPDATE approval_queue SET status = @status, decided_at = @decided_at WHERE id = @id")
+    .run({ id, status, decided_at: new Date().toISOString() });
+}
+
+// ── Chat helpers ──────────────────────────────────────────────────────────────
+
+export function insertChatConversation(data: { id: string; title?: string }): void {
+  const now = new Date().toISOString();
+  db.prepare("INSERT INTO chat_conversations (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)")
+    .run({ id: data.id, title: data.title ?? null, created_at: now, updated_at: now });
+}
+
+export function insertChatMessage(data: {
+  id: string;
+  conversationId: string;
+  role: string;
+  content: string;
+  citations?: string;
+  toolCalls?: string;
+}): void {
+  db.prepare(`
+    INSERT INTO chat_messages (id, conversation_id, role, content, citations, tool_calls, created_at)
+    VALUES (@id, @conversation_id, @role, @content, @citations, @tool_calls, @created_at)
+  `).run({
+    id: data.id,
+    conversation_id: data.conversationId,
+    role: data.role,
+    content: data.content,
+    citations: data.citations ?? null,
+    tool_calls: data.toolCalls ?? null,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export function getChatMessages(conversationId: string): Array<Record<string, unknown>> {
+  return db.prepare("SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC")
+    .all(conversationId) as Array<Record<string, unknown>>;
+}
+
+export function getChatConversations(limit = 20): Array<Record<string, unknown>> {
+  return db.prepare("SELECT * FROM chat_conversations ORDER BY updated_at DESC LIMIT ?")
+    .all(limit) as Array<Record<string, unknown>>;
+}
+
+// ── Job queue helpers ──────────────────────────────────────────────────────────
+
+export function enqueueJob(data: {
+  id: string;
+  jobType: string;
+  payload?: string;
+  priority?: number;
+  maxRetries?: number;
+  runAfter?: string;
+}): void {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO job_queue (id, job_type, payload, priority, max_retries, run_after, status, created_at, updated_at)
+    VALUES (@id, @job_type, @payload, @priority, @max_retries, @run_after, 'pending', @created_at, @updated_at)
+  `).run({
+    id: data.id,
+    job_type: data.jobType,
+    payload: data.payload ?? "{}",
+    priority: data.priority ?? 0,
+    max_retries: data.maxRetries ?? 3,
+    run_after: data.runAfter ?? null,
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+export function dequeueJob(workerId: string): Record<string, unknown> | undefined {
+  const now = new Date().toISOString();
+  const job = db.prepare(`
+    SELECT * FROM job_queue
+    WHERE status = 'pending'
+      AND (run_after IS NULL OR run_after <= @now)
+      AND (locked_at IS NULL OR locked_at < @stale)
+    ORDER BY priority DESC, created_at ASC
+    LIMIT 1
+  `).get({ now, stale: new Date(Date.now() - 5 * 60 * 1000).toISOString() }) as Record<string, unknown> | undefined;
+
+  if (!job) return undefined;
+
+  db.prepare("UPDATE job_queue SET locked_at = @locked_at, locked_by = @locked_by, status = 'running', updated_at = @updated_at WHERE id = @id")
+    .run({ id: job.id, locked_at: now, locked_by: workerId, updated_at: now });
+
+  return db.prepare("SELECT * FROM job_queue WHERE id = ?").get(job.id) as Record<string, unknown>;
+}
+
+export function completeJob(id: string, error?: string): void {
+  const now = new Date().toISOString();
+  if (error) {
+    const job = db.prepare("SELECT * FROM job_queue WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    if (job && (job.attempts as number) < (job.max_retries as number)) {
+      db.prepare("UPDATE job_queue SET status = 'pending', attempts = attempts + 1, last_error = @error, locked_at = NULL, locked_by = NULL, updated_at = @updated_at WHERE id = @id")
+        .run({ id, error, updated_at: now });
+    } else {
+      db.prepare("UPDATE job_queue SET status = 'failed', last_error = @error, completed_at = @completed_at, updated_at = @updated_at WHERE id = @id")
+        .run({ id, error, completed_at: now, updated_at: now });
+    }
+  } else {
+    db.prepare("UPDATE job_queue SET status = 'completed', completed_at = @completed_at, updated_at = @updated_at WHERE id = @id")
+      .run({ id, completed_at: now, updated_at: now });
+  }
+}
+
+export function getJobStats(): { pending: number; running: number; completed: number; failed: number } {
+  const rows = db.prepare("SELECT status, COUNT(*) as count FROM job_queue GROUP BY status").all() as Array<{ status: string; count: number }>;
+  const stats = { pending: 0, running: 0, completed: 0, failed: 0 };
+  for (const row of rows) {
+    if (row.status in stats) (stats as Record<string, number>)[row.status] = row.count;
+  }
+  return stats;
 }
 
 // Export the raw db instance for advanced use cases (e.g. transactions in tests).

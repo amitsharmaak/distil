@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { syncNewsletters } from "@/lib/connectors/gmail";
 
 /**
@@ -21,7 +22,7 @@ export async function POST() {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    console.error("[POST /api/gmail/sync] Unexpected error:", err);
+    apiLogger.error({ err }, "POST /api/gmail/sync unexpected error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

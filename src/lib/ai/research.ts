@@ -12,6 +12,7 @@
  */
 
 import crypto from "crypto";
+import { aiLogger } from "@/lib/logger";
 import {
   generateText,
   generateTextWithSearch,
@@ -68,7 +69,7 @@ export function startResearch(query: string, itemId?: string): string {
   });
 
   runResearch(reportId, query, context).catch((error) => {
-    console.error(`Research ${reportId} failed:`, error);
+    aiLogger.error({ err: error, reportId }, "Research failed");
     updateResearchReport(reportId, {
       status: "failed",
       report: `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -134,7 +135,7 @@ async function runResearch(
         "question" in settled.reason
           ? String(settled.reason.question)
           : "Unknown";
-      console.error(`Research sub-question failed: ${question}`, settled.reason);
+      aiLogger.error({ err: settled.reason, question }, "Research sub-question failed");
       allFindings.push(`## ${question}\n\n(Research on this question failed.)`);
     }
   }
@@ -187,7 +188,7 @@ async function runResearch(
           "question" in settled.reason
             ? String(settled.reason.question)
             : "Unknown";
-        console.error(`Deepening sub-question failed: ${question}`, settled.reason);
+        aiLogger.error({ err: settled.reason, question }, "Deepening sub-question failed");
         deepeningFindings.push(`## ${question}\n\n(Research on this gap failed.)`);
       }
     }

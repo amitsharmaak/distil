@@ -22,6 +22,7 @@
 import { WebClient } from "@slack/web-api";
 
 import { config } from "@/lib/config";
+import { connectorLogger } from "@/lib/logger";
 import {
   insertItem,
   getItemByNormalizedUrl,
@@ -33,7 +34,7 @@ import { extractContent } from "@/lib/content-extractor";
 import { generateSummary } from "@/lib/ai/summarize";
 import { autoTagItem } from "@/lib/ai/tagger";
 import { createNotificationIfEnabled } from "@/lib/notifications";
-import { isTwitterUrl } from "@/lib/utils";
+import { isTwitterUrl, sanitizeUrl } from "@/lib/utils";
 import type { ContentItem } from "@/lib/types";
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -166,10 +167,9 @@ export async function syncSlackMessages(): Promise<{
   }
 
   if (unresolvedChannels.length > 0) {
-    console.warn(
-      `[slack] channels not found: ${unresolvedChannels.join(", ")}. ` +
-        `If these are private channels, add groups:read and groups:history ` +
-        `scopes to the Slack App, or use channel IDs instead of names.`,
+    connectorLogger.warn(
+      { channels: unresolvedChannels },
+      "Slack channels not found. If these are private channels, add groups:read and groups:history scopes to the Slack App, or use channel IDs instead of names.",
     );
   }
 
@@ -198,14 +198,16 @@ export async function syncSlackMessages(): Promise<{
             limit: 200,
           });
         } catch {
-          console.warn(
-            `[slack] could not join or read #${channel.name} — invite the bot manually`,
+          connectorLogger.warn(
+            { channel: channel.name },
+            "Could not join or read channel — invite the bot manually",
           );
           continue;
         }
       } else {
-        console.warn(
-          `[slack] failed to read #${channel.name}: ${code ?? err}`,
+        connectorLogger.warn(
+          { channel: channel.name, err: code ?? err },
+          "Failed to read Slack channel",
         );
         continue;
       }
@@ -225,10 +227,10 @@ export async function syncSlackMessages(): Promise<{
       const attachments = (message.attachments as SlackAttachment[] | undefined) ?? [];
       for (const att of attachments) {
         if (att.original_url && !isSlackUrl(att.original_url)) {
-          attachmentUrls.push(att.original_url);
+          attachmentUrls.push(sanitizeUrl(att.original_url));
         }
         if (att.from_url && !isSlackUrl(att.from_url)) {
-          attachmentUrls.push(att.from_url);
+          attachmentUrls.push(sanitizeUrl(att.from_url));
         }
       }
 
@@ -283,17 +285,16 @@ export async function syncSlackMessages(): Promise<{
         // Fire-and-forget AI summary for non-Twitter long-form content.
         if (!isTwitterUrl(url)) {
           generateSummary(newItem.id, { length: "brief" }).catch((err) => {
-            console.error(
-              "[slack] Background summary failed:",
-              newItem.id,
-              err,
+            connectorLogger.error(
+              { err, itemId: newItem.id },
+              "Background summary failed",
             );
           });
         }
 
         // Fire-and-forget: auto-tag items so topics are content-derived.
         autoTagItem(newItem.id, newItem.title, newItem.summary).catch((err) => {
-          console.error("[slack] Background auto-tag failed:", newItem.id, err);
+          connectorLogger.error({ err, itemId: newItem.id }, "Background auto-tag failed");
         });
       }
     }
@@ -322,7 +323,7 @@ function extractUrls(text: string): string[] {
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
-    const url = match[1];
+    const url = sanitizeUrl(match[1]);
     if (!isSlackUrl(url)) {
       urls.add(url);
     }

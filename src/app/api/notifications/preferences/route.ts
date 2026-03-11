@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { getUserSetting, setUserSetting } from "@/lib/db";
 
 const CORS_HEADERS = {
@@ -25,7 +26,7 @@ export function GET() {
     const highPriorityItems = raw === undefined ? true : raw === "true";
     return NextResponse.json({ highPriorityItems }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[GET /api/notifications/preferences]", error);
+    apiLogger.error({ err: error }, "GET /api/notifications/preferences failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },
@@ -48,7 +49,7 @@ export async function PUT(request: NextRequest) {
       { headers: CORS_HEADERS },
     );
   } catch (error) {
-    console.error("[PUT /api/notifications/preferences]", error);
+    apiLogger.error({ err: error }, "PUT /api/notifications/preferences failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },

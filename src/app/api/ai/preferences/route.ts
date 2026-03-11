@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { getPreferences, getAgentConfig, saveAgentConfig } from "@/lib/ai/preferences";
 
 /** GET /api/ai/preferences — Get current user preferences and agent config. */
@@ -17,7 +18,7 @@ export async function PUT(req: NextRequest) {
     saveAgentConfig(JSON.stringify(body));
     return NextResponse.json({ config: body });
   } catch (error) {
-    console.error("Preferences update error:", error);
+    apiLogger.error({ err: error }, "Preferences update error");
     return NextResponse.json(
       { error: "Failed to update preferences" },
       { status: 500 },

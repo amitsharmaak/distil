@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { startResearch } from "@/lib/ai/research";
 import { getResearchReport } from "@/lib/db";
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
-    console.error("Research error:", error);
+    apiLogger.error({ err: error }, "Research error");
     return NextResponse.json(
       { error: "Failed to start research" },
       { status: 500 },

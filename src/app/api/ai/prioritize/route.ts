@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { reprioritize } from "@/lib/ai/prioritize";
 
 /** POST /api/ai/prioritize — Re-prioritize all items using preferences. */
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
       items: results,
     });
   } catch (error) {
-    console.error("Prioritize error:", error);
+    apiLogger.error({ err: error }, "Prioritize error");
     return NextResponse.json(
       { error: "Failed to re-prioritize items" },
       { status: 500 },

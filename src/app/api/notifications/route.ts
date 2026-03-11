@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import {
   getNotifications,
   getUnreadNotificationCount,
@@ -29,7 +30,7 @@ export function GET() {
     const unreadCount = getUnreadNotificationCount();
     return NextResponse.json({ notifications, unreadCount }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[GET /api/notifications]", error);
+    apiLogger.error({ err: error }, "GET /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },
@@ -42,7 +43,7 @@ export function POST() {
     markAllNotificationsRead();
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[POST /api/notifications]", error);
+    apiLogger.error({ err: error }, "POST /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },

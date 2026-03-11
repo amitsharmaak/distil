@@ -9,6 +9,7 @@
  */
 
 import { generateText } from "./router";
+import { aiLogger } from "@/lib/logger";
 import { prioritizePrompt } from "./prompts";
 import { getPreferences } from "./preferences";
 import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
@@ -112,7 +113,7 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
           }
         }
       } catch (error) {
-        console.error("AI prioritization failed, using heuristic scores:", error);
+        aiLogger.error({ err: error }, "AI prioritization failed, using heuristic scores");
       }
     }
   }
