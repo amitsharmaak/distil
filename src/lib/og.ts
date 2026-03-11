@@ -6,7 +6,7 @@
  * - Standard meta tags (<meta name="description|author" content="...">)
  * - Fallback <title> tag
  *
- * Used when a new link is saved to PIA so the item is automatically enriched
+ * Used when a new link is saved to Distil so the item is automatically enriched
  * with a title, description, thumbnail, and author — without the user having
  * to type them manually.
  *

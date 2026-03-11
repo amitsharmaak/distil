@@ -80,15 +80,15 @@ class AIUsageTracker {
 }
 
 const globalForRouter = globalThis as typeof globalThis & {
-  __piaAIRouter?: AIRouter;
-  __piaAIUsageTracker?: AIUsageTracker;
+  __distilAIRouter?: AIRouter;
+  __distilAIUsageTracker?: AIUsageTracker;
 };
 
 function getUsageTrackerInstance(): AIUsageTracker {
-  if (!globalForRouter.__piaAIUsageTracker) {
-    globalForRouter.__piaAIUsageTracker = new AIUsageTracker();
+  if (!globalForRouter.__distilAIUsageTracker) {
+    globalForRouter.__distilAIUsageTracker = new AIUsageTracker();
   }
-  return globalForRouter.__piaAIUsageTracker;
+  return globalForRouter.__distilAIUsageTracker;
 }
 
 class AIRouter {
@@ -127,7 +127,7 @@ class AIRouter {
   }
 
   private checkBudget(): void {
-    const budgetStr = process.env.PIA_DAILY_AI_BUDGET;
+    const budgetStr = process.env.DISTIL_DAILY_AI_BUDGET;
     if (!budgetStr) return;
     const budget = parseFloat(budgetStr) || DEFAULT_DAILY_BUDGET;
     if (Number.isNaN(budget) || budget <= 0) return;
@@ -135,7 +135,7 @@ class AIRouter {
     const dailyTotal = tracker.getDailyTotal();
     if (dailyTotal >= budget) {
       throw new Error(
-        `Daily AI budget exceeded ($${dailyTotal.toFixed(2)} >= $${budget.toFixed(2)}). Set PIA_DAILY_AI_BUDGET to increase or disable.`,
+        `Daily AI budget exceeded ($${dailyTotal.toFixed(2)} >= $${budget.toFixed(2)}). Set DISTIL_DAILY_AI_BUDGET to increase or disable.`,
       );
     }
     if (dailyTotal >= budget * BUDGET_WARN_THRESHOLD) {
@@ -348,8 +348,8 @@ export function getDailyUsage(): number {
 }
 
 function _getRouter(): AIRouter {
-  if (!globalForRouter.__piaAIRouter) {
-    globalForRouter.__piaAIRouter = new AIRouter();
+  if (!globalForRouter.__distilAIRouter) {
+    globalForRouter.__distilAIRouter = new AIRouter();
   }
-  return globalForRouter.__piaAIRouter;
+  return globalForRouter.__distilAIRouter;
 }

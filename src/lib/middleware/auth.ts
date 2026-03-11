@@ -2,16 +2,16 @@
  * Authentication middleware for API routes.
  *
  * Single-user auth via API token:
- * - If PIA_API_TOKEN is set in env, all /api/* requests must include
+ * - If DISTIL_API_TOKEN is set in env, all /api/* requests must include
  *   Authorization: Bearer <token>
- * - If PIA_API_TOKEN is not set, all requests are allowed (dev mode).
+ * - If DISTIL_API_TOKEN is not set, all requests are allowed (dev mode).
  *
  * SERVER-SIDE ONLY.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 
-const API_TOKEN = process.env.PIA_API_TOKEN ?? "";
+const API_TOKEN = process.env.DISTIL_API_TOKEN ?? "";
 
 export function isAuthEnabled(): boolean {
   return API_TOKEN.length > 0;

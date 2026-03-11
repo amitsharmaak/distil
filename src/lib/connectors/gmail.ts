@@ -29,13 +29,20 @@ import type { ContentItem, Priority } from "@/lib/types";
 // Gmail API scope — read-only access is all we need.
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
-// Add sender email addresses here to include them in the sync.
-const NEWSLETTER_SENDERS = [
-  "info@yourstory.com",
-];
+// Newsletter senders to include in sync.
+// Configure via GMAIL_NEWSLETTER_SENDERS env var (comma-separated email addresses).
+const NEWSLETTER_SENDERS: string[] = process.env.GMAIL_NEWSLETTER_SENDERS
+  ? process.env.GMAIL_NEWSLETTER_SENDERS.split(",").map((s) => s.trim()).filter(Boolean)
+  : [];
 
 // Earliest date to fetch emails from (YYYY/MM/DD).
-const SYNC_AFTER_DATE = "2026/02/01";
+// Defaults to 30 days ago if GMAIL_SYNC_AFTER_DATE is not set.
+const SYNC_AFTER_DATE: string = process.env.GMAIL_SYNC_AFTER_DATE ??
+  (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  })();
 
 // Gmail system label IDs that should not be used as topics.
 const SYSTEM_LABELS = new Set([

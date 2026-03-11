@@ -1,5 +1,5 @@
 /**
- * Dashboard page — the home screen of PIA.
+ * Dashboard page — the home screen of Distil.
  *
  * This is an async Server Component: it fetches all content items directly
  * from the database (no HTTP round-trip) and passes them as props to the

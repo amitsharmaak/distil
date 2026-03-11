@@ -82,7 +82,7 @@ export function ChatPanel() {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Bot className="h-5 w-5 text-primary" />
-          <span className="font-semibold">Ask PIA</span>
+          <span className="font-semibold">Ask Distil</span>
         </div>
         <Button variant="ghost" size="sm" onClick={() => { setMessages([]); setConversationId(null); }}>
           <Plus className="h-4 w-4 mr-1" /> New
@@ -148,7 +148,7 @@ export function ChatPanel() {
       <div className="border-t p-3">
         <div className="flex gap-2">
           <Textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder="Ask PIA anything..." className="min-h-[40px] max-h-[120px] resize-none text-sm" rows={1} />
+            placeholder="Ask Distil anything..." className="min-h-[40px] max-h-[120px] resize-none text-sm" rows={1} />
           <Button size="icon" onClick={sendMessage} disabled={!input.trim() || loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>

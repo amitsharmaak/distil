@@ -9,14 +9,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "@/lib/config";
 
 const globalForGenAI = globalThis as typeof globalThis & {
-  __piaGenAI?: GoogleGenerativeAI;
+  __distilGenAI?: GoogleGenerativeAI;
 };
 
 const genai: GoogleGenerativeAI =
-  globalForGenAI.__piaGenAI ?? new GoogleGenerativeAI(config.geminiApiKey);
+  globalForGenAI.__distilGenAI ?? new GoogleGenerativeAI(config.geminiApiKey);
 
 if (config.env !== "production") {
-  globalForGenAI.__piaGenAI = genai;
+  globalForGenAI.__distilGenAI = genai;
 }
 
 /** Primary model for summaries, research, and prioritization. */

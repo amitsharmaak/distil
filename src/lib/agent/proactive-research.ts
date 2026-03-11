@@ -123,7 +123,7 @@ export async function runProactiveScan(): Promise<{
           id: crypto.randomUUID(),
           itemId: cluster.items[0].id,
           title: `Research: ${cluster.topic}`,
-          message: `PIA detected ${cluster.items.length} items about ${cluster.topic} and started a research report. ${reason}`,
+          message: `Distil detected ${cluster.items.length} items about ${cluster.topic} and started a research report. ${reason}`,
         });
       }
 

@@ -73,7 +73,7 @@ const availableIntegrations: {
   {
     type: "browser-extension",
     name: "Browser Extension",
-    description: "Save any webpage with one click using the PIA extension",
+    description: "Save any webpage with one click using the Distil extension",
     icon: "Globe",
   },
 ];

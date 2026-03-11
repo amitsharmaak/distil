@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PIA (Personal Information Aggregator) is a web app that consolidates information from multiple sources (Slack, Gmail, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
+Distil is a web app that consolidates information from multiple sources (Slack, Gmail, Twitter, browser extension, manual links) into a single modern interface. An agentic backend will retrieve, summarize, deduplicate, and prioritize content.
 
 **Current state:** Next.js frontend + SQLite backend with REST API. Browser extension saves directly to the API. The database starts empty; content is added via connectors (Gmail, Slack) and manual links.
 
@@ -51,7 +51,7 @@ cp .env.example .env.local
 # 3. Start the dev server
 npm run dev
 # → Opens at http://localhost:3000
-# → SQLite database is created at data/pia.db on first run (starts empty)
+# → SQLite database is created at data/distil.db on first run (starts empty)
 ```
 
 ## Commands
@@ -72,18 +72,21 @@ npm run test:coverage # Run tests with coverage report
 
 All config is driven by environment variables. Copy `.env.example` to `.env.local` to configure locally.
 
-| Variable                   | Default                 | Purpose                            |
-| -------------------------- | ----------------------- | ---------------------------------- |
-| `DB_PATH`                  | `./data/pia.db`         | Path to the SQLite database file   |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls |
-| `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for summarization, prioritization, research |
-| `SLACK_BOT_TOKEN`          | *(none)*                | Slack Bot Token for channel message sync |
-| `SLACK_CHANNELS`           | `general`               | Comma-separated channel names to monitor |
+| Variable                   | Default                 | Purpose                                      |
+| -------------------------- | ----------------------- | -------------------------------------------- |
+| `DB_PATH`                  | `./data/distil.db`         | Path to the SQLite database file             |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls           |
+| `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for AI features        |
+| `SLACK_BOT_TOKEN`          | *(none)*                | Slack Bot Token for channel message sync     |
+| `SLACK_CHANNELS`           | *(empty)*               | Comma-separated channel names to monitor     |
+| `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Comma-separated newsletter sender emails     |
+| `GMAIL_SYNC_AFTER_DATE`    | 30 days ago             | Earliest date to sync emails (YYYY/MM/DD)    |
+| `DISTIL_DELETE_PASSWORD`   | *(none)*                | Password for the "Delete All Data" endpoint  |
 
 **Security rules:**
 
 - Never commit `.env.local` (it is gitignored)
-- Never commit `data/pia.db` (personal data — gitignored)
+- Never commit `data/distil.db` (personal data — gitignored)
 - `.env.example` must only contain placeholder values, never real secrets
 
 ## Architecture
@@ -123,12 +126,12 @@ Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `user_sett
 
 - **Server Components** (Dashboard page, Feed detail page): call `getItems()` / `getItemById()` from `db.ts` directly — no HTTP
 - **Client Components** (Feed list, Topics, Sources): fetch from `/api/items` via the `config.apiBaseUrl`
-- **Browser Extension**: POSTs to `http://localhost:3000/api/items` (or `PIA_API_URL` in extension config)
+- **Browser Extension**: POSTs to `http://localhost:3000/api/items` (or `DISTIL_API_URL` in extension config)
 - **Slack Connector**: `POST /api/slack/sync` calls `syncSlackMessages()` which fetches channel messages via Slack Web API
 
 ### Database
 
-SQLite file at `data/pia.db` (gitignored). Tables:
+SQLite file at `data/distil.db` (gitignored). Tables:
 
 - `items` — content items matching `ContentItem` type (+ `ai_priority_score` column)
 - `ai_summaries` — AI-generated markdown summaries (one per item)
@@ -153,7 +156,7 @@ Everything revolves around `ContentItem` which has: source type, content type (a
 
 ### Browser Extension (`browser-extension/`)
 
-Chrome MV3 extension. On save: POSTs to the PIA API. Falls back to `chrome.storage.local` if the API is unreachable (items flagged `pendingSync: true` for future sync).
+Chrome MV3 extension. On save: POSTs to the Distil API. Falls back to `chrome.storage.local` if the API is unreachable (items flagged `pendingSync: true` for future sync).
 
 ### Slack Integration
 
@@ -174,7 +177,7 @@ src/app/api/items/[id]/__tests__/route.test.ts    # PATCH/DELETE API tests
 src/components/dashboard/__tests__/              # Dashboard component tests
 ```
 
-- DB tests use `DB_PATH=":memory:"` for isolation — never touch real `data/pia.db`
+- DB tests use `DB_PATH=":memory:"` for isolation — never touch real `data/distil.db`
 - Component tests use `@jest-environment jsdom` docblock
 - Run `npm test` before committing changes to verify no regressions
 
@@ -193,16 +196,16 @@ src/components/dashboard/__tests__/              # Dashboard component tests
 
 ## Deployment
 
-To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
+To deploy Distil to a cloud provider (Railway, Render, Fly.io, etc.):
 
 1. **Set environment variables** in your deployment dashboard:
-   - `DB_PATH` → path on a **persistent volume** (e.g. `/mnt/data/pia.db`). Without a persistent volume, the DB will be wiped on each deploy.
-   - `NEXT_PUBLIC_API_BASE_URL` → your deployed URL (e.g. `https://pia.yourdomain.com`)
+   - `DB_PATH` → path on a **persistent volume** (e.g. `/mnt/data/distil.db`). Without a persistent volume, the DB will be wiped on each deploy.
+   - `NEXT_PUBLIC_API_BASE_URL` → your deployed URL (e.g. `https://distil.yourdomain.com`)
 
 2. **Build command:** `npm run build`
 3. **Start command:** `npm run start`
 
-4. **Browser extension:** update `PIA_API_URL` in `browser-extension/background.js` and `browser-extension/popup.js` to point to the deployed URL.
+4. **Browser extension:** update `DISTIL_API_URL` in `browser-extension/background.js` and `browser-extension/popup.js` to point to the deployed URL.
 
 ## Iterative Build Roadmap
 
@@ -216,7 +219,7 @@ To deploy PIA to a cloud provider (Railway, Render, Fly.io, etc.):
 ## Directory Structure
 
 ```
-pia/
+distil/
 ├── .claude/
 │   ├── settings.json
 │   └── settings.local.json

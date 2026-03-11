@@ -1,10 +1,10 @@
-# PIA → AI-First Agentic Application: Chief Architect Review
+# Distil → AI-First Agentic Application: Chief Architect Review
 
 ---
 
 ## 1. EXECUTIVE SUMMARY
 
-**What PIA is today:** A well-built personal content aggregator — Next.js 16, SQLite, multi-source connectors (Gmail OAuth, Slack Bot Token, browser extension, manual), with bolt-on AI features (Gemini/OpenAI/Anthropic summarization, feedback-driven prioritization, deep research with web grounding). Clean frontend, good component architecture, SSE streaming for long operations.
+**What Distil is today:** A well-built personal content aggregator — Next.js 16, SQLite, multi-source connectors (Gmail OAuth, Slack Bot Token, browser extension, manual), with bolt-on AI features (Gemini/OpenAI/Anthropic summarization, feedback-driven prioritization, deep research with web grounding). Clean frontend, good component architecture, SSE streaming for long operations.
 
 **Readiness Score (0–10):**
 
@@ -116,7 +116,7 @@ External APIs:
 ### Capability 1: Intelligent Triage Agent
 **What:** Automatically processes every new item: classifies, summarizes, scores priority, detects duplicates, identifies action items, and routes to user attention based on learned preferences.
 
-**User Value:** User opens PIA and their feed is already organized, summarized, and prioritized — zero manual sorting. Items that need action are flagged. Low-value content is demoted.
+**User Value:** User opens Distil and their feed is already organized, summarized, and prioritized — zero manual sorting. Items that need action are flagged. Low-value content is demoted.
 
 **Success Metrics:**
 - >80% of priority assignments match user's subsequent feedback
@@ -141,7 +141,7 @@ External APIs:
 ### Capability 2: Proactive Research Agent
 **What:** Monitors user's topics of interest. When significant developments occur across sources, autonomously initiates research, synthesizes findings across items, and delivers a briefing — before the user asks.
 
-**User Value:** "I didn't have to search for this — PIA told me the EU AI Act update matters because of the 3 articles I saved last week."
+**User Value:** "I didn't have to search for this — Distil told me the EU AI Act update matters because of the 3 articles I saved last week."
 
 **Success Metrics:**
 - >60% of proactive briefings rated useful by user
@@ -362,7 +362,7 @@ External APIs:
 
 ### Core Agent Persona
 ```
-You are PIA, a personal information assistant. Your goal is to help the user
+You are Distil, a personal information assistant. Your goal is to help the user
 stay informed without being overwhelmed. You triage incoming content, surface
 what matters, and answer questions about the user's knowledge base.
 
@@ -646,7 +646,7 @@ interface WebSearchTool {
 **Wireframe:**
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  🔍 Ask PIA anything...                            [⏎]   │
+│  🔍 Ask Distil anything...                            [⏎]   │
 ├──────────────────────────────────────────────────────────┤
 │  ┌────────────────────────────────────────────────────┐  │
 │  │ Based on your saved content, here's what I found:  │  │

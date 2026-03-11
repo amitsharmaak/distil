@@ -15,14 +15,14 @@
 export const config = {
   /**
    * Absolute or relative path to the SQLite database file.
-   * Defaults to `./data/pia.db` relative to the project root.
+   * Defaults to `./data/distil.db` relative to the project root.
    *
    * Override with DB_PATH env var for cloud deployments that mount
-   * a persistent volume (e.g. DB_PATH=/mnt/data/pia.db).
+   * a persistent volume (e.g. DB_PATH=/mnt/data/distil.db).
    *
    * In tests this is overridden to ":memory:" for an in-memory DB.
    */
-  dbPath: process.env.DB_PATH ?? "./data/pia.db",
+  dbPath: process.env.DB_PATH ?? "./data/distil.db",
 
   /**
    * Base URL for API calls made from client components (browser).
@@ -89,4 +89,10 @@ export const config = {
    * Example: "general,engineering,random"
    */
   slackChannels: process.env.SLACK_CHANNELS ?? "",
+
+  /**
+   * Password required to wipe all data via DELETE /api/data.
+   * Set DISTIL_DELETE_PASSWORD in .env.local to enable the danger-zone reset.
+   */
+  deletePassword: process.env.DISTIL_DELETE_PASSWORD ?? "",
 } as const;

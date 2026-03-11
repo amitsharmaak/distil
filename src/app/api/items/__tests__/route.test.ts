@@ -4,7 +4,7 @@
  * We test the route handler functions directly (not via HTTP) to keep tests
  * fast and avoid needing a running Next.js server.
  *
- * The DB is in-memory so tests are isolated from the real data/pia.db file.
+ * The DB is in-memory so tests are isolated from the real data/distil.db file.
  */
 
 // Use in-memory SQLite for all tests in this file.

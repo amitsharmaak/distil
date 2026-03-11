@@ -1,7 +1,7 @@
 import type { Config } from "jest";
 
 /**
- * Jest configuration for the PIA project.
+ * Jest configuration for the Distil project.
  *
  * - Default test environment: "node" (for API route and DB tests).
  * - React component tests override to jsdom via the

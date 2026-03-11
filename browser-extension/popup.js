@@ -1,8 +1,8 @@
 /**
- * PIA Browser Extension — Popup Script
+ * Distil Browser Extension — Popup Script
  *
  * Handles the Save button in the extension popup.
- * Sends the current tab's URL to the PIA API and shows feedback to the user.
+ * Sends the current tab's URL to the Distil API and shows feedback to the user.
  *
  * API target: POST http://localhost:3000/api/items
  *
@@ -14,10 +14,10 @@
 // ── Configuration ──────────────────────────────────────────────────────────────
 
 /**
- * The PIA API endpoint to POST new items to.
- * Must match the running PIA web app. Change this for production deployments.
+ * The Distil API endpoint to POST new items to.
+ * Must match the running Distil web app. Change this for production deployments.
  */
-const PIA_API_URL = "http://localhost:3000/api/items";
+const DISTIL_API_URL = "http://localhost:3000/api/items";
 
 // ── Initialization ─────────────────────────────────────────────────────────────
 
@@ -46,8 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show the last 3 locally-stored items in the popup so the user can see
   // what they recently saved. In a future phase this will load from the API.
-  chrome.storage.local.get({ piaItems: [] }, (result) => {
-    const items = result.piaItems;
+  chrome.storage.local.get({ distilItems: [] }, (result) => {
+    const items = result.distilItems;
     if (items.length > 0) {
       recentEl.classList.remove("hidden");
       items.slice(0, 3).forEach((item) => {
@@ -87,12 +87,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (saved) {
-        // Success — show confirmation and close the popup.
-        showStatus("Saved to PIA!", "success");
+        showStatus("Saved to Distil!", "success");
       } else {
-        // API unreachable — saved locally instead.
         saveToLocalStorage({ url: tab.url, title: tab.title || "", topics, notes });
-        showStatus("Saved locally (PIA offline)", "warning");
+        showStatus("Saved locally (Distil offline)", "warning");
       }
 
       saveBtn.textContent = "Saved!";
@@ -114,30 +112,27 @@ document.addEventListener("DOMContentLoaded", () => {
 // ── API save ───────────────────────────────────────────────────────────────────
 
 /**
- * Sends the item to the PIA API.
+ * Sends the item to the Distil API.
  *
  * @returns true on success, false if the API is unreachable or returns an error.
  */
 async function saveToAPI({ url, title, topics, notes }) {
   try {
-    const response = await fetch(PIA_API_URL, {
+    const response = await fetch(DISTIL_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url,
-        // Provide the tab title as a hint; OG fetch will confirm/replace it server-side.
         title: title || undefined,
         sourceType: "browser-extension",
         contentType: "article",
         topics,
-        // Notes become the item's summary in PIA.
         notes: notes || undefined,
         priority: "medium",
       }),
     });
     return response.ok;
   } catch {
-    // Network error (e.g. PIA server not running).
     return false;
   }
 }
@@ -155,13 +150,12 @@ function saveToLocalStorage({ url, title, topics, notes }) {
     topics,
     notes,
     savedAt: new Date().toISOString(),
-    // Flag for future sync pass when PIA comes back online.
     pendingSync: true,
   };
 
-  chrome.storage.local.get({ piaItems: [] }, (result) => {
-    const items = result.piaItems;
+  chrome.storage.local.get({ distilItems: [] }, (result) => {
+    const items = result.distilItems;
     items.unshift(item);
-    chrome.storage.local.set({ piaItems: items });
+    chrome.storage.local.set({ distilItems: items });
   });
 }

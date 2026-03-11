@@ -42,7 +42,7 @@ export function Sidebar() {
           <Zap className="h-4 w-4 text-sidebar-primary-foreground" />
         </div>
         {!collapsed && (
-          <span className="text-lg font-bold tracking-tight text-sidebar-foreground">PIA</span>
+          <span className="text-lg font-bold tracking-tight text-sidebar-foreground">Distil</span>
         )}
       </div>
 

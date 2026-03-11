@@ -2,13 +2,13 @@
  * Unit tests for src/lib/db.ts — SQLite database module.
  *
  * Tests run against an in-memory SQLite database (DB_PATH=":memory:") so they
- * never touch the real data/pia.db file and are fully isolated from each other.
+ * never touch the real data/distil.db file and are fully isolated from each other.
  *
  * Because db.ts uses a module-level singleton, we reset it between tests by
  * deleting all rows after each test (rather than re-importing the module).
  */
 
-// Use an in-memory DB for tests so they never touch the real data/pia.db file.
+// Use an in-memory DB for tests so they never touch the real data/distil.db file.
 process.env.DB_PATH = ":memory:";
 
 // Import AFTER setting the env var so the module picks it up.

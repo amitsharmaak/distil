@@ -1,5 +1,5 @@
 /**
- * Evaluation harness for PIA AI quality.
+ * Evaluation harness for Distil AI quality.
  *
  * Usage:
  *   npx tsx evals/run-evals.ts          # Dry run (baseline with golden labels)
