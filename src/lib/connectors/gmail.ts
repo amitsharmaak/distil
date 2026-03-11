@@ -23,6 +23,7 @@ import {
   getItemByNormalizedUrl,
 } from "@/lib/db";
 import { createNotificationIfEnabled } from "@/lib/notifications";
+import { sanitizeUrl } from "@/lib/utils";
 import type { ContentItem, Priority } from "@/lib/types";
 
 // Gmail API scope — read-only access is all we need.
@@ -236,9 +237,10 @@ function buildContentItem(
     ? extractViewInBrowserUrl(htmlBody)
     : null;
   // Fallback: use the Gmail web URL for this message.
-  const url =
+  const url = sanitizeUrl(
     viewInBrowserUrl ??
-    `https://mail.google.com/mail/u/0/#inbox/${messageId}`;
+    `https://mail.google.com/mail/u/0/#inbox/${messageId}`,
+  );
 
   const labelIds = message.labelIds ?? [];
   const isImportant = labelIds.includes("IMPORTANT");

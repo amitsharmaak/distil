@@ -1,6 +1,7 @@
 /** POST /api/slack/sync — syncs messages from configured Slack channels */
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { syncSlackMessages, isSlackConfigured } from "@/lib/connectors/slack";
 
 const CORS_HEADERS = {
@@ -34,7 +35,7 @@ export async function POST() {
       { headers: CORS_HEADERS },
     );
   } catch (err) {
-    console.error("[POST /api/slack/sync]", err);
+    apiLogger.error({ err }, "POST /api/slack/sync failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },

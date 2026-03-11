@@ -5,6 +5,7 @@
  */
 
 import { getItems, getItemById, getRecentEmbeddings } from "@/lib/db";
+import { aiLogger } from "@/lib/logger";
 import { generateEmbedding, cosineSimilarity } from "./embeddings";
 import type { ItemFilters } from "@/lib/db";
 import type { ContentItem } from "@/lib/types";
@@ -85,7 +86,7 @@ async function semanticSearch(
 
     return items;
   } catch (error) {
-    console.error("Semantic search failed, falling back to FTS:", error);
+    aiLogger.error({ err: error }, "Semantic search failed, falling back to FTS");
     return [];
   }
 }

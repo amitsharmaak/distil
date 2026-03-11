@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { insertFeedback, getItemById } from "@/lib/db";
 import { updatePreferencesFromFeedback } from "@/lib/ai/preferences";
 import { reprioritize } from "@/lib/ai/prioritize";
@@ -39,13 +40,13 @@ export async function POST(req: NextRequest) {
         await updatePreferencesFromFeedback();
         await reprioritize(false);
       } catch (err) {
-        console.error("[feedback] Background preference/priority update failed:", err);
+        apiLogger.error({ err }, "Background preference/priority update failed");
       }
     })();
 
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {
-    console.error("Feedback error:", error);
+    apiLogger.error({ err: error }, "Feedback error");
     return NextResponse.json(
       { error: "Failed to submit feedback" },
       { status: 500 },

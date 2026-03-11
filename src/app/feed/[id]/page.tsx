@@ -39,7 +39,6 @@ import { FeedbackButtons } from "@/components/feed/feedback-buttons";
 import { DeepResearch } from "@/components/feed/deep-research";
 import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
-import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 // ── Source icon + label mappings ───────────────────────────────────────────────
 
@@ -247,14 +246,13 @@ export default async function ItemDetailPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Back navigation + sticky mark-read */}
-      <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-background/80 backdrop-blur-sm flex items-center justify-between">
+      <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-background/80 backdrop-blur-sm">
         <Link
           href="/feed"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" /> Back to feed
         </Link>
-        <MarkReadButton itemId={item.id} isRead={item.isRead} showLabel />
       </div>
 
       {/* Keyboard-only prev/next navigation (arrow keys) */}
@@ -336,6 +334,7 @@ export default async function ItemDetailPage({
           {strategy.detail.showAISummary && (
             <AISummary
               itemId={item.id}
+              isRead={item.isRead}
               ogSummary={item.summary}
               fullContent={item.fullContent}
               initialBriefSummary={aiSummaries.brief ?? null}

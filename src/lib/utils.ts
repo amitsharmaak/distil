@@ -32,15 +32,42 @@ const TRACKING_PARAMS = new Set([
 ]);
 
 /**
+ * Fixes URLs that contain an embedded duplicate (e.g. a redirect URL
+ * concatenated onto the original). This happens when Slack unfurls
+ * certain links (LinkedIn, etc.) or when clipboard copy adds a
+ * locale-suffixed redirect to the original URL.
+ *
+ * Example: "https://example.com/pagehttps://example.com/page?_l=en_US"
+ *        → "https://example.com/page"
+ */
+export function sanitizeUrl(raw: string): string {
+  const trimmed = raw.trim();
+
+  // Find the second occurrence of "http://" or "https://" inside the string.
+  // The first occurrence starts at index 0; any subsequent one means the URL
+  // has an embedded duplicate or a completely different URL glued on.
+  const secondHttp = trimmed.indexOf("http", trimmed.indexOf("://") + 3);
+  if (secondHttp > 0) {
+    const prefix = trimmed.slice(secondHttp);
+    if (prefix.startsWith("http://") || prefix.startsWith("https://")) {
+      return trimmed.slice(0, secondHttp);
+    }
+  }
+
+  return trimmed;
+}
+
+/**
  * Normalizes a URL for deduplication. Two URLs that point to the same
  * content should produce the same normalized string.
  *
- * Steps: decode HTML entities, lowercase host, strip trailing slash,
- * remove fragments, remove tracking query params, sort remaining params.
+ * Steps: sanitize embedded duplicates, decode HTML entities, lowercase
+ * host, strip trailing slash, remove fragments, remove tracking query
+ * params, sort remaining params.
  */
 export function normalizeUrl(raw: string): string {
   // Decode HTML entities (e.g. &amp; → &) that Slack/email clients add.
-  let cleaned = raw.replace(/&amp;/g, "&");
+  let cleaned = sanitizeUrl(raw).replace(/&amp;/g, "&");
 
   let parsed: URL;
   try {

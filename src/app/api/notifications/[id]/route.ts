@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { markNotificationRead } from "@/lib/db";
 
 const CORS_HEADERS = {
@@ -27,7 +28,7 @@ export function PATCH(
       markNotificationRead(id);
       return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
     } catch (error) {
-      console.error("[PATCH /api/notifications/[id]]", error);
+      apiLogger.error({ err: error }, "PATCH /api/notifications/[id] failed");
       return NextResponse.json(
         { error: "Internal server error" },
         { status: 500, headers: CORS_HEADERS },

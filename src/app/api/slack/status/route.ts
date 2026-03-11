@@ -1,6 +1,7 @@
 /** GET /api/slack/status — returns Slack connection status */
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { getSlackStatus } from "@/lib/connectors/slack";
 
 const CORS_HEADERS = {
@@ -18,7 +19,7 @@ export async function GET() {
     const status = await getSlackStatus();
     return NextResponse.json(status, { headers: CORS_HEADERS });
   } catch (err) {
-    console.error("[GET /api/slack/status]", err);
+    apiLogger.error({ err }, "GET /api/slack/status failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS },

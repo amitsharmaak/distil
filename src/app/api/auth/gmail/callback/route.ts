@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { handleCallback } from "@/lib/connectors/gmail";
 import { config } from "@/lib/config";
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
       `${config.apiBaseUrl}/sources?connected=gmail`,
     );
   } catch (err) {
-    console.error("[Gmail callback] Token exchange failed:", err);
+    apiLogger.error({ err }, "Gmail callback token exchange failed");
     return NextResponse.redirect(
       `${config.apiBaseUrl}/sources?error=gmail_failed`,
     );

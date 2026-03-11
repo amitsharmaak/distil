@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { apiLogger } from "@/lib/logger";
 import { getItems, insertItem, getItemByNormalizedUrl } from "@/lib/db";
 import { hybridSearch } from "@/lib/ai/search";
 import { fetchOG } from "@/lib/og";
@@ -26,6 +27,7 @@ import { autoTagItem } from "@/lib/ai/tagger";
 import { embedItem } from "@/lib/ai/embeddings";
 import { createNotificationIfEnabled } from "@/lib/notifications";
 import { detectStrategy } from "@/lib/content-strategies";
+import { sanitizeUrl } from "@/lib/utils";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items, total: items.length }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[GET /api/items] Unexpected error:", error);
+    apiLogger.error({ err: error }, "GET /api/items unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS }
@@ -155,7 +157,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const trimmedUrl = url.trim();
+    const trimmedUrl = sanitizeUrl(url);
 
     // ── Detect content strategy ──────────────────────────────────────────────
     const strategy = detectStrategy(trimmedUrl);
@@ -229,25 +231,25 @@ export async function POST(request: NextRequest) {
     // Strategy controls whether summarization is appropriate for this content type.
     if (strategy.generateAISummary) {
       generateSummary(inserted.id, { length: "brief" }).catch((err) => {
-        console.error("[POST /api/items] Background summary failed:", inserted.id, err);
+        apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background summary failed");
       });
     }
 
     // Fire-and-forget: auto-tag items that have no topics.
     if (inserted.topics.length === 0) {
       autoTagItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
-        console.error("[POST /api/items] Background auto-tag failed:", inserted.id, err);
+        apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background auto-tag failed");
       });
     }
 
     // Fire-and-forget: embed item for semantic deduplication.
     embedItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
-      console.error("[POST /api/items] Background embedding failed:", inserted.id, err);
+      apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background embedding failed");
     });
 
     return NextResponse.json({ item: inserted }, { status: 201, headers: CORS_HEADERS });
   } catch (error) {
-    console.error("[POST /api/items] Unexpected error:", error);
+    apiLogger.error({ err: error }, "POST /api/items unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500, headers: CORS_HEADERS }

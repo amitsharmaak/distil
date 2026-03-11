@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { generateSummary } from "@/lib/ai/summarize";
 import { getItemById } from "@/lib/db";
 import { isTwitterUrl } from "@/lib/utils";
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
       itemId,
     });
   } catch (error) {
-    console.error("Summarize error:", error);
+    apiLogger.error({ err: error }, "Summarize error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate summary" },
       { status: 500 },
