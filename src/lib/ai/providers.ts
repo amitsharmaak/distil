@@ -8,6 +8,7 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "@/lib/config";
 import type { ProviderName } from "./ai-config";
+import { GEMINI_SEARCH_MODEL } from "./ai-config";
 
 export interface GenerateOptions {
   maxTokens?: number;
@@ -76,7 +77,7 @@ export class GeminiProviderImpl implements GeminiProvider {
 
   async generateTextWithSearch(prompt: string): Promise<string> {
     const m = this.genai.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_SEARCH_MODEL,
       // googleSearch grounding is supported by Gemini 2.x but not yet in SDK types
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: [{ googleSearch: {} } as any],

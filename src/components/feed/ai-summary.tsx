@@ -4,15 +4,13 @@ import { useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Zap, RefreshCw, Sparkles, FileText, Minimize2, Maximize2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { config } from "@/lib/config";
-import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 interface AISummaryProps {
   itemId: string;
-  isRead: boolean;
   ogSummary: string;
   fullContent?: string;
   initialBriefSummary?: string | null;
@@ -79,84 +77,99 @@ function parseSummarySections(content: string): { title: string; body: string; k
   });
 }
 
-/** Renders structured AI summary markdown with section-specific styling. */
+/** Renders structured AI summary in reader typography — same aesthetic as tweet/article content. */
 function StructuredSummaryMarkdown({ content }: { content: string }) {
   const sections = useMemo(() => parseSummarySections(content), [content]);
 
+  const baseProse =
+    "prose dark:prose-invert max-w-none prose-strong:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline";
+
   return (
-    <div className="distil-ai-summary space-y-6">
+    <div className="distil-reader space-y-5">
       {sections.map(({ title, body, key }) => {
         if (!body) return null;
-        const baseProse =
-          "prose dark:prose-invert max-w-none prose-p:leading-7 prose-headings:mt-0 prose-headings:mb-2 prose-headings:text-base prose-strong:text-foreground";
+
         if (key === "tldr" || key === "tl-dr") {
           return (
-            <div key={key} className={`${baseProse} prose-p:text-base prose-p:my-3`}>
+            <div key={key} className={baseProse}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
             </div>
           );
         }
+
         if (key === "key-points") {
           return (
-            <div key={key} className={baseProse}>
-              <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
-              <div className="space-y-1.5 pl-1">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    ul: ({ children }) => <ul className="list-none space-y-1.5 my-0">{children}</ul>,
+            <div key={key}>
+              {title && (
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-3">
+                  {title}
+                </p>
+              )}
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  ul: ({ children }) => <ul className="list-none space-y-2 my-0">{children}</ul>,
                     li: ({ children }) => (
-                      <li className="flex gap-2 text-sm leading-6">
-                        <span className="text-primary mt-1.5 shrink-0 size-1.5 rounded-full bg-primary" />
-                        <span>{children}</span>
-                      </li>
-                    ),
-                  }}
-                >
-                  {body}
-                </ReactMarkdown>
-              </div>
+                    <li className="flex items-start gap-2.5">
+                      <span className="mt-[0.52em] shrink-0 size-1.5 rounded-full bg-primary" />
+                      <div className="min-w-0 [&>p]:my-0">{children}</div>
+                    </li>
+                  ),
+                }}
+              >
+                {body}
+              </ReactMarkdown>
             </div>
           );
         }
+
         if (key === "why-this-matters") {
           return (
-            <div
-              key={key}
-              className="rounded-lg border border-primary/20 bg-primary/5 p-4 dark:bg-primary/10"
-            >
-              <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
-              <div className={`${baseProse} prose-p:my-2 prose-p:text-sm`}>
+            <div key={key} className="border-l-2 border-primary/50 pl-4 py-0.5">
+              {title && (
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-2">
+                  {title}
+                </p>
+              )}
+              <div className={`${baseProse} prose-p:my-1`}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
               </div>
             </div>
           );
         }
+
         if (key === "notable-quotes") {
           return (
-            <div key={key} className={baseProse}>
-              <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
-              <div className="space-y-3">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    ul: ({ children }) => <ul className="list-none space-y-3 my-0">{children}</ul>,
-                    li: ({ children }) => (
-                      <li className="border-l-2 border-primary/40 pl-4 py-1 text-sm italic text-muted-foreground">
-                        {children}
-                      </li>
-                    ),
-                  }}
-                >
-                  {body}
-                </ReactMarkdown>
-              </div>
+            <div key={key}>
+              {title && (
+                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-3">
+                  {title}
+                </p>
+              )}
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  ul: ({ children }) => <ul className="list-none space-y-3 my-0">{children}</ul>,
+                  li: ({ children }) => (
+                    <li className="border-l-2 border-border/50 pl-4 py-0.5 italic text-muted-foreground [&>p]:my-0">
+                      {children}
+                    </li>
+                  ),
+                }}
+              >
+                {body}
+              </ReactMarkdown>
             </div>
           );
         }
+
         return (
           <div key={key} className={baseProse}>
-            <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
+            {title && (
+              <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-2">
+                {title}
+              </p>
+            )}
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
           </div>
         );
@@ -165,7 +178,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
   );
 }
 
-export function AISummary({ itemId, isRead, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
+export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
   const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(initialDetailedSummary ?? null);
   const hasInitialSummary = !!(initialBriefSummary || initialDetailedSummary);
@@ -224,137 +237,139 @@ export function AISummary({ itemId, isRead, ogSummary, fullContent, initialBrief
   const hasAISummary = !!briefSummary || !!detailedSummary;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <div className="h-5 w-5 rounded bg-primary/10 flex items-center justify-center">
-              {viewMode === "ai" && hasAISummary ? (
-                <Zap className="h-3 w-3 text-primary" />
-              ) : (
-                <FileText className="h-3 w-3 text-primary" />
-              )}
+    <div>
+      {/* Controls bar — pill toggles with hairline separator */}
+      <div className="flex flex-wrap items-center gap-2 min-w-0 mb-5">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          {/* AI Summary / Original pill toggle */}
+          {hasAISummary && (
+            <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 p-0.5">
+              <button
+                onClick={() => setViewMode("ai")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
+                  viewMode === "ai"
+                    ? "bg-foreground/65 text-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Zap className="h-3 w-3" />
+                AI Summary
+              </button>
+              <button
+                onClick={() => setViewMode("original")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
+                  viewMode === "original"
+                    ? "bg-foreground/65 text-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <FileText className="h-3 w-3" />
+                Original
+              </button>
             </div>
-            {viewMode === "ai" && hasAISummary ? "AI Summary" : "Original Content"}
-          </CardTitle>
-          <div className="flex items-center gap-1">
-            {hasAISummary && (
-              <div className="flex items-center rounded-md border border-border p-0.5">
-                <Button
-                  variant={viewMode === "ai" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 text-[11px] px-2 gap-1 rounded-sm"
-                  onClick={() => setViewMode("ai")}
-                >
-                  <Zap className="h-3 w-3" />
-                  AI Summary
-                </Button>
-                <Button
-                  variant={viewMode === "original" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 text-[11px] px-2 gap-1 rounded-sm"
-                  onClick={() => setViewMode("original")}
-                >
-                  <FileText className="h-3 w-3" />
-                  Original
-                </Button>
-              </div>
-            )}
-            {hasAISummary && viewMode === "ai" && (
-              <>
-                <div className="flex items-center rounded-md border border-border p-0.5">
-                  <Button
-                    variant={summaryLength === "brief" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-6 text-[11px] px-2 gap-1 rounded-sm"
-                    onClick={() => handleLengthChange("brief")}
-                    disabled={loading}
-                  >
-                    <Minimize2 className="h-3 w-3" />
-                    Brief
-                  </Button>
-                  <Button
-                    variant={summaryLength === "detailed" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-6 text-[11px] px-2 gap-1 rounded-sm"
-                    onClick={() => handleLengthChange("detailed")}
-                    disabled={loading}
-                  >
-                    <Maximize2 className="h-3 w-3" />
-                    Detailed
-                  </Button>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => generate(summaryLength, true)}
-                  disabled={loading}
-                >
-                  <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-                  Regenerate
-                </Button>
-              </>
-            )}
-            <MarkReadButton itemId={itemId} isRead={isRead} showLabel />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading && (
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-4 w-3/5" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-          </div>
-        )}
+          )}
 
-        {error && (
-          <div className="text-sm text-destructive">
-            <p>{error}</p>
+          {/* Brief / Detailed pill toggle */}
+          {hasAISummary && viewMode === "ai" && (
+            <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 p-0.5">
+              <button
+                onClick={() => handleLengthChange("brief")}
+                disabled={loading}
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
+                  summaryLength === "brief"
+                    ? "bg-foreground/65 text-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Minimize2 className="h-3 w-3" />
+                Brief
+              </button>
+              <button
+                onClick={() => handleLengthChange("detailed")}
+                disabled={loading}
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
+                  summaryLength === "detailed"
+                    ? "bg-foreground/65 text-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Maximize2 className="h-3 w-3" />
+                Detailed
+              </button>
+            </div>
+          )}
+
+          {/* Regenerate */}
+          {hasAISummary && viewMode === "ai" && (
+            <button
+              onClick={() => generate(summaryLength, true)}
+              disabled={loading}
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-150 disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+              Regenerate
+            </button>
+          )}
+        </div>
+
+      </div>
+
+      {/* Content — reader typography, no card container */}
+      {loading && (
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="h-4 w-3/5" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      )}
+
+      {error && (
+        <div className="text-sm text-destructive">
+          <p>{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => generate(summaryLength)}
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
+
+      {!loading && !error && viewMode === "ai" && aiSummary && (
+        <StructuredSummaryMarkdown content={aiSummary} />
+      )}
+
+      {!loading && !error && (viewMode === "original" || !aiSummary) && (
+        <div>
+          {processedContent ? (
+            <div
+              className="distil-reader prose dark:prose-invert max-w-none prose-p:my-[1.15em] prose-headings:mt-6 prose-headings:mb-3 prose-li:my-1 prose-blockquote:my-4 prose-img:rounded-lg prose-img:my-6 prose-pre:my-4 prose-hr:my-6 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
+              dangerouslySetInnerHTML={{ __html: processedContent }}
+            />
+          ) : (
+            <p className="distil-reader whitespace-pre-line">{ogSummary}</p>
+          )}
+          {!hasAISummary && (
             <Button
               variant="outline"
               size="sm"
-              className="mt-2"
+              className="gap-1.5 mt-5"
               onClick={() => generate(summaryLength)}
             >
-              Try Again
+              <Sparkles className="h-3.5 w-3.5" />
+              Generate AI Summary
             </Button>
-          </div>
-        )}
-
-        {!loading && !error && viewMode === "ai" && aiSummary && (
-          <StructuredSummaryMarkdown content={aiSummary} />
-        )}
-
-        {!loading && !error && (viewMode === "original" || !aiSummary) && (
-          <div>
-            {processedContent ? (
-              <div
-                className="distil-reader prose dark:prose-invert max-w-none prose-p:my-4 prose-p:leading-7 prose-headings:mt-8 prose-headings:mb-4 prose-li:my-1.5 prose-blockquote:my-4 prose-img:rounded-lg prose-img:my-6 prose-pre:my-4 prose-hr:my-8 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
-                dangerouslySetInnerHTML={{ __html: processedContent }}
-              />
-            ) : (
-              <p className="text-base leading-7 text-muted-foreground whitespace-pre-line">
-                {ogSummary}
-              </p>
-            )}
-            {!hasAISummary && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 mt-4"
-                onClick={() => generate(summaryLength)}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Generate AI Summary
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

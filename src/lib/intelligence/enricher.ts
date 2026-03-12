@@ -6,7 +6,7 @@
  * SERVER-SIDE ONLY — never import from "use client" components.
  */
 
-import { generateText } from "@/lib/ai/client";
+import { generateText } from "@/lib/ai/router";
 import { enrichSummaryPrompt, enrichTopicsPrompt } from "@/lib/prompts/intelligence";
 import type { Priority } from "@/lib/types";
 import type {
@@ -34,14 +34,14 @@ export async function enrichContent(
   let topics: string[] = [];
 
   try {
-    summary = (await generateText(enrichSummaryPrompt(title, cleanText))).trim();
+    summary = (await generateText(enrichSummaryPrompt(title, cleanText), "summarize")).trim();
     if (!summary) throw new Error("Empty summary");
   } catch {
     summary = cleanText.slice(0, 200) + (cleanText.length > 200 ? "..." : "");
   }
 
   try {
-    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText))).trim();
+    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText), "auto-tag")).trim();
     const parsed = parseTopicsJson(topicsResponse);
     topics = Array.isArray(parsed) ? parsed : [];
   } catch {

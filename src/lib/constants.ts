@@ -23,7 +23,7 @@ export const sourceColors: Record<SourceType, string> = {
 };
 
 export const priorityColors: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 border-red-200",
-  medium: "bg-amber-500/10 text-amber-600 border-amber-200",
-  low: "bg-green-500/10 text-green-600 border-green-200",
+  high: "bg-red-500/10 text-red-600 border-red-600/30",
+  medium: "bg-amber-500/10 text-amber-600 border-amber-600/30",
+  low: "bg-green-500/10 text-green-600 border-green-600/30",
 };

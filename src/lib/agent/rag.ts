@@ -1,7 +1,7 @@
 /**
  * RAG (Retrieval-Augmented Generation) pipeline.
  *
- * Query → Hybrid search → Chunk → Rerank → Generate with citations.
+ * Query → Intent classification → Retrieval → Chunk → Generate with citations.
  *
  * SERVER-SIDE ONLY.
  */
@@ -10,7 +10,12 @@ import { hybridSearch } from "@/lib/ai/search";
 import { generateText } from "@/lib/ai/router";
 import { filterPII } from "@/lib/pii-filter";
 import { aiLogger } from "@/lib/logger";
+import { getItems } from "@/lib/db";
 import type { ContentItem } from "@/lib/types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface RAGChunk {
   itemId: string;
@@ -33,7 +38,13 @@ export interface RAGResult {
   totalTokensEstimate: number;
 }
 
-const RAG_PROMPT = `You are Distil, a personal information assistant. Answer the user's question using ONLY the context provided below. If the context doesn't contain enough information, say so honestly.
+type QueryIntent = "specific" | "general" | "conversational";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SPECIFIC_PROMPT = `You are Distil, a personal information assistant. Answer the user's question using ONLY the context provided below. If the context doesn't contain enough information, say so honestly.
 
 Rules:
 - Cite sources using [N] notation where N is the source number
@@ -48,9 +59,51 @@ Question: {QUESTION}
 
 Provide a clear, cited answer:`;
 
-/**
- * Splits content into chunks of approximately targetSize tokens.
- */
+const GENERAL_PROMPT = `You are Distil, a personal information assistant. The user asked a general question about their saved content. Below is a curated selection of their most recent unread or high-priority items. Use them to give a helpful overview.
+
+Rules:
+- Cite sources using [N] notation where N is the source number
+- Never fabricate information not in the context
+- Be concise and direct — the user wants a quick digest, not a wall of text
+- Group or theme related items if possible
+- If the user asked for recommendations, prioritize items that seem most important or actionable
+
+Items:
+{CONTEXT}
+
+Question: {QUESTION}
+
+Provide a helpful, cited response:`;
+
+const CONVERSATIONAL_PROMPT = `You are Distil, a friendly personal information assistant. Respond naturally to the user's message. Keep it brief. If the user seems to be transitioning to a question about their content, invite them to ask.
+
+User: {QUESTION}
+
+Response:`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intent classification
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CONVERSATIONAL_RE =
+  /^(hi|hello|hey|thanks|thank you|ok|okay|bye|good morning|good night|good evening|yo|sup|cheers)\b/;
+
+const GENERAL_RE =
+  /\b(what should i|summarize|summarise|summary|overview|what's new|whats new|unread|recommend|catch me up|brief me|brief|digest|highlights?|anything interesting|what do i have|what's in my feed|show me|latest|recent items?|what articles|what items|what content|list my|list all|my library|any articles|any items|any content|do you have)\b/;
+
+function classifyIntent(query: string): QueryIntent {
+  const q = query.toLowerCase().trim();
+
+  if (CONVERSATIONAL_RE.test(q)) return "conversational";
+  if (GENERAL_RE.test(q)) return "general";
+
+  return "specific";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunking
+// ─────────────────────────────────────────────────────────────────────────────
+
 function chunkContent(text: string, targetSize = 500): string[] {
   if (!text) return [];
 
@@ -71,18 +124,14 @@ function chunkContent(text: string, targetSize = 500): string[] {
   return chunks;
 }
 
-/**
- * Retrieves and ranks chunks relevant to the query.
- */
-async function retrieveChunks(
-  query: string,
-  maxChunks = 10,
-): Promise<RAGChunk[]> {
-  // Hybrid search to find relevant items
-  const items = await hybridSearch(query, { limit: 20 });
+// ─────────────────────────────────────────────────────────────────────────────
+// Retrieval strategies
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (items.length === 0) return [];
-
+function itemsToChunks(
+  items: ContentItem[],
+  maxChunks: number,
+): RAGChunk[] {
   const chunks: RAGChunk[] = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -97,38 +146,83 @@ async function retrieveChunks(
         text: contentChunks[j],
         sourceType: item.sourceType,
         url: item.url,
-        // Simple relevance: earlier items from search are more relevant,
-        // first chunks within an item are more relevant
         relevanceScore: (1.0 / (i + 1)) * (1.0 / (j + 1)),
       });
     }
   }
 
-  // Sort by relevance and take top K
   chunks.sort((a, b) => b.relevanceScore - a.relevanceScore);
   return chunks.slice(0, maxChunks);
 }
 
-/**
- * Run the RAG pipeline: retrieve relevant content and generate a cited answer.
- */
+async function retrieveForSpecific(
+  query: string,
+  maxChunks: number,
+): Promise<RAGChunk[]> {
+  const items = await hybridSearch(query, { limit: 20 });
+  return itemsToChunks(items, maxChunks);
+}
+
+function retrieveForGeneral(maxChunks: number): RAGChunk[] {
+  // Prefer unread items; fall back to all recent if nothing is unread
+  let items = getItems({ isRead: false, limit: 15 });
+  if (items.length === 0) {
+    items = getItems({ limit: 15 });
+  }
+  return itemsToChunks(items, maxChunks);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main RAG entry point
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function ragQuery(query: string): Promise<RAGResult> {
   const { filtered: filteredQuery } = filterPII(query);
+  const intent = classifyIntent(filteredQuery);
 
-  // Retrieve relevant chunks
-  const chunks = await retrieveChunks(filteredQuery);
+  aiLogger.debug({ intent, query: filteredQuery.slice(0, 80) }, "RAG intent");
+
+  // ── Conversational: respond directly, no retrieval ──
+  if (intent === "conversational") {
+    const prompt = CONVERSATIONAL_PROMPT.replace("{QUESTION}", filteredQuery);
+    try {
+      const answer = await generateText(prompt, "research-synthesize");
+      return { answer, citations: [], chunksUsed: 0, totalTokensEstimate: Math.ceil(prompt.length / 4) };
+    } catch {
+      return {
+        answer: "Hey! I'm Distil, your information assistant. Ask me anything about your saved content.",
+        citations: [],
+        chunksUsed: 0,
+        totalTokensEstimate: 0,
+      };
+    }
+  }
+
+  // ── Specific or General: retrieve context ──
+  const maxChunks = 10;
+  let chunks: RAGChunk[];
+
+  if (intent === "specific") {
+    chunks = await retrieveForSpecific(filteredQuery, maxChunks);
+    // Fall back to general retrieval when specific search finds nothing but items exist
+    if (chunks.length === 0) {
+      chunks = retrieveForGeneral(maxChunks);
+    }
+  } else {
+    chunks = retrieveForGeneral(maxChunks);
+  }
 
   if (chunks.length === 0) {
     return {
       answer:
-        "I don't have any saved content that's relevant to your question. Try saving some articles or content first, and I'll be able to answer questions about them.",
+        "Your library is empty right now. Save some articles, newsletters, or links first — then I can answer questions about them, recommend what to read, and more.",
       citations: [],
       chunksUsed: 0,
       totalTokensEstimate: 0,
     };
   }
 
-  // Build context with numbered sources
+  // ── Build context with numbered sources ──
   const seenItems = new Map<string, number>();
   const citations: RAGResult["citations"] = [];
   const contextParts: string[] = [];
@@ -153,10 +247,11 @@ export async function ragQuery(query: string): Promise<RAGResult> {
   }
 
   const context = contextParts.join("\n\n---\n\n");
-  const prompt = RAG_PROMPT.replace("{CONTEXT}", context).replace(
-    "{QUESTION}",
-    filteredQuery,
-  );
+  const promptTemplate =
+    intent === "general" ? GENERAL_PROMPT : SPECIFIC_PROMPT;
+  const prompt = promptTemplate
+    .replace("{CONTEXT}", context)
+    .replace("{QUESTION}", filteredQuery);
 
   const totalTokensEstimate = Math.ceil(prompt.length / 4);
 

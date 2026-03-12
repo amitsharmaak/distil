@@ -12,6 +12,7 @@ import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
 import {
   DEFAULT_MODEL_CONFIG,
   PROVIDER_FALLBACK_MODELS,
+  MODEL_COSTS,
 } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
@@ -27,17 +28,6 @@ export interface UsageMetrics {
   provider: ProviderName;
   task: AITask;
 }
-
-const MODEL_COSTS: Record<string, { input: number; output: number }> = {
-  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
-  "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
-  "gemini-2.5-flash-lite": { input: 0.075, output: 0.3 },
-  "gemini-3.1-flash-lite-preview": { input: 0.075, output: 0.3 },
-  "gpt-4o-mini": { input: 0.15, output: 0.6 },
-  "gpt-4o": { input: 2.5, output: 10.0 },
-  "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
-  "claude-haiku-3-5": { input: 0.8, output: 4.0 },
-};
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);

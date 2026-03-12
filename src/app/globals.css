@@ -146,19 +146,19 @@
 .distil-reader {
   font-family: var(--font-newsreader), Georgia, serif;
   font-size: 1.0625rem;
-  line-height: 1.85;
+  line-height: 1.7;
   font-feature-settings: "liga" 1, "kern" 1;
 }
 
 .distil-reader p + p {
-  margin-top: 1.5em;
+  margin-top: 1.15em;
 }
 
 .distil-reader h2,
 .distil-reader h3 {
   font-family: var(--font-newsreader), Georgia, serif;
   line-height: 1.3;
-  margin-top: 2em;
+  margin-top: 1.5em;
   margin-bottom: 0.75em;
 }
 
@@ -177,7 +177,7 @@
 /* AI summary — polished reading experience */
 .distil-ai-summary {
   font-size: 0.9375rem;
-  line-height: 1.75;
+  line-height: 1.6;
 }
 
 .distil-ai-summary > :first-child {

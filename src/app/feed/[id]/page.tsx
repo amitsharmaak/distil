@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getItemById, getItems, getFeedback, getAISummaries } from "@/lib/db";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
+import { priorityColors } from "@/lib/constants";
 import { AISummary } from "@/components/feed/ai-summary";
 import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
@@ -43,11 +44,6 @@ const sourceLabels: Record<SourceType, string> = {
   manual: "Link",
 };
 
-const priorityColors: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 border-red-200",
-  medium: "bg-amber-500/10 text-amber-600 border-amber-200",
-  low: "bg-green-500/10 text-green-600 border-green-200",
-};
 
 /* ── Helpers ── */
 
@@ -208,7 +204,7 @@ export default async function ItemDetailPage({
       />
 
       {/* ── Unified header ── */}
-      <header className="mt-2 mb-8 space-y-3">
+      <header className="mt-2 mb-5 space-y-2">
         {/* Meta line: source · date · content type · priority */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <SourceIcon className="h-3.5 w-3.5" />
@@ -275,7 +271,7 @@ export default async function ItemDetailPage({
       </header>
 
       {/* Ornamental divider */}
-      <div className="distil-ornament mb-8" aria-hidden="true">
+      <div className="distil-ornament mb-5" aria-hidden="true">
         <span className="select-none text-[10px] text-border">&diams;</span>
       </div>
 
@@ -311,7 +307,6 @@ export default async function ItemDetailPage({
           >
             <AISummary
               itemId={item.id}
-              isRead={item.isRead}
               ogSummary={item.summary}
               fullContent={item.fullContent}
               initialBriefSummary={aiSummaries.brief ?? null}

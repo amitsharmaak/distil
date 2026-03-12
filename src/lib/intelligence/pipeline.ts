@@ -22,6 +22,7 @@ import {
 } from "../db";
 import type { ContentItem, SourceType } from "../types";
 import { generateSummary } from "../ai/summarize";
+import { embedItem } from "../ai/embeddings";
 import { classify } from "./classifier";
 import { checkRelevance } from "./relevance";
 import { extractContent } from "./extractor";
@@ -213,9 +214,10 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
 
     // Step 10b: Fire-and-forget deep AI summary (overview, keyPoints, whyItMatters).
     // Runs after the item is fully saved so generateSummary can load it by ID.
-    generateSummary(raw.id, { length: "brief" }).catch(() => {
-      // Non-fatal — item is already fully usable without the deep summary.
-    });
+    generateSummary(raw.id, { length: "brief" }).catch(() => {});
+
+    // Step 10c: Fire-and-forget embedding for semantic search.
+    embedItem(raw.id, extracted.title, enriched.summary).catch(() => {});
 
     // Step 11: Return ProcessingResult
     return {

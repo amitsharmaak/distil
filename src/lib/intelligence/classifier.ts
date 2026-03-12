@@ -9,7 +9,7 @@
 import type { RawContent, ContentClassification, MediaType } from "./types";
 import type { ContentType } from "../types";
 import { classifyContentPrompt } from "@/lib/prompts/intelligence";
-import { generateText, FAST_MODEL } from "../ai/client";
+import { generateText } from "@/lib/ai/router";
 
 const VALID_CONTENT_TYPES: ContentType[] = ["article", "video", "podcast"];
 const VALID_MEDIA_TYPES: MediaType[] = [
@@ -49,7 +49,7 @@ export async function classify(raw: RawContent): Promise<ContentClassification> 
 
   let response: string;
   try {
-    response = await generateText(prompt, FAST_MODEL);
+    response = await generateText(prompt, "auto-tag");
   } catch {
     return safeDefaultClassification();
   }

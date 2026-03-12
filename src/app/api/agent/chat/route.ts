@@ -16,12 +16,15 @@ import {
 } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
+  let body: { message?: string; conversationId?: string };
   try {
-    const body = await request.json();
-    const { message, conversationId } = body as {
-      message?: string;
-      conversationId?: string;
-    };
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  try {
+    const { message, conversationId } = body;
 
     if (
       !message ||

@@ -6,7 +6,7 @@
  * SERVER-SIDE ONLY — never import from "use client" components.
  */
 
-import { generateText } from "@/lib/ai/client";
+import { generateText } from "@/lib/ai/router";
 import type { ExtractedLink } from "@/lib/types";
 import { analyzeContentPrompt } from "@/lib/prompts/intelligence";
 import type {
@@ -65,7 +65,7 @@ export async function analyzeContent(
         surroundingContext: l.surroundingContext,
       })),
     });
-    const response = await generateText(prompt);
+    const response = await generateText(prompt, "auto-tag");
     const parsed = parseAnalysisResponse(response);
 
     relevantLinks = (parsed.relevantLinks ?? [])

@@ -1,5 +1,7 @@
 /**
- * AI task and model configuration.
+ * AI task and model configuration — single source of truth.
+ * Edit this file to change which model handles each task, swap providers,
+ * adjust fallbacks, or update per-model cost rates.
  * SERVER-SIDE ONLY.
  */
 
@@ -34,8 +36,29 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
   "research-gaps": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
   "preference-analysis": { provider: "openai", model: "gpt-4o-mini" },
   "auto-tag": { provider: "openai", model: "gpt-4o-mini" },
-  "dedup-check": { provider: "gemini", model: "	gemini-3.1-flash-lite-preview" },
+  "dedup-check": { provider: "gemini", model: "gemini-3.1-flash-lite-preview" },
 };
+
+/**
+ * Cost per 1 million tokens (USD) for each model.
+ * Used by the router to estimate per-call spend and enforce the daily budget.
+ */
+export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
+  "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
+  "gemini-2.5-flash-lite": { input: 0.075, output: 0.3 },
+  "gemini-3.1-flash-lite-preview": { input: 0.075, output: 0.3 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
+  "claude-haiku-3-5": { input: 0.8, output: 4.0 },
+};
+
+/**
+ * Gemini model used for web-search-grounded generation.
+ * Must support the googleSearch tool (Gemini 2.x+).
+ */
+export const GEMINI_SEARCH_MODEL = "gemini-2.5-flash";
 
 /** Best model for each task when only ONE provider is available. */
 export const PROVIDER_FALLBACK_MODELS: Record<

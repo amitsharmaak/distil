@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -70,7 +70,7 @@ export function DetailActionBar({
     }
   }
 
-  async function handleMarkRead() {
+  const handleMarkRead = useCallback(async () => {
     if (read || markingRead) return;
     setMarkingRead(true);
     try {
@@ -81,12 +81,33 @@ export function DetailActionBar({
       });
       if (res.ok) {
         setRead(true);
-        router.refresh();
+        if (nextId) {
+          router.push(`/feed/${nextId}${suffix}`);
+        } else {
+          router.push(`/feed${suffix}`);
+        }
       }
     } finally {
       setMarkingRead(false);
     }
-  }
+  }, [read, markingRead, itemId, nextId, suffix, router]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "r" && e.key !== "R") return;
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )
+        return;
+      e.preventDefault();
+      handleMarkRead();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleMarkRead]);
 
   const iconBtn =
     "h-8 w-8 text-muted-foreground hover:text-foreground transition-colors";
@@ -224,7 +245,7 @@ export function DetailActionBar({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              {read ? "Read" : "Mark as read"}
+              {read ? "Read" : "Mark as read (R)"}
             </TooltipContent>
           </Tooltip>
         </div>

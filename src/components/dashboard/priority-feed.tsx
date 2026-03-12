@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ContentItem, SourceType, ContentType } from "@/lib/types";
+import { priorityColors } from "@/lib/constants";
 import { MarkReadButton } from "@/components/feed/mark-read-button";
 
 const sourceIcons: Record<SourceType, React.ElementType> = {
@@ -40,11 +41,6 @@ const sourceColors: Record<SourceType, string> = {
   manual: "text-muted-foreground",
 };
 
-const priorityColors: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 border-red-200",
-  medium: "bg-amber-500/10 text-amber-600 border-amber-200",
-  low: "bg-green-500/10 text-green-600 border-green-200",
-};
 
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3 w-3" />;
