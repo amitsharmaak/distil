@@ -276,6 +276,7 @@ function buildContentItem(
     priority,
     isRead: !isUnread,
     createdAt,
+    contentExtractedAt: fullContent ? new Date().toISOString() : undefined,
   };
 }
 

@@ -1,77 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Mail,
-  Hash,
-  Globe,
-  Link as LinkIcon,
-  Play,
-  Headphones,
-  Clock,
-} from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Play, Headphones } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { MarkReadButton } from "@/components/feed/mark-read-button";
+import { cn } from "@/lib/utils";
 import { ContentItem, SourceType, ContentType } from "@/lib/types";
 import { detectStrategy } from "@/lib/content-strategies";
-
-const sourceIcons: Record<SourceType, React.ElementType> = {
-  gmail: Mail,
-  slack: Hash,
-  "browser-extension": Globe,
-  manual: LinkIcon,
-};
-
-const sourceColors: Record<SourceType, string> = {
-  gmail: "text-red-500",
-  slack: "text-purple-500",
-  "browser-extension": "text-orange-500",
-  manual: "text-gray-500",
-};
-
-const sourceLabels: Record<SourceType, string> = {
-  gmail: "Gmail",
-  slack: "Slack",
-  "browser-extension": "Extension",
-  manual: "Manual",
-};
-
-const priorityColors: Record<string, string> = {
-  high: "bg-red-500/10 text-red-600 border-red-200",
-  medium: "bg-amber-500/10 text-amber-600 border-amber-200",
-  low: "bg-green-500/10 text-green-600 border-green-200",
-};
-
-/** Strips markdown formatting to produce plain preview text. */
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/#{1,6}\s+/g, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`[^`]+`/g, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/\n+/g, " ")
-    .trim();
-}
+import { sourceIcons, sourceLabels, sourceColors, priorityColors } from "@/lib/constants";
+import { timeAgo, stripMarkdown } from "@/lib/format";
 
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3.5 w-3.5" />;
   if (type === "podcast") return <Headphones className="h-3.5 w-3.5" />;
   return null;
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
 }
 
 export function ContentCard({
@@ -85,37 +27,45 @@ export function ContentCard({
   onMarkRead?: (id: string) => void;
   filter?: string;
 }) {
-  const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
+  const SourceIcon = sourceIcons[item.sourceType];
   const strategy = detectStrategy(item.url);
   const filterSuffix = filter ? `?filter=${filter}` : "";
+
+  const displaySummary = item.aiSummary
+    ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
+    : item.summary;
 
   if (compact) {
     return (
       <Link
         href={`/feed/${item.id}${filterSuffix}`}
-        className="flex items-center gap-4 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
+        className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent/50"
       >
-        <SourceIcon className={`h-4 w-4 shrink-0 ${sourceColors[item.sourceType]}`} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-sm font-medium line-clamp-1 ${item.isRead ? "text-muted-foreground" : ""}`}
-            >
-              {item.title}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <SourceIcon
+          className={`h-3.5 w-3.5 shrink-0 ${sourceColors[item.sourceType]}`}
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-sm",
+            item.isRead ? "text-muted-foreground" : "font-medium",
+          )}
+        >
+          {item.title}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
           {item.contentType !== "article" && (
-            <Badge variant="secondary" className="text-[10px] gap-1">
+            <Badge variant="secondary" className="gap-1 text-[10px]">
               <ContentTypeIcon type={item.contentType} />
               {item.duration}
             </Badge>
           )}
-          <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${priorityColors[item.priority]}`}
+          >
             {item.priority}
           </Badge>
-          <span className="text-xs text-muted-foreground w-14 text-right">
+          <span className="w-14 text-right text-xs text-muted-foreground">
             {timeAgo(item.createdAt)}
           </span>
           {!item.isRead && (
@@ -131,71 +81,81 @@ export function ContentCard({
   }
 
   return (
-    <Link href={`/feed/${item.id}${filterSuffix}`}>
-      <Card
-        className={`transition-colors hover:bg-accent/50 ${!item.isRead ? "border-l-2 border-l-primary" : ""}`}
+    <Link href={`/feed/${item.id}${filterSuffix}`} className="group block">
+      <article
+        className={cn(
+          "relative rounded-xl border border-border bg-card p-5 transition-all hover:shadow-md",
+          !item.isRead && "border-l-2 border-l-primary",
+        )}
       >
-        <CardContent className="p-5">
-<div className="flex items-start gap-3">
-            <div className="mt-1 shrink-0">
-              <SourceIcon className={`h-5 w-5 ${sourceColors[item.sourceType]}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <h3
-                  className={`text-sm font-semibold leading-snug ${item.isRead ? "text-muted-foreground" : ""}`}
-                >
-                  {item.title}
-                </h3>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] ${priorityColors[item.priority]}`}
-                  >
-                    {item.priority}
-                  </Badge>
-                  {!item.isRead && (
-                    <MarkReadButton
-                      itemId={item.id}
-                      isRead={item.isRead}
-                      onRead={() => onMarkRead?.(item.id)}
-                    />
-                  )}
-                </div>
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                {item.aiSummary
-                  ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
-                  : item.summary}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="text-[10px]">
-                  {sourceLabels[item.sourceType]}
-                </Badge>
-                {item.contentType !== "article" && (
-                  <Badge variant="secondary" className="text-[10px] gap-1">
-                    <ContentTypeIcon type={item.contentType} />
-                    {item.duration}
-                  </Badge>
-                )}
-                {item.topics.slice(0, 3).map((topic) => (
-                  <Badge key={topic} variant="outline" className="text-[10px]">
-                    {topic}
-                  </Badge>
-                ))}
-                <div className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-                  {item.author && <span>{item.author}</span>}
-                  {item.author && item.publication && <span>·</span>}
-                  {item.publication && <span>{item.publication}</span>}
-                  <span>·</span>
-                  <Clock className="h-3 w-3" />
-                  <span>{timeAgo(item.createdAt)}</span>
-                </div>
-              </div>
-            </div>
+        {/* Source & time */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <SourceIcon
+              className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`}
+            />
+            <span>{sourceLabels[item.sourceType]}</span>
+            {item.publication && (
+              <>
+                <span className="text-border">&middot;</span>
+                <span>{item.publication}</span>
+              </>
+            )}
           </div>
-        </CardContent>
-      </Card>
+          <span className="text-xs text-muted-foreground">
+            {timeAgo(item.createdAt)}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h3
+          className={cn(
+            "font-serif text-base font-semibold leading-snug tracking-tight line-clamp-2",
+            item.isRead && "text-muted-foreground",
+          )}
+        >
+          {item.title}
+        </h3>
+
+        {/* Summary */}
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground line-clamp-2">
+          {displaySummary}
+        </p>
+
+        {/* Footer */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {item.contentType !== "article" && (
+            <Badge variant="secondary" className="gap-1 text-[10px]">
+              <ContentTypeIcon type={item.contentType} />
+              {item.duration}
+            </Badge>
+          )}
+          {item.topics.slice(0, 3).map((topic) => (
+            <span
+              key={topic}
+              className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground"
+            >
+              {topic}
+            </span>
+          ))}
+          <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+            {item.author && <span>{item.author}</span>}
+            <Badge
+              variant="outline"
+              className={`text-[10px] ${priorityColors[item.priority]}`}
+            >
+              {item.priority}
+            </Badge>
+            {!item.isRead && (
+              <MarkReadButton
+                itemId={item.id}
+                isRead={item.isRead}
+                onRead={() => onMarkRead?.(item.id)}
+              />
+            )}
+          </div>
+        </div>
+      </article>
     </Link>
   );
 }

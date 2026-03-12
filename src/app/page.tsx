@@ -1,45 +1,59 @@
 /**
- * Dashboard page — the home screen of Distil.
+ * Today's Brief — the home screen of Distil.
  *
- * This is an async Server Component: it fetches all content items directly
- * from the database (no HTTP round-trip) and passes them as props to the
- * three dashboard sub-components. This is the idiomatic Next.js App Router
- * pattern for server-driven pages.
+ * Redesigned as an editorial "morning brief" that reads like a newsletter:
+ * greeting + inline stats → priority reading → recent activity.
  *
- * The child components (StatsOverview, PriorityFeed, ActivityTimeline) are
- * pure display components that accept `items` as a prop and have no client-
- * side interactivity, so they do NOT need "use client".
+ * Server Component — fetches directly from the database.
  */
 
+import Link from "next/link";
 import { getItems } from "@/lib/db";
 import { StatsOverview } from "@/components/dashboard/stats-overview";
 import { PriorityFeed } from "@/components/dashboard/priority-feed";
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
+import { ArrowRight } from "lucide-react";
 
-export default async function DashboardPage() {
-  // Fetch all items directly from SQLite — no HTTP call needed in server context.
+export default async function TodayPage() {
   const items = getItems();
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
+    <div className="mx-auto max-w-4xl space-y-10">
+      {/* Editorial header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Your personalized information overview</p>
+        <h1 className="font-serif text-3xl font-semibold tracking-tight">
+          Today&rsquo;s Brief
+        </h1>
+        <StatsOverview items={items} />
       </div>
 
-      {/* Top stats row: total items, unread count, sources, topics */}
-      <StatsOverview items={items} />
+      {/* Priority Reading */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <span className="distil-section-label">Priority Reading</span>
+          <Link
+            href="/feed"
+            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            View all <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <PriorityFeed items={items} />
+      </section>
 
-      {/* Two-column section: priority reading list + recent activity timeline */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <PriorityFeed items={items} />
+      {/* Recent Activity */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <span className="distil-section-label">Recent Activity</span>
+          <Link
+            href="/feed?showRead=true"
+            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            See all <ArrowRight className="h-3 w-3" />
+          </Link>
         </div>
-        <div className="lg:col-span-2">
-          <ActivityTimeline items={items} />
-        </div>
-      </div>
+        <ActivityTimeline items={items} />
+      </section>
     </div>
   );
 }

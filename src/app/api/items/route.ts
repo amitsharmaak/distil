@@ -218,6 +218,8 @@ export async function POST(request: NextRequest) {
       // Full content and extracted links from Readability (only when extractContent is true).
       fullContent: extraction?.content ?? undefined,
       extractedLinks: extraction?.extractedLinks ?? undefined,
+      // Stamp extraction attempt so the detail page never re-fetches.
+      contentExtractedAt: strategy.extractContent ? new Date().toISOString() : undefined,
     };
 
     // ── Persist and respond ─────────────────────────────────────────────────

@@ -345,6 +345,13 @@ try {
   // Column already exists — safe to ignore.
 }
 
+// Track when content extraction was attempted (success or failure) to avoid retrying.
+try {
+  db.exec("ALTER TABLE items ADD COLUMN content_extracted_at TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+
 // Add progress column to research_reports (idempotent — ignore if already exists).
 try {
   db.exec("ALTER TABLE research_reports ADD COLUMN progress TEXT");
@@ -479,6 +486,7 @@ interface DbRow {
   thumbnailUrl: string | null;
   ai_priority_score: number | null;
   extracted_links: string | null; // JSON string
+  content_extracted_at: string | null;
   ai_summary_text: string | null; // from LEFT JOIN ai_summaries
 }
 
@@ -506,6 +514,7 @@ function deserialize(row: DbRow): ContentItem {
     duration: row.duration ?? undefined,
     thumbnailUrl: row.thumbnailUrl ?? undefined,
     extractedLinks: row.extracted_links ? JSON.parse(row.extracted_links) : undefined,
+    contentExtractedAt: row.content_extracted_at ?? undefined,
     aiSummary: row.ai_summary_text ?? undefined,
   };
 }
@@ -535,6 +544,7 @@ function serialize(item: ContentItem): Record<string, unknown> {
     duration: item.duration ?? null,
     thumbnailUrl: item.thumbnailUrl ?? null,
     extracted_links: item.extractedLinks ? JSON.stringify(item.extractedLinks) : null,
+    content_extracted_at: item.contentExtractedAt ?? null,
   };
 }
 
@@ -712,11 +722,11 @@ export function insertItem(item: ContentItem): ContentItem {
     INSERT INTO items
       (id, title, summary, fullContent, sourceType, contentType, topics,
        author, publication, url, normalized_url, priority, isRead, createdAt, duration, thumbnailUrl,
-       extracted_links)
+       extracted_links, content_extracted_at)
     VALUES
       (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
        @author, @publication, @url, @normalized_url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
-       @extracted_links)
+       @extracted_links, @content_extracted_at)
   `);
   stmt.run({ ...serialized, normalized_url: norm });
   // Re-fetch from DB to return the canonical stored version.
@@ -753,7 +763,8 @@ export function updateItem(id: string, patch: Partial<ContentItem>): ContentItem
       createdAt       = @createdAt,
       duration        = @duration,
       thumbnailUrl    = @thumbnailUrl,
-      extracted_links = @extracted_links
+      extracted_links       = @extracted_links,
+      content_extracted_at  = @content_extracted_at
     WHERE id = @id
   `);
   stmt.run(serialize(merged));
