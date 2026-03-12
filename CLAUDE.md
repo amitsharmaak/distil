@@ -93,22 +93,66 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 
 ### Web App (`src/`)
 
-- `src/app/` — Next.js App Router pages (Dashboard, Feed, Topics, Sources, Settings)
-- `src/app/api/items/` — REST API: GET/POST `/api/items`, PATCH/DELETE `/api/items/[id]`
-- `src/components/` — Organized by feature: `layout/`, `dashboard/`, `feed/`, `topics/`, `sources/`, `ui/`
+- `src/middleware.ts` — Root Next.js middleware
+- `src/app/` — Next.js App Router pages (Dashboard, Feed, Research, Topics, Sources, Settings)
+- `src/app/api/items/` — REST API: GET/POST `/api/items`, PATCH/DELETE `/api/items/[id]`, POST `/api/items/[id]/extract`
+- `src/app/api/agent/` — Agentic backend routes: `/api/agent/chat`, `/api/agent/status`, `/api/agent/approvals`
+- `src/app/api/notifications/` — Notification routes (list, read, preferences)
+- `src/app/api/settings/` — Settings routes (e.g. email intelligence config)
+- `src/app/api/data/` — Bulk data export/import route
+- `src/components/` — Organized by feature: `layout/`, `dashboard/`, `feed/`, `agent/`, `brief/`, `notifications/`, `topics/`, `sources/`, `ui/`
 - `src/lib/config.ts` — Central config module (all env vars exported from here)
 - `src/lib/db.ts` — SQLite singleton, schema init, seed, CRUD helpers (server-only)
 - `src/lib/og.ts` — Open Graph metadata fetcher (server-only)
 - `src/lib/types.ts` — Core TypeScript interfaces (`ContentItem`, `Topic`, `Source`, `AgentSettings`)
 - `src/lib/utils.ts` — shadcn utility (cn function)
-- `src/lib/ai/` — AI agent modules (server-only):
+- `src/lib/constants.ts` — Shared constants
+- `src/lib/format.ts` — Formatting helpers
+- `src/lib/logger.ts` — Logging utility
+- `src/lib/notifications.ts` — Notification helpers
+- `src/lib/pii-filter.ts` — PII scrubbing before AI processing
+- `src/lib/content-extractor.ts` — Article/content extraction
+- `src/lib/content-strategies/` — Per-content-type extraction strategies (article, tweet, youtube)
+- `src/lib/ai/` — AI modules (server-only):
   - `client.ts` — Google Gemini SDK singleton (`generateText`, `generateTextWithSearch`)
   - `summarize.ts` — Content summarization with Gemini
   - `prioritize.ts` — Hybrid heuristic + AI feed scoring
   - `research.ts` — Deep research with Google Search grounding
   - `preferences.ts` — Preference learning from feedback
-  - `prompts.ts` — All prompt templates
+  - `tagger.ts` — Auto-tagging / topic classification
+  - `embeddings.ts` — Vector embeddings for semantic search
+  - `search.ts` — Semantic search over content
+  - `router.ts` — AI request routing / model selection
+  - `providers.ts` — AI provider abstraction
+  - `ai-config.ts` — AI configuration
+  - `circuit-breaker.ts` — Circuit breaker for AI calls
+  - `retry.ts` — Retry logic for AI calls
   - `types.ts` — AI-specific TypeScript interfaces
+- `src/lib/prompts/` — All prompt templates (split by domain):
+  - `index.ts` — Re-exports all prompts
+  - `intelligence.ts` — Intelligence/analysis prompts
+  - `prioritize.ts` — Prioritization prompts
+  - `research.ts` — Deep research prompts
+  - `summarize.ts` — Summarization prompts
+- `src/lib/intelligence/` — Content intelligence pipeline (server-only):
+  - `pipeline.ts` — Orchestrates enrichment steps
+  - `analyzer.ts` — Content analysis
+  - `classifier.ts` — Topic/category classification
+  - `enricher.ts` — Metadata enrichment
+  - `extractor.ts` — Entity/keyword extraction
+  - `relevance.ts` — Relevance scoring
+  - `types.ts` — Intelligence-specific types
+- `src/lib/agent/` — Agentic orchestration (server-only):
+  - `orchestrator.ts` — Main agent loop
+  - `job-worker.ts` — Background job processing
+  - `tool-registry.ts` — Agent tool definitions
+  - `register-tools.ts` — Tool registration
+  - `rag.ts` — Retrieval-augmented generation
+  - `insight-detection.ts` — Proactive insight surfacing
+  - `proactive-research.ts` — Autonomous research triggers
+  - `db-adapter.ts` — DB adapter for agent persistence
+  - `workflows/triage.ts` — Triage workflow
+- `src/lib/middleware/` — Composable API middleware (auth, cors, rate-limit, trace)
 
 ### AI Agent System
 
@@ -118,7 +162,9 @@ The AI agent system uses Google Gemini (`gemini-2.5-flash`) for:
 3. **Prioritization** — scores items using learned preferences (heuristic + optional AI ranking)
 4. **Deep Research** — multi-step research with live web search, produces cited markdown reports
 
-API routes: `POST /api/ai/summarize`, `GET /api/ai/summary/[itemId]`, `POST /api/ai/feedback`, `GET /api/ai/feedback/[itemId]`, `POST /api/ai/prioritize`, `GET/PUT /api/ai/preferences`, `POST /api/ai/research`, `GET /api/ai/research/[id]`
+API routes: `POST /api/ai/summarize`, `GET /api/ai/summary/[itemId]`, `POST /api/ai/feedback`, `GET /api/ai/feedback/[itemId]`, `POST /api/ai/prioritize`, `GET/PUT /api/ai/preferences`, `POST /api/ai/research`, `GET /api/ai/research/[id]`, `GET /api/ai/research/[id]/stream`, `GET /api/ai/research/list`
+
+Agent routes: `POST /api/agent/chat`, `GET /api/agent/status`, `POST /api/agent/approvals`
 
 Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `user_settings`
 
@@ -190,9 +236,9 @@ src/components/dashboard/__tests__/              # Dashboard component tests
 - Time formatting uses local `timeAgo()` helper functions (not yet extracted to shared util)
 - Dashboard and detail pages are Server Components (no `"use client"`)
 - Feed list, Topics, Sources pages are Client Components (interactive filters / fetch on mount)
-- `src/lib/ai/` modules are server-only — never import from `"use client"` components
+- `src/lib/ai/` and `src/lib/intelligence/` and `src/lib/agent/` modules are server-only — never import from `"use client"` components
 - AI-generated content is rendered as markdown using `react-markdown` + `remark-gfm`
-- AI prompts are centralized in `src/lib/ai/prompts.ts` for easy iteration
+- AI prompts are centralized in `src/lib/prompts/` (split by domain) — `index.ts` re-exports all
 
 ## Deployment
 
@@ -255,8 +301,13 @@ distil/
 │   ├── vercel.svg
 │   └── window.svg
 ├── src/
+│   ├── middleware.ts
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── agent/
+│   │   │   │   ├── approvals/route.ts
+│   │   │   │   ├── chat/route.ts
+│   │   │   │   └── status/route.ts
 │   │   │   ├── ai/
 │   │   │   │   ├── feedback/
 │   │   │   │   │   ├── [itemId]/route.ts
@@ -264,7 +315,10 @@ distil/
 │   │   │   │   ├── preferences/route.ts
 │   │   │   │   ├── prioritize/route.ts
 │   │   │   │   ├── research/
-│   │   │   │   │   ├── [id]/route.ts
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   ├── route.ts
+│   │   │   │   │   │   └── stream/route.ts
+│   │   │   │   │   ├── list/route.ts
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── summarize/route.ts
 │   │   │   │   └── summary/[itemId]/route.ts
@@ -272,20 +326,31 @@ distil/
 │   │   │   │   ├── callback/route.ts
 │   │   │   │   ├── route.ts
 │   │   │   │   └── status/route.ts
+│   │   │   ├── data/route.ts
 │   │   │   ├── gmail/sync/route.ts
-│   │   │   ├── slack/
-│   │   │   │   ├── status/route.ts
-│   │   │   │   └── sync/route.ts
-│   │   │   └── items/
-│   │   │       ├── [id]/
-│   │   │       │   ├── __tests__/route.test.ts
-│   │   │       │   └── route.ts
-│   │   │       ├── __tests__/route.test.ts
-│   │   │       └── route.ts
+│   │   │   ├── items/
+│   │   │   │   ├── [id]/
+│   │   │   │   │   ├── __tests__/route.test.ts
+│   │   │   │   │   ├── extract/route.ts
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── __tests__/route.test.ts
+│   │   │   │   ├── rejected/route.ts
+│   │   │   │   └── route.ts
+│   │   │   ├── notifications/
+│   │   │   │   ├── [id]/route.ts
+│   │   │   │   ├── preferences/route.ts
+│   │   │   │   └── route.ts
+│   │   │   ├── settings/
+│   │   │   │   └── email-intelligence/route.ts
+│   │   │   └── slack/
+│   │   │       ├── status/route.ts
+│   │   │       └── sync/route.ts
 │   │   ├── feed/
 │   │   │   ├── [id]/page.tsx
 │   │   │   └── page.tsx
-│   │   ├── research/[id]/page.tsx
+│   │   ├── research/
+│   │   │   ├── [id]/page.tsx
+│   │   │   └── page.tsx
 │   │   ├── settings/page.tsx
 │   │   ├── sources/page.tsx
 │   │   ├── topics/page.tsx
@@ -294,6 +359,11 @@ distil/
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── components/
+│   │   ├── agent/
+│   │   │   ├── agent-status-panel.tsx
+│   │   │   └── chat-panel.tsx
+│   │   ├── brief/
+│   │   │   └── insight-card.tsx
 │   │   ├── dashboard/
 │   │   │   ├── __tests__/
 │   │   │   │   ├── priority-feed.test.tsx
@@ -303,13 +373,24 @@ distil/
 │   │   │   └── stats-overview.tsx
 │   │   ├── feed/
 │   │   │   ├── ai-summary.tsx
+│   │   │   ├── article-navigation.tsx
 │   │   │   ├── content-card.tsx
 │   │   │   ├── deep-research.tsx
+│   │   │   ├── detail-action-bar.tsx
 │   │   │   ├── feed-filters.tsx
-│   │   │   └── feedback-buttons.tsx
+│   │   │   ├── feedback-buttons.tsx
+│   │   │   ├── lazy-article-extract.tsx
+│   │   │   ├── mark-read-button.tsx
+│   │   │   ├── reader-view.tsx
+│   │   │   └── video-embed.tsx
 │   │   ├── layout/
+│   │   │   ├── mobile-nav.tsx
 │   │   │   ├── sidebar.tsx
+│   │   │   ├── theme-provider.tsx
+│   │   │   ├── theme-toggle.tsx
 │   │   │   └── topbar.tsx
+│   │   ├── notifications/
+│   │   │   └── notification-panel.tsx
 │   │   ├── sources/          (empty — sources page is self-contained)
 │   │   ├── topics/           (empty — topics page is self-contained)
 │   │   └── ui/
@@ -320,6 +401,7 @@ distil/
 │   │       ├── dialog.tsx
 │   │       ├── dropdown-menu.tsx
 │   │       ├── input.tsx
+│   │       ├── popover.tsx
 │   │       ├── scroll-area.tsx
 │   │       ├── select.tsx
 │   │       ├── separator.tsx
@@ -332,24 +414,74 @@ distil/
 │       ├── __tests__/
 │       │   ├── db.test.ts
 │       │   └── og.test.ts
+│       ├── agent/
+│       │   ├── db-adapter.ts
+│       │   ├── insight-detection.ts
+│       │   ├── job-worker.ts
+│       │   ├── orchestrator.ts
+│       │   ├── proactive-research.ts
+│       │   ├── rag.ts
+│       │   ├── register-tools.ts
+│       │   ├── tool-registry.ts
+│       │   └── workflows/
+│       │       └── triage.ts
 │       ├── ai/
 │       │   ├── __tests__/
 │       │   │   ├── prioritize.test.ts
 │       │   │   ├── prompts.test.ts
 │       │   │   └── summarize.test.ts
+│       │   ├── ai-config.ts
+│       │   ├── circuit-breaker.ts
 │       │   ├── client.ts
+│       │   ├── embeddings.ts
 │       │   ├── preferences.ts
 │       │   ├── prioritize.ts
-│       │   ├── prompts.ts
+│       │   ├── providers.ts
 │       │   ├── research.ts
+│       │   ├── retry.ts
+│       │   ├── router.ts
+│       │   ├── search.ts
 │       │   ├── summarize.ts
+│       │   ├── tagger.ts
 │       │   └── types.ts
 │       ├── connectors/
 │       │   ├── gmail.ts
 │       │   └── slack.ts
+│       ├── content-strategies/
+│       │   ├── article.ts
+│       │   ├── index.ts
+│       │   ├── tweet.ts
+│       │   ├── types.ts
+│       │   └── youtube.ts
+│       ├── intelligence/
+│       │   ├── analyzer.ts
+│       │   ├── classifier.ts
+│       │   ├── enricher.ts
+│       │   ├── extractor.ts
+│       │   ├── pipeline.ts
+│       │   ├── relevance.ts
+│       │   └── types.ts
+│       ├── middleware/
+│       │   ├── auth.ts
+│       │   ├── cors.ts
+│       │   ├── index.ts
+│       │   ├── rate-limit.ts
+│       │   └── trace.ts
+│       ├── prompts/
+│       │   ├── index.ts
+│       │   ├── intelligence.ts
+│       │   ├── prioritize.ts
+│       │   ├── research.ts
+│       │   └── summarize.ts
 │       ├── config.ts
+│       ├── constants.ts
+│       ├── content-extractor.ts
 │       ├── db.ts
+│       ├── format.ts
+│       ├── logger.ts
+│       ├── notifications.ts
 │       ├── og.ts
+│       ├── pii-filter.ts
 │       ├── types.ts
 │       └── utils.ts
 └── tsconfig.json

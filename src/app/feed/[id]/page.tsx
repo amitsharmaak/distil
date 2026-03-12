@@ -1,36 +1,33 @@
 /**
  * Item detail page — /feed/[id]
  *
- * Editorial reading experience with serif headlines, clear metadata,
- * AI summaries, and feedback. Server Component with embedded Client Components.
+ * Unified reader-mode experience. Every content type (article, tweet, video,
+ * podcast) gets the same structural layout: header → ornamental divider →
+ * content body → sticky action bar. Only the content body varies by type.
  */
 
 import Link from "next/link";
 import {
   ArrowLeft,
-  ExternalLink,
   Play,
   Headphones,
-  Clock,
   Mail,
   Hash,
-  Twitter,
   Globe,
   Link as LinkIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { getItemById, getItems, getFeedback, getAISummaries } from "@/lib/db";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
 import { AISummary } from "@/components/feed/ai-summary";
-import { FeedbackButtons } from "@/components/feed/feedback-buttons";
-import { DeepResearch } from "@/components/feed/deep-research";
 import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
 import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
+import { DetailActionBar } from "@/components/feed/detail-action-bar";
+
+/* ── Constants ── */
 
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
@@ -42,8 +39,8 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
 const sourceLabels: Record<SourceType, string> = {
   gmail: "Gmail",
   slack: "Slack",
-  "browser-extension": "Browser Extension",
-  manual: "Manual Link",
+  "browser-extension": "Extension",
+  manual: "Link",
 };
 
 const priorityColors: Record<string, string> = {
@@ -52,6 +49,38 @@ const priorityColors: Record<string, string> = {
   low: "bg-green-500/10 text-green-600 border-green-200",
 };
 
+/* ── Helpers ── */
+
+/**
+ * Derives a display title, truncated at a word boundary.
+ * Falls back to the first sentence of the summary when the title is missing
+ * or is just a raw URL.
+ */
+function getDisplayTitle(
+  title: string,
+  summary: string,
+  maxLen = 100,
+): string {
+  const isUrl = /^https?:\/\//.test(title);
+  let text = !isUrl && title ? title : "";
+
+  if (!text && summary) {
+    const firstSentence = summary.split(/(?<=[.!?])\s/)[0];
+    text = firstSentence || summary;
+  }
+
+  if (!text) return "Untitled";
+  if (text.length <= maxLen) return text;
+
+  const truncated = text.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (
+    (lastSpace > maxLen * 0.6 ? truncated.slice(0, lastSpace) : truncated) +
+    "\u2026"
+  );
+}
+
+/** Tokenise tweet text into clickable @mentions, #hashtags, and URLs. */
 function renderTweetText(text: string): React.ReactNode[] {
   const tokenPattern = /(https?:\/\/[^\s]+)|(@\w+)|(#\w+)/g;
   const nodes: React.ReactNode[] = [];
@@ -59,11 +88,11 @@ function renderTweetText(text: string): React.ReactNode[] {
 
   for (const match of text.matchAll(tokenPattern)) {
     const start = match.index!;
-    if (start > lastIndex) {
-      nodes.push(text.slice(lastIndex, start));
-    }
+    if (start > lastIndex) nodes.push(text.slice(lastIndex, start));
 
     const token = match[0];
+    const linkClass = "text-primary hover:underline";
+
     if (token.startsWith("http")) {
       const display = token.length > 40 ? token.slice(0, 40) + "\u2026" : token;
       nodes.push(
@@ -72,7 +101,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           href={token}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:underline break-all"
+          className={`${linkClass} break-all`}
         >
           {display}
         </a>,
@@ -84,7 +113,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           href={`https://x.com/${token.slice(1)}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:underline"
+          className={linkClass}
         >
           {token}
         </a>,
@@ -96,7 +125,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           href={`https://x.com/hashtag/${token.slice(1)}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:underline"
+          className={linkClass}
         >
           {token}
         </a>,
@@ -105,52 +134,11 @@ function renderTweetText(text: string): React.ReactNode[] {
     lastIndex = start + token.length;
   }
 
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return nodes;
 }
 
-function TweetContent({
-  text,
-  author,
-  createdAt,
-}: {
-  text: string;
-  author?: string;
-  createdAt: string;
-}) {
-  const paragraphs = text.split(/\n\n+/);
-
-  return (
-    <Card className="border-primary/10">
-      <CardContent className="p-6">
-        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-          <Twitter className="h-4 w-4 text-primary" />
-          {author && (
-            <span className="font-medium text-foreground">{author}</span>
-          )}
-          <span>&middot;</span>
-          <time dateTime={createdAt}>
-            {new Date(createdAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </time>
-        </div>
-        <div className="space-y-4">
-          {paragraphs.map((para, i) => (
-            <p key={i} className="text-base leading-7 whitespace-pre-line">
-              {renderTweetText(para)}
-            </p>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+/* ── Page ── */
 
 export default async function ItemDetailPage({
   params,
@@ -178,9 +166,6 @@ export default async function ItemDetailPage({
     );
   }
 
-  // Don't block render on extraction — page paints immediately. Missing fullContent
-  // is filled asynchronously via LazyArticleExtract + POST /api/items/[id]/extract.
-
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const strategy = detectStrategy(item.url);
   const aiSummaries = getAISummaries(item.id);
@@ -196,8 +181,15 @@ export default async function ItemDetailPage({
   const nextItem =
     currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
 
+  const displayTitle = getDisplayTitle(item.title, item.summary);
+  const formattedDate = new Date(item.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="distil-reader-page mx-auto max-w-2xl pb-24 md:pb-20">
       {/* Back navigation */}
       <div className="sticky top-0 z-10 -mx-8 bg-background/80 px-8 py-3 backdrop-blur-sm">
         <Link
@@ -208,84 +200,67 @@ export default async function ItemDetailPage({
         </Link>
       </div>
 
-      {/* Keyboard navigation */}
+      {/* Keyboard prev / next (invisible) */}
       <ArticleNavigation
         prevId={prevItem?.id ?? null}
         nextId={nextItem?.id ?? null}
         filter={filter}
       />
 
-      {/* Item header */}
-      {strategy.detail.showTweetRenderer ? (
-        <>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1 text-xs">
-              <SourceIcon className="h-3 w-3" />
-              {sourceLabels[item.sourceType]}
-            </Badge>
-            <Badge
-              variant="outline"
-              className={`text-xs ${priorityColors[item.priority]}`}
-            >
-              {item.priority} priority
-            </Badge>
-            {item.topics.map((topic) => (
-              <span
-                key={topic}
-                className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground"
-              >
-                {topic}
-              </span>
-            ))}
-          </div>
-          <TweetContent
-            text={item.summary}
-            author={item.author}
-            createdAt={item.createdAt}
-          />
-        </>
-      ) : (
-        <>
-          {/* Metadata badges */}
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1 text-xs">
-              <SourceIcon className="h-3 w-3" />
-              {sourceLabels[item.sourceType] ?? item.sourceType}
-            </Badge>
-            <Badge
-              variant="outline"
-              className={`text-xs ${priorityColors[item.priority]}`}
-            >
-              {item.priority} priority
-            </Badge>
-            {item.contentType !== "article" && (
-              <Badge variant="secondary" className="gap-1 text-xs">
-                {item.contentType === "video" ? (
-                  <Play className="h-3 w-3" />
-                ) : (
-                  <Headphones className="h-3 w-3" />
-                )}
-                {item.contentType} &middot; {item.duration}
-              </Badge>
+      {/* ── Unified header ── */}
+      <header className="mt-2 mb-8 space-y-3">
+        {/* Meta line: source · date · content type · priority */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <SourceIcon className="h-3.5 w-3.5" />
+          <span>{sourceLabels[item.sourceType] ?? item.sourceType}</span>
+          <span className="text-border">&middot;</span>
+          <time dateTime={item.createdAt}>{formattedDate}</time>
+          {item.contentType !== "article" && (
+            <>
+              <span className="text-border">&middot;</span>
+              {item.contentType === "video" ? (
+                <Play className="h-3 w-3" />
+              ) : (
+                <Headphones className="h-3 w-3" />
+              )}
+              <span className="capitalize">{item.contentType}</span>
+              {item.duration && (
+                <>
+                  <span className="text-border">&middot;</span>
+                  <span>{item.duration}</span>
+                </>
+              )}
+            </>
+          )}
+          <Badge
+            variant="outline"
+            className={`ml-auto h-4 py-0 text-[10px] leading-none ${priorityColors[item.priority]}`}
+          >
+            {item.priority}
+          </Badge>
+        </div>
+
+        {/* Title — restrained serif, truncated at ~100 chars */}
+        <h1
+          className="font-serif text-xl font-medium leading-snug tracking-tight"
+          title={item.title !== displayTitle ? item.title : undefined}
+        >
+          {displayTitle}
+        </h1>
+
+        {/* Author / publication */}
+        {(item.author || item.publication) && (
+          <p className="text-sm text-muted-foreground">
+            {item.author}
+            {item.author && item.publication && (
+              <span className="mx-1.5 text-border">&middot;</span>
             )}
-          </div>
+            {item.publication}
+          </p>
+        )}
 
-          {/* Title — large serif */}
-          <h1 className="font-serif text-3xl font-semibold leading-tight tracking-tight">
-            {item.title}
-          </h1>
-
-          {/* Author + date */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {item.author && <span>{item.author}</span>}
-            {item.author && item.publication && <span>&middot;</span>}
-            {item.publication && <span>{item.publication}</span>}
-            <span>&middot;</span>
-            <Clock className="h-3.5 w-3.5" />
-            <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-          </div>
-
-          {/* Topics */}
+        {/* Topics */}
+        {item.topics.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {item.topics.map((topic) => (
               <span
@@ -296,33 +271,79 @@ export default async function ItemDetailPage({
               </span>
             ))}
           </div>
+        )}
+      </header>
 
-          <Separator />
+      {/* Ornamental divider */}
+      <div className="distil-ornament mb-8" aria-hidden="true">
+        <span className="select-none text-[10px] text-border">&diams;</span>
+      </div>
 
-          {/* AI Summary — extract fullContent in background when missing so page renders fast */}
-          {strategy.detail.showAISummary && (
-            <LazyArticleExtract
-              itemId={item.id}
+      {/* ── Content body ── */}
+      <section className="min-h-[30vh]">
+        {/* Video embed (when applicable) */}
+        {strategy.detail.showEmbedPlayer && (
+          <div className="mb-6">
+            <VideoEmbed
               url={item.url}
-              hasFullContent={!!item.fullContent}
-              contentExtractedAt={item.contentExtractedAt}
-            >
-              <AISummary
-                itemId={item.id}
-                isRead={item.isRead}
-                ogSummary={item.summary}
-                fullContent={item.fullContent}
-                initialBriefSummary={aiSummaries.brief ?? null}
-                initialDetailedSummary={aiSummaries.detailed ?? null}
-              />
-            </LazyArticleExtract>
-          )}
-        </>
-      )}
+              contentType={item.contentType}
+              duration={item.duration}
+            />
+          </div>
+        )}
 
-      {/* Feedback */}
-      <FeedbackButtons
+        {strategy.detail.showTweetRenderer ? (
+          /* Tweet — rendered directly in reader typography */
+          <div className="distil-reader space-y-4">
+            {item.summary.split(/\n\n+/).map((para, i) => (
+              <p key={i} className="whitespace-pre-line">
+                {renderTweetText(para)}
+              </p>
+            ))}
+          </div>
+        ) : strategy.detail.showAISummary ? (
+          /* Article — AI summary with lazy content extraction */
+          <LazyArticleExtract
+            itemId={item.id}
+            url={item.url}
+            hasFullContent={!!item.fullContent}
+            contentExtractedAt={item.contentExtractedAt}
+          >
+            <AISummary
+              itemId={item.id}
+              isRead={item.isRead}
+              ogSummary={item.summary}
+              fullContent={item.fullContent}
+              initialBriefSummary={aiSummaries.brief ?? null}
+              initialDetailedSummary={aiSummaries.detailed ?? null}
+            />
+          </LazyArticleExtract>
+        ) : item.contentType === "podcast" &&
+          !strategy.detail.showEmbedPlayer ? (
+          /* Podcast placeholder */
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center p-12">
+              <div className="rounded-full bg-primary/10 p-4">
+                <Headphones className="h-8 w-8 text-primary" />
+              </div>
+              <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
+              {item.duration && (
+                <p className="text-xs text-muted-foreground">{item.duration}</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+      </section>
+
+      {/* ── Sticky action bar ── */}
+      <DetailActionBar
         itemId={item.id}
+        url={item.url}
+        title={item.title}
+        isRead={item.isRead}
+        prevId={prevItem?.id ?? null}
+        nextId={nextItem?.id ?? null}
+        filter={filter}
         initialFeedback={
           existingFeedback
             ? {
@@ -332,35 +353,6 @@ export default async function ItemDetailPage({
             : null
         }
       />
-
-      {/* Video embed or podcast placeholder */}
-      {strategy.detail.showEmbedPlayer ? (
-        <VideoEmbed
-          url={item.url}
-          contentType={item.contentType}
-          duration={item.duration}
-        />
-      ) : item.contentType === "podcast" ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center p-12">
-            <div className="rounded-full bg-primary/10 p-4">
-              <Headphones className="h-8 w-8 text-primary" />
-            </div>
-            <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
-            <p className="text-xs text-muted-foreground">{item.duration}</p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        <Button variant="outline" size="sm" className="gap-2" asChild>
-          <a href={item.url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4" /> View Original
-          </a>
-        </Button>
-        <DeepResearch itemId={item.id} defaultQuery={item.title} />
-      </div>
     </div>
   );
 }

@@ -193,3 +193,43 @@
   list-style-type: decimal;
   padding-left: 1.25em;
 }
+
+/* ── Reader page ── immersive environment for /feed/[id] */
+
+@keyframes reader-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.distil-reader-page header {
+  animation: reader-fade-in 0.45s ease-out both;
+}
+
+.distil-reader-page section {
+  animation: reader-fade-in 0.45s ease-out 0.12s both;
+}
+
+.distil-ornament {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.distil-ornament::before,
+.distil-ornament::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  opacity: 0.55;
+}
+
+.distil-action-bar {
+  box-shadow: 0 -1px 4px 0 rgb(0 0 0 / 0.04);
+}
