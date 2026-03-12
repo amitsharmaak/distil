@@ -28,12 +28,12 @@ export interface ModelAssignment {
 /** Optimal model for each task when all providers are available. */
 export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
   summarize: { provider: "gemini", model: "gemini-3-flash-preview" },
-  "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
+  "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-6" },
   prioritize: { provider: "openai", model: "gpt-4o-mini" },
-  "research-plan": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
+  "research-plan": { provider: "anthropic", model: "claude-sonnet-4-6" },
   "research-search": { provider: "gemini", model: "gemini-3-flash-preview" },
-  "research-synthesize": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
-  "research-gaps": { provider: "anthropic", model: "claude-sonnet-4-20250514" },
+  "research-synthesize": { provider: "anthropic", model: "claude-sonnet-4-6" },
+  "research-gaps": { provider: "anthropic", model: "claude-sonnet-4-6" },
   "preference-analysis": { provider: "openai", model: "gpt-4o-mini" },
   "auto-tag": { provider: "openai", model: "gpt-4o-mini" },
   "dedup-check": { provider: "gemini", model: "gemini-3.1-flash-lite-preview" },
@@ -51,14 +51,16 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4o": { input: 2.5, output: 10.0 },
   "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
   "claude-haiku-3-5": { input: 0.8, output: 4.0 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
 };
 
 /**
  * Gemini model used for web-search-grounded generation.
- * Must support the googleSearch tool (Gemini 2.x+).
+ * Must support the googleSearch tool (Gemini 2.x+; Gemini 3 Flash also supported).
  */
-export const GEMINI_SEARCH_MODEL = "gemini-2.5-flash";
+export const GEMINI_SEARCH_MODEL = "gemini-3-flash-preview";
 
 /** Best model for each task when only ONE provider is available. */
 export const PROVIDER_FALLBACK_MODELS: Record<
@@ -90,15 +92,15 @@ export const PROVIDER_FALLBACK_MODELS: Record<
     "dedup-check": "gpt-4o-mini",
   },
   anthropic: {
-    summarize: "claude-haiku-3-5",
-    "summarize-complex": "claude-sonnet-4-20250514",
-    prioritize: "claude-haiku-3-5",
-    "research-plan": "claude-sonnet-4-20250514",
-    "research-search": "claude-haiku-3-5",
-    "research-synthesize": "claude-sonnet-4-20250514",
-    "research-gaps": "claude-sonnet-4-20250514",
-    "preference-analysis": "claude-haiku-3-5",
-    "auto-tag": "claude-haiku-3-5",
-    "dedup-check": "claude-haiku-3-5",
+    summarize: "claude-haiku-4-5",
+    "summarize-complex": "claude-sonnet-4-6",
+    prioritize: "claude-haiku-4-5",
+    "research-plan": "claude-sonnet-4-6",
+    "research-search": "claude-haiku-4-5",
+    "research-synthesize": "claude-sonnet-4-6",
+    "research-gaps": "claude-sonnet-4-6",
+    "preference-analysis": "claude-haiku-4-5",
+    "auto-tag": "claude-haiku-4-5",
+    "dedup-check": "claude-haiku-4-5",
   },
 };
