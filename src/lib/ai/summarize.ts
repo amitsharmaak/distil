@@ -15,7 +15,7 @@ import {
   summarizePrompt,
   chunkSummarizePrompt,
   synthesizeChunkSummariesPrompt,
-} from "./prompts";
+} from "@/lib/prompts/summarize";
 import { getAISummary, upsertAISummary, getItemById } from "@/lib/db";
 import type { SummaryOutput } from "./types";
 

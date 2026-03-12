@@ -23,7 +23,7 @@ import {
   researchPlanPrompt,
   researchSynthesizePrompt,
   researchGapsPrompt,
-} from "./prompts";
+} from "@/lib/prompts/research";
 import {
   insertResearchReport,
   updateResearchReport,

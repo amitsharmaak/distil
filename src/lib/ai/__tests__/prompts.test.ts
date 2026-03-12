@@ -5,7 +5,9 @@
  * Test fixture: the TechCrunch "Claude Code voice mode" article.
  */
 
-import { summarizePrompt, prioritizePrompt, researchPlanPrompt, researchSynthesizePrompt } from "../prompts";
+import { summarizePrompt } from "@/lib/prompts/summarize";
+import { prioritizePrompt } from "@/lib/prompts/prioritize";
+import { researchPlanPrompt, researchSynthesizePrompt } from "@/lib/prompts/research";
 import type { ContentItem } from "@/lib/types";
 import type { UserPreferenceProfile } from "../types";
 

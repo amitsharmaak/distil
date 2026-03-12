@@ -6,15 +6,15 @@ import { syncNewsletters } from "@/lib/connectors/gmail";
 /**
  * POST /api/gmail/sync
  *
- * Triggers a Gmail newsletter sync. Fetches emails with List-Unsubscribe
- * headers from the last 30 days, deduplicates, and inserts new items.
+ * Triggers a Gmail email sync. Fetches emails from the configured date range,
+ * processes them through the Unified Intelligence Layer pipeline.
  *
- * Returns: { count: number, items: ContentItem[] }
+ * Returns: { count: number, items: ProcessingResult[] }
  */
 export async function POST() {
   try {
-    const items = await syncNewsletters();
-    return NextResponse.json({ count: items.length, items });
+    const { count, items } = await syncNewsletters();
+    return NextResponse.json({ count, items });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
 

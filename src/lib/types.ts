@@ -35,6 +35,16 @@ export interface ContentItem {
   contentExtractedAt?: string;
   /** AI-generated summary (joined from ai_summaries table on read). */
   aiSummary?: string;
+  /** Controls feed visibility: 'processing' / 'ready' / 'rejected'. */
+  processingStatus?: "processing" | "ready" | "rejected";
+  /** Why the item was rejected (for user review). */
+  rejectionReason?: string;
+  /** JSON blob from Stage 1 classifier (typed as ContentClassification in intelligence/types.ts). */
+  contentClassification?: unknown;
+  /** JSON array of detected media objects. */
+  detectedMedia?: unknown[];
+  /** 0-1 score of how information-rich the content is. */
+  informationDensity?: number;
 }
 
 export interface Topic {

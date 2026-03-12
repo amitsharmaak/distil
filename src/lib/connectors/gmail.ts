@@ -1,7 +1,8 @@
 /**
  * Gmail source connector.
  *
- * Handles OAuth2 authorization and newsletter sync for the Gmail integration.
+ * Handles OAuth2 authorization and email sync for the Gmail integration.
+ * Content is fed into the Unified Intelligence Layer pipeline for processing.
  *
  * ⚠️  SERVER-SIDE ONLY — never import from a "use client" component.
  *
@@ -16,50 +17,29 @@
 import { google, gmail_v1 } from "googleapis";
 
 import { config } from "@/lib/config";
-import {
-  getOAuthToken,
-  upsertOAuthToken,
-  insertItem,
-  getItemByNormalizedUrl,
-} from "@/lib/db";
-import { createNotificationIfEnabled } from "@/lib/notifications";
+import { getOAuthToken, upsertOAuthToken } from "@/lib/db";
+import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { sanitizeUrl } from "@/lib/utils";
-import type { ContentItem, Priority } from "@/lib/types";
+import type { ProcessingResult } from "@/lib/intelligence/types";
 
 // Gmail API scope — read-only access is all we need.
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
-// Newsletter senders to include in sync.
-// Configure via GMAIL_NEWSLETTER_SENDERS env var (comma-separated email addresses).
-const NEWSLETTER_SENDERS: string[] = process.env.GMAIL_NEWSLETTER_SENDERS
-  ? process.env.GMAIL_NEWSLETTER_SENDERS.split(",").map((s) => s.trim()).filter(Boolean)
-  : [];
+// Returns a Gmail date string (YYYY/MM/DD) capped to at most 2 days ago.
+// GMAIL_SYNC_AFTER_DATE is honoured only if it is more recent than 2 days ago.
+function getSyncAfterDate(): string {
+  const twoDaysAgo = new Date();
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
-// Earliest date to fetch emails from (YYYY/MM/DD).
-// Defaults to 30 days ago if GMAIL_SYNC_AFTER_DATE is not set.
-const SYNC_AFTER_DATE: string = process.env.GMAIL_SYNC_AFTER_DATE ??
-  (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-  })();
+  const configured = process.env.GMAIL_SYNC_AFTER_DATE
+    ? new Date(process.env.GMAIL_SYNC_AFTER_DATE.replace(/\//g, "-"))
+    : null;
 
-// Gmail system label IDs that should not be used as topics.
-const SYSTEM_LABELS = new Set([
-  "INBOX",
-  "SENT",
-  "DRAFTS",
-  "SPAM",
-  "TRASH",
-  "STARRED",
-  "IMPORTANT",
-  "UNREAD",
-  "CATEGORY_PERSONAL",
-  "CATEGORY_SOCIAL",
-  "CATEGORY_PROMOTIONS",
-  "CATEGORY_UPDATES",
-  "CATEGORY_FORUMS",
-]);
+  const cutoff =
+    configured && configured > twoDaysAgo ? configured : twoDaysAgo;
+
+  return `${cutoff.getFullYear()}/${String(cutoff.getMonth() + 1).padStart(2, "0")}/${String(cutoff.getDate()).padStart(2, "0")}`;
+}
 
 // ── OAuth2 client factory ──────────────────────────────────────────────────────
 
@@ -126,15 +106,17 @@ export function getConnectedEmail(): string | null {
 }
 
 /**
- * Fetches newsletters from Gmail and inserts them as ContentItems.
+ * Fetches emails from Gmail and processes them through the Unified Intelligence Layer.
  *
- * Only emails with a `List-Unsubscribe` header are fetched (newsletters,
- * digests, and subscription emails). Already-synced items are skipped via
- * URL-based deduplication.
+ * Uses date-based filtering only (after:GMAIL_SYNC_AFTER_DATE). Deduplication
+ * and relevance filtering are handled by the pipeline.
  *
- * Returns the array of newly inserted ContentItems.
+ * Returns the count of processed (non-rejected) items and their results.
  */
-export async function syncNewsletters(): Promise<ContentItem[]> {
+export async function syncNewsletters(): Promise<{
+  count: number;
+  items: ProcessingResult[];
+}> {
   const tokenRow = getOAuthToken("gmail");
   if (!tokenRow) throw new Error("Gmail not connected");
 
@@ -159,9 +141,8 @@ export async function syncNewsletters(): Promise<ContentItem[]> {
 
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-  // Build query from the allowed senders list.
-  const fromClause = NEWSLETTER_SENDERS.map((s) => `from:${s}`).join(" OR ");
-  const query = `(${fromClause}) after:${SYNC_AFTER_DATE}`;
+  // Date-based query only (no sender filtering). Never older than 2 days.
+  const query = `after:${getSyncAfterDate()}`;
 
   const listResponse = await gmail.users.messages.list({
     userId: "me",
@@ -170,41 +151,40 @@ export async function syncNewsletters(): Promise<ContentItem[]> {
   });
 
   const messages = listResponse.data.messages ?? [];
-  const inserted: ContentItem[] = [];
+  const results: ProcessingResult[] = [];
 
   for (const msg of messages) {
     if (!msg.id) continue;
 
-    const full = await gmail.users.messages.get({
-      userId: "me",
-      id: msg.id,
-      format: "full",
-    });
+    try {
+      const full = await gmail.users.messages.get({
+        userId: "me",
+        id: msg.id,
+        format: "full",
+      });
 
-    const item = buildContentItem(full.data, msg.id);
-    if (!item) continue;
-
-    // Skip if a ContentItem with this URL already exists (normalized dedup).
-    if (getItemByNormalizedUrl(item.url)) continue;
-
-    const newItem = insertItem(item);
-    createNotificationIfEnabled(newItem);
-    inserted.push(newItem);
+      const raw = buildRawContentFromMessage(full.data, msg.id);
+      const result = await processContent(raw);
+      results.push(result);
+    } catch (err) {
+      console.error(`[gmail] Failed to process message ${msg.id}:`, err);
+      // Continue with next message — do not crash entire sync
+    }
   }
 
-  return inserted;
+  const count = results.filter((r) => r.status !== "rejected").length;
+  return { count, items: results };
 }
 
 // ── Private helpers ────────────────────────────────────────────────────────────
 
 /**
- * Transforms a raw Gmail message into a ContentItem.
- * Returns null if the message cannot be meaningfully transformed.
+ * Builds a RawContent object from a Gmail message for the intelligence pipeline.
  */
-function buildContentItem(
+function buildRawContentFromMessage(
   message: gmail_v1.Schema$Message,
   messageId: string,
-): ContentItem | null {
+) {
   const headers = message.payload?.headers ?? [];
 
   const getHeader = (name: string): string =>
@@ -214,70 +194,68 @@ function buildContentItem(
   const subject = getHeader("Subject");
   const from = getHeader("From");
   const date = getHeader("Date");
+  const to = getHeader("To");
+  const listUnsubscribe = getHeader("List-Unsubscribe");
 
-  const title = subject.trim() || "(no subject)";
-  const summary = message.snippet?.trim() ?? "";
-
-  // Parse "Display Name <email@domain.com>" or bare "email@domain.com".
+  // Parse sender domain from "Display Name <email@domain.com>" or bare "email@domain.com".
   const nameAngleMatch = from.match(/^"?([^"<]+)"?\s*<([^>]+)>/);
-  const author = nameAngleMatch ? nameAngleMatch[1].trim() : from.split("@")[0];
-  const emailDomain =
+  const senderDomain =
     nameAngleMatch?.[2].match(/@([^\s>]+)/)?.[1] ??
     from.match(/@([^\s>]+)/)?.[1] ??
     "";
-  // Strip common newsletter subdomain prefixes for a cleaner publication name.
-  const publication = emailDomain.replace(
-    /^(mail|newsletter|noreply|news|info|hello|hi|reply|support)\./i,
-    "",
-  );
 
-  // Extract the email body for fullContent.
-  // Prefer plain text; fall back to HTML with tags stripped.
   const textBody = findTextPart(message.payload);
   const htmlBody = findHtmlPart(message.payload);
-  const fullContent =
-    textBody?.trim() ||
-    (htmlBody ? stripHtml(htmlBody) : undefined);
+  const rawBody = htmlBody?.trim() || textBody?.trim() || "";
+  const rawTextContent = textBody?.trim() || (htmlBody ? stripHtml(htmlBody) : undefined);
 
-  // Try to extract a "view in browser" URL from the HTML body.
-  const viewInBrowserUrl = htmlBody
-    ? extractViewInBrowserUrl(htmlBody)
-    : null;
-  // Fallback: use the Gmail web URL for this message.
+  // Extract URL: view-in-browser link, OR first https link in first 3000 chars, OR Gmail URL.
+  const viewInBrowserUrl = htmlBody ? extractViewInBrowserUrl(htmlBody) : null;
+  const firstHttpsUrl = htmlBody ? extractFirstHttpsUrl(htmlBody) : null;
   const url = sanitizeUrl(
     viewInBrowserUrl ??
+    firstHttpsUrl ??
     `https://mail.google.com/mail/u/0/#inbox/${messageId}`,
   );
 
-  const labelIds = message.labelIds ?? [];
-  const isImportant = labelIds.includes("IMPORTANT");
-  const isUnread = labelIds.includes("UNREAD");
+  const timestamp =
+    message.internalDate != null
+      ? new Date(Number(message.internalDate)).toISOString()
+      : date
+        ? new Date(date).toISOString()
+        : new Date().toISOString();
 
-  // Only keep user-defined labels (non-system) as topics.
-  const topics = labelIds.filter((id) => !SYSTEM_LABELS.has(id));
+  const keyHeaders: Record<string, string> = {};
+  if (from) keyHeaders.From = from;
+  if (to) keyHeaders.To = to;
+  if (subject) keyHeaders.Subject = subject;
+  if (date) keyHeaders.Date = date;
+  if (listUnsubscribe) keyHeaders["List-Unsubscribe"] = listUnsubscribe;
 
-  const createdAt = date
-    ? new Date(date).toISOString()
-    : new Date().toISOString();
-
-  const priority: Priority = isImportant ? "high" : "medium";
-
-  return {
-    id: crypto.randomUUID(),
-    title,
-    summary,
-    fullContent,
+  return buildRawContent({
     sourceType: "gmail",
-    contentType: "article",
-    topics,
-    author,
-    publication,
+    rawBody,
+    rawTextContent,
     url,
-    priority,
-    isRead: !isUnread,
-    createdAt,
-    contentExtractedAt: fullContent ? new Date().toISOString() : undefined,
-  };
+    metadata: {
+      subject: subject.trim() || undefined,
+      sender: from || undefined,
+      senderDomain: senderDomain || undefined,
+      timestamp,
+      headers: keyHeaders,
+      labels: message.labelIds ?? [],
+    },
+  });
+}
+
+/**
+ * Extracts the first https:// link from the first 3000 chars of HTML.
+ * Used as fallback when no explicit "view in browser" link is found.
+ */
+function extractFirstHttpsUrl(html: string): string | null {
+  const head = html.slice(0, 3000);
+  const match = head.match(/href=["'](https:\/\/[^"']+)["']/i);
+  return match?.[1] ?? null;
 }
 
 /**

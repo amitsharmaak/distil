@@ -8,7 +8,7 @@
  */
 
 import { generateText } from "./router";
-import { preferenceAnalysisPrompt } from "./prompts";
+import { preferenceAnalysisPrompt } from "@/lib/prompts/prioritize";
 import {
   getAllFeedback,
   getItemById,
