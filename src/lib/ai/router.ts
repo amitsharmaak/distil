@@ -4,6 +4,7 @@
  * SERVER-SIDE ONLY.
  */
 
+import { randomUUID } from "crypto";
 import type { AIProvider, GenerateOptions } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider } from "./providers";
@@ -14,6 +15,7 @@ import {
 } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
+import { insertAuditLog } from "@/lib/db";
 
 /** Per-call metrics for AI usage. */
 export interface UsageMetrics {
@@ -126,6 +128,29 @@ class AIRouter {
     return p;
   }
 
+  private persistUsage(
+    metrics: UsageMetrics,
+    action: string,
+    traceId: string | undefined,
+  ): void {
+    getUsageTrackerInstance().record(metrics);
+    try {
+      insertAuditLog({
+        id: randomUUID(),
+        action,
+        model: metrics.model,
+        provider: metrics.provider,
+        tokensIn: metrics.tokens_in,
+        tokensOut: metrics.tokens_out,
+        cost: metrics.cost_estimate,
+        latencyMs: metrics.latency_ms,
+        traceId: traceId ?? undefined,
+      });
+    } catch (err) {
+      aiLogger.warn({ err }, "Failed to persist AI call to audit_log");
+    }
+  }
+
   private checkBudget(): void {
     const budgetStr = process.env.DISTIL_DAILY_AI_BUDGET;
     if (!budgetStr) return;
@@ -165,15 +190,11 @@ class AIRouter {
     const tokensOut = estimateTokens(result);
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
-    getUsageTrackerInstance().record({
-      task,
-      provider,
-      model,
-      tokens_in: tokensIn,
-      tokens_out: tokensOut,
-      latency_ms: latencyMs,
-      cost_estimate: costEstimate,
-    });
+    this.persistUsage(
+      { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
+      `ai:${task}`,
+      traceId,
+    );
 
     aiLogger.info(
       {
@@ -212,15 +233,11 @@ class AIRouter {
     const tokensOut = estimateTokens(resultStr);
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
-    getUsageTrackerInstance().record({
-      task,
-      provider,
-      model,
-      tokens_in: tokensIn,
-      tokens_out: tokensOut,
-      latency_ms: latencyMs,
-      cost_estimate: costEstimate,
-    });
+    this.persistUsage(
+      { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
+      `ai:${task}`,
+      traceId,
+    );
 
     aiLogger.info(
       {
@@ -262,15 +279,11 @@ class AIRouter {
       const tokensOut = estimateTokens(result);
       const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
-      getUsageTrackerInstance().record({
-        task,
-        provider,
-        model,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_estimate: costEstimate,
-      });
+      this.persistUsage(
+        { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
+        `ai:${task}`,
+        traceId,
+      );
 
       aiLogger.info(
         {
