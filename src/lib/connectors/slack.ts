@@ -2,8 +2,9 @@
  * Slack source connector.
  *
  * Fetches messages containing URLs from configured Slack channels using
- * the @slack/web-api SDK. Links are extracted, deduplicated against the
- * database, and inserted as ContentItems with sourceType "slack".
+ * the @slack/web-api SDK. Links are extracted and processed through the
+ * Unified Intelligence Layer pipeline. Deduplication and enrichment are
+ * handled by the pipeline.
  *
  * Configuration:
  * - SLACK_BOT_TOKEN — Bot User OAuth Token (xoxb-...)
@@ -23,19 +24,10 @@ import { WebClient } from "@slack/web-api";
 
 import { config } from "@/lib/config";
 import { connectorLogger } from "@/lib/logger";
-import {
-  insertItem,
-  getItemByNormalizedUrl,
-  getUserSetting,
-  setUserSetting,
-} from "@/lib/db";
-import { fetchOG } from "@/lib/og";
-import { extractContent } from "@/lib/content-extractor";
-import { generateSummary } from "@/lib/ai/summarize";
-import { autoTagItem } from "@/lib/ai/tagger";
-import { createNotificationIfEnabled } from "@/lib/notifications";
-import { isTwitterUrl, sanitizeUrl } from "@/lib/utils";
-import type { ContentItem } from "@/lib/types";
+import { getUserSetting, setUserSetting } from "@/lib/db";
+import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
+import { sanitizeUrl } from "@/lib/utils";
+import type { ProcessingResult } from "@/lib/intelligence/types";
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -69,16 +61,18 @@ export async function getSlackStatus(): Promise<{
 
 /**
  * Fetches messages containing URLs from configured Slack channels and
- * inserts them as ContentItems.
+ * processes them through the Unified Intelligence Layer pipeline.
  *
  * Messages are fetched since the last sync timestamp (stored in
  * user_settings). On the first sync, messages from the last 30 days are
- * fetched. Already-synced URLs are skipped via database deduplication.
+ * fetched. Deduplication is handled by the pipeline.
  *
- * Returns the array of newly inserted ContentItems.
+ * Returns the count of processed (non-rejected) items, results, and
+ * any unresolved channel names.
  */
 export async function syncSlackMessages(): Promise<{
-  items: ContentItem[];
+  count: number;
+  items: ProcessingResult[];
   unresolvedChannels: string[];
 }> {
   if (!isSlackConfigured()) {
@@ -94,10 +88,12 @@ export async function syncSlackMessages(): Promise<{
     .filter(Boolean);
 
   // Determine the oldest timestamp to fetch from.
+  // Never go back further than 2 days regardless of last-sync value.
+  const twoDaysAgoTs = Math.floor(Date.now() / 1000) - 2 * 24 * 60 * 60;
   const lastSyncRaw = getUserSetting("slack_last_sync");
-  const lastSyncTs = lastSyncRaw
+  const lastSyncTs = lastSyncRaw && Number(lastSyncRaw) > twoDaysAgoTs
     ? lastSyncRaw
-    : String(Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60);
+    : String(twoDaysAgoTs);
 
   // Resolve channel names to IDs. Paginate through all results so large
   // workspaces don't silently miss channels beyond the first page.
@@ -176,7 +172,7 @@ export async function syncSlackMessages(): Promise<{
   // User name cache: userId → displayName.
   const userCache = new Map<string, string>();
 
-  const inserted: ContentItem[] = [];
+  const results: ProcessingResult[] = [];
 
   for (const channel of resolvedChannels) {
     let historyResult;
@@ -240,63 +236,37 @@ export async function syncSlackMessages(): Promise<{
       if (allUrls.length === 0) continue;
 
       // Resolve user display name (cached).
-      let author: string | undefined;
+      let authorName: string | undefined;
       if (message.user) {
-        author = await resolveUserName(client, message.user, userCache);
+        authorName = await resolveUserName(client, message.user, userCache);
       }
 
-      // Find attachment metadata for title enrichment.
-      const firstAttachment = attachments[0];
+      const timestamp = new Date(
+        parseFloat(message.ts!) * 1000,
+      ).toISOString();
 
       for (const url of allUrls) {
-        if (getItemByNormalizedUrl(url)) continue;
-
-        // Enrich the URL with OG metadata + full content extraction,
-        // same as POST /api/items — treat Slack URLs as first-class items.
-        const [og, extraction] = await Promise.all([
-          fetchOG(url),
-          extractContent(url),
-        ]);
-
-        const item: ContentItem = {
-          id: crypto.randomUUID(),
-          title: og.title ?? firstAttachment?.title ?? url,
-          summary: og.description ?? "",
-          sourceType: "slack",
-          contentType: "article",
-          topics: [],
-          url,
-          priority: "medium",
-          isRead: false,
-          createdAt: new Date(
-            parseFloat(message.ts!) * 1000,
-          ).toISOString(),
-          author: og.author ?? extraction?.byline ?? author ?? undefined,
-          publication: og.siteName ?? undefined,
-          thumbnailUrl: og.image ?? undefined,
-          fullContent: extraction?.content ?? undefined,
-          extractedLinks: extraction?.extractedLinks ?? undefined,
-          contentExtractedAt: new Date().toISOString(),
-        };
-
-        const newItem = insertItem(item);
-        createNotificationIfEnabled(newItem);
-        inserted.push(newItem);
-
-        // Fire-and-forget AI summary for non-Twitter long-form content.
-        if (!isTwitterUrl(url)) {
-          generateSummary(newItem.id, { length: "brief" }).catch((err) => {
-            connectorLogger.error(
-              { err, itemId: newItem.id },
-              "Background summary failed",
-            );
+        try {
+          const raw = buildRawContent({
+            sourceType: "slack",
+            rawBody: message.text ?? "",
+            url,
+            metadata: {
+              channelName: channel.name,
+              authorName,
+              timestamp,
+            },
           });
-        }
 
-        // Fire-and-forget: auto-tag items so topics are content-derived.
-        autoTagItem(newItem.id, newItem.title, newItem.summary).catch((err) => {
-          connectorLogger.error({ err, itemId: newItem.id }, "Background auto-tag failed");
-        });
+          const result = await processContent(raw);
+          results.push(result);
+        } catch (err) {
+          connectorLogger.error(
+            { err, url, channel: channel.name },
+            "Failed to process Slack URL",
+          );
+          // Continue with next URL — do not crash entire sync
+        }
       }
     }
   }
@@ -304,7 +274,8 @@ export async function syncSlackMessages(): Promise<{
   // Persist the current timestamp so the next sync picks up where we left off.
   setUserSetting("slack_last_sync", String(Math.floor(Date.now() / 1000)));
 
-  return { items: inserted, unresolvedChannels };
+  const count = results.filter((r) => r.status !== "rejected").length;
+  return { count, items: results, unresolvedChannels };
 }
 
 // ── Private helpers ────────────────────────────────────────────────────────────

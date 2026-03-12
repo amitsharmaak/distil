@@ -10,7 +10,7 @@
 
 import { generateText } from "./router";
 import { aiLogger } from "@/lib/logger";
-import { prioritizePrompt } from "./prompts";
+import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { getPreferences } from "./preferences";
 import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
 import type { ContentItem, Priority } from "@/lib/types";

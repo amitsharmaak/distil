@@ -14,7 +14,7 @@
  * content lives in FeedPageContent and FeedPage wraps it in <Suspense>.
  */
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilters } from "@/components/feed/feed-filters";
@@ -47,25 +47,45 @@ function FeedPageContent() {
   // ── Data fetching ───────────────────────────────────────────────────────────
 
   /**
-   * Fetch items from the API on mount and whenever the search query changes.
-   * When a search query is present, it is forwarded to the API for FTS5
-   * full-text filtering. All other filtering is still done client-side.
+   * Fetch items from the API. includeProcessing=true ensures items still in
+   * the pipeline show with skeleton UI. When a search query is present, it is
+   * forwarded to the API for FTS5 full-text filtering.
    */
-  useEffect(() => {
-    setLoading(true);
+  const fetchItems = useCallback(() => {
     const url = new URL(`${config.apiBaseUrl}/api/items`);
-    if (searchQuery) url.searchParams.set('q', searchQuery);
-    fetch(url.toString())
+    url.searchParams.set("includeProcessing", "true");
+    if (searchQuery) url.searchParams.set("q", searchQuery);
+    return fetch(url.toString())
       .then((res) => res.json())
       .then((data: { items: ContentItem[] }) => {
         setItems(data.items);
         setLoading(false);
+        return data.items;
       })
       .catch(() => {
-        // On error, leave items empty and stop showing the loading state.
         setLoading(false);
+        return [] as ContentItem[];
       });
   }, [searchQuery]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchItems();
+  }, [fetchItems]);
+
+  /**
+   * Poll every 3 seconds while any items are in processing state.
+   * Stops polling once all items are ready (or rejected).
+   */
+  const hasProcessingItems = items.some(
+    (item) => item.processingStatus === "processing",
+  );
+
+  useEffect(() => {
+    if (!hasProcessingItems) return;
+    const interval = setInterval(() => fetchItems(), 3000);
+    return () => clearInterval(interval);
+  }, [hasProcessingItems, fetchItems]);
 
   // ── Filtering ───────────────────────────────────────────────────────────────
 
@@ -74,6 +94,8 @@ function FeedPageContent() {
    * Each filter is skipped when its selection is empty (show-all behaviour).
    */
   const filteredItems = items.filter((item) => {
+    // Rejected items are shown in Settings for review, not in the feed.
+    if (item.processingStatus === "rejected") return false;
     if (selectedSources.length > 0 && !selectedSources.includes(item.sourceType)) return false;
     if (selectedTypes.length > 0 && !selectedTypes.includes(item.contentType)) return false;
     if (selectedPriorities.length > 0 && !selectedPriorities.includes(item.priority)) return false;

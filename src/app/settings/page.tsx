@@ -41,6 +41,17 @@ interface DerivedTopic {
   color: string;
 }
 
+const EMAIL_CATEGORIES: { id: string; label: string; description: string }[] = [
+  { id: "newsletter", label: "Newsletter", description: "Subscriptions and curated content from publishers" },
+  { id: "digest", label: "Digest", description: "Periodic summaries (e.g. daily or weekly digests)" },
+  { id: "announcement", label: "Announcement", description: "Product updates and company announcements" },
+  { id: "notification", label: "Notification", description: "Alerts, confirmations, and system messages" },
+  { id: "personal", label: "Personal", description: "Direct messages from people" },
+  { id: "transactional", label: "Transactional", description: "Receipts, shipping updates, and account notifications" },
+  { id: "promotional", label: "Promotional", description: "Marketing and sales emails" },
+  { id: "automated", label: "Automated", description: "System-generated reports and alerts" },
+];
+
 const SOURCE_META: Record<string, { name: string; icon: string }> = {
   gmail: { name: "Gmail", icon: "Mail" },
   slack: { name: "Slack", icon: "Hash" },
@@ -69,10 +80,19 @@ export default function SettingsPage() {
   >("idle");
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
+  const [allowedEmailCategories, setAllowedEmailCategories] = useState<
+    string[]
+  >(["newsletter", "digest", "announcement"]);
+
   useEffect(() => {
     fetch(`${config.apiBaseUrl}/api/notifications/preferences`)
       .then((res) => res.json())
       .then((data) => setHighPriorityEnabled(data.highPriorityItems))
+      .catch(() => {});
+
+    fetch(`${config.apiBaseUrl}/api/settings/email-intelligence`)
+      .then((res) => res.json())
+      .then((data) => setAllowedEmailCategories(data.allowedCategories ?? []))
       .catch(() => {});
 
     fetch(`${config.apiBaseUrl}/api/items`)
@@ -142,6 +162,19 @@ export default function SettingsPage() {
     });
   }
 
+  async function toggleEmailCategory(categoryId: string) {
+    const isEnabled = allowedEmailCategories.includes(categoryId);
+    const newCategories = isEnabled
+      ? allowedEmailCategories.filter((c) => c !== categoryId)
+      : [...allowedEmailCategories, categoryId];
+    setAllowedEmailCategories(newCategories);
+    await fetch(`${config.apiBaseUrl}/api/settings/email-intelligence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedCategories: newCategories }),
+    });
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -166,6 +199,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5">
             <Bell className="h-3.5 w-3.5" /> Notifications
+          </TabsTrigger>
+          <TabsTrigger value="email-intelligence" className="gap-1.5">
+            <Mail className="h-3.5 w-3.5" /> Email Intelligence
           </TabsTrigger>
         </TabsList>
 
@@ -384,6 +420,52 @@ export default function SettingsPage() {
                 </Badge>
               </div>
             ))}
+          </div>
+        </TabsContent>
+
+        {/* Email Intelligence Tab */}
+        <TabsContent value="email-intelligence" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Email Intelligence</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Control which types of emails are ingested into your feed. The
+                AI will classify incoming emails and only process the selected
+                categories.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {EMAIL_CATEGORIES.map((cat) => {
+                const isEnabled = allowedEmailCategories.includes(cat.id);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => toggleEmailCategory(cat.id)}
+                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
+                      isEnabled
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-muted/30 hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{cat.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {cat.description}
+                      </p>
+                    </div>
+                    <Button
+                      variant={isEnabled ? "default" : "outline"}
+                      size="sm"
+                      className="shrink-0 pointer-events-none"
+                    >
+                      {isEnabled ? "On" : "Off"}
+                    </Button>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </TabsContent>
       </Tabs>

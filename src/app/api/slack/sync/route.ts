@@ -26,7 +26,7 @@ export async function POST() {
     const result = await syncSlackMessages();
     return NextResponse.json(
       {
-        count: result.items.length,
+        count: result.count,
         items: result.items,
         ...(result.unresolvedChannels.length > 0 && {
           unresolvedChannels: result.unresolvedChannels,

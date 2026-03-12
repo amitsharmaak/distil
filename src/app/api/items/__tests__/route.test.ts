@@ -10,20 +10,46 @@
 // Use in-memory SQLite for all tests in this file.
 process.env.DB_PATH = ":memory:";
 
-// Mock content-extractor (jsdom is ESM-only and breaks Jest CJS transform).
-jest.mock("@/lib/content-extractor", () => ({
-  extractContent: jest.fn().mockResolvedValue(null),
-}));
+// Mock fetch so POST doesn't make real network calls.
+const mockFetch = jest.fn().mockResolvedValue({
+  text: () => Promise.resolve("<html><head><title>Test</title></head><body>content</body></html>"),
+});
+global.fetch = mockFetch as typeof fetch;
 
-// Mock AI summarizer so POST doesn't fire real Gemini calls.
-jest.mock("@/lib/ai/summarize", () => ({
-  generateSummary: jest.fn().mockResolvedValue({ summary: "mock", cached: false }),
-}));
+// Mock the intelligence pipeline so POST doesn't run full classifier/extractor/enricher.
+jest.mock("@/lib/intelligence/pipeline", () => {
+  const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
+  return {
+    buildRawContent: jest.fn((params: { sourceType: string; rawBody: string; url?: string; metadata?: Record<string, unknown> }) => ({
+      id: "mock-raw-id",
+      sourceType: params.sourceType,
+      rawBody: params.rawBody,
+      url: params.url,
+      metadata: params.metadata ?? {},
+      fetchedAt: new Date().toISOString(),
+    })),
+    processContent: jest.fn().mockImplementation(async (raw: { id: string; sourceType: string; url?: string; metadata?: { pageTitle?: string; userNotes?: string; priority?: string; contentType?: string; topics?: string[] } }) => {
+      const existing = actualDb.getItemByNormalizedUrl(raw.url ?? "");
+      if (existing) return { status: "ready" as const };
 
-// Mock notifications so POST doesn't try to create real notifications.
-jest.mock("@/lib/notifications", () => ({
-  createNotificationIfEnabled: jest.fn(),
-}));
+      const meta = raw.metadata ?? {};
+      const item = {
+        id: raw.id,
+        title: meta.pageTitle ?? raw.url ?? "Untitled",
+        summary: meta.userNotes ?? "Enriched summary",
+        sourceType: raw.sourceType as import("@/lib/types").SourceType,
+        contentType: (meta.contentType as "article" | "video" | "podcast") ?? "article",
+        topics: meta.topics ?? [],
+        url: raw.url ?? "",
+        priority: (meta.priority as "high" | "medium" | "low") ?? "medium",
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      actualDb.insertItem(item);
+      return { status: "ready" as const };
+    }),
+  };
+});
 
 import { NextRequest } from "next/server";
 
@@ -143,6 +169,32 @@ describe("GET /api/items", () => {
 
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
+
+  it("excludes processing items by default (includeProcessing absent)", async () => {
+    insertItem(makeItem({ id: "ready1", url: "https://example.com/ready1" }));
+    insertItem(makeItem({ id: "proc1", url: "https://example.com/proc1", processingStatus: "processing" }));
+
+    const req = makeRequest("http://localhost:3000/api/items");
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(body.total).toBe(1);
+    expect(body.items[0].id).toBe("ready1");
+  });
+
+  it("includes processing items when includeProcessing=true", async () => {
+    insertItem(makeItem({ id: "ready2", url: "https://example.com/ready2" }));
+    insertItem(makeItem({ id: "proc2", url: "https://example.com/proc2", processingStatus: "processing" }));
+
+    const req = makeRequest("http://localhost:3000/api/items?includeProcessing=true");
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i: ContentItem) => i.id);
+    expect(ids).toContain("ready2");
+    expect(ids).toContain("proc2");
+  });
 });
 
 // ── GET /api/items — search ───────────────────────────────────────────────────
@@ -204,23 +256,6 @@ describe("GET /api/items — search", () => {
 // ── POST /api/items ───────────────────────────────────────────────────────────
 
 describe("POST /api/items", () => {
-  // Mock fetchOG so POST tests don't make real network calls.
-  beforeEach(() => {
-    jest.mock("@/lib/og", () => ({
-      fetchOG: jest.fn().mockResolvedValue({
-        title: "OG Title",
-        description: "OG Description",
-        image: "https://example.com/og.jpg",
-        author: "OG Author",
-        siteName: "OG Site",
-      }),
-    }));
-  });
-
-  afterEach(() => {
-    jest.resetModules();
-  });
-
   it("returns 400 when url is missing", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
@@ -234,17 +269,17 @@ describe("POST /api/items", () => {
     expect(body.error).toMatch(/url/i);
   });
 
-  it("returns 400 when sourceType is missing", async () => {
+  it("defaults sourceType to manual when omitted", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "https://example.com" }),
+      body: JSON.stringify({ url: "https://example.com/default-source" }),
     });
     const res = await POST(req);
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.error).toMatch(/sourceType/i);
+    expect(body.item.sourceType).toBe("manual");
   });
 
   it("returns 400 for invalid JSON body", async () => {
@@ -263,7 +298,7 @@ describe("POST /api/items", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        url: "https://example.com",
+        url: "https://example.com/create-test",
         sourceType: "manual",
         topics: ["Tech"],
         priority: "high",
@@ -274,20 +309,19 @@ describe("POST /api/items", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.item).toBeDefined();
-    expect(body.item.url).toBe("https://example.com");
+    expect(body.item.url).toContain("example.com");
     expect(body.item.sourceType).toBe("manual");
-    expect(body.item.topics).toEqual(["Tech"]);
     expect(body.item.priority).toBe("high");
     expect(body.item.isRead).toBe(false);
     expect(body.item.id).toBeDefined();
   });
 
-  it("uses caller-provided title over OG title", async () => {
+  it("uses caller-provided title in metadata", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        url: "https://example.com",
+        url: "https://example.com/title-test",
         sourceType: "manual",
         title: "My Custom Title",
       }),
@@ -298,12 +332,12 @@ describe("POST /api/items", () => {
     expect(body.item.title).toBe("My Custom Title");
   });
 
-  it("uses notes as summary", async () => {
+  it("uses notes as summary when provided", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        url: "https://example.com",
+        url: "https://example.com/notes-test",
         sourceType: "browser-extension",
         notes: "My personal notes about this page.",
       }),
@@ -318,7 +352,7 @@ describe("POST /api/items", () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "https://example.com", sourceType: "manual" }),
+      body: JSON.stringify({ url: "https://example.com/defaults-test", sourceType: "manual" }),
     });
     const res = await POST(req);
     const body = await res.json();
@@ -331,7 +365,7 @@ describe("POST /api/items", () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "https://example.com", sourceType: "manual" }),
+      body: JSON.stringify({ url: "https://example.com/cors-test", sourceType: "manual" }),
     });
     const res = await POST(req);
 

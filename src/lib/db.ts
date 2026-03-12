@@ -123,7 +123,12 @@ db.exec(`
     isRead       INTEGER NOT NULL DEFAULT 0,
     createdAt    TEXT NOT NULL,
     duration     TEXT,
-    thumbnailUrl TEXT
+    thumbnailUrl TEXT,
+    processing_status    TEXT NOT NULL DEFAULT 'ready',
+    rejection_reason     TEXT,
+    content_classification TEXT,
+    detected_media       TEXT,
+    information_density  REAL
   );
 
   -- Indexes for the most common query patterns.
@@ -322,6 +327,18 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_job_queue_status  ON job_queue(status, priority DESC, created_at);
   CREATE INDEX IF NOT EXISTS idx_job_queue_type    ON job_queue(job_type);
+
+  -- Raw content storage for intelligence pipeline (Stage 1 fetch).
+  CREATE TABLE IF NOT EXISTS raw_content (
+    id TEXT PRIMARY KEY,
+    item_id TEXT REFERENCES items(id) ON DELETE SET NULL,
+    source_type TEXT NOT NULL,
+    raw_body TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    fetched_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_raw_content_item_id ON raw_content(item_id);
 `);
 
 // Add ai_priority_score column to items (idempotent — ignore if already exists).
@@ -355,6 +372,33 @@ try {
 // Add progress column to research_reports (idempotent — ignore if already exists).
 try {
   db.exec("ALTER TABLE research_reports ADD COLUMN progress TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+
+// Unified Intelligence Layer: processing status and classification columns.
+try {
+  db.exec("ALTER TABLE items ADD COLUMN processing_status TEXT NOT NULL DEFAULT 'ready'");
+} catch {
+  // Column already exists — safe to ignore.
+}
+try {
+  db.exec("ALTER TABLE items ADD COLUMN rejection_reason TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+try {
+  db.exec("ALTER TABLE items ADD COLUMN content_classification TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+try {
+  db.exec("ALTER TABLE items ADD COLUMN detected_media TEXT");
+} catch {
+  // Column already exists — safe to ignore.
+}
+try {
+  db.exec("ALTER TABLE items ADD COLUMN information_density REAL");
 } catch {
   // Column already exists — safe to ignore.
 }
@@ -488,6 +532,11 @@ interface DbRow {
   extracted_links: string | null; // JSON string
   content_extracted_at: string | null;
   ai_summary_text: string | null; // from LEFT JOIN ai_summaries
+  processing_status: string | null;
+  rejection_reason: string | null;
+  content_classification: string | null;
+  detected_media: string | null;
+  information_density: number | null;
 }
 
 /**
@@ -516,6 +565,11 @@ function deserialize(row: DbRow): ContentItem {
     extractedLinks: row.extracted_links ? JSON.parse(row.extracted_links) : undefined,
     contentExtractedAt: row.content_extracted_at ?? undefined,
     aiSummary: row.ai_summary_text ?? undefined,
+    processingStatus: (row.processing_status ?? "ready") as "processing" | "ready" | "rejected",
+    rejectionReason: row.rejection_reason ?? undefined,
+    contentClassification: row.content_classification ? JSON.parse(row.content_classification) : undefined,
+    detectedMedia: row.detected_media ? JSON.parse(row.detected_media) : undefined,
+    informationDensity: row.information_density ?? undefined,
   };
 }
 
@@ -545,6 +599,11 @@ function serialize(item: ContentItem): Record<string, unknown> {
     thumbnailUrl: item.thumbnailUrl ?? null,
     extracted_links: item.extractedLinks ? JSON.stringify(item.extractedLinks) : null,
     content_extracted_at: item.contentExtractedAt ?? null,
+    processing_status: item.processingStatus ?? "ready",
+    rejection_reason: item.rejectionReason ?? null,
+    content_classification: item.contentClassification ? JSON.stringify(item.contentClassification) : null,
+    detected_media: item.detectedMedia ? JSON.stringify(item.detectedMedia) : null,
+    information_density: item.informationDensity ?? null,
   };
 }
 
@@ -566,6 +625,8 @@ export interface ItemFilters {
   sort?: "recent" | "priority" | "ai_priority";
   /** Full-text search query. Searches title, summary, and topics via FTS5. */
   query?: string;
+  /** When true, include items with processing_status = 'processing'. Default: only ready or NULL. */
+  includeProcessing?: boolean;
 }
 
 // ── Exported CRUD helpers ──────────────────────────────────────────────────────
@@ -604,6 +665,9 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
     if (filters.isRead !== undefined) {
       conditions.push("items.isRead = ?");
       positionalParams.push(filters.isRead ? 1 : 0);
+    }
+    if (filters.includeProcessing !== true) {
+      conditions.push("(items.processing_status = 'ready' OR items.processing_status IS NULL)");
     }
 
     const whereClause =
@@ -652,6 +716,9 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
     conditions.push("items.isRead = @isRead");
     params.isRead = filters.isRead ? 1 : 0;
   }
+  if (filters.includeProcessing !== true) {
+    conditions.push("(items.processing_status = 'ready' OR items.processing_status IS NULL)");
+  }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -684,6 +751,36 @@ export function getItemById(id: string): ContentItem | undefined {
     )
     .get(id) as DbRow | undefined;
   return row ? deserialize(row) : undefined;
+}
+
+/**
+ * Returns items with processing_status = 'rejected', for user review.
+ * Used by the Settings page to let users review false rejections.
+ */
+export function getRejectedItems(limit = 50, offset = 0): {
+  items: ContentItem[];
+  total: number;
+} {
+  const countRow = db
+    .prepare(
+      "SELECT COUNT(*) as c FROM items WHERE processing_status = 'rejected'",
+    )
+    .get() as { c: number };
+  const total = countRow.c;
+
+  const rows = db
+    .prepare(
+      `SELECT items.*, ai_summaries.summary AS ai_summary_text
+       FROM items
+       LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id AND ai_summaries.prompt_type = 'brief'
+       WHERE items.processing_status = 'rejected'
+       ORDER BY items.createdAt DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as DbRow[];
+  const items = rows.map(deserialize);
+
+  return { items, total };
 }
 
 /**
@@ -722,11 +819,13 @@ export function insertItem(item: ContentItem): ContentItem {
     INSERT INTO items
       (id, title, summary, fullContent, sourceType, contentType, topics,
        author, publication, url, normalized_url, priority, isRead, createdAt, duration, thumbnailUrl,
-       extracted_links, content_extracted_at)
+       extracted_links, content_extracted_at,
+       processing_status, rejection_reason, content_classification, detected_media, information_density)
     VALUES
       (@id, @title, @summary, @fullContent, @sourceType, @contentType, @topics,
        @author, @publication, @url, @normalized_url, @priority, @isRead, @createdAt, @duration, @thumbnailUrl,
-       @extracted_links, @content_extracted_at)
+       @extracted_links, @content_extracted_at,
+       @processing_status, @rejection_reason, @content_classification, @detected_media, @information_density)
   `);
   stmt.run({ ...serialized, normalized_url: norm });
   // Re-fetch from DB to return the canonical stored version.
@@ -764,7 +863,12 @@ export function updateItem(id: string, patch: Partial<ContentItem>): ContentItem
       duration        = @duration,
       thumbnailUrl    = @thumbnailUrl,
       extracted_links       = @extracted_links,
-      content_extracted_at  = @content_extracted_at
+      content_extracted_at  = @content_extracted_at,
+      processing_status    = @processing_status,
+      rejection_reason     = @rejection_reason,
+      content_classification = @content_classification,
+      detected_media       = @detected_media,
+      information_density  = @information_density
     WHERE id = @id
   `);
   stmt.run(serialize(merged));
@@ -1025,6 +1129,47 @@ export function setUserSetting(key: string, value: string): void {
     INSERT OR REPLACE INTO user_settings (key, value, updated_at)
     VALUES (@key, @value, @updated_at)
   `).run({ key, value, updated_at: new Date().toISOString() });
+}
+
+// ── Raw content helpers (Unified Intelligence Layer) ─────────────────────────
+
+export function insertRawContent(raw: {
+  id: string;
+  itemId?: string;
+  sourceType: string;
+  rawBody: string;
+  metadata: Record<string, unknown>;
+  fetchedAt: string;
+}): void {
+  db.prepare(`
+    INSERT INTO raw_content (id, item_id, source_type, raw_body, metadata, fetched_at)
+    VALUES (@id, @item_id, @source_type, @raw_body, @metadata, @fetched_at)
+  `).run({
+    id: raw.id,
+    item_id: raw.itemId ?? null,
+    source_type: raw.sourceType,
+    raw_body: raw.rawBody,
+    metadata: JSON.stringify(raw.metadata),
+    fetched_at: raw.fetchedAt,
+  });
+}
+
+export function updateRawContentItemId(rawContentId: string, itemId: string): void {
+  db.prepare("UPDATE raw_content SET item_id = ? WHERE id = ?").run(itemId, rawContentId);
+}
+
+export function updateItemProcessingStatus(
+  id: string,
+  status: "processing" | "ready" | "rejected",
+  rejectionReason?: string,
+): void {
+  db.prepare(`
+    UPDATE items SET processing_status = @status, rejection_reason = @rejection_reason WHERE id = @id
+  `).run({
+    id,
+    status,
+    rejection_reason: rejectionReason ?? null,
+  });
 }
 
 // ── AI priority score helper ─────────────────────────────────────────────────

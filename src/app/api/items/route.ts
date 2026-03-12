@@ -4,7 +4,7 @@
  * Handles listing and creating content items.
  *
  * GET  /api/items  — returns all items, optionally filtered and sorted.
- * POST /api/items  — creates a new item, enriched with Open Graph metadata.
+ * POST /api/items  — creates a new item via the Unified Intelligence pipeline.
  *
  * CORS headers are included on every response so the Chrome browser extension
  * (which runs on a different origin) can call this API directly.
@@ -17,17 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { getItems, insertItem, getItemByNormalizedUrl } from "@/lib/db";
+import { getItems, getItemById, getItemByNormalizedUrl } from "@/lib/db";
 import { hybridSearch } from "@/lib/ai/search";
-import { fetchOG } from "@/lib/og";
-import type { OGData } from "@/lib/og";
-import { extractContent } from "@/lib/content-extractor";
-import { generateSummary } from "@/lib/ai/summarize";
-import { autoTagItem } from "@/lib/ai/tagger";
-import { embedItem } from "@/lib/ai/embeddings";
-import { createNotificationIfEnabled } from "@/lib/notifications";
-import { detectStrategy } from "@/lib/content-strategies";
-import { sanitizeUrl } from "@/lib/utils";
+import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
+import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -65,6 +58,7 @@ export function OPTIONS() {
  *   unread   — "true" to return only unread items
  *   limit    — maximum number of items to return
  *   sort     — "recent" (default) | "priority"
+ *   includeProcessing — "true" to include items still processing (default: only ready)
  *
  * Response shape:
  *   { items: ContentItem[], total: number }
@@ -83,6 +77,7 @@ export async function GET(request: NextRequest) {
       limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
       sort: (searchParams.get("sort") as "recent" | "priority") ?? undefined,
       query: searchParams.get("q") ?? undefined,
+      includeProcessing: searchParams.get("includeProcessing") === "true",
     };
 
     let items: ContentItem[];
@@ -106,24 +101,23 @@ export async function GET(request: NextRequest) {
 // ── POST /api/items ───────────────────────────────────────────────────────────
 
 /**
- * Creates a new content item.
+ * Creates a new content item via the Unified Intelligence pipeline.
  *
  * Required body fields:
- *   url        — the URL of the link to save
- *   sourceType — where it came from (e.g. "manual", "browser-extension")
+ *   url — the URL of the link to save
  *
  * Optional body fields:
- *   title       — override the OG-fetched title
+ *   sourceType  — where it came from (default: "manual")
+ *   title       — override the page title
  *   contentType — "article" | "video" | "podcast" (default: "article")
  *   topics      — string[] of topic tags (default: [])
- *   notes       — plain text notes; used as the item's summary
+ *   notes       — plain text notes; used as userNotes in metadata
  *   priority    — "high" | "medium" | "low" (default: "medium")
  *
- * The handler automatically fetches Open Graph metadata from the URL to enrich
- * the item with title, description, thumbnail, author, and publication name.
- * If OG fetching fails, the item is still created with whatever data was provided.
+ * The handler fetches the page HTML, builds RawContent, and runs it through
+ * processContent(). If the pipeline rejects (e.g. relevance gate), returns 422.
  *
- * Response: { item: ContentItem } with HTTP 201 on success.
+ * Response: { item: ContentItem } with HTTP 201 for new, 200 for duplicate.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -149,107 +143,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sourceType = body.sourceType;
-    if (!sourceType || typeof sourceType !== "string") {
-      return NextResponse.json(
-        { error: "Missing required field: sourceType" },
-        { status: 400, headers: CORS_HEADERS }
-      );
-    }
-
     const trimmedUrl = sanitizeUrl(url);
+    const normalizedUrl = normalizeUrl(trimmedUrl);
+    const sourceType = (body.sourceType as SourceType) ?? "manual";
 
-    // ── Detect content strategy ──────────────────────────────────────────────
-    const strategy = detectStrategy(trimmedUrl);
+    // ── Fetch page HTML ──────────────────────────────────────────────────────
 
-    // ── Dedup check ──────────────────────────────────────────────────────────
-    const existingItem = getItemByNormalizedUrl(trimmedUrl);
-    if (existingItem) {
+    let rawBody: string;
+    try {
+      const response = await fetch(trimmedUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; Distil/1.0)" },
+        signal: AbortSignal.timeout(10000),
+      });
+      rawBody = await response.text();
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      apiLogger.warn({ err: fetchError, url: trimmedUrl }, "POST /api/items fetch failed");
       return NextResponse.json(
-        { item: existingItem, duplicate: true },
-        { status: 200, headers: CORS_HEADERS },
+        { error: `Failed to fetch URL: ${message}` },
+        { status: 422, headers: CORS_HEADERS }
       );
     }
 
-    // ── Fetch OG metadata, extract full content, and enrich metadata in parallel ─
-    // All three fetch the URL independently with their own timeouts. If any
-    // fails, it returns nulls/{} — the item is still created with whatever
-    // data is available.
+    // ── Build RawContent and run pipeline ────────────────────────────────────
 
-    const [og, extraction, enriched] = await Promise.all([
-      fetchOG(trimmedUrl),
-      strategy.extractContent ? extractContent(trimmedUrl) : Promise.resolve(null),
-      strategy.enrichMetadata(trimmedUrl, { title: null, description: null, image: null, author: null, siteName: null } satisfies OGData),
-    ]);
-
-    // ── Build the new item ──────────────────────────────────────────────────
-
-    const title =
-      (typeof body.title === "string" ? body.title.trim() : null) ?? og.title ?? url.trim();
-
-    const summary =
-      (typeof body.notes === "string" ? body.notes.trim() : null) ?? og.description ?? "";
-
-    // Resolve contentType: use strategy-detected type unless it's "article",
-    // in which case fall back to the caller-supplied value or default to "article".
-    const contentType: ContentType =
-      strategy.contentType !== "article"
-        ? strategy.contentType
-        : ((body.contentType as ContentType) ?? "article");
-
-    const newItem: ContentItem = {
-      id: crypto.randomUUID(),
-      title,
-      summary,
-      sourceType: sourceType as SourceType,
-      contentType,
-      topics: Array.isArray(body.topics) ? (body.topics as string[]) : [],
-      // OG author takes priority; fall back to extracted byline, then enriched metadata.
-      author: og.author ?? extraction?.byline ?? enriched.author ?? undefined,
-      // OG site name takes priority; fall back to enriched metadata.
-      publication: og.siteName ?? enriched.publication ?? undefined,
-      url: trimmedUrl,
-      priority: (body.priority as Priority) ?? "medium",
-      isRead: false,
-      createdAt: new Date().toISOString(),
-      // Enriched thumbnail takes priority (higher quality for YouTube oEmbed);
-      // for non-enriched strategies enriched.thumbnailUrl is undefined, so ogData.image wins.
-      thumbnailUrl: enriched.thumbnailUrl ?? og.image ?? undefined,
-      // Full content and extracted links from Readability (only when extractContent is true).
-      fullContent: extraction?.content ?? undefined,
-      extractedLinks: extraction?.extractedLinks ?? undefined,
-      // Stamp extraction attempt so the detail page never re-fetches.
-      contentExtractedAt: strategy.extractContent ? new Date().toISOString() : undefined,
-    };
-
-    // ── Persist and respond ─────────────────────────────────────────────────
-
-    const inserted = insertItem(newItem);
-
-    // Create in-app notification for high-priority items (if preference enabled).
-    createNotificationIfEnabled(inserted);
-
-    // Fire-and-forget: generate AI summary in the background.
-    // Strategy controls whether summarization is appropriate for this content type.
-    if (strategy.generateAISummary) {
-      generateSummary(inserted.id, { length: "brief" }).catch((err) => {
-        apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background summary failed");
-      });
-    }
-
-    // Fire-and-forget: auto-tag items that have no topics.
-    if (inserted.topics.length === 0) {
-      autoTagItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
-        apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background auto-tag failed");
-      });
-    }
-
-    // Fire-and-forget: embed item for semantic deduplication.
-    embedItem(inserted.id, inserted.title, inserted.summary).catch((err) => {
-      apiLogger.error({ err, itemId: inserted.id }, "POST /api/items background embedding failed");
+    const raw = buildRawContent({
+      sourceType,
+      rawBody,
+      url: normalizedUrl,
+      metadata: {
+        pageTitle: typeof body.title === "string" ? body.title.trim() : undefined,
+        userNotes: typeof body.notes === "string" ? body.notes.trim() : undefined,
+        priority: (body.priority as Priority) ?? undefined,
+        contentType: (body.contentType as ContentType) ?? undefined,
+        topics: Array.isArray(body.topics) ? (body.topics as string[]) : undefined,
+      },
     });
 
-    return NextResponse.json({ item: inserted }, { status: 201, headers: CORS_HEADERS });
+    const result = await processContent(raw);
+
+    if (result.status === "rejected") {
+      return NextResponse.json(
+        { error: result.rejectionReason ?? "Content was rejected" },
+        { status: 422, headers: CORS_HEADERS }
+      );
+    }
+
+    // ── Load full item and respond ───────────────────────────────────────────
+
+    const item =
+      getItemById(raw.id) ?? getItemByNormalizedUrl(normalizedUrl);
+    if (!item) {
+      apiLogger.error({ rawId: raw.id, url: normalizedUrl }, "POST /api/items item not found after pipeline");
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
+
+    const isNew = item.id === raw.id;
+    return NextResponse.json(
+      { item },
+      { status: isNew ? 201 : 200, headers: CORS_HEADERS }
+    );
   } catch (error) {
     apiLogger.error({ err: error }, "POST /api/items unexpected error");
     return NextResponse.json(
