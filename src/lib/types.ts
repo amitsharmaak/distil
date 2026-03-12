@@ -31,6 +31,8 @@ export interface ContentItem {
   thumbnailUrl?: string;
   /** Hyperlinks extracted from article body on ingestion. */
   extractedLinks?: ExtractedLink[];
+  /** ISO timestamp of when content extraction was last attempted (success or failure). */
+  contentExtractedAt?: string;
   /** AI-generated summary (joined from ai_summaries table on read). */
   aiSummary?: string;
 }

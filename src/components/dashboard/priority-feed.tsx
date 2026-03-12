@@ -1,11 +1,8 @@
 /**
- * PriorityFeed — shows the top 5 unread items sorted by priority.
+ * PriorityFeed — editorial "top stories" cards for the Today's Brief.
  *
- * Receives all items as a prop from the Dashboard server component and filters
- * + sorts them locally. No data fetching happens here.
- *
- * This is a pure display component with no client-side interactivity,
- * so it does NOT require "use client".
+ * Shows the top 5 unread items sorted by priority. The first card is larger
+ * to create visual hierarchy, like a newspaper's lead story.
  */
 
 import Link from "next/link";
@@ -16,16 +13,12 @@ import {
   Link as LinkIcon,
   Play,
   Headphones,
-  ArrowUpRight,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ContentItem, SourceType, ContentType } from "@/lib/types";
 import { MarkReadButton } from "@/components/feed/mark-read-button";
 
-// ── Source icon + color mappings ───────────────────────────────────────────────
-
-/** Maps each SourceType to its lucide-react icon component. */
 const sourceIcons: Record<SourceType, React.ElementType> = {
   gmail: Mail,
   slack: Hash,
@@ -33,43 +26,49 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   manual: LinkIcon,
 };
 
-/** Maps each SourceType to a Tailwind text colour class. */
+const sourceLabels: Record<SourceType, string> = {
+  gmail: "Gmail",
+  slack: "Slack",
+  "browser-extension": "Extension",
+  manual: "Manual",
+};
+
 const sourceColors: Record<SourceType, string> = {
   gmail: "text-red-500",
   slack: "text-purple-500",
   "browser-extension": "text-orange-500",
-  manual: "text-gray-500",
+  manual: "text-muted-foreground",
 };
 
-/** Maps each priority level to badge colour classes. */
 const priorityColors: Record<string, string> = {
   high: "bg-red-500/10 text-red-600 border-red-200",
   medium: "bg-amber-500/10 text-amber-600 border-amber-200",
   low: "bg-green-500/10 text-green-600 border-green-200",
 };
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-/** Renders a small icon for non-article content types (video / podcast). */
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3 w-3" />;
   if (type === "podcast") return <Headphones className="h-3 w-3" />;
   return null;
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
 
 interface PriorityFeedProps {
-  /** All content items — filtered and sorted to the top 5 unread by priority. */
   items: ContentItem[];
 }
 
-/**
- * Displays the top 5 unread items sorted high → medium → low priority.
- * Each item is a clickable link to its detail page (/feed/[id]).
- */
 export function PriorityFeed({ items }: PriorityFeedProps) {
-  // Filter to unread items and sort by priority (high first), then by date.
   const priorityItems = items
     .filter((item) => !item.isRead)
     .sort((a, b) => {
@@ -78,82 +77,116 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
     })
     .slice(0, 5);
 
+  if (priorityItems.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border py-12 text-center">
+        <p className="font-serif text-lg text-muted-foreground">
+          All caught up
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          No unread items right now.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-base font-semibold">Priority Reading</CardTitle>
-        <Link
-          href="/feed"
-          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-        >
-          View all <ArrowUpRight className="h-3 w-3" />
-        </Link>
-      </CardHeader>
+    <div className="space-y-3">
+      {priorityItems.map((item, index) => {
+        const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
+        const isLead = index === 0;
 
-      <CardContent className="space-y-3">
-        {priorityItems.map((item) => {
-          const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
-          return (
-            <Link
-              key={item.id}
-              href={`/feed/${item.id}?filter=unread`}
-              className="group flex gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent"
+        return (
+          <Link
+            key={item.id}
+            href={`/feed/${item.id}?filter=unread`}
+            className="group block"
+          >
+            <article
+              className={cn(
+                "relative rounded-xl border border-border bg-card transition-all hover:shadow-md",
+                isLead ? "p-6" : "p-4",
+              )}
             >
-              {/* Source icon */}
-              <div className="mt-0.5 shrink-0">
-                <SourceIcon className={`h-4 w-4 ${sourceColors[item.sourceType]}`} />
+              {/* Unread accent */}
+              <div className="absolute bottom-4 left-0 top-4 w-0.5 rounded-full bg-primary" />
+
+              {/* Source & time */}
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <SourceIcon
+                    className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`}
+                  />
+                  <span>{sourceLabels[item.sourceType]}</span>
+                  {item.publication && (
+                    <>
+                      <span className="text-border">&middot;</span>
+                      <span>{item.publication}</span>
+                    </>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {timeAgo(item.createdAt)}
+                </span>
               </div>
 
-              {/* Item details */}
-              <div className="flex-1 min-w-0">
-                {/* Title + priority badge + mark-read */}
-                <div className="flex items-start gap-2">
-                  <h3 className="text-sm font-medium leading-snug line-clamp-1 flex-1">
-                    {item.title}
-                  </h3>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] ${priorityColors[item.priority]}`}
-                    >
-                      {item.priority}
-                    </Badge>
-                    <MarkReadButton itemId={item.id} isRead={item.isRead} />
-                  </div>
-                </div>
+              {/* Title */}
+              <h3
+                className={cn(
+                  "font-serif font-semibold leading-snug tracking-tight",
+                  isLead
+                    ? "text-xl line-clamp-2"
+                    : "text-base line-clamp-1",
+                )}
+              >
+                {item.title}
+              </h3>
 
-                {/* Summary excerpt */}
-                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{item.summary}</p>
+              {/* Summary */}
+              <p
+                className={cn(
+                  "mt-1.5 text-sm leading-relaxed text-muted-foreground",
+                  isLead ? "line-clamp-3" : "line-clamp-2",
+                )}
+              >
+                {item.summary}
+              </p>
 
-                {/* Tags: content type, topic tags, author */}
-                <div className="mt-2 flex items-center gap-2">
-                  {item.contentType !== "article" && (
-                    <Badge variant="secondary" className="text-[10px] gap-1">
-                      <ContentTypeIcon type={item.contentType} />
-                      {item.duration}
-                    </Badge>
-                  )}
-                  {item.topics.slice(0, 2).map((topic) => (
-                    <Badge key={topic} variant="secondary" className="text-[10px]">
-                      {topic}
-                    </Badge>
-                  ))}
+              {/* Footer */}
+              <div className="mt-3 flex items-center gap-2">
+                {item.contentType !== "article" && (
+                  <Badge variant="secondary" className="gap-1 text-[10px]">
+                    <ContentTypeIcon type={item.contentType} />
+                    {item.duration}
+                  </Badge>
+                )}
+                {item.topics.slice(0, 3).map((topic) => (
+                  <span
+                    key={topic}
+                    className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {topic}
+                  </span>
+                ))}
+                <div className="ml-auto flex items-center gap-1.5">
                   {item.author && (
-                    <span className="text-[10px] text-muted-foreground">by {item.author}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {item.author}
+                    </span>
                   )}
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${priorityColors[item.priority]}`}
+                  >
+                    {item.priority}
+                  </Badge>
+                  <MarkReadButton itemId={item.id} isRead={item.isRead} />
                 </div>
               </div>
-            </Link>
-          );
-        })}
-
-        {/* Empty state */}
-        {priorityItems.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            All caught up — no unread items!
-          </p>
-        )}
-      </CardContent>
-    </Card>
+            </article>
+          </Link>
+        );
+      })}
+    </div>
   );
 }

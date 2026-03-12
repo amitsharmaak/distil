@@ -5,7 +5,6 @@ import { Search, Bell, X, Bot, Activity } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -14,6 +13,14 @@ import { NotificationPanel } from "@/components/notifications/notification-panel
 import { ChatPanel } from "@/components/agent/chat-panel";
 import { AgentStatusPanel } from "@/components/agent/agent-status-panel";
 import { config } from "@/lib/config";
+
+function formatDate() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
 
 export function Topbar() {
   const router = useRouter();
@@ -36,7 +43,7 @@ export function Topbar() {
         router.push(`/feed?q=${encodeURIComponent(value.trim())}`);
       }, 300);
     },
-    [router]
+    [router],
   );
 
   const handleSearchKeyDown = useCallback(
@@ -52,7 +59,7 @@ export function Topbar() {
         router.push("/feed");
       }
     },
-    [router, searchValue]
+    [router, searchValue],
   );
 
   const handleSearchClear = useCallback(() => {
@@ -79,14 +86,19 @@ export function Topbar() {
   }, [open, fetchCount]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* AgentBar: search + Ask Distil */}
-      <div className="relative flex flex-1 max-w-md items-center gap-2">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Date */}
+      <span className="hidden text-[13px] text-muted-foreground md:block">
+        {formatDate()}
+      </span>
+
+      {/* Search */}
+      <div className="relative ml-auto flex max-w-sm flex-1 items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search articles, topics, authors..."
-            className="pl-9 pr-8"
+            className="pl-9 pr-8 h-9 text-sm"
             value={searchValue}
             onChange={handleSearchChange}
             onKeyDown={handleSearchKeyDown}
@@ -101,20 +113,27 @@ export function Topbar() {
             </button>
           )}
         </div>
+
+        {/* Ask Distil */}
         <Sheet open={chatOpen} onOpenChange={setChatOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="shrink-0" aria-label="Ask Distil">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              aria-label="Ask Distil"
+            >
               <Bot className="h-4 w-4" />
             </Button>
           </SheetTrigger>
           <SheetContent
             side="right"
-            className="flex flex-col w-full sm:max-w-xl p-0 gap-0"
+            className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
             showCloseButton={true}
           >
             <SheetTitle className="sr-only">Distil Agent</SheetTitle>
-            <Tabs defaultValue="chat" className="flex flex-col h-full">
-              <TabsList className="w-full justify-start rounded-none border-b px-4 h-12">
+            <Tabs defaultValue="chat" className="flex h-full flex-col">
+              <TabsList className="h-12 w-full justify-start rounded-none border-b px-4">
                 <TabsTrigger value="chat" className="gap-2">
                   <Bot className="h-4 w-4" />
                   Ask Distil
@@ -124,10 +143,10 @@ export function Topbar() {
                   Activity
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="chat" className="flex-1 m-0 min-h-0">
+              <TabsContent value="chat" className="m-0 min-h-0 flex-1">
                 <ChatPanel />
               </TabsContent>
-              <TabsContent value="activity" className="flex-1 m-0 min-h-0 overflow-hidden">
+              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-hidden">
                 <AgentStatusPanel />
               </TabsContent>
             </Tabs>
@@ -135,13 +154,14 @@ export function Topbar() {
         </Sheet>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      {/* Right actions */}
+      <div className="flex items-center gap-2">
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
+            <Button variant="ghost" size="icon" className="relative h-9 w-9">
+              <Bell className="h-[18px] w-[18px]" />
               {unreadCount > 0 && (
-                <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 text-[10px] flex items-center justify-center">
+                <Badge className="absolute -right-1 -top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full p-0 text-[10px]">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </Badge>
               )}
@@ -154,12 +174,6 @@ export function Topbar() {
             />
           </PopoverContent>
         </Popover>
-
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </AvatarFallback>
-        </Avatar>
       </div>
     </header>
   );

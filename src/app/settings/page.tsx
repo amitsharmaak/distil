@@ -12,7 +12,6 @@ import {
   Bell,
   Trash2,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,21 +49,24 @@ const SOURCE_META: Record<string, { name: string; icon: string }> = {
 };
 
 const TOPIC_COLORS = [
-  "#8B5CF6", "#06B6D4", "#F59E0B", "#10B981", "#EF4444",
-  "#3B82F6", "#84CC16", "#EC4899", "#6366F1", "#F97316",
+  "#4F46E5", "#0891B2", "#D97706", "#059669", "#DC2626",
+  "#2563EB", "#65A30D", "#DB2777", "#7C3AED", "#EA580C",
 ];
 
 export default function SettingsPage() {
-  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
+  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">(
+    "detailed",
+  );
   const [pollingFrequency, setPollingFrequency] = useState("15");
   const [highPriorityEnabled, setHighPriorityEnabled] = useState(true);
   const [sources, setSources] = useState<DerivedSource[]>([]);
   const [topics, setTopics] = useState<DerivedTopic[]>([]);
 
-  // Delete all data
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteError, setDeleteError] = useState("");
-  const [deleteStatus, setDeleteStatus] = useState<"idle" | "confirm" | "deleting" | "done">("idle");
+  const [deleteStatus, setDeleteStatus] = useState<
+    "idle" | "confirm" | "deleting" | "done"
+  >("idle");
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function SettingsPage() {
             name: SOURCE_META[type]?.name ?? type,
             icon: SOURCE_META[type]?.icon ?? "Globe",
             itemCount: count,
-          }))
+          })),
         );
         setTopics(
           Array.from(topicMap.entries())
@@ -99,7 +101,7 @@ export default function SettingsPage() {
               name,
               itemCount: count,
               color: TOPIC_COLORS[i % TOPIC_COLORS.length],
-            }))
+            })),
         );
       })
       .catch(() => {});
@@ -143,8 +145,12 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Configure your Distil preferences</p>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight">
+          Settings
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Configure your Distil preferences
+        </p>
       </div>
 
       <Tabs defaultValue="accounts">
@@ -164,14 +170,12 @@ export default function SettingsPage() {
         </TabsList>
 
         {/* Accounts Tab */}
-        <TabsContent value="accounts" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Connected Accounts</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+        <TabsContent value="accounts" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h3 className="mb-4 text-sm font-semibold">Connected Accounts</h3>
+            <div className="space-y-3">
               {sources.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
+                <p className="py-2 text-sm text-muted-foreground">
                   No connected accounts yet. Add sources from the Sources page.
                 </p>
               ) : (
@@ -195,110 +199,116 @@ export default function SettingsPage() {
                   );
                 })
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Agent Tab */}
-        <TabsContent value="agent" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Agent Preferences</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Summary Length</label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={summaryLength === "brief" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSummaryLength("brief")}
-                  >
-                    Brief
-                  </Button>
-                  <Button
-                    variant={summaryLength === "detailed" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSummaryLength("detailed")}
-                  >
-                    Detailed
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Controls how long the AI-generated summaries will be
-                </p>
+        <TabsContent value="agent" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-5 space-y-6">
+            <h3 className="text-sm font-semibold">Agent Preferences</h3>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Summary Length</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={summaryLength === "brief" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSummaryLength("brief")}
+                >
+                  Brief
+                </Button>
+                <Button
+                  variant={
+                    summaryLength === "detailed" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setSummaryLength("detailed")}
+                >
+                  Detailed
+                </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Controls how long the AI-generated summaries will be
+              </p>
+            </div>
 
-              <Separator />
+            <Separator />
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Polling Frequency (minutes)</label>
-                <Input
-                  type="number"
-                  value={pollingFrequency}
-                  onChange={(e) => setPollingFrequency(e.target.value)}
-                  className="w-32"
-                  min="5"
-                  max="120"
-                />
-                <p className="text-xs text-muted-foreground">
-                  How often the agent checks sources for new content (5-120 min)
-                </p>
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Polling Frequency (minutes)
+              </label>
+              <Input
+                type="number"
+                value={pollingFrequency}
+                onChange={(e) => setPollingFrequency(e.target.value)}
+                className="h-9 w-32"
+                min="5"
+                max="120"
+              />
+              <p className="text-xs text-muted-foreground">
+                How often the agent checks sources for new content (5-120 min)
+              </p>
+            </div>
 
-              <Separator />
+            <Separator />
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Priority Weights</label>
-                <div className="space-y-3">
-                  {[
-                    {
-                      label: "Recency",
-                      desc: "Newer content ranks higher",
-                      value: 70,
-                    },
-                    {
-                      label: "Topic Relevance",
-                      desc: "Content matching your topics ranks higher",
-                      value: 90,
-                    },
-                    {
-                      label: "Source Reliability",
-                      desc: "Trusted sources rank higher",
-                      value: 60,
-                    },
-                  ].map((weight) => (
-                    <div key={weight.label} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm">{weight.label}</p>
-                        <p className="text-xs text-muted-foreground">{weight.desc}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-24 rounded-full bg-muted">
-                          <div
-                            className="h-2 rounded-full bg-primary"
-                            style={{ width: `${weight.value}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground w-8">{weight.value}%</span>
-                      </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Priority Weights</label>
+              <div className="space-y-3">
+                {[
+                  {
+                    label: "Recency",
+                    desc: "Newer content ranks higher",
+                    value: 70,
+                  },
+                  {
+                    label: "Topic Relevance",
+                    desc: "Content matching your topics ranks higher",
+                    value: 90,
+                  },
+                  {
+                    label: "Source Reliability",
+                    desc: "Trusted sources rank higher",
+                    value: 60,
+                  },
+                ].map((weight) => (
+                  <div
+                    key={weight.label}
+                    className="flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-sm">{weight.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {weight.desc}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-24 rounded-full bg-secondary">
+                        <div
+                          className="h-1.5 rounded-full bg-primary"
+                          style={{ width: `${weight.value}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-xs text-muted-foreground">
+                        {weight.value}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Topics Tab */}
-        <TabsContent value="topics" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Managed Topics</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
+        <TabsContent value="topics" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h3 className="mb-4 text-sm font-semibold">Managed Topics</h3>
+            <div className="space-y-2">
               {topics.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
+                <p className="py-2 text-sm text-muted-foreground">
                   No topics yet. Topics appear automatically as you add content.
                 </p>
               ) : (
@@ -309,143 +319,156 @@ export default function SettingsPage() {
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className="h-3 w-3 rounded-full"
+                        className="h-2.5 w-2.5 rounded-full"
                         style={{ backgroundColor: topic.color }}
                       />
                       <div>
                         <p className="text-sm font-medium">{topic.name}</p>
-                        <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
+                        <p className="text-xs text-muted-foreground">
+                          {topic.itemCount} items
+                        </p>
                       </div>
                     </div>
                   </div>
                 ))
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Notifications Tab */}
-        <TabsContent value="notifications" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Notification Preferences</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* High priority — functional toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">High priority items</p>
-                  <p className="text-xs text-muted-foreground">
-                    Get notified when high-priority content arrives
-                  </p>
-                </div>
-                <Button
-                  variant={highPriorityEnabled ? "default" : "outline"}
-                  size="sm"
-                  onClick={toggleHighPriority}
-                >
-                  {highPriorityEnabled ? "On" : "Off"}
-                </Button>
-              </div>
+        <TabsContent value="notifications" className="mt-4 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+            <h3 className="text-sm font-semibold">Notification Preferences</h3>
 
-              {/* Remaining preferences — coming soon */}
-              {[
-                {
-                  label: "Daily digest",
-                  desc: "Receive a summary of the day's content each morning",
-                },
-                {
-                  label: "New source content",
-                  desc: "Notify when a new source starts syncing",
-                },
-                {
-                  label: "Trend alerts",
-                  desc: "Alert when a topic is trending across sources",
-                },
-              ].map((pref) => (
-                <div key={pref.label} className="flex items-center justify-between opacity-50">
-                  <div>
-                    <p className="text-sm font-medium">{pref.label}</p>
-                    <p className="text-xs text-muted-foreground">{pref.desc}</p>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px]">
-                    Coming soon
-                  </Badge>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">High priority items</p>
+                <p className="text-xs text-muted-foreground">
+                  Get notified when high-priority content arrives
+                </p>
+              </div>
+              <Button
+                variant={highPriorityEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={toggleHighPriority}
+              >
+                {highPriorityEnabled ? "On" : "Off"}
+              </Button>
+            </div>
+
+            {[
+              {
+                label: "Daily digest",
+                desc: "Receive a summary of the day's content each morning",
+              },
+              {
+                label: "New source content",
+                desc: "Notify when a new source starts syncing",
+              },
+              {
+                label: "Trend alerts",
+                desc: "Alert when a topic is trending across sources",
+              },
+            ].map((pref) => (
+              <div
+                key={pref.label}
+                className="flex items-center justify-between opacity-50"
+              >
+                <div>
+                  <p className="text-sm font-medium">{pref.label}</p>
+                  <p className="text-xs text-muted-foreground">{pref.desc}</p>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <Badge variant="secondary" className="text-[10px]">
+                  Coming soon
+                </Badge>
+              </div>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
 
       {/* Danger Zone */}
-      <Card className="border-destructive/40">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-destructive flex items-center gap-2">
-            <Trash2 className="h-4 w-4" /> Danger Zone
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {deleteStatus === "done" ? (
+      <div className="rounded-xl border border-destructive/40 bg-card p-5">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-destructive">
+          <Trash2 className="h-4 w-4" /> Danger Zone
+        </h3>
+
+        {deleteStatus === "done" ? (
+          <p className="text-sm text-muted-foreground">
+            All data has been deleted successfully.
+          </p>
+        ) : deleteStatus === "confirm" || deleteStatus === "deleting" ? (
+          <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              All data has been deleted successfully.
+              Enter the password to permanently delete all items, summaries,
+              feedback, and sync history.
             </p>
-          ) : deleteStatus === "confirm" || deleteStatus === "deleting" ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Enter the password to permanently delete all items, summaries, feedback, and sync history.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  ref={passwordInputRef}
-                  type="password"
-                  placeholder="Password"
-                  value={deletePassword}
-                  onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(""); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleDeleteAllData()}
-                  className="w-48"
-                  disabled={deleteStatus === "deleting"}
-                />
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteAllData}
-                  disabled={deleteStatus === "deleting" || deletePassword.length === 0}
-                >
-                  {deleteStatus === "deleting" ? "Deleting…" : "Confirm Delete"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setDeleteStatus("idle"); setDeletePassword(""); setDeleteError(""); }}
-                  disabled={deleteStatus === "deleting"}
-                >
-                  Cancel
-                </Button>
-              </div>
-              {deleteError && (
-                <p className="text-xs text-destructive">{deleteError}</p>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Delete all data</p>
-                <p className="text-xs text-muted-foreground">
-                  Permanently removes all items, summaries, feedback, and sync history.
-                </p>
-              </div>
+            <div className="flex gap-2">
+              <Input
+                ref={passwordInputRef}
+                type="password"
+                placeholder="Password"
+                value={deletePassword}
+                onChange={(e) => {
+                  setDeletePassword(e.target.value);
+                  setDeleteError("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleDeleteAllData()}
+                className="h-9 w-48"
+                disabled={deleteStatus === "deleting"}
+              />
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => { setDeleteStatus("confirm"); setTimeout(() => passwordInputRef.current?.focus(), 50); }}
+                onClick={handleDeleteAllData}
+                disabled={
+                  deleteStatus === "deleting" || deletePassword.length === 0
+                }
               >
-                Delete all data
+                {deleteStatus === "deleting"
+                  ? "Deleting\u2026"
+                  : "Confirm Delete"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDeleteStatus("idle");
+                  setDeletePassword("");
+                  setDeleteError("");
+                }}
+                disabled={deleteStatus === "deleting"}
+              >
+                Cancel
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {deleteError && (
+              <p className="text-xs text-destructive">{deleteError}</p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Delete all data</p>
+              <p className="text-xs text-muted-foreground">
+                Permanently removes all items, summaries, feedback, and sync
+                history.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setDeleteStatus("confirm");
+                setTimeout(() => passwordInputRef.current?.focus(), 50);
+              }}
+            >
+              Delete all data
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

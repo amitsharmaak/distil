@@ -276,6 +276,7 @@ export async function syncSlackMessages(): Promise<{
           thumbnailUrl: og.image ?? undefined,
           fullContent: extraction?.content ?? undefined,
           extractedLinks: extraction?.extractedLinks ?? undefined,
+          contentExtractedAt: new Date().toISOString(),
         };
 
         const newItem = insertItem(item);

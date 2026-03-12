@@ -2,8 +2,8 @@
 
 import { LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { SourceType, ContentType, Priority } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const sourceOptions: { value: SourceType; label: string }[] = [
   { value: "gmail", label: "Gmail" },
@@ -37,6 +37,30 @@ interface FeedFiltersProps {
   onShowReadChange: (show: boolean) => void;
 }
 
+function FilterPill<T extends string>({
+  label,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+        selected
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 function FilterGroup<T extends string>({
   label,
   options,
@@ -57,17 +81,17 @@ function FilterGroup<T extends string>({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground font-medium">{label}:</span>
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {label}:
+      </span>
       {options.map((opt) => (
-        <Badge
+        <FilterPill
           key={opt.value}
-          variant={selected.includes(opt.value) ? "default" : "outline"}
-          className="cursor-pointer text-[11px]"
-          onClick={() => toggle(opt.value)}
-        >
-          {opt.label}
-        </Badge>
+          label={opt.label}
+          selected={selected.includes(opt.value)}
+          onToggle={() => toggle(opt.value)}
+        />
       ))}
     </div>
   );
@@ -86,7 +110,7 @@ export function FeedFilters({
   onShowReadChange,
 }: FeedFiltersProps) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <FilterGroup
@@ -97,34 +121,38 @@ export function FeedFilters({
           />
         </div>
         <div className="flex items-center gap-2">
-          <Badge
-            variant={showRead ? "outline" : "default"}
-            className="cursor-pointer text-[11px]"
+          <button
             onClick={() => onShowReadChange(!showRead)}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+              !showRead
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border bg-card text-muted-foreground hover:bg-accent",
+            )}
           >
             {showRead ? "Showing all" : "Unread only"}
-          </Badge>
+          </button>
           <div className="flex items-center rounded-lg border border-border">
             <Button
               variant={viewMode === "card" ? "secondary" : "ghost"}
               size="icon"
-              className="h-8 w-8 rounded-r-none"
+              className="h-7 w-7 rounded-r-none"
               onClick={() => onViewModeChange("card")}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant={viewMode === "compact" ? "secondary" : "ghost"}
               size="icon"
-              className="h-8 w-8 rounded-l-none"
+              className="h-7 w-7 rounded-l-none"
               onClick={() => onViewModeChange("compact")}
             >
-              <List className="h-4 w-4" />
+              <List className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3">
         <FilterGroup
           label="Source"
           options={sourceOptions}
