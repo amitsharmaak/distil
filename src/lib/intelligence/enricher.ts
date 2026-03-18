@@ -8,6 +8,7 @@
 
 import { generateText } from "@/lib/ai/router";
 import { enrichSummaryPrompt, enrichTopicsPrompt } from "@/lib/prompts/intelligence";
+import { detectStrategy } from "@/lib/content-strategies";
 import type { Priority } from "@/lib/types";
 import type {
   ContentAnalysis,
@@ -30,14 +31,22 @@ export async function enrichContent(
   const cleanText = extracted.cleanTextContent ?? "";
   const title = extracted.title ?? "Untitled";
 
+  const strategy = detectStrategy(raw.url ?? "");
+
   let summary: string;
   let topics: string[] = [];
 
-  try {
-    summary = (await generateText(enrichSummaryPrompt(title, cleanText), "summarize")).trim();
-    if (!summary) throw new Error("Empty summary");
-  } catch {
-    summary = cleanText.slice(0, 200) + (cleanText.length > 200 ? "..." : "");
+  if (!strategy.generateAISummary) {
+    // For content types that don't warrant AI summarization (e.g. tweets),
+    // use the extracted text directly so items.summary holds the real content.
+    summary = cleanText.slice(0, strategy.card.summaryMaxChars) || title;
+  } else {
+    try {
+      summary = (await generateText(enrichSummaryPrompt(title, cleanText), "summarize")).trim();
+      if (!summary) throw new Error("Empty summary");
+    } catch {
+      summary = cleanText.slice(0, 200) + (cleanText.length > 200 ? "..." : "");
+    }
   }
 
   try {

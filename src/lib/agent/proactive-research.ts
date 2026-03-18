@@ -5,7 +5,7 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItems, insertNotification } from "@/lib/db";
+import { getItems, getResearchReports, insertNotification } from "@/lib/db";
 import { generateJSON } from "@/lib/ai/router";
 import { startResearch } from "@/lib/ai/research";
 import { aiLogger } from "@/lib/logger";
@@ -90,14 +90,14 @@ export async function runProactiveScan(): Promise<{
 }> {
   aiLogger.info("Starting proactive research scan");
 
-  // Get items from the last 48 hours
+  // Get items from the last 7 days
   const recentItems = getItems({ sort: "recent", limit: 100 });
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const filtered = recentItems.filter(
     (i) => new Date(i.createdAt) > cutoff,
   );
 
-  if (filtered.length < 5) {
+  if (filtered.length < 3) {
     aiLogger.info(
       { itemCount: filtered.length },
       "Not enough recent items for proactive scan",
@@ -105,15 +105,30 @@ export async function runProactiveScan(): Promise<{
     return { clustersFound: 0, researchTriggered: 0 };
   }
 
-  const clusters = findTopicClusters(filtered);
+  const clusters = findTopicClusters(filtered, 2);
   let researchTriggered = 0;
+
+  // Build a set of topics already researched in the last 7 days to avoid duplicates
+  const recentReports = getResearchReports(50);
+  const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyResearchedTopics = new Set(
+    recentReports
+      .filter((r) => new Date(r.created_at) > recentCutoff)
+      .map((r) => r.query.toLowerCase()),
+  );
 
   // Only process top 3 clusters to avoid excessive AI calls
   for (const cluster of clusters.slice(0, 3)) {
+    const query = `Latest developments in ${cluster.topic}: What's new and why does it matter?`;
+
+    if (recentlyResearchedTopics.has(query.toLowerCase())) {
+      aiLogger.info({ topic: cluster.topic }, "Skipping — already researched recently");
+      continue;
+    }
+
     const { should, reason } = await shouldResearch(cluster);
 
     if (should) {
-      const query = `Latest developments in ${cluster.topic}: What's new and why does it matter?`;
       const reportId = startResearch(query);
       researchTriggered++;
 

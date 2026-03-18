@@ -8,6 +8,7 @@ import { generateSummary } from "@/lib/ai/summarize";
 import { embedItem } from "@/lib/ai/embeddings";
 import { reprioritize } from "@/lib/ai/prioritize";
 import { aiLogger } from "@/lib/logger";
+import { detectStrategy } from "@/lib/content-strategies";
 
 /**
  * Run the triage workflow for a single item.
@@ -23,8 +24,15 @@ export async function runTriageWorkflow(itemId: string): Promise<void> {
   }
 
   try {
-    const { summary } = await generateSummary(itemId, { length: "brief" });
-    await embedItem(itemId, item.title, summary || item.summary);
+    const strategy = detectStrategy(item.url);
+    let embedText = item.summary;
+
+    if (strategy.generateAISummary) {
+      const { summary } = await generateSummary(itemId, { length: "brief" });
+      embedText = summary || item.summary;
+    }
+
+    await embedItem(itemId, item.title, embedText);
     await reprioritize(false);
     aiLogger.info({ itemId }, "Triage completed");
   } catch (error) {

@@ -38,9 +38,10 @@ export function ContentCard({
   const filterSuffix = filter ? `?filter=${filter}` : "";
   const isProcessing = item.processingStatus === "processing";
 
-  const displaySummary = item.aiSummary
-    ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
-    : item.summary;
+  const displaySummary =
+    item.aiSummary && strategy.generateAISummary
+      ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
+      : (item.summary ?? "").slice(0, strategy.card.summaryMaxChars);
 
   if (compact) {
     const compactContent = (

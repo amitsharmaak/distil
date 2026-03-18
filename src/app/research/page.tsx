@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { FileQuestion } from "lucide-react";
+import { FileQuestion, Scan } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { config } from "@/lib/config";
 
@@ -21,22 +22,52 @@ export default function ResearchListPage() {
   const [reports, setReports] = useState<ResearchReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{
+    clustersFound: number;
+    researchTriggered: number;
+  } | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  async function fetchReports() {
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/list`);
+      if (!res.ok) throw new Error("Failed to load reports");
+      const data = await res.json();
+      setReports(data.reports ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load reports");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function fetchReports() {
-      try {
-        const res = await fetch(`${config.apiBaseUrl}/api/ai/research/list`);
-        if (!res.ok) throw new Error("Failed to load reports");
-        const data = await res.json();
-        setReports(data.reports ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load reports");
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchReports();
   }, []);
+
+  async function handleScan() {
+    setScanning(true);
+    setScanResult(null);
+    setScanError(null);
+    try {
+      const res = await fetch(
+        `${config.apiBaseUrl}/api/ai/research/proactive`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Scan failed");
+      }
+      const data = await res.json();
+      setScanResult(data);
+      await fetchReports();
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   function getStatusBadgeVariant(status: string) {
     if (status === "completed") return "text-green-600 border-green-200";
@@ -54,12 +85,54 @@ export default function ResearchListPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Research</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your research reports
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Research</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your research reports
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleScan}
+          disabled={scanning || loading}
+          className="gap-2 shrink-0"
+        >
+          <Scan className="h-4 w-4" />
+          {scanning ? "Scanning..." : "Scan Topics"}
+        </Button>
       </div>
+
+      {scanResult && (
+        <div className="rounded-md border px-4 py-3 text-sm">
+          {scanResult.researchTriggered > 0 ? (
+            <p>
+              Found{" "}
+              <span className="font-medium">{scanResult.clustersFound}</span>{" "}
+              topic{" "}
+              {scanResult.clustersFound === 1 ? "cluster" : "clusters"},
+              triggered{" "}
+              <span className="font-medium">{scanResult.researchTriggered}</span>{" "}
+              research{" "}
+              {scanResult.researchTriggered === 1 ? "task" : "tasks"}.
+            </p>
+          ) : scanResult.clustersFound > 0 ? (
+            <p className="text-muted-foreground">
+              Found {scanResult.clustersFound} topic{" "}
+              {scanResult.clustersFound === 1 ? "cluster" : "clusters"}, but no
+              significant developments warranted new research.
+            </p>
+          ) : (
+            <p className="text-muted-foreground">
+              Not enough recent items to scan. Add more content and try again.
+            </p>
+          )}
+        </div>
+      )}
+      {scanError && (
+        <p className="text-sm text-destructive">{scanError}</p>
+      )}
 
       {loading ? (
         <div className="space-y-3">

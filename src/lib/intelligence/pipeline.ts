@@ -23,6 +23,7 @@ import {
 import type { ContentItem, SourceType } from "../types";
 import { generateSummary } from "../ai/summarize";
 import { embedItem } from "../ai/embeddings";
+import { detectStrategy } from "../content-strategies";
 import { classify } from "./classifier";
 import { checkRelevance } from "./relevance";
 import { extractContent } from "./extractor";
@@ -212,9 +213,12 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     updateItemProcessingStatus(raw.id, "ready");
     updateItemPriorityScore(raw.id, enriched.priorityScore, enriched.priority);
 
-    // Step 10b: Fire-and-forget deep AI summary (overview, keyPoints, whyItMatters).
-    // Runs after the item is fully saved so generateSummary can load it by ID.
-    generateSummary(raw.id, { length: "brief" }).catch(() => {});
+    // Step 10b: Fire-and-forget deep AI summary — skipped for content types
+    // that don't use AI summarization (e.g. tweets).
+    const strategy = detectStrategy(raw.url ?? "");
+    if (strategy.generateAISummary) {
+      generateSummary(raw.id, { length: "brief" }).catch(() => {});
+    }
 
     // Step 10c: Fire-and-forget embedding for semantic search.
     embedItem(raw.id, extracted.title, enriched.summary).catch(() => {});
