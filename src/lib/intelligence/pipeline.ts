@@ -191,6 +191,15 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       enriched = minimalEnrichment(extracted);
     }
 
+    // If the extractor found a tweet video URL, inject it into detectedMedia
+    // so the UI can render it alongside the text.
+    const detectedMedia = extracted.videoUrl
+      ? [
+          ...analysis.detectedMedia,
+          { type: "video" as const, platform: "twitter", embedUrl: extracted.videoUrl },
+        ]
+      : analysis.detectedMedia;
+
     // Step 9: Update item in DB with full data
     updateItem(raw.id, {
       title: extracted.title,
@@ -205,7 +214,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       extractedLinks: analysis.relevantLinks,
       processingStatus: "ready",
       contentClassification: classification,
-      detectedMedia: analysis.detectedMedia,
+      detectedMedia,
       informationDensity: analysis.informationDensityScore,
     });
 

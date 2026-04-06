@@ -39,7 +39,8 @@ export async function enrichContent(
   if (!strategy.generateAISummary) {
     // For content types that don't warrant AI summarization (e.g. tweets),
     // use the extracted text directly so items.summary holds the real content.
-    summary = cleanText.slice(0, strategy.card.summaryMaxChars) || title;
+    // summaryMaxChars is a display-only limit — do not truncate storage here.
+    summary = cleanText || title;
   } else {
     try {
       summary = (await generateText(enrichSummaryPrompt(title, cleanText), "summarize")).trim();

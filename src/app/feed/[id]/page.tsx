@@ -289,13 +289,27 @@ export default async function ItemDetailPage({
         )}
 
         {strategy.detail.showTweetRenderer ? (
-          /* Tweet — rendered directly in reader typography */
-          <div className="distil-reader space-y-4">
-            {item.summary.split(/\n\n+/).map((para, i) => (
-              <p key={i} className="whitespace-pre-line">
-                {renderTweetText(para)}
-              </p>
-            ))}
+          /* Tweet — rendered directly in reader typography, with inline video if present */
+          <div className="space-y-5">
+            {(() => {
+              const twitterVideo = (item.detectedMedia as Array<{ type: string; platform?: string; embedUrl?: string }> | undefined)
+                ?.find((m) => m.type === "video" && m.platform === "twitter");
+              return twitterVideo?.embedUrl ? (
+                <video
+                  src={twitterVideo.embedUrl}
+                  controls
+                  className="w-full rounded-xl border border-border"
+                  style={{ maxHeight: 480 }}
+                />
+              ) : null;
+            })()}
+            <div className="distil-reader space-y-4">
+              {item.summary.split(/\n\n+/).map((para, i) => (
+                <p key={i} className="whitespace-pre-line">
+                  {renderTweetText(para)}
+                </p>
+              ))}
+            </div>
           </div>
         ) : strategy.detail.showAISummary ? (
           /* Article — AI summary with lazy content extraction */

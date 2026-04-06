@@ -179,6 +179,8 @@ export interface ExtractedContentResult {
   publication?: string;
   /** Best image URL */
   thumbnailUrl?: string;
+  /** Direct video URL — set for tweets that contain a video */
+  videoUrl?: string;
   /** All links found in content with context */
   allLinks: RawExtractedLink[];
 }

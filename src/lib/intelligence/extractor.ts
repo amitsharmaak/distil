@@ -66,6 +66,7 @@ async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> 
       author: ogData.author ?? undefined,
       publication: ogData.siteName ?? undefined,
       thumbnailUrl: ogData.image ?? undefined,
+      videoUrl: ogData.videoUrl ?? undefined,
       allLinks: [],
     };
   }

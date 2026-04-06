@@ -30,7 +30,14 @@ export async function POST() {
       const tweetText = og.description ?? "";
 
       if (tweetText) {
-        updateItem(tweet.id, { summary: tweetText });
+        updateItem(tweet.id, {
+          summary: tweetText,
+          fullContent: tweetText,
+          // Update title only when OG returned something more specific than the
+          // generic "Author on X" fallback (i.e. X Articles have a real title)
+          ...(og.title && og.title !== tweet.title ? { title: og.title } : {}),
+          ...(og.image && !tweet.thumbnailUrl ? { thumbnailUrl: og.image } : {}),
+        });
       }
 
       // Clear any stale AI summary so the tweet renderer shows raw text

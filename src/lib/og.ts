@@ -26,6 +26,8 @@ export interface OGData {
   author: string | null;
   /** Site/publication name from og:site_name. */
   siteName: string | null;
+  /** Direct video URL — populated for tweets that contain a video (from fxtwitter). */
+  videoUrl?: string | null;
 }
 
 const BROWSER_USER_AGENT =
@@ -102,7 +104,20 @@ async function fetchFxTwitter(tweetId: string): Promise<OGData> {
       tweet?: {
         text?: string;
         author?: { name?: string; screen_name?: string };
-        media?: { photos?: Array<{ url?: string }> };
+        media?: {
+          photos?: Array<{ url?: string }>;
+          videos?: Array<{ url?: string; type?: string }>;
+        };
+        article?: {
+          title?: string;
+          preview_text?: string;
+          cover_media?: {
+            media_info?: { original_img_url?: string };
+          };
+          content?: {
+            blocks?: Array<{ text?: string }>;
+          };
+        };
       };
     };
 
@@ -110,14 +125,36 @@ async function fetchFxTwitter(tweetId: string): Promise<OGData> {
     if (!tweet) return emptyOGData();
 
     const authorName = tweet.author?.name ?? null;
+    // Prefer the highest-quality MP4 (fxtwitter lists videos best-quality-first)
+    const videoUrl = tweet.media?.videos?.[0]?.url ?? null;
+
+    // X Articles: tweet.text is empty and content lives in tweet.article
+    if (!tweet.text && tweet.article) {
+      const article = tweet.article;
+      const blocks = article.content?.blocks ?? [];
+      const articleText = blocks
+        .map((b) => b.text)
+        .filter(Boolean)
+        .join("\n\n");
+      return {
+        title: article.title ?? (authorName ? `${authorName} on X` : null),
+        description: articleText || article.preview_text || null,
+        image: article.cover_media?.media_info?.original_img_url ?? null,
+        author: authorName,
+        siteName: "X",
+        videoUrl,
+      };
+    }
+
     const image = tweet.media?.photos?.[0]?.url ?? null;
 
     return {
       title: authorName ? `${authorName} on X` : null,
-      description: tweet.text ?? null,
+      description: tweet.text || null,
       image,
       author: authorName,
       siteName: "X",
+      videoUrl,
     };
   } catch {
     clearTimeout(timeoutId);
