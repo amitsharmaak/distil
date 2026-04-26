@@ -1,13 +1,19 @@
 /**
  * Proactive research agent — scans recent items for topic clusters
- * and triggers research when significant developments are detected.
+ * and persists suggested research topics for explicit user approval.
  *
  * SERVER-SIDE ONLY.
  */
 
-import { getItems, getResearchReports, insertNotification } from "@/lib/db";
+import { randomUUID } from "crypto";
+
+import {
+  getItems,
+  getResearchReports,
+  insertNotification,
+  replacePendingResearchSuggestions,
+} from "@/lib/db";
 import { generateJSON } from "@/lib/ai/router";
-import { startResearch } from "@/lib/ai/research";
 import { aiLogger } from "@/lib/logger";
 import type { ContentItem } from "@/lib/types";
 
@@ -38,7 +44,6 @@ function findTopicClusters(
   const clusters: TopicCluster[] = [];
   for (const [topic, clusterItems] of topicMap) {
     if (clusterItems.length >= minClusterSize) {
-      // Significance: more items + more diverse sources = more significant
       const sources = new Set(clusterItems.map((i) => i.sourceType));
       const significance =
         clusterItems.length * (1 + sources.size * 0.5);
@@ -50,12 +55,19 @@ function findTopicClusters(
   return clusters;
 }
 
+const DEFAULT_QUERY_TEMPLATE = (topic: string) =>
+  `Latest developments in ${topic}: What's new and why does it matter?`;
+
 /**
- * Determines if a topic cluster warrants proactive research.
+ * Determines if a topic cluster warrants a research suggestion (not auto-run).
  */
-async function shouldResearch(
+async function evaluateClusterForSuggestion(
   cluster: TopicCluster,
-): Promise<{ should: boolean; reason: string }> {
+): Promise<{
+  should: boolean;
+  reason: string;
+  suggestedQuery: string;
+}> {
   try {
     const itemTitles = cluster.items
       .slice(0, 5)
@@ -66,7 +78,7 @@ async function shouldResearch(
 ${itemTitles}
 
 Is there a significant development or trend worth researching further?
-Respond with JSON: { "should": true/false, "reason": "brief explanation", "suggestedQuery": "research query if should=true" }`;
+Respond with JSON: { "should": true/false, "reason": "brief explanation", "suggestedQuery": "specific web research query if should=true" }`;
 
     const result = await generateJSON<{
       should: boolean;
@@ -74,23 +86,36 @@ Respond with JSON: { "should": true/false, "reason": "brief explanation", "sugge
       suggestedQuery?: string;
     }>(prompt, "research-plan");
 
-    return { should: result.should, reason: result.reason };
+    const suggestedQuery =
+      (result.suggestedQuery?.trim() || "") ||
+      DEFAULT_QUERY_TEMPLATE(cluster.topic);
+
+    return {
+      should: result.should,
+      reason: result.reason,
+      suggestedQuery,
+    };
   } catch {
-    return { should: false, reason: "Analysis failed" };
+    return {
+      should: false,
+      reason: "Analysis failed",
+      suggestedQuery: DEFAULT_QUERY_TEMPLATE(cluster.topic),
+    };
   }
+}
+
+export interface ProactiveScanResult {
+  clustersFound: number;
+  suggestionsSaved: number;
 }
 
 /**
  * Run a proactive research scan on recent items.
- * Called periodically (e.g., every 6 hours via job queue).
+ * Persists pending suggestions only — deep research runs after user approval.
  */
-export async function runProactiveScan(): Promise<{
-  clustersFound: number;
-  researchTriggered: number;
-}> {
+export async function runProactiveScan(): Promise<ProactiveScanResult> {
   aiLogger.info("Starting proactive research scan");
 
-  // Get items from the last 7 days
   const recentItems = getItems({ sort: "recent", limit: 100 });
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const filtered = recentItems.filter(
@@ -102,56 +127,73 @@ export async function runProactiveScan(): Promise<{
       { itemCount: filtered.length },
       "Not enough recent items for proactive scan",
     );
-    return { clustersFound: 0, researchTriggered: 0 };
+    return { clustersFound: 0, suggestionsSaved: 0 };
   }
 
   const clusters = findTopicClusters(filtered, 2);
-  let researchTriggered = 0;
 
-  // Build a set of topics already researched in the last 7 days to avoid duplicates
   const recentReports = getResearchReports(50);
   const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const recentlyResearchedTopics = new Set(
+  const recentlyResearchedQueries = new Set(
     recentReports
       .filter((r) => new Date(r.created_at) > recentCutoff)
-      .map((r) => r.query.toLowerCase()),
+      .map((r) => r.query.toLowerCase().trim()),
   );
 
-  // Only process top 3 clusters to avoid excessive AI calls
-  for (const cluster of clusters.slice(0, 3)) {
-    const query = `Latest developments in ${cluster.topic}: What's new and why does it matter?`;
+  const toSave: Array<{
+    id: string;
+    topicKey: string;
+    topic: string;
+    reason: string;
+    suggestedQuery: string;
+    sourceItemIds: string[];
+  }> = [];
 
-    if (recentlyResearchedTopics.has(query.toLowerCase())) {
-      aiLogger.info({ topic: cluster.topic }, "Skipping — already researched recently");
+  for (const cluster of clusters.slice(0, 3)) {
+    const topicKey = cluster.topic.toLowerCase().trim();
+
+    const { should, reason, suggestedQuery } =
+      await evaluateClusterForSuggestion(cluster);
+
+    if (!should) continue;
+
+    if (recentlyResearchedQueries.has(suggestedQuery.toLowerCase().trim())) {
+      aiLogger.info(
+        { topic: cluster.topic },
+        "Skipping suggestion — same query researched recently",
+      );
       continue;
     }
 
-    const { should, reason } = await shouldResearch(cluster);
+    toSave.push({
+      id: randomUUID(),
+      topicKey,
+      topic: cluster.topic,
+      reason,
+      suggestedQuery,
+      sourceItemIds: cluster.items.map((i) => i.id),
+    });
+  }
 
-    if (should) {
-      const reportId = startResearch(query);
-      researchTriggered++;
+  replacePendingResearchSuggestions(toSave);
 
-      // Notify user
-      if (cluster.items[0]) {
-        insertNotification({
-          id: crypto.randomUUID(),
-          itemId: cluster.items[0].id,
-          title: `Research: ${cluster.topic}`,
-          message: `Distil detected ${cluster.items.length} items about ${cluster.topic} and started a research report. ${reason}`,
-        });
-      }
-
-      aiLogger.info(
-        { topic: cluster.topic, itemCount: cluster.items.length, reportId },
-        "Proactive research triggered",
-      );
-    }
+  if (toSave.length > 0 && toSave[0]) {
+    const first = toSave[0];
+    insertNotification({
+      id: randomUUID(),
+      itemId: first.sourceItemIds[0] ?? first.id,
+      title: "Research suggestions ready",
+      message: `Distil found ${toSave.length} topic${toSave.length === 1 ? "" : "s"} you may want to research. Open Research to review and start.`,
+    });
   }
 
   aiLogger.info(
-    { clustersFound: clusters.length, researchTriggered },
+    { clustersFound: clusters.length, suggestionsSaved: toSave.length },
     "Proactive scan complete",
   );
-  return { clustersFound: clusters.length, researchTriggered };
+
+  return {
+    clustersFound: clusters.length,
+    suggestionsSaved: toSave.length,
+  };
 }
