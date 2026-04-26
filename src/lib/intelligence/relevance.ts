@@ -13,6 +13,54 @@ import type {
   EmailCategory,
 } from "./types";
 
+/**
+ * When the AI classifier omits emailCategory, infer newsletter-like intent from
+ * Gmail headers and tab labels (mirrors connector-side triage heuristics).
+ */
+function inferEmailCategoryFromGmailSignals(
+  raw: RawContent,
+): EmailCategory | null {
+  const headers = raw.metadata.headers ?? {};
+  const pick = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = headers[k];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+    const lower = Object.fromEntries(
+      Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    for (const k of keys) {
+      const v = lower[k.toLowerCase()];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+    return "";
+  };
+
+  const listUnsub = pick("List-Unsubscribe");
+  const listId = pick("List-Id");
+  const precedence = pick("Precedence").toLowerCase();
+  const autoSub = pick("Auto-Submitted").toLowerCase();
+
+  const bulkLike =
+    precedence.includes("bulk") ||
+    precedence.includes("list") ||
+    autoSub.includes("auto-generated");
+
+  if (listUnsub || listId || bulkLike) {
+    return "newsletter";
+  }
+
+  const labels = raw.metadata.labels ?? [];
+  if (labels.includes("CATEGORY_UPDATES") || labels.includes("CATEGORY_FORUMS")) {
+    return "digest";
+  }
+  if (labels.includes("CATEGORY_PROMOTIONS")) {
+    return "promotional";
+  }
+
+  return null;
+}
+
 const DEFAULT_ALLOWED_CATEGORIES: EmailCategory[] = [
   "newsletter",
   "digest",
@@ -58,11 +106,6 @@ export async function checkRelevance(
     return { accepted: true };
   }
 
-  // Unknown classification (confidence = 0 from classifier error): fail open
-  if (classification.confidence === 0) {
-    return { accepted: true };
-  }
-
   // Gmail: check isContentPage first
   if (classification.isContentPage === false && classification.confidence > 0.7) {
     return {
@@ -71,15 +114,20 @@ export async function checkRelevance(
     };
   }
 
-  // Gmail: check email category allowlist
   const allowedCategories = parseAllowedCategories(
     getUserSetting(EMAIL_INTELLIGENCE_KEY),
   );
 
-  const emailCategory = classification.emailCategory;
+  const inferred = inferEmailCategoryFromGmailSignals(raw);
+  const emailCategory: EmailCategory | undefined =
+    classification.emailCategory ?? inferred ?? undefined;
+
   if (!emailCategory) {
-    // No category classified — accept to avoid dropping content
-    return { accepted: true };
+    return {
+      accepted: false,
+      reason:
+        "Not identified as a newsletter or digest (no matching category or newsletter signals)",
+    };
   }
 
   if (!allowedCategories.includes(emailCategory)) {
