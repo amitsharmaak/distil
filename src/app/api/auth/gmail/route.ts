@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getAuthUrl } from "@/lib/connectors/gmail";
+import { getAuthUrl, disconnectGmail } from "@/lib/connectors/gmail";
 
 /**
  * GET /api/auth/gmail
@@ -12,4 +12,23 @@ import { getAuthUrl } from "@/lib/connectors/gmail";
 export function GET() {
   const url = getAuthUrl();
   return NextResponse.redirect(url);
+}
+
+/**
+ * DELETE /api/auth/gmail
+ *
+ * Disconnects Gmail by revoking the OAuth token with Google and
+ * removing it from the local database.
+ */
+export async function DELETE() {
+  try {
+    await disconnectGmail();
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Failed to disconnect Gmail:", err);
+    return NextResponse.json(
+      { error: "Failed to disconnect Gmail" },
+      { status: 500 },
+    );
+  }
 }
