@@ -17,11 +17,65 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { getItems, getItemById, getItemByNormalizedUrl } from "@/lib/db";
+import { getItems, getItemByNormalizedUrl } from "@/lib/db";
 import { hybridSearch } from "@/lib/ai/search";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
+
+// Tracks pending background ingestions. Tests can await `pendingIngestions`
+// to wait for fire-and-forget work to settle before asserting DB state.
+export const pendingIngestions = new Set<Promise<void>>();
+
+/**
+ * Fetches the URL and runs the full intelligence pipeline.
+ * Used by POST /api/items as fire-and-forget background work so the
+ * HTTP response can return immediately (202) before enrichment finishes.
+ */
+async function ingestInBackground(params: {
+  trimmedUrl: string;
+  normalizedUrl: string;
+  sourceType: SourceType;
+  title?: string;
+  notes?: string;
+  priority?: Priority;
+  contentType?: ContentType;
+  topics?: string[];
+}) {
+  let rawBody: string;
+  try {
+    const response = await fetch(params.trimmedUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Distil/1.0)" },
+      signal: AbortSignal.timeout(10000),
+    });
+    rawBody = await response.text();
+  } catch (fetchError) {
+    apiLogger.warn(
+      { err: fetchError, url: params.trimmedUrl },
+      "background ingest fetch failed"
+    );
+    return;
+  }
+
+  const raw = buildRawContent({
+    sourceType: params.sourceType,
+    rawBody,
+    url: params.normalizedUrl,
+    metadata: {
+      pageTitle: params.title,
+      userNotes: params.notes,
+      priority: params.priority,
+      contentType: params.contentType,
+      topics: params.topics,
+    },
+  });
+
+  try {
+    await processContent(raw);
+  } catch (err) {
+    apiLogger.error({ err, url: params.normalizedUrl }, "background ingest pipeline failed");
+  }
+}
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 
@@ -147,64 +201,34 @@ export async function POST(request: NextRequest) {
     const normalizedUrl = normalizeUrl(trimmedUrl);
     const sourceType = (body.sourceType as SourceType) ?? "manual";
 
-    // ── Fetch page HTML ──────────────────────────────────────────────────────
+    // ── Dedup check (sync, cheap) ────────────────────────────────────────────
 
-    let rawBody: string;
-    try {
-      const response = await fetch(trimmedUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; Distil/1.0)" },
-        signal: AbortSignal.timeout(10000),
-      });
-      rawBody = await response.text();
-    } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      apiLogger.warn({ err: fetchError, url: trimmedUrl }, "POST /api/items fetch failed");
+    const existing = getItemByNormalizedUrl(normalizedUrl);
+    if (existing) {
       return NextResponse.json(
-        { error: `Failed to fetch URL: ${message}` },
-        { status: 422, headers: CORS_HEADERS }
+        { item: existing, status: "duplicate" },
+        { status: 200, headers: CORS_HEADERS }
       );
     }
 
-    // ── Build RawContent and run pipeline ────────────────────────────────────
+    // ── Kick off pipeline in background and respond immediately ──────────────
 
-    const raw = buildRawContent({
+    const task = ingestInBackground({
+      trimmedUrl,
+      normalizedUrl,
       sourceType,
-      rawBody,
-      url: normalizedUrl,
-      metadata: {
-        pageTitle: typeof body.title === "string" ? body.title.trim() : undefined,
-        userNotes: typeof body.notes === "string" ? body.notes.trim() : undefined,
-        priority: (body.priority as Priority) ?? undefined,
-        contentType: (body.contentType as ContentType) ?? undefined,
-        topics: Array.isArray(body.topics) ? (body.topics as string[]) : undefined,
-      },
+      title: typeof body.title === "string" ? body.title.trim() : undefined,
+      notes: typeof body.notes === "string" ? body.notes.trim() : undefined,
+      priority: (body.priority as Priority) ?? undefined,
+      contentType: (body.contentType as ContentType) ?? undefined,
+      topics: Array.isArray(body.topics) ? (body.topics as string[]) : undefined,
     });
+    pendingIngestions.add(task);
+    task.finally(() => pendingIngestions.delete(task));
 
-    const result = await processContent(raw);
-
-    if (result.status === "rejected") {
-      return NextResponse.json(
-        { error: result.rejectionReason ?? "Content was rejected" },
-        { status: 422, headers: CORS_HEADERS }
-      );
-    }
-
-    // ── Load full item and respond ───────────────────────────────────────────
-
-    const item =
-      getItemById(raw.id) ?? getItemByNormalizedUrl(normalizedUrl);
-    if (!item) {
-      apiLogger.error({ rawId: raw.id, url: normalizedUrl }, "POST /api/items item not found after pipeline");
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500, headers: CORS_HEADERS }
-      );
-    }
-
-    const isNew = item.id === raw.id;
     return NextResponse.json(
-      { item },
-      { status: isNew ? 201 : 200, headers: CORS_HEADERS }
+      { status: "accepted", url: normalizedUrl },
+      { status: 202, headers: CORS_HEADERS }
     );
   } catch (error) {
     apiLogger.error({ err: error }, "POST /api/items unexpected error");

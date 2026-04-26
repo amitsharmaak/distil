@@ -58,7 +58,19 @@ import { db, insertItem } from "@/lib/db";
 import type { ContentItem } from "@/lib/types";
 
 // Import the route handlers under test.
-import { GET, POST, OPTIONS } from "../route";
+import { GET, POST, OPTIONS, pendingIngestions } from "../route";
+
+import { getItemByNormalizedUrl, getItems } from "@/lib/db";
+
+/**
+ * Awaits all in-flight background ingestions kicked off by POST.
+ * Settles even if the underlying tasks reject.
+ */
+async function flushIngestions() {
+  while (pendingIngestions.size > 0) {
+    await Promise.allSettled([...pendingIngestions]);
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -277,9 +289,10 @@ describe("POST /api/items", () => {
     });
     const res = await POST(req);
 
-    expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.item.sourceType).toBe("manual");
+    expect(res.status).toBe(202);
+    await flushIngestions();
+    const item = getItemByNormalizedUrl("https://example.com/default-source");
+    expect(item?.sourceType).toBe("manual");
   });
 
   it("returns 400 for invalid JSON body", async () => {
@@ -293,7 +306,7 @@ describe("POST /api/items", () => {
     expect(res.status).toBe(400);
   });
 
-  it("creates an item and returns 201 with the created item", async () => {
+  it("returns 202 immediately and ingests in the background", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -306,14 +319,34 @@ describe("POST /api/items", () => {
     });
     const res = await POST(req);
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(202);
     const body = await res.json();
-    expect(body.item).toBeDefined();
-    expect(body.item.url).toContain("example.com");
-    expect(body.item.sourceType).toBe("manual");
-    expect(body.item.priority).toBe("high");
-    expect(body.item.isRead).toBe(false);
-    expect(body.item.id).toBeDefined();
+    expect(body.status).toBe("accepted");
+
+    await flushIngestions();
+    const item = getItemByNormalizedUrl("https://example.com/create-test");
+    expect(item).toBeDefined();
+    expect(item?.sourceType).toBe("manual");
+    expect(item?.priority).toBe("high");
+    expect(item?.isRead).toBe(false);
+  });
+
+  it("returns 200 with the existing item when the URL is a duplicate", async () => {
+    insertItem(makeItem({ id: "dup-1", url: "https://example.com/dup" }));
+
+    const req = makeRequest("http://localhost:3000/api/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/dup", sourceType: "manual" }),
+    });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("duplicate");
+    expect(body.item.id).toBe("dup-1");
+    // Should not have spawned a background ingestion.
+    expect(getItems({ includeProcessing: true })).toHaveLength(1);
   });
 
   it("uses caller-provided title in metadata", async () => {
@@ -326,10 +359,11 @@ describe("POST /api/items", () => {
         title: "My Custom Title",
       }),
     });
-    const res = await POST(req);
-    const body = await res.json();
+    await POST(req);
+    await flushIngestions();
 
-    expect(body.item.title).toBe("My Custom Title");
+    const item = getItemByNormalizedUrl("https://example.com/title-test");
+    expect(item?.title).toBe("My Custom Title");
   });
 
   it("uses notes as summary when provided", async () => {
@@ -342,10 +376,11 @@ describe("POST /api/items", () => {
         notes: "My personal notes about this page.",
       }),
     });
-    const res = await POST(req);
-    const body = await res.json();
+    await POST(req);
+    await flushIngestions();
 
-    expect(body.item.summary).toBe("My personal notes about this page.");
+    const item = getItemByNormalizedUrl("https://example.com/notes-test");
+    expect(item?.summary).toBe("My personal notes about this page.");
   });
 
   it("defaults contentType to article and priority to medium", async () => {
@@ -354,11 +389,12 @@ describe("POST /api/items", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: "https://example.com/defaults-test", sourceType: "manual" }),
     });
-    const res = await POST(req);
-    const body = await res.json();
+    await POST(req);
+    await flushIngestions();
 
-    expect(body.item.contentType).toBe("article");
-    expect(body.item.priority).toBe("medium");
+    const item = getItemByNormalizedUrl("https://example.com/defaults-test");
+    expect(item?.contentType).toBe("article");
+    expect(item?.priority).toBe("medium");
   });
 
   it("includes CORS headers in response", async () => {

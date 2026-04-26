@@ -43,10 +43,27 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   const selectedText = info.selectionText || "";
 
   // Attempt to save to the Distil API first. Fall back to local storage if it fails.
-  saveToAPI({ url, title, selectedText }).catch(() => {
-    // API unreachable — persist locally so the link is not lost.
+  saveToAPI({ url, title, selectedText, sourceType: "browser-extension", contentType: "article", priority: "medium", topics: [] }).catch(() => {
     saveToLocalStorage({ url, title, selectedText });
   });
+});
+
+// ── Popup-driven async save ────────────────────────────────────────────────────
+
+/**
+ * The popup forwards saves here and then closes immediately. Because the
+ * service worker outlives the popup, the fetch keeps running in the background
+ * and the API itself returns 202 quickly — so the user never waits on ingestion.
+ */
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "distil-save") return false;
+
+  saveToAPI(message.payload)
+    .catch(() => saveToLocalStorage(message.payload));
+
+  // Ack synchronously so the popup can close right away.
+  sendResponse({ ok: true });
+  return false;
 });
 
 // ── API save ───────────────────────────────────────────────────────────────────
@@ -64,22 +81,24 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
  *
  * @throws if the network request fails (caller handles the fallback)
  */
-async function saveToAPI({ url, title, selectedText }) {
+async function saveToAPI(payload) {
+  const { url, title, selectedText, notes, sourceType, contentType, priority, topics } = payload;
   const response = await fetch(DISTIL_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       url,
       title: title || undefined,
-      sourceType: "browser-extension",
-      contentType: "article",
-      notes: selectedText || undefined,
-      priority: "medium",
-      topics: [],
+      sourceType: sourceType || "browser-extension",
+      contentType: contentType || "article",
+      notes: notes || selectedText || undefined,
+      priority: priority || "medium",
+      topics: topics || [],
     }),
   });
 
-  if (!response.ok) {
+  // 202 is accepted-async; treat it as success.
+  if (!response.ok && response.status !== 202) {
     throw new Error(`Distil API returned ${response.status}`);
   }
 }
@@ -93,13 +112,14 @@ async function saveToAPI({ url, title, selectedText }) {
  * These locally-stored items are not yet synced to the database automatically.
  * A future sync mechanism can pick them up and POST them when the API is back.
  */
-function saveToLocalStorage({ url, title, selectedText }) {
+function saveToLocalStorage({ url, title, selectedText, notes, topics }) {
   const item = {
     url,
     title,
     selectedText,
+    notes,
     savedAt: new Date().toISOString(),
-    topics: [],
+    topics: topics || [],
     pendingSync: true,
   };
 

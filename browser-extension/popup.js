@@ -11,14 +11,6 @@
  * knows the save was local-only.
  */
 
-// ── Configuration ──────────────────────────────────────────────────────────────
-
-/**
- * The Distil API endpoint to POST new items to.
- * Must match the running Distil web app. Change this for production deployments.
- */
-const DISTIL_API_URL = "http://localhost:3000/api/items";
-
 // ── Initialization ─────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -61,41 +53,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Save button handler ──────────────────────────────────────────────────────
 
-  saveBtn.addEventListener("click", async () => {
-    // Disable the button immediately to prevent double-saves.
+  saveBtn.addEventListener("click", () => {
     saveBtn.disabled = true;
-    saveBtn.textContent = "Saving…";
+    saveBtn.textContent = "Saved!";
 
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs[0];
-      if (!tab?.url) return;
+      if (!tab?.url) {
+        window.close();
+        return;
+      }
 
-      // Parse topics from the comma-separated input field.
       const topics = topicsInput.value
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-
       const notes = notesInput.value.trim();
 
-      // Try the API first; fall back to local storage if it fails.
-      const saved = await saveToAPI({
-        url: tab.url,
-        title: tab.title || "",
-        topics,
-        notes,
+      // Hand off to the service worker. It outlives the popup, so the fetch
+      // (and any local-storage fallback) completes after this window closes.
+      chrome.runtime.sendMessage({
+        type: "distil-save",
+        payload: {
+          url: tab.url,
+          title: tab.title || "",
+          topics,
+          notes,
+          sourceType: "browser-extension",
+          contentType: "article",
+          priority: "medium",
+        },
       });
 
-      if (saved) {
-        showStatus("Saved to Distil!", "success");
-      } else {
-        saveToLocalStorage({ url: tab.url, title: tab.title || "", topics, notes });
-        showStatus("Saved locally (Distil offline)", "warning");
-      }
-
-      saveBtn.textContent = "Saved!";
-      // Auto-close the popup after a short delay.
-      setTimeout(() => window.close(), 1200);
+      showStatus("Saved to Distil!", "success");
+      setTimeout(() => window.close(), 250);
     });
   });
 
@@ -109,53 +100,5 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ── API save ───────────────────────────────────────────────────────────────────
-
-/**
- * Sends the item to the Distil API.
- *
- * @returns true on success, false if the API is unreachable or returns an error.
- */
-async function saveToAPI({ url, title, topics, notes }) {
-  try {
-    const response = await fetch(DISTIL_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        title: title || undefined,
-        sourceType: "browser-extension",
-        contentType: "article",
-        topics,
-        notes: notes || undefined,
-        priority: "medium",
-      }),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ── Local storage fallback ─────────────────────────────────────────────────────
-
-/**
- * Saves an item to chrome.storage.local as a fallback when the API is offline.
- * Items are flagged with pendingSync: true so a future sync pass can upload them.
- */
-function saveToLocalStorage({ url, title, topics, notes }) {
-  const item = {
-    url,
-    title,
-    topics,
-    notes,
-    savedAt: new Date().toISOString(),
-    pendingSync: true,
-  };
-
-  chrome.storage.local.get({ distilItems: [] }, (result) => {
-    const items = result.distilItems;
-    items.unshift(item);
-    chrome.storage.local.set({ distilItems: items });
-  });
-}
+// All network and fallback work now lives in the background service worker
+// (background.js), which keeps running after the popup closes.
