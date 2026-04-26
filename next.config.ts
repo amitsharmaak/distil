@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
    * This replaces the old webpack `externals` approach, which is incompatible
    * with Turbopack (the default bundler in Next.js 16+).
    */
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3", "playwright", "playwright-core"],
 };
 
 export default nextConfig;

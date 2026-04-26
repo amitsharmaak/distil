@@ -171,7 +171,13 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     let extracted: ExtractedContentResult;
     try {
       extracted = await extractContent(raw, classification);
-    } catch {
+    } catch (err) {
+      // Surface publisher auth errors to the caller (worker / manual API) so the
+      // user can be prompted to reconnect. All other errors degrade gracefully.
+      const { PublisherAuthRequired } = await import(
+        "../connectors/publishers/types"
+      );
+      if (err instanceof PublisherAuthRequired) throw err;
       extracted = minimalExtraction(raw);
     }
 
@@ -223,9 +229,9 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     updateItemPriorityScore(raw.id, enriched.priorityScore, enriched.priority);
 
     // Step 10b: Fire-and-forget deep AI summary — skipped for content types
-    // that don't use AI summarization (e.g. tweets).
+    // that don't use AI summarization (e.g. tweets), but enabled for X Articles.
     const strategy = detectStrategy(raw.url ?? "");
-    if (strategy.generateAISummary) {
+    if (strategy.generateAISummary || extracted.isXArticle) {
       generateSummary(raw.id, { length: "brief" }).catch(() => {});
     }
 

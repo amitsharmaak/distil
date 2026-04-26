@@ -188,6 +188,20 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_research_item ON research_reports(item_id);
 
+  -- AI-suggested research topics (pending until user approves or dismisses).
+  CREATE TABLE IF NOT EXISTS research_suggestions (
+    id                   TEXT PRIMARY KEY,
+    topic_key            TEXT NOT NULL,
+    topic                TEXT NOT NULL,
+    reason               TEXT NOT NULL DEFAULT '',
+    suggested_query      TEXT NOT NULL,
+    source_item_ids      TEXT NOT NULL DEFAULT '[]',
+    status               TEXT NOT NULL DEFAULT 'pending',
+    research_report_id   TEXT,
+    created_at           TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_research_suggestions_status ON research_suggestions(status);
+
   -- Key-value store for user settings (agent config, learned preferences).
   CREATE TABLE IF NOT EXISTS user_settings (
     key        TEXT PRIMARY KEY,
@@ -327,6 +341,18 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_job_queue_status  ON job_queue(status, priority DESC, created_at);
   CREATE INDEX IF NOT EXISTS idx_job_queue_type    ON job_queue(job_type);
+
+  -- Authenticated publisher discovery queue (one shared table for all publishers).
+  CREATE TABLE IF NOT EXISTS publisher_queue (
+    publisher_id  TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    discovered_at TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    PRIMARY KEY (publisher_id, url)
+  );
+  CREATE INDEX IF NOT EXISTS idx_publisher_queue_status ON publisher_queue(publisher_id, status);
 
   -- Raw content storage for intelligence pipeline (Stage 1 fetch).
   CREATE TABLE IF NOT EXISTS raw_content (
@@ -935,6 +961,13 @@ export function upsertOAuthToken(
   });
 }
 
+/**
+ * Deletes the OAuth token for a provider (used when disconnecting a source).
+ */
+export function deleteOAuthToken(provider: string): void {
+  db.prepare("DELETE FROM oauth_tokens WHERE provider = ?").run(provider);
+}
+
 // ── AI Summary helpers ───────────────────────────────────────────────────────
 
 export interface AISummaryRow {
@@ -1113,6 +1146,99 @@ export function getResearchReports(limit = 20): ResearchReportRow[] {
   return db
     .prepare("SELECT * FROM research_reports ORDER BY created_at DESC LIMIT ?")
     .all(limit) as ResearchReportRow[];
+}
+
+// ── Research suggestion helpers (proactive scan → user approval) ─────────────
+
+export interface ResearchSuggestionRow {
+  id: string;
+  topic_key: string;
+  topic: string;
+  reason: string;
+  suggested_query: string;
+  source_item_ids: string;
+  status: string;
+  research_report_id: string | null;
+  created_at: string;
+}
+
+export function getPendingResearchSuggestions(): ResearchSuggestionRow[] {
+  return db
+    .prepare(
+      "SELECT * FROM research_suggestions WHERE status = 'pending' ORDER BY created_at DESC",
+    )
+    .all() as ResearchSuggestionRow[];
+}
+
+export function getResearchSuggestionById(
+  id: string,
+): ResearchSuggestionRow | undefined {
+  return db
+    .prepare("SELECT * FROM research_suggestions WHERE id = ?")
+    .get(id) as ResearchSuggestionRow | undefined;
+}
+
+/**
+ * Replaces all pending suggestions with a new batch from a scan.
+ * Dismissed and started rows are left untouched.
+ */
+export function replacePendingResearchSuggestions(
+  suggestions: Array<{
+    id: string;
+    topicKey: string;
+    topic: string;
+    reason: string;
+    suggestedQuery: string;
+    sourceItemIds: string[];
+  }>,
+): void {
+  const del = db.prepare(
+    "DELETE FROM research_suggestions WHERE status = 'pending'",
+  );
+  const ins = db.prepare(`
+    INSERT INTO research_suggestions (
+      id, topic_key, topic, reason, suggested_query, source_item_ids, status, created_at
+    ) VALUES (
+      @id, @topic_key, @topic, @reason, @suggested_query, @source_item_ids, 'pending', @created_at
+    )
+  `);
+  const tx = db.transaction(() => {
+    del.run();
+    const now = new Date().toISOString();
+    for (const s of suggestions) {
+      ins.run({
+        id: s.id,
+        topic_key: s.topicKey,
+        topic: s.topic,
+        reason: s.reason,
+        suggested_query: s.suggestedQuery,
+        source_item_ids: JSON.stringify(s.sourceItemIds),
+        created_at: now,
+      });
+    }
+  });
+  tx();
+}
+
+export function dismissResearchSuggestion(id: string): boolean {
+  const row = getResearchSuggestionById(id);
+  if (!row || row.status !== "pending") return false;
+  db.prepare(
+    "UPDATE research_suggestions SET status = 'dismissed' WHERE id = ?",
+  ).run(id);
+  return true;
+}
+
+export function markResearchSuggestionStarted(
+  id: string,
+  researchReportId: string,
+): boolean {
+  const row = getResearchSuggestionById(id);
+  if (!row || row.status !== "pending") return false;
+  db.prepare(`
+    UPDATE research_suggestions SET status = 'started', research_report_id = @rid WHERE id = @id
+  `).run({ id, rid: researchReportId });
+  return true;
 }
 
 // ── User settings helpers ────────────────────────────────────────────────────

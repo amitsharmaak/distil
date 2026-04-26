@@ -35,6 +35,7 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   slack: Hash,
   "browser-extension": Globe,
   manual: LinkIcon,
+  publisher: LinkIcon,
 };
 
 const sourceLabels: Record<SourceType, string> = {
@@ -42,6 +43,7 @@ const sourceLabels: Record<SourceType, string> = {
   slack: "Slack",
   "browser-extension": "Extension",
   manual: "Link",
+  publisher: "Publisher",
 };
 
 
@@ -163,7 +165,12 @@ export default async function ItemDetailPage({
   }
 
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
-  const strategy = detectStrategy(item.url);
+  const baseStrategy = detectStrategy(item.url);
+  // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
+  const isXArticle = baseStrategy.detail.showTweetRenderer && !!item.fullContent && item.fullContent.length > 200;
+  const strategy = isXArticle
+    ? { ...baseStrategy, detail: { ...baseStrategy.detail, showTweetRenderer: false, showAISummary: true } }
+    : baseStrategy;
   const aiSummaries = getAISummaries(item.id);
   const existingFeedback = getFeedback(item.id);
 

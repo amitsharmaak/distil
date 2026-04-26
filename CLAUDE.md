@@ -79,7 +79,7 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 | `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for AI features        |
 | `SLACK_BOT_TOKEN`          | *(none)*                | Slack Bot Token for channel message sync     |
 | `SLACK_CHANNELS`           | *(empty)*               | Comma-separated channel names to monitor     |
-| `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Comma-separated newsletter sender emails     |
+| `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Reserved for future use; Gmail sync auto-detects newsletters |
 | `GMAIL_SYNC_AFTER_DATE`    | 30 days ago             | Earliest date to sync emails (YYYY/MM/DD)    |
 | `DISTIL_DELETE_PASSWORD`   | *(none)*                | Password for the "Delete All Data" endpoint  |
 
@@ -162,11 +162,11 @@ The AI agent system uses Google Gemini (`gemini-2.5-flash`) for:
 3. **Prioritization** — scores items using learned preferences (heuristic + optional AI ranking)
 4. **Deep Research** — multi-step research with live web search, produces cited markdown reports
 
-API routes: `POST /api/ai/summarize`, `GET /api/ai/summary/[itemId]`, `POST /api/ai/feedback`, `GET /api/ai/feedback/[itemId]`, `POST /api/ai/prioritize`, `GET/PUT /api/ai/preferences`, `POST /api/ai/research`, `GET /api/ai/research/[id]`, `GET /api/ai/research/[id]/stream`, `GET /api/ai/research/list`
+API routes: `POST /api/ai/summarize`, `GET /api/ai/summary/[itemId]`, `POST /api/ai/feedback`, `GET /api/ai/feedback/[itemId]`, `POST /api/ai/prioritize`, `GET/PUT /api/ai/preferences`, `POST /api/ai/research`, `GET /api/ai/research/[id]`, `GET /api/ai/research/[id]/stream`, `GET /api/ai/research/list`, `POST /api/ai/research/proactive` (suggestions only), `GET /api/ai/research/suggestions`, `DELETE /api/ai/research/suggestions/[id]`, `POST /api/ai/research/suggestions/[id]/start`
 
 Agent routes: `POST /api/agent/chat`, `GET /api/agent/status`, `POST /api/agent/approvals`
 
-Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `user_settings`
+Additional DB tables: `ai_summaries`, `feedback`, `research_reports`, `research_suggestions`, `user_settings`
 
 ### Data Flow
 
@@ -210,6 +210,17 @@ Chrome MV3 extension. On save: POSTs to the Distil API. Falls back to `chrome.st
 - Sync: `POST /api/slack/sync` fetches messages with URLs from configured channels
 - Core logic: `src/lib/connectors/slack.ts` — Slack connector (Bot Token + Web API)
 - Requires `SLACK_BOT_TOKEN` and `SLACK_CHANNELS` in `.env.local`
+
+### Authenticated Publisher Framework
+
+A registry-driven framework for paywalled publications (The Ken first; Stratechery, FT, etc. next). Adding a publisher = one file + one registry line — no new code paths or routes.
+
+- **Add a publisher**: drop a `PublisherDefinition` file in `src/lib/connectors/publishers/publishers/<id>.ts` and append it to `ALL_PUBLISHERS` in `src/lib/connectors/publishers/registry.ts`. Defines `urlMatcher`, `loginUrl`, `sessionProbe`, and `discovery` strategies (`gmail-sender` / `rss` / `logged-in-feed`).
+- **Hook**: `src/lib/intelligence/extractor.ts` checks `findByUrl(url)` first — any matching URL routes through `fetchArticle(publisher, url)` (Playwright + persisted session + Readability) instead of the public HTTP extractor. This means manual `/api/items` POSTs, browser-extension saves, and Gmail-discovered URLs all use the authenticated fetcher automatically.
+- **Sessions**: persisted Playwright contexts in `data/publisher-sessions/<id>/` (gitignored). Login is interactive — `runInteractiveLogin` opens a non-headless Chromium window so the user completes Google SSO themselves. **Local-only constraint**: this only works when the Next.js server runs on the user's machine; cloud deployment needs a different model.
+- **Queue**: shared `publisher_queue` table (`publisher_id`, `url`, `status`, `attempts`, `last_error`) for batch discovery (Gmail digests, logged-in crawls). Manual ingestion bypasses the queue.
+- **Worker / scheduler**: `syncAllPublishers()` in `src/lib/connectors/publishers/worker.ts`; auto-sync branch in `src/lib/sync-scheduler.ts`. Per-publisher mutex enforces `fetchConcurrency` and `minDelayMs`. `PublisherAuthRequired` propagates from `extractor → pipeline → worker` so the user sees a "Reconnect" prompt.
+- **API**: `GET /api/publishers`, `POST /api/publishers/[id]/login`, `GET /api/publishers/[id]/status`, `POST /api/publishers/[id]/sync`. Sources page renders one `PublisherCard` per registry entry.
 
 ## Testing
 

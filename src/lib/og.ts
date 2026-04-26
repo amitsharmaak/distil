@@ -28,6 +28,8 @@ export interface OGData {
   siteName: string | null;
   /** Direct video URL — populated for tweets that contain a video (from fxtwitter). */
   videoUrl?: string | null;
+  /** True when the X URL is an X Article (long-form), not a regular tweet. */
+  isXArticle?: boolean;
 }
 
 const BROWSER_USER_AGENT =
@@ -80,6 +82,7 @@ async function fetchTwitterMetadata(url: string): Promise<OGData> {
     image: fxResult.image ?? ogFallback.image,
     author: fxResult.author ?? ogFallback.author,
     siteName: fxResult.siteName ?? ogFallback.siteName ?? "X",
+    isXArticle: fxResult.isXArticle,
   };
 }
 
@@ -143,6 +146,7 @@ async function fetchFxTwitter(tweetId: string): Promise<OGData> {
         author: authorName,
         siteName: "X",
         videoUrl,
+        isXArticle: true,
       };
     }
 

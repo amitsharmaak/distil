@@ -1,4 +1,4 @@
-import { Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
+import { Mail, Hash, Globe, Link as LinkIcon, BookOpen } from "lucide-react";
 import type { SourceType } from "@/lib/types";
 
 export const sourceIcons: Record<SourceType, React.ElementType> = {
@@ -6,6 +6,7 @@ export const sourceIcons: Record<SourceType, React.ElementType> = {
   slack: Hash,
   "browser-extension": Globe,
   manual: LinkIcon,
+  publisher: BookOpen,
 };
 
 export const sourceLabels: Record<SourceType, string> = {
@@ -13,6 +14,7 @@ export const sourceLabels: Record<SourceType, string> = {
   slack: "Slack",
   "browser-extension": "Extension",
   manual: "Manual",
+  publisher: "Publisher",
 };
 
 export const sourceColors: Record<SourceType, string> = {
@@ -20,6 +22,7 @@ export const sourceColors: Record<SourceType, string> = {
   slack: "text-purple-500",
   "browser-extension": "text-orange-500",
   manual: "text-muted-foreground",
+  publisher: "text-blue-500",
 };
 
 export const priorityColors: Record<string, string> = {

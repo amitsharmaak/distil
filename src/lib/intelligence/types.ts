@@ -181,6 +181,8 @@ export interface ExtractedContentResult {
   thumbnailUrl?: string;
   /** Direct video URL — set for tweets that contain a video */
   videoUrl?: string;
+  /** True when the X URL is an X Article (long-form), not a regular tweet. */
+  isXArticle?: boolean;
   /** All links found in content with context */
   allLinks: RawExtractedLink[];
 }

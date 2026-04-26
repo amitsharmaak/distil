@@ -77,6 +77,7 @@ Copy `.env.example` to `.env.local` and configure. All features are optional —
 | `SLACK_BOT_TOKEN` | *(none)* | Slack Bot Token (`xoxb-...`) |
 | `SLACK_CHANNELS` | *(empty)* | Comma-separated Slack channel names |
 | `GMAIL_SYNC_AFTER_DATE` | 30 days ago | Earliest date to sync emails (YYYY/MM/DD) |
+| `GMAIL_NEWSLETTER_SENDERS` | *(empty)* | Reserved; Gmail uses inbox scan + auto newsletter detection |
 | `DISTIL_DELETE_PASSWORD` | *(none)* | Password for the "Delete All Data" endpoint |
 | `DISTIL_API_TOKEN` | *(none)* | Bearer token to protect all API endpoints |
 | `DISTIL_ALLOWED_ORIGINS` | *(empty)* | Comma-separated allowed CORS origins |

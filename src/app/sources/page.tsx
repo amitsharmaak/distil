@@ -19,6 +19,7 @@ import {
   Upload,
   Clock,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,10 @@ import { Separator } from "@/components/ui/separator";
 import type { SourceType } from "@/lib/types";
 import { config } from "@/lib/config";
 import type { GmailStatusResponse } from "@/app/api/auth/gmail/status/route";
+import {
+  PublisherCard,
+  type PublisherCardData,
+} from "@/components/sources/publisher-card";
 
 interface SlackStatusResponse {
   connected: boolean;
@@ -45,6 +50,7 @@ const sourceIcons: Record<string, React.ElementType> = {
   Hash,
   Globe,
   Link: LinkIcon,
+  BookOpen,
 };
 
 const availableIntegrations: {
@@ -56,7 +62,8 @@ const availableIntegrations: {
   {
     type: "gmail",
     name: "Gmail",
-    description: "Connect your Gmail to import newsletters and shared links",
+    description:
+      "Connect Gmail to import newsletter-style mail (auto-detected from your inbox)",
     icon: "Mail",
   },
   {
@@ -72,6 +79,13 @@ const availableIntegrations: {
     icon: "Globe",
   },
 ];
+
+// Sync interval from env (falls back to 3h default). Exposed via NEXT_PUBLIC_
+// so it's available in the client bundle for display purposes.
+const SYNC_INTERVAL_HOURS = parseInt(
+  process.env.NEXT_PUBLIC_SYNC_INTERVAL_HOURS ?? "3",
+  10,
+);
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
@@ -106,8 +120,25 @@ export default function SourcesPage() {
     unresolvedChannels?: string[];
   } | null>(null);
 
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+
   const [sourceCounts, setSourceCounts] = useState<Record<string, number>>({});
   const [statusesLoaded, setStatusesLoaded] = useState(false);
+
+  const [publishers, setPublishers] = useState<PublisherCardData[]>([]);
+
+  const fetchPublishers = useCallback(async () => {
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/publishers`);
+      if (res.ok) {
+        const data = (await res.json()) as { publishers: PublisherCardData[] };
+        setPublishers(data.publishers ?? []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch publishers:", err);
+    }
+  }, []);
 
   const fetchGmailStatus = useCallback(async () => {
     try {
@@ -148,8 +179,9 @@ export default function SourcesPage() {
       fetchGmailStatus(),
       fetchSlackStatus(),
       fetchSourceCounts(),
+      fetchPublishers(),
     ]).then(() => setStatusesLoaded(true));
-  }, [fetchGmailStatus, fetchSlackStatus]);
+  }, [fetchGmailStatus, fetchSlackStatus, fetchPublishers]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -177,6 +209,26 @@ export default function SourcesPage() {
       console.error("Network error during Gmail sync:", err);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const disconnectGmailHandler = async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/auth/gmail`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setGmailStatus({ connected: false, email: null, lastSync: null });
+        setSyncResult(null);
+        setShowDisconnectConfirm(false);
+      } else {
+        console.error("Failed to disconnect Gmail");
+      }
+    } catch (err) {
+      console.error("Network error disconnecting Gmail:", err);
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -445,17 +497,25 @@ export default function SourcesPage() {
                 </div>
               </div>
               {gmailStatus.connected && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={syncGmail}
-                  disabled={syncing}
-                  className="h-7 px-2"
-                >
-                  <RefreshCw
-                    className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
-                  />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {SYNC_INTERVAL_HOURS > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      every {SYNC_INTERVAL_HOURS}h
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={syncGmail}
+                    disabled={syncing}
+                    className="h-7 px-2"
+                    title="Sync now"
+                  >
+                    <RefreshCw
+                      className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
+                    />
+                  </Button>
+                </div>
               )}
             </div>
             <Separator className="my-3" />
@@ -488,6 +548,46 @@ export default function SourcesPage() {
                 </Button>
               )}
             </div>
+            {gmailStatus.connected && (
+              <div className="mt-3">
+                {showDisconnectConfirm ? (
+                  <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
+                    <span className="text-xs text-destructive">
+                      Disconnect Gmail?
+                    </span>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setShowDisconnectConfirm(false)}
+                        disabled={disconnecting}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-6 px-2 text-xs"
+                        onClick={disconnectGmailHandler}
+                        disabled={disconnecting}
+                      >
+                        {disconnecting ? "Disconnecting\u2026" : "Confirm"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-full text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => setShowDisconnectConfirm(true)}
+                  >
+                    Disconnect
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -516,17 +616,25 @@ export default function SourcesPage() {
                 </div>
               </div>
               {slackStatus.connected && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={syncSlack}
-                  disabled={slackSyncing}
-                  className="h-7 px-2"
-                >
-                  <RefreshCw
-                    className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`}
-                  />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {SYNC_INTERVAL_HOURS > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      every {SYNC_INTERVAL_HOURS}h
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={syncSlack}
+                    disabled={slackSyncing}
+                    className="h-7 px-2"
+                    title="Sync now"
+                  >
+                    <RefreshCw
+                      className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`}
+                    />
+                  </Button>
+                </div>
               )}
             </div>
             <Separator className="my-3" />
@@ -598,6 +706,31 @@ export default function SourcesPage() {
             );
           })}
       </div>
+
+      {/* Publications */}
+      {publishers.length > 0 && (
+        <section>
+          <div className="distil-section-label mb-4 flex items-center gap-2">
+            <BookOpen className="h-3.5 w-3.5" />
+            Publications
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {publishers.map((p) => (
+              <PublisherCard
+                key={p.id}
+                publisher={p}
+                onStatusChange={(updated) =>
+                  setPublishers((prev) =>
+                    prev.map((existing) =>
+                      existing.id === updated.id ? updated : existing,
+                    ),
+                  )
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Quick Add Links */}
       <section>

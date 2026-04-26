@@ -95,4 +95,29 @@ export const config = {
    * Set DISTIL_DELETE_PASSWORD in .env.local to enable the danger-zone reset.
    */
   deletePassword: process.env.DISTIL_DELETE_PASSWORD ?? "",
+
+  /**
+   * How often (in hours) to automatically sync Gmail and Slack in the background.
+   * The scheduler checks every 15 minutes and triggers a sync when this interval
+   * has elapsed since the last successful sync. Defaults to 3 hours.
+   *
+   * Also exposed as NEXT_PUBLIC_SYNC_INTERVAL_HOURS for display in the UI.
+   */
+  syncIntervalHours: parseInt(process.env.SYNC_INTERVAL_HOURS ?? "3", 10),
+
+  /**
+   * Directory where per-publisher Playwright persisted contexts are stored.
+   * Each publisher gets a subdirectory keyed by its id (e.g. data/publisher-sessions/the-ken/).
+   */
+  publisherSessionDir:
+    process.env.PUBLISHER_SESSION_DIR ?? "data/publisher-sessions",
+
+  /**
+   * Optional comma-separated list of publisher ids to enable.
+   * Empty/undefined enables all registered publishers.
+   */
+  publishersEnabled: (process.env.PUBLISHERS_ENABLED ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 } as const;

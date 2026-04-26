@@ -17,8 +17,10 @@
 import { google, gmail_v1 } from "googleapis";
 
 import { config } from "@/lib/config";
-import { getOAuthToken, upsertOAuthToken } from "@/lib/db";
+import { runGmailSenderDiscovery } from "@/lib/connectors/publishers/discovery/gmail-sender";
+import { getOAuthToken, upsertOAuthToken, deleteOAuthToken } from "@/lib/db";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
+import { connectorLogger } from "@/lib/logger";
 import { sanitizeUrl } from "@/lib/utils";
 import type { ProcessingResult } from "@/lib/intelligence/types";
 
@@ -106,10 +108,78 @@ export function getConnectedEmail(): string | null {
 }
 
 /**
+ * Disconnects Gmail by revoking the token with Google and deleting it from the DB.
+ * Best-effort revocation — the local token is always deleted even if the
+ * Google revoke call fails (e.g. token already expired/revoked).
+ */
+export async function disconnectGmail(): Promise<void> {
+  const stored = getOAuthToken("gmail");
+  if (stored) {
+    const oauth2Client = createOAuth2Client();
+    oauth2Client.setCredentials({ access_token: stored.access_token });
+    try {
+      await oauth2Client.revokeToken(stored.access_token);
+    } catch {
+      // Token may already be expired or revoked — that's fine.
+    }
+  }
+  deleteOAuthToken("gmail");
+}
+
+const MAX_MESSAGES_PER_SYNC = 500;
+
+/**
+ * Cheap triage on Gmail metadata — skip obvious non-newsletter mail before
+ * downloading full MIME bodies.
+ */
+function triageGmailMessageForNewsletter(
+  labelIds: string[],
+  headers: gmail_v1.Schema$MessagePartHeader[],
+): "skip" | "fetch_full" {
+  const get = (name: string): string =>
+    headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ??
+    "";
+
+  const listUnsub = get("List-Unsubscribe");
+  const listId = get("List-Id");
+  const precedence = get("Precedence").toLowerCase();
+  const autoSub = get("Auto-Submitted").toLowerCase();
+
+  const hasListSignal = !!(listUnsub || listId);
+  const bulkLike =
+    precedence.includes("bulk") ||
+    precedence.includes("list") ||
+    autoSub.includes("auto-generated");
+
+  if (labelIds.includes("CATEGORY_SOCIAL")) {
+    return "skip";
+  }
+
+  if (hasListSignal || bulkLike) {
+    return "fetch_full";
+  }
+
+  if (
+    labelIds.includes("CATEGORY_UPDATES") ||
+    labelIds.includes("CATEGORY_FORUMS") ||
+    labelIds.includes("CATEGORY_PROMOTIONS")
+  ) {
+    return "fetch_full";
+  }
+
+  if (labelIds.includes("CATEGORY_PERSONAL")) {
+    return "skip";
+  }
+
+  return "fetch_full";
+}
+
+/**
  * Fetches emails from Gmail and processes them through the Unified Intelligence Layer.
  *
- * Uses date-based filtering only (after:GMAIL_SYNC_AFTER_DATE). Deduplication
- * and relevance filtering are handled by the pipeline.
+ * Lists messages in the sync window, triages metadata to skip non-newsletter mail,
+ * then fetches full bodies only for candidates. Relevance + allowed categories
+ * still apply in the pipeline.
  *
  * Returns the count of processed (non-rejected) items and their results.
  */
@@ -141,34 +211,84 @@ export async function syncNewsletters(): Promise<{
 
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-  // Date-based query only (no sender filtering). Never older than 2 days.
   const query = `after:${getSyncAfterDate()}`;
 
-  const listResponse = await gmail.users.messages.list({
-    userId: "me",
-    q: query,
-    maxResults: 100,
-  });
+  const messageIds: string[] = [];
+  let pageToken: string | undefined;
+  while (messageIds.length < MAX_MESSAGES_PER_SYNC) {
+    const listResponse = await gmail.users.messages.list({
+      userId: "me",
+      q: query,
+      maxResults: 100,
+      pageToken,
+    });
+    const batch = listResponse.data.messages ?? [];
+    for (const m of batch) {
+      if (m.id) messageIds.push(m.id);
+    }
+    pageToken = listResponse.data.nextPageToken ?? undefined;
+    if (!pageToken || batch.length === 0) break;
+  }
 
-  const messages = listResponse.data.messages ?? [];
   const results: ProcessingResult[] = [];
 
-  for (const msg of messages) {
-    if (!msg.id) continue;
-
+  for (const msgId of messageIds) {
     try {
+      const meta = await gmail.users.messages.get({
+        userId: "me",
+        id: msgId,
+        format: "metadata",
+        metadataHeaders: [
+          "Subject",
+          "From",
+          "To",
+          "Date",
+          "List-Unsubscribe",
+          "List-Id",
+          "Precedence",
+          "Auto-Submitted",
+        ],
+      });
+
+      const labelIds = meta.data.labelIds ?? [];
+      const headers = meta.data.payload?.headers ?? [];
+      if (triageGmailMessageForNewsletter(labelIds, headers) === "skip") {
+        continue;
+      }
+
       const full = await gmail.users.messages.get({
         userId: "me",
-        id: msg.id,
+        id: msgId,
         format: "full",
       });
 
-      const raw = buildRawContentFromMessage(full.data, msg.id);
+      const raw = buildRawContentFromMessage(full.data, msgId);
+
+      // Fan out to publisher discovery (e.g. The Ken digest → enqueue Ken URLs).
+      // Kept fully out-of-band: any failure here MUST NOT break Gmail sync.
+      try {
+        const headers = full.data.payload?.headers ?? [];
+        const getHeader = (name: string): string =>
+          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
+            ?.value ?? "";
+        const from = getHeader("From");
+        const subject = getHeader("Subject");
+        const html = findHtmlPart(full.data.payload) ?? undefined;
+        const body = findTextPart(full.data.payload) ?? undefined;
+        if (from) {
+          runGmailSenderDiscovery({ from, body, html, subject });
+        }
+      } catch (err) {
+        connectorLogger.warn(
+          { err, msgId },
+          "[gmail] publisher discovery failed (non-fatal)",
+        );
+      }
+
       const result = await processContent(raw);
       results.push(result);
     } catch (err) {
-      console.error(`[gmail] Failed to process message ${msg.id}:`, err);
-      // Continue with next message — do not crash entire sync
+      console.error(`[gmail] Failed to process message ${msgId}:`, err);
     }
   }
 
@@ -196,6 +316,9 @@ function buildRawContentFromMessage(
   const date = getHeader("Date");
   const to = getHeader("To");
   const listUnsubscribe = getHeader("List-Unsubscribe");
+  const listId = getHeader("List-Id");
+  const precedence = getHeader("Precedence");
+  const autoSubmitted = getHeader("Auto-Submitted");
 
   // Parse sender domain from "Display Name <email@domain.com>" or bare "email@domain.com".
   const nameAngleMatch = from.match(/^"?([^"<]+)"?\s*<([^>]+)>/);
@@ -231,6 +354,9 @@ function buildRawContentFromMessage(
   if (subject) keyHeaders.Subject = subject;
   if (date) keyHeaders.Date = date;
   if (listUnsubscribe) keyHeaders["List-Unsubscribe"] = listUnsubscribe;
+  if (listId) keyHeaders["List-Id"] = listId;
+  if (precedence) keyHeaders.Precedence = precedence;
+  if (autoSubmitted) keyHeaders["Auto-Submitted"] = autoSubmitted;
 
   return buildRawContent({
     sourceType: "gmail",

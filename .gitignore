@@ -5,6 +5,9 @@
 /data/distil.db-shm
 /data/distil.db-wal
 
+# Authenticated publisher session data (cookies, storage state) — never commit
+data/publisher-sessions/
+
 # Environment variables — copy .env.example to .env.local, never commit .env.local
 .env.local
 

@@ -11,6 +11,9 @@ import {
   extractContent as extractPageContent,
   type ExtractedLink as ContentExtractorLink,
 } from "@/lib/content-extractor";
+import { fetchArticle } from "@/lib/connectors/publishers/fetcher";
+import { findByUrl as findPublisherByUrl } from "@/lib/connectors/publishers/registry";
+import { PublisherAuthRequired } from "@/lib/connectors/publishers/types";
 import { fetchOG } from "@/lib/og";
 import type {
   ContentClassification,
@@ -29,6 +32,16 @@ export async function extractContent(
   classification: ContentClassification,
 ): Promise<ExtractedContentResult> {
   try {
+    // Authenticated publisher branch — runs FIRST for any URL that matches a
+    // registered publisher (manual ingestion, browser extension, Gmail-discovered,
+    // worker). Routes through Playwright + persisted session instead of public HTTP.
+    if (raw.url) {
+      const publisher = findPublisherByUrl(raw.url);
+      if (publisher) {
+        return await fetchArticle(publisher, raw.url);
+      }
+    }
+
     // URL-based content (including Slack with a linked URL)
     if (raw.url) {
       return extractFromUrl(raw);
@@ -41,7 +54,9 @@ export async function extractContent(
 
     // Fallback: minimal result from metadata
     return minimalResult(raw);
-  } catch {
+  } catch (err) {
+    // Re-throw auth errors so the worker / API caller can surface a reconnect prompt.
+    if (err instanceof PublisherAuthRequired) throw err;
     return minimalResult(raw);
   }
 }
@@ -67,6 +82,7 @@ async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> 
       publication: ogData.siteName ?? undefined,
       thumbnailUrl: ogData.image ?? undefined,
       videoUrl: ogData.videoUrl ?? undefined,
+      isXArticle: ogData.isXArticle,
       allLinks: [],
     };
   }

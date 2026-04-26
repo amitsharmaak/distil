@@ -2,7 +2,8 @@ export type SourceType =
   | "slack"
   | "gmail"
   | "manual"
-  | "browser-extension";
+  | "browser-extension"
+  | "publisher";
 
 export type ContentType = "article" | "video" | "podcast";
 

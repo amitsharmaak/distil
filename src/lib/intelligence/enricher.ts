@@ -32,11 +32,14 @@ export async function enrichContent(
   const title = extracted.title ?? "Untitled";
 
   const strategy = detectStrategy(raw.url ?? "");
+  // X Articles are long-form content hosted on X — treat them like articles
+  // even though their URL matches the tweet pattern.
+  const shouldGenerateAISummary = strategy.generateAISummary || extracted.isXArticle;
 
   let summary: string;
   let topics: string[] = [];
 
-  if (!strategy.generateAISummary) {
+  if (!shouldGenerateAISummary) {
     // For content types that don't warrant AI summarization (e.g. tweets),
     // use the extracted text directly so items.summary holds the real content.
     // summaryMaxChars is a display-only limit — do not truncate storage here.

@@ -14,6 +14,7 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   slack: Hash,
   "browser-extension": Globe,
   manual: LinkIcon,
+  publisher: LinkIcon,
 };
 
 const sourceColors: Record<SourceType, string> = {
@@ -21,6 +22,7 @@ const sourceColors: Record<SourceType, string> = {
   slack: "text-purple-500 bg-purple-500/10",
   "browser-extension": "text-orange-500 bg-orange-500/10",
   manual: "text-muted-foreground bg-muted",
+  publisher: "text-blue-500 bg-blue-500/10",
 };
 
 function timeAgo(dateStr: string): string {

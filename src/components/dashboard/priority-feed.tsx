@@ -25,6 +25,7 @@ const sourceIcons: Record<SourceType, React.ElementType> = {
   slack: Hash,
   "browser-extension": Globe,
   manual: LinkIcon,
+  publisher: LinkIcon,
 };
 
 const sourceLabels: Record<SourceType, string> = {
@@ -32,6 +33,7 @@ const sourceLabels: Record<SourceType, string> = {
   slack: "Slack",
   "browser-extension": "Extension",
   manual: "Manual",
+  publisher: "Publisher",
 };
 
 const sourceColors: Record<SourceType, string> = {
@@ -39,6 +41,7 @@ const sourceColors: Record<SourceType, string> = {
   slack: "text-purple-500",
   "browser-extension": "text-orange-500",
   manual: "text-muted-foreground",
+  publisher: "text-blue-500",
 };
 
 
