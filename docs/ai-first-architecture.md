@@ -1,5 +1,7 @@
 # Distil → AI-First Agentic Application: Chief Architect Review
 
+> **Note:** This is a design/review document from an earlier development phase. Scores and assessments reflect the state of the codebase at the time of writing — many of the gaps identified here have since been addressed. See [ARCHITECTURE.md](ARCHITECTURE.md) for current design notes.
+
 ---
 
 ## 1. EXECUTIVE SUMMARY

@@ -38,6 +38,9 @@ export interface RAGResult {
   totalTokensEstimate: number;
 }
 
+// "specific"      — targeted question; uses hybrid search to find relevant items
+// "general"       — digest/browse query; retrieves most recent unread items
+// "conversational"— greeting or social; answered directly with no retrieval
 type QueryIntent = "specific" | "general" | "conversational";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +94,9 @@ const CONVERSATIONAL_RE =
 const GENERAL_RE =
   /\b(what should i|summarize|summarise|summary|overview|what's new|whats new|unread|recommend|catch me up|brief me|brief|digest|highlights?|anything interesting|what do i have|what's in my feed|show me|latest|recent items?|what articles|what items|what content|list my|list all|my library|any articles|any items|any content|do you have)\b/;
 
+// Regex-based intent classification is intentionally simple: it's fast, free,
+// and the patterns are narrow enough that false positives are rare. The worst
+// outcome of a misclassification is a slightly less targeted answer.
 function classifyIntent(query: string): QueryIntent {
   const q = query.toLowerCase().trim();
 
@@ -104,6 +110,8 @@ function classifyIntent(query: string): QueryIntent {
 // Chunking
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Splits content at paragraph boundaries to avoid cutting sentences mid-thought.
+// targetSize is in estimated tokens (chars / 4). 500 tokens ≈ 375 words.
 function chunkContent(text: string, targetSize = 500): string[] {
   if (!text) return [];
 

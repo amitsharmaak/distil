@@ -41,7 +41,10 @@ function estimateCost(model: string, tokensIn: number, tokensOut: number): numbe
   return inputCost + outputCost;
 }
 
+// Applied only when DISTIL_DAILY_AI_BUDGET env var is set. In-process only —
+// resets at midnight and does not survive server restarts.
 const DEFAULT_DAILY_BUDGET = 5;
+// Warn in logs when daily spend reaches this fraction of the budget.
 const BUDGET_WARN_THRESHOLD = 0.9;
 
 class AIUsageTracker {
@@ -94,6 +97,8 @@ class AIRouter {
     return Array.from(this.providers.keys());
   }
 
+  // Returns the preferred provider+model for a task, or falls back to the first
+  // available provider when the preferred one isn't configured.
   getEffectiveModel(task: AITask): ModelAssignment {
     const preferred = DEFAULT_MODEL_CONFIG[task];
     if (this.providers.has(preferred.provider)) {

@@ -31,7 +31,7 @@ This is what it feels like when your tools finally work *for* you.
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/your-username/distil.git
+git clone https://github.com/amitsharmaak/distil.git
 cd distil
 npm install
 
@@ -208,6 +208,12 @@ Raw content is persisted before processing so nothing is lost, and deduplication
 ### Database
 
 Zero-config SQLite at `data/distil.db` — created automatically on first run, no migrations. Tables: `items`, `raw_content` (pre-pipeline snapshots), `ai_summaries`, `feedback`, `research_reports`, `user_settings`, `oauth_tokens`.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code conventions, and how to add new providers, connectors, and publishers.
+
+For a deep dive into design decisions — fire-and-forget ingestion, deduplication strategy, agent tool-calling format, RAG intent classification, and more — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

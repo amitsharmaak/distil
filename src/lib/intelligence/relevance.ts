@@ -16,6 +16,16 @@ import type {
 /**
  * When the AI classifier omits emailCategory, infer newsletter-like intent from
  * Gmail headers and tab labels (mirrors connector-side triage heuristics).
+ *
+ * Header signals checked:
+ *   List-Unsubscribe — present on virtually all mailing list software
+ *   List-Id          — RFC 2919 identifier for mailing lists
+ *   Precedence: bulk/list — common on automated senders
+ *   Auto-Submitted   — set by autoresponders and bots
+ *
+ * Gmail label signals (when headers are absent):
+ *   CATEGORY_UPDATES / CATEGORY_FORUMS → digest
+ *   CATEGORY_PROMOTIONS               → promotional
  */
 function inferEmailCategoryFromGmailSignals(
   raw: RawContent,

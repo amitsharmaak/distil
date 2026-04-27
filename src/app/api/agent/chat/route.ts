@@ -1,8 +1,27 @@
 /**
- * POST /api/agent/chat — Conversational query agent endpoint.
+ * API route: /api/agent/chat
  *
- * Accepts a user message, runs the RAG pipeline + agent orchestrator,
- * and streams the response via SSE.
+ * POST /api/agent/chat — Send a message to the conversational agent.
+ *
+ * The agent uses RAG (retrieval-augmented generation) to answer questions
+ * about saved content. Conversations are persisted in the DB and can be
+ * resumed by passing conversationId.
+ *
+ * Request body:
+ *   message         (string, required) — the user's message
+ *   conversationId  (string, optional) — resume an existing conversation;
+ *                   omit to start a new one (a new ID is returned)
+ *
+ * Response: 200 OK
+ *   {
+ *     conversationId: string,
+ *     answer: string,          — markdown-formatted response with [N] citations
+ *     citations: Array<{ id, title, url, sourceType }>,
+ *     chunksUsed: number       — number of content chunks used as context
+ *   }
+ *
+ * GET /api/agent/chat?conversationId=<id> — fetch messages for a conversation
+ * GET /api/agent/chat                     — list all conversations
  */
 
 import { NextRequest, NextResponse } from "next/server";

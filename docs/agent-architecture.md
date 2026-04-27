@@ -1,5 +1,7 @@
 # Distil AI Agent System — Technical Architecture Document
 
+> **Note:** This is a design document from an earlier development phase. Some sections may not reflect the current implementation. See [ARCHITECTURE.md](ARCHITECTURE.md) for up-to-date design notes, and the source code for ground truth.
+
 ---
 
 ## 1. Orchestrator Agent

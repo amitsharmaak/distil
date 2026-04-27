@@ -11,7 +11,10 @@ import { registerAllTools } from "./register-tools";
 import { insertApproval } from "@/lib/db";
 import { filterPII } from "@/lib/pii-filter";
 
+// Caps runaway loops where the LLM keeps calling tools without converging.
 const MAX_ITERATIONS = 10;
+// Limits how many tools the LLM can invoke in a single response turn.
+// Keeps individual turns fast and prevents runaway parallel tool execution.
 const MAX_TOOL_CALLS_PER_TURN = 3;
 
 const SYSTEM_PROMPT = `You are Distil, a personal information assistant. Your goal is to help the user stay informed without being overwhelmed. You triage incoming content, surface what matters, and answer questions about the user's knowledge base.
@@ -27,6 +30,9 @@ When you need to use a tool, respond with a JSON block:
 \`\`\`tool_call
 {"tool": "tool_name", "params": {"key": "value"}}
 \`\`\`
+
+Tool calls are wrapped in markdown fences (not a native function-calling API) so
+the same format works uniformly across Gemini, OpenAI, and Anthropic providers.
 
 You may make up to ${MAX_TOOL_CALLS_PER_TURN} tool calls per turn. After receiving tool results, synthesize a final answer.
 
