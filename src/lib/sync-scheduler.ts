@@ -109,11 +109,13 @@ async function runDueSync(): Promise<void> {
   await maybeSync({
     name: "Publishers",
     settingKey: PUBLISHERS_LAST_SYNC_KEY,
-    // Always run if any publisher is registered; per-publisher session checks
-    // happen inside syncAllPublishers (PublisherAuthRequired is captured per-publisher).
+    // Only sync publishers that have an active authenticated session — avoids
+    // launching Chromium on startup for publishers the user hasn't connected yet.
     isConnected: async () => {
       const { PUBLISHERS } = await import("./connectors/publishers/registry");
-      return PUBLISHERS.length > 0;
+      const { getStatus } = await import("./connectors/publishers/session");
+      const statuses = await Promise.all(PUBLISHERS.map((p) => getStatus(p)));
+      return statuses.some((s) => s.state === "connected");
     },
     sync: async () => {
       const { syncAllPublishers } = await import(
