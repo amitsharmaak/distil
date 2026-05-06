@@ -6,7 +6,8 @@
  */
 
 import { generateJSON } from "./router";
-import { updateItem, getItems, getItemById } from "@/lib/db";
+import { updateItem, getItemById } from "@/lib/db";
+import { buildTaxonomyPromptSection, normalizeTags } from "./taxonomy";
 
 interface TaggingResult {
   topics: string[];
@@ -33,28 +34,19 @@ export async function autoTagItem(
     return undefined;
   }
 
-  // Build taxonomy from existing topics in the last 100 items.
-  const recentItems = getItems({ limit: 100, sort: "recent" });
-  const taxonomy = new Set<string>();
-  for (const item of recentItems) {
-    for (const t of item.topics ?? []) {
-      if (typeof t === "string" && t.trim()) taxonomy.add(t.trim());
-    }
-  }
-  const taxonomyList = Array.from(taxonomy).sort();
+  const prompt = `You are a content classifier. Assign 2-3 topic tags to the following content item.
 
-  const prompt = `You are a content classifier. Assign 2-4 topic tags to the following content item.
-
-Existing topics used in this system (prefer these when they fit; you may add new ones if needed):
-${taxonomyList.length > 0 ? taxonomyList.map((t) => `- ${t}`).join("\n") : "(none yet — create appropriate tags)"}
+You MUST pick from the canonical taxonomy below:
+${buildTaxonomyPromptSection()}
 
 Content to tag:
 Title: ${title}
 Summary: ${summary || "(no summary)"}
 
-Respond with a JSON object: { "topics": ["tag1", "tag2", ...], "confidence": 0.0-1.0 }
-- Use 2-4 short, lowercase topic tags (e.g. "ai", "productivity", "startups").
-- Prefer existing taxonomy topics when they fit; add new ones only when necessary.
+Respond with a JSON object: { "topics": ["tag1", "tag2"], "confidence": 0.0-1.0 }
+Rules:
+- Pick exactly 2-3 tags from the taxonomy above.
+- Only add 1 new tag if nothing fits — it must be a broad domain word, never a product name, company name, or version number.
 - confidence: how confident you are in the tags (0.0 to 1.0).`;
 
   const result = await generateJSON<TaggingResult>(prompt, "auto-tag");
@@ -63,10 +55,11 @@ Respond with a JSON object: { "topics": ["tag1", "tag2", ...], "confidence": 0.0
     return undefined;
   }
 
-  const topics = result.topics
-    .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-    .map((t) => t.trim())
-    .slice(0, 4);
+  const topics = normalizeTags(
+    result.topics
+      .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim()),
+  ).slice(0, 3);
 
   if (topics.length === 0) return undefined;
 

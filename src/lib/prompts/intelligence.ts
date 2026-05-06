@@ -154,11 +154,23 @@ Content: ${content.slice(0, TRUNCATE_LEN.enrichSummary)}
 Respond with just the summary text, no preamble.`;
 }
 
-export function enrichTopicsPrompt(title: string, content: string): string {
-  return `Given this content, extract 3-5 topic tags. Return ONLY a JSON array of lowercase strings.
+export function enrichTopicsPrompt(
+  title: string,
+  content: string,
+  taxonomySection: string,
+): string {
+  return `Assign 2-3 topic tags to the following content. You MUST pick from the canonical taxonomy below.
+
+Canonical taxonomy:
+${taxonomySection}
+
+Rules:
+- Pick exactly 2-3 tags from the taxonomy above.
+- Only add 1 new tag if the content genuinely fits no existing category — it must be a broad domain word, never a product name, company name, or version number.
+- Return ONLY a JSON array of lowercase strings, nothing else.
 
 Title: ${title}
 Content: ${content.slice(0, TRUNCATE_LEN.enrichTopics)}
 
-Example response: ["machine learning", "openai", "gpt-4"]`;
+Example response: ["ai", "startups"]`;
 }

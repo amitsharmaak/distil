@@ -8,6 +8,7 @@
 
 import { generateText } from "@/lib/ai/router";
 import { enrichSummaryPrompt, enrichTopicsPrompt } from "@/lib/prompts/intelligence";
+import { buildTaxonomyPromptSection, normalizeTags } from "@/lib/ai/taxonomy";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { Priority } from "@/lib/types";
 import type {
@@ -54,9 +55,9 @@ export async function enrichContent(
   }
 
   try {
-    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText), "auto-tag")).trim();
+    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText, buildTaxonomyPromptSection()), "auto-tag")).trim();
     const parsed = parseTopicsJson(topicsResponse);
-    topics = Array.isArray(parsed) ? parsed : [];
+    topics = Array.isArray(parsed) ? normalizeTags(parsed) : [];
   } catch {
     topics = [];
   }

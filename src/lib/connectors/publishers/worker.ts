@@ -6,7 +6,7 @@ import { runLoggedInFeedDiscovery } from "./discovery/logged-in-feed";
 import { runRssDiscovery } from "./discovery/rss";
 import { markFailed, markFetched, nextPending } from "./queue";
 import { PUBLISHERS, getById } from "./registry";
-import { ensureSession } from "./session";
+import { ensureSession, getStatus } from "./session";
 import { PublisherAuthRequired, type PublisherDefinition } from "./types";
 
 const DEFAULT_MIN_DELAY_MS = 2000;
@@ -136,6 +136,14 @@ export async function syncAllPublishers(): Promise<
   > = {};
 
   for (const publisher of PUBLISHERS) {
+    const status = await getStatus(publisher);
+    if (status.state !== "connected") {
+      connectorLogger.debug(
+        { publisherId: publisher.id, state: status.state },
+        "[publishers/worker] skipping publisher — not connected",
+      );
+      continue;
+    }
     try {
       results[publisher.id] = await syncPublisher(publisher.id);
     } catch (err) {
