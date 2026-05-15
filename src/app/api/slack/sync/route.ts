@@ -18,20 +18,14 @@ export async function POST() {
   try {
     if (!isSlackConfigured()) {
       return NextResponse.json(
-        { error: "Slack not configured" },
+        { error: "Slack not connected" },
         { status: 400, headers: CORS_HEADERS },
       );
     }
 
     const result = await syncSlackMessages();
     return NextResponse.json(
-      {
-        count: result.count,
-        items: result.items,
-        ...(result.unresolvedChannels.length > 0 && {
-          unresolvedChannels: result.unresolvedChannels,
-        }),
-      },
+      { count: result.count, items: result.items, stats: result.stats },
       { headers: CORS_HEADERS },
     );
   } catch (err) {

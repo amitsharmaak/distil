@@ -77,8 +77,10 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 | `DB_PATH`                  | `./data/distil.db`         | Path to the SQLite database file             |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls           |
 | `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for AI features        |
-| `SLACK_BOT_TOKEN`          | *(none)*                | Slack Bot Token for channel message sync     |
-| `SLACK_CHANNELS`           | *(empty)*               | Comma-separated channel names to monitor     |
+| `SLACK_CLIENT_ID`          | *(none)*                | Slack App Client ID (User OAuth flow)        |
+| `SLACK_CLIENT_SECRET`      | *(none)*                | Slack App Client Secret                      |
+| `SLACK_REDIRECT_URI`       | `http://localhost:3000/api/auth/slack/callback` | Must match a Redirect URL on the Slack App |
+| `SLACK_SYNC_CHANNELS` | *(empty — syncs nothing)* | Comma-separated channel names/IDs to sync; required to sync anything |
 | `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Reserved for future use; Gmail sync auto-detects newsletters |
 | `GMAIL_SYNC_AFTER_DATE`    | 30 days ago             | Earliest date to sync emails (YYYY/MM/DD)    |
 | `DISTIL_DELETE_PASSWORD`   | *(none)*                | Password for the "Delete All Data" endpoint  |
@@ -206,10 +208,13 @@ Chrome MV3 extension. On save: POSTs to the Distil API. Falls back to `chrome.st
 
 ### Slack Integration
 
-- Bot Token auth (no OAuth flow — token configured directly in `.env.local`)
-- Sync: `POST /api/slack/sync` fetches messages with URLs from configured channels
-- Core logic: `src/lib/connectors/slack.ts` — Slack connector (Bot Token + Web API)
-- Requires `SLACK_BOT_TOKEN` and `SLACK_CHANNELS` in `.env.local`
+- **User OAuth** (xoxp tokens) — the app acts AS the connected user, so it can read every public channel, private channel, DM and group DM the user is a member of. No per-channel bot invitations required.
+- **Channel allowlist** — set `SLACK_SYNC_CHANNELS` (comma-separated names/IDs, e.g. `general,engineering`) to restrict which channels are synced. If unset or empty, sync is skipped entirely. The `NEXT_PUBLIC_` prefix makes it available to both server and client so the Sources page can display the active list without a separate variable.
+- Connect from the Sources page → `GET /api/auth/slack` → Slack consent → `GET /api/auth/slack/callback` exchanges the code via `oauth.v2.access` and stores the user token in `oauth_tokens` (provider="slack").
+- Sync: `POST /api/slack/sync` enumerates conversations via `users.conversations`, applies the `SLACK_CHANNELS` allowlist, and pulls history with `conversations.history`.
+- Core logic: `src/lib/connectors/slack.ts`. OAuth routes: `src/app/api/auth/slack/{route,callback,status}.ts`.
+- Required Slack App User Token Scopes: `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`, `users:read`.
+- Requires `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, and `SLACK_SYNC_CHANNELS` in `.env.local`.
 
 ### Authenticated Publisher Framework
 

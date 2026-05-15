@@ -40,9 +40,17 @@ import {
   type PublisherCardData,
 } from "@/components/sources/publisher-card";
 
-interface SlackStatusResponse {
-  connected: boolean;
+interface SlackWorkspaceStatus {
+  teamId: string;
   teamName: string | null;
+  userName: string | null;
+  connected: boolean;
+  lastSync: string | null;
+}
+
+interface SlackStatusResponse {
+  workspaces: SlackWorkspaceStatus[];
+  syncChannels: string[];
 }
 
 const sourceIcons: Record<string, React.ElementType> = {
@@ -87,6 +95,7 @@ const SYNC_INTERVAL_HOURS = parseInt(
   10,
 );
 
+
 function timeAgo(dateStr: string): string {
   const now = new Date();
   const date = new Date(dateStr);
@@ -111,17 +120,17 @@ export default function SourcesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
 
-  const [slackStatus, setSlackStatus] = useState<SlackStatusResponse | null>(
-    null,
-  );
+  const [slackStatus, setSlackStatus] = useState<SlackStatusResponse | null>(null);
   const [slackSyncing, setSlackSyncing] = useState(false);
   const [slackSyncResult, setSlackSyncResult] = useState<{
     count: number;
-    unresolvedChannels?: string[];
+    stats?: { channels: number; messagesScanned: number; messagesWithUrls: number };
   } | null>(null);
 
   const [disconnecting, setDisconnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [slackDisconnecting, setSlackDisconnecting] = useState<string | null>(null); // teamId being disconnected
+  const [showSlackDisconnectConfirm, setShowSlackDisconnectConfirm] = useState<string | null>(null); // teamId to confirm
 
   const [sourceCounts, setSourceCounts] = useState<Record<string, number>>({});
   const [statusesLoaded, setStatusesLoaded] = useState(false);
@@ -185,11 +194,15 @@ export default function SourcesPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("connected") === "gmail") {
+    const connected = params.get("connected");
+    if (connected === "gmail") {
       fetchGmailStatus();
       window.history.replaceState({}, "", "/sources");
+    } else if (connected === "slack") {
+      fetchSlackStatus();
+      window.history.replaceState({}, "", "/sources");
     }
-  }, [fetchGmailStatus]);
+  }, [fetchGmailStatus, fetchSlackStatus]);
 
   const syncGmail = async () => {
     setSyncing(true);
@@ -241,10 +254,7 @@ export default function SourcesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSlackSyncResult({
-          count: data.count,
-          unresolvedChannels: data.unresolvedChannels,
-        });
+        setSlackSyncResult({ count: data.count, stats: data.stats });
         await fetchSlackStatus();
       } else {
         console.error("Slack sync failed:", data.error);
@@ -253,6 +263,32 @@ export default function SourcesPage() {
       console.error("Network error during Slack sync:", err);
     } finally {
       setSlackSyncing(false);
+    }
+  };
+
+  const disconnectSlackHandler = async (teamId: string) => {
+    setSlackDisconnecting(teamId);
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/auth/slack`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      if (res.ok) {
+        setSlackStatus((prev) =>
+          prev
+            ? { ...prev, workspaces: prev.workspaces.filter((w) => w.teamId !== teamId) }
+            : prev,
+        );
+        setSlackSyncResult(null);
+        setShowSlackDisconnectConfirm(null);
+      } else {
+        console.error("Failed to disconnect Slack");
+      }
+    } catch (err) {
+      console.error("Network error disconnecting Slack:", err);
+    } finally {
+      setSlackDisconnecting(null);
     }
   };
 
@@ -380,6 +416,7 @@ export default function SourcesPage() {
                 }
 
                 if (integration.type === "slack") {
+                  const connectedCount = slackStatus?.workspaces.filter((w) => w.connected).length ?? 0;
                   return (
                     <div
                       key={integration.type}
@@ -387,55 +424,19 @@ export default function SourcesPage() {
                     >
                       <IconComponent className="h-5 w-5 text-muted-foreground" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">
-                          {integration.name}
-                        </p>
+                        <p className="text-sm font-medium">{integration.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {slackStatus?.connected
-                            ? (slackStatus.teamName ?? "Connected")
+                          {connectedCount > 0
+                            ? `${connectedCount} workspace${connectedCount > 1 ? "s" : ""} connected`
                             : integration.description}
                         </p>
                       </div>
-                      {slackStatus?.connected ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={syncSlack}
-                            disabled={slackSyncing}
-                            className="gap-1"
-                          >
-                            <RefreshCw
-                              className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`}
-                            />
-                            {slackSyncing ? "Syncing\u2026" : "Sync Now"}
-                          </Button>
-                          {slackSyncResult !== null && (
-                            <span className="text-[10px] text-green-600">
-                              {slackSyncResult.count} new items
-                            </span>
-                          )}
-                          {slackSyncResult?.unresolvedChannels?.length ? (
-                            <span className="text-[10px] text-amber-600">
-                              Channel
-                              {slackSyncResult.unresolvedChannels.length > 1
-                                ? "s"
-                                : ""}{" "}
-                              not found:{" "}
-                              {slackSyncResult.unresolvedChannels.join(", ")}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-end gap-1">
-                          <Button size="sm" disabled>
-                            Connect
-                          </Button>
-                          <span className="text-[10px] text-muted-foreground">
-                            Add SLACK_BOT_TOKEN to .env.local
-                          </span>
-                        </div>
-                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => { window.location.href = "/api/auth/slack"; }}
+                      >
+                        {connectedCount > 0 ? "Add Workspace" : "Connect"}
+                      </Button>
                     </div>
                   );
                 }
@@ -591,8 +592,8 @@ export default function SourcesPage() {
           </div>
         )}
 
-        {/* Slack card */}
-        {slackStatus !== null && (
+        {/* Slack workspace cards — one per connected workspace */}
+        {slackStatus !== null && slackStatus.workspaces.length === 0 && (
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -602,25 +603,54 @@ export default function SourcesPage() {
                 <div>
                   <h3 className="text-sm font-semibold">Slack</h3>
                   <div className="mt-0.5 flex items-center gap-1">
-                    {slackStatus.connected ? (
+                    <XCircle className="h-3 w-3 text-red-500" />
+                    <span className="text-xs text-muted-foreground">Not connected</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Separator className="my-3" />
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => { window.location.href = "/api/auth/slack"; }}
+            >
+              Connect Slack
+            </Button>
+          </div>
+        )}
+        {slackStatus !== null && slackStatus.workspaces.map((workspace) => (
+          <div key={workspace.teamId} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-secondary p-2">
+                  <Hash className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Slack {workspace.teamName ? `· ${workspace.teamName}` : ""}
+                  </h3>
+                  <div className="mt-0.5 flex items-center gap-1">
+                    {workspace.connected ? (
                       <CheckCircle2 className="h-3 w-3 text-green-500" />
                     ) : (
                       <XCircle className="h-3 w-3 text-red-500" />
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {slackStatus.connected
-                        ? (slackStatus.teamName ?? "Connected")
-                        : "Not configured"}
+                      {workspace.connected
+                        ? workspace.userName
+                          ? `@${workspace.userName}`
+                          : "Connected"
+                        : "Token invalid"}
                     </span>
                   </div>
                 </div>
               </div>
-              {slackStatus.connected && (
+              {workspace.connected && (
                 <div className="flex items-center gap-1">
                   {SYNC_INTERVAL_HOURS > 0 && (
-                    <span className="text-[10px] text-muted-foreground">
-                      every {SYNC_INTERVAL_HOURS}h
-                    </span>
+                    <span className="text-[10px] text-muted-foreground">every {SYNC_INTERVAL_HOURS}h</span>
                   )}
                   <Button
                     size="sm"
@@ -628,40 +658,88 @@ export default function SourcesPage() {
                     onClick={syncSlack}
                     disabled={slackSyncing}
                     className="h-7 px-2"
-                    title="Sync now"
+                    title="Sync all workspaces"
                   >
-                    <RefreshCw
-                      className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`}
-                    />
+                    <RefreshCw className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`} />
                   </Button>
                 </div>
               )}
             </div>
             <Separator className="my-3" />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              {slackStatus.connected ? (
+              {workspace.connected ? (
                 <>
-                  {slackSyncResult !== null && (
-                    <span className="text-green-600">
-                      {slackSyncResult.count} new items synced
+                  {slackSyncResult !== null ? (
+                    <span className={slackSyncResult.count > 0 ? "text-green-600" : "text-muted-foreground"}>
+                      {slackSyncResult.count > 0
+                        ? `${slackSyncResult.count} new items synced`
+                        : slackSyncResult.stats
+                          ? `0 new — scanned ${slackSyncResult.stats.messagesScanned} msgs across ${slackSyncResult.stats.channels} channels`
+                          : "0 new items synced"}
+                    </span>
+                  ) : (
+                    <span>
+                      {slackStatus.syncChannels.length > 0
+                        ? `#${slackStatus.syncChannels.join(", #")}`
+                        : "No channels configured — set SLACK_SYNC_CHANNELS"}
                     </span>
                   )}
-                  {slackSyncResult?.unresolvedChannels?.length ? (
-                    <span className="text-amber-600">
-                      {slackSyncResult.unresolvedChannels.join(", ")} not found
-                      &mdash; use channel IDs or add groups:read scope
+                  {workspace.lastSync && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {timeAgo(workspace.lastSync)}
                     </span>
-                  ) : null}
-                  {slackSyncResult === null && (
-                    <span>Channels &amp; threads</span>
                   )}
                 </>
               ) : (
-                <span>Add SLACK_BOT_TOKEN to .env.local</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => { window.location.href = "/api/auth/slack"; }}
+                >
+                  Reconnect
+                </Button>
+              )}
+            </div>
+            <div className="mt-3">
+              {showSlackDisconnectConfirm === workspace.teamId ? (
+                <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
+                  <span className="text-xs text-destructive">Disconnect {workspace.teamName ?? "workspace"}?</span>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setShowSlackDisconnectConfirm(null)}
+                      disabled={slackDisconnecting === workspace.teamId}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => disconnectSlackHandler(workspace.teamId)}
+                      disabled={slackDisconnecting === workspace.teamId}
+                    >
+                      {slackDisconnecting === workspace.teamId ? "Disconnecting…" : "Confirm"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-full text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => setShowSlackDisconnectConfirm(workspace.teamId)}
+                >
+                  Disconnect
+                </Button>
               )}
             </div>
           </div>
-        )}
+        ))}
 
         {/* Dynamic cards for other active sources */}
         {Object.entries(sourceCounts)

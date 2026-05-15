@@ -18,7 +18,7 @@
  */
 
 import { config } from "./config";
-import { getUserSetting, setUserSetting, getOAuthToken } from "./db";
+import { getUserSetting, setUserSetting, getOAuthTokensByProvider } from "./db";
 import { connectorLogger } from "./logger";
 
 // How often to check whether a sync is due (independent of the sync interval).
@@ -84,7 +84,7 @@ async function runDueSync(): Promise<void> {
   await maybeSync({
     name: "Gmail",
     settingKey: GMAIL_LAST_SYNC_KEY,
-    isConnected: () => !!getOAuthToken("gmail"),
+    isConnected: () => getOAuthTokensByProvider("gmail").length > 0,
     sync: async () => {
       // Dynamic import keeps the heavy googleapis SDK out of the cold-start path.
       const { syncNewsletters } = await import("./connectors/gmail");
@@ -97,7 +97,7 @@ async function runDueSync(): Promise<void> {
   await maybeSync({
     name: "Slack",
     settingKey: SLACK_LAST_SYNC_KEY,
-    isConnected: () => !!config.slackBotToken,
+    isConnected: () => getOAuthTokensByProvider("slack").length > 0,
     sync: async () => {
       const { syncSlackMessages } = await import("./connectors/slack");
       return syncSlackMessages();

@@ -1,8 +1,9 @@
-/** GET /api/slack/status — returns Slack connection status */
+/** GET /api/slack/status — returns all connected Slack workspace statuses */
 
 import { NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import { getSlackStatus } from "@/lib/connectors/slack";
+import { getAllSlackStatuses } from "@/lib/connectors/slack";
+import { config } from "@/lib/config";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,8 +17,11 @@ export function OPTIONS() {
 
 export async function GET() {
   try {
-    const status = await getSlackStatus();
-    return NextResponse.json(status, { headers: CORS_HEADERS });
+    const workspaces = await getAllSlackStatuses();
+    return NextResponse.json(
+      { workspaces, syncChannels: config.slackChannels },
+      { headers: CORS_HEADERS },
+    );
   } catch (err) {
     apiLogger.error({ err }, "GET /api/slack/status failed");
     return NextResponse.json(

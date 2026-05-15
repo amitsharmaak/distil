@@ -493,6 +493,32 @@ try {
   // Index already exists — safe to ignore.
 }
 
+// Migrate oauth_tokens: add team_id column and change PRIMARY KEY to (provider, team_id)
+// so multiple Slack workspaces (and future multi-account providers) can coexist.
+{
+  const cols = db.prepare("PRAGMA table_info(oauth_tokens)").all() as { name: string }[];
+  const hasTeamId = cols.some((c) => c.name === "team_id");
+  if (!hasTeamId) {
+    db.exec(`
+      CREATE TABLE oauth_tokens_v2 (
+        provider      TEXT NOT NULL,
+        team_id       TEXT NOT NULL DEFAULT '',
+        access_token  TEXT NOT NULL,
+        refresh_token TEXT,
+        expiry_date   INTEGER,
+        email         TEXT,
+        updated_at    TEXT NOT NULL,
+        PRIMARY KEY (provider, team_id)
+      );
+      INSERT INTO oauth_tokens_v2 (provider, team_id, access_token, refresh_token, expiry_date, email, updated_at)
+        SELECT provider, '', access_token, refresh_token, expiry_date, email, updated_at
+        FROM oauth_tokens;
+      DROP TABLE oauth_tokens;
+      ALTER TABLE oauth_tokens_v2 RENAME TO oauth_tokens;
+    `);
+  }
+}
+
 // ── FTS5 virtual table + triggers ──────────────────────────────────────────────
 
 // Create the FTS5 virtual table and its sync triggers (idempotent).
@@ -917,6 +943,7 @@ export function deleteItem(id: string): boolean {
 /** Shape of a row in the oauth_tokens table. */
 export interface OAuthTokenRow {
   provider: string;
+  team_id: string;
   access_token: string;
   refresh_token: string | null;
   expiry_date: number | null;
@@ -925,20 +952,38 @@ export interface OAuthTokenRow {
 }
 
 /**
- * Returns the stored OAuth token row for a provider, or undefined if none.
+ * Returns the stored OAuth token row for a provider.
+ * If teamId is provided, returns the exact workspace row.
+ * Without teamId, returns the most-recently-updated row for that provider
+ * (backward-compatible for single-account providers like Gmail).
  */
-export function getOAuthToken(provider: string): OAuthTokenRow | undefined {
+export function getOAuthToken(provider: string, teamId?: string): OAuthTokenRow | undefined {
+  if (teamId !== undefined) {
+    return db
+      .prepare("SELECT * FROM oauth_tokens WHERE provider = ? AND team_id = ?")
+      .get(provider, teamId) as OAuthTokenRow | undefined;
+  }
   return db
-    .prepare("SELECT * FROM oauth_tokens WHERE provider = ?")
+    .prepare("SELECT * FROM oauth_tokens WHERE provider = ? ORDER BY updated_at DESC LIMIT 1")
     .get(provider) as OAuthTokenRow | undefined;
 }
 
 /**
- * Inserts or replaces the OAuth token for a provider.
- * Uses INSERT OR REPLACE so reconnecting always overwrites stale tokens.
+ * Returns all stored OAuth token rows for a provider (e.g. all Slack workspaces).
+ */
+export function getOAuthTokensByProvider(provider: string): OAuthTokenRow[] {
+  return db
+    .prepare("SELECT * FROM oauth_tokens WHERE provider = ? ORDER BY updated_at DESC")
+    .all(provider) as OAuthTokenRow[];
+}
+
+/**
+ * Inserts or replaces the OAuth token for a (provider, teamId) pair.
+ * Pass teamId='' for single-account providers (Gmail).
  */
 export function upsertOAuthToken(
   provider: string,
+  teamId: string,
   data: {
     access_token: string;
     refresh_token?: string | null;
@@ -948,11 +993,12 @@ export function upsertOAuthToken(
 ): void {
   db.prepare(`
     INSERT OR REPLACE INTO oauth_tokens
-      (provider, access_token, refresh_token, expiry_date, email, updated_at)
+      (provider, team_id, access_token, refresh_token, expiry_date, email, updated_at)
     VALUES
-      (@provider, @access_token, @refresh_token, @expiry_date, @email, @updated_at)
+      (@provider, @team_id, @access_token, @refresh_token, @expiry_date, @email, @updated_at)
   `).run({
     provider,
+    team_id: teamId,
     access_token: data.access_token,
     refresh_token: data.refresh_token ?? null,
     expiry_date: data.expiry_date ?? null,
@@ -962,10 +1008,16 @@ export function upsertOAuthToken(
 }
 
 /**
- * Deletes the OAuth token for a provider (used when disconnecting a source).
+ * Deletes the OAuth token for a provider.
+ * If teamId is provided, removes only that workspace row.
+ * Without teamId, removes all rows for that provider.
  */
-export function deleteOAuthToken(provider: string): void {
-  db.prepare("DELETE FROM oauth_tokens WHERE provider = ?").run(provider);
+export function deleteOAuthToken(provider: string, teamId?: string): void {
+  if (teamId !== undefined) {
+    db.prepare("DELETE FROM oauth_tokens WHERE provider = ? AND team_id = ?").run(provider, teamId);
+  } else {
+    db.prepare("DELETE FROM oauth_tokens WHERE provider = ?").run(provider);
+  }
 }
 
 // ── AI Summary helpers ───────────────────────────────────────────────────────

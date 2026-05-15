@@ -91,7 +91,7 @@ export async function handleCallback(code: string): Promise<void> {
   const profile = await gmail.users.getProfile({ userId: "me" });
   const email = profile.data.emailAddress ?? null;
 
-  upsertOAuthToken("gmail", {
+  upsertOAuthToken("gmail", "", {
     access_token: tokens.access_token!,
     refresh_token: tokens.refresh_token ?? null,
     expiry_date: tokens.expiry_date ?? null,
@@ -200,7 +200,7 @@ export async function syncNewsletters(): Promise<{
   // Persist refreshed tokens automatically when googleapis refreshes them.
   oauth2Client.on("tokens", (newTokens) => {
     if (newTokens.access_token) {
-      upsertOAuthToken("gmail", {
+      upsertOAuthToken("gmail", "", {
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token ?? tokenRow.refresh_token,
         expiry_date: newTokens.expiry_date ?? tokenRow.expiry_date,

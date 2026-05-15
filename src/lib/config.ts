@@ -77,18 +77,28 @@ export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
 
   /**
-   * Slack Bot Token (xoxb-...) for reading channel messages.
-   * Obtain from https://api.slack.com/apps after creating a Slack App.
-   * Required scopes: channels:history, channels:read, users:read.
+   * Slack OAuth client credentials. The app uses Slack's User OAuth flow
+   * (xoxp tokens) so it acts AS the authenticated user — auto-reading every
+   * public channel, private channel, DM and group DM the user belongs to,
+   * with no per-channel bot invitations required.
+   *
+   * Set up: create a Slack App at https://api.slack.com/apps, then under
+   * "OAuth & Permissions" register the redirect URL below and add User Token
+   * Scopes: channels:history, channels:read, groups:history, groups:read,
+   * im:history, im:read, mpim:history, mpim:read, users:read.
+   *
    * NEVER commit real values — store in .env.local only.
    */
-  slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",
+  slackClientId: process.env.SLACK_CLIENT_ID ?? "",
+  slackClientSecret: process.env.SLACK_CLIENT_SECRET ?? "",
 
   /**
-   * Comma-separated list of Slack channel names to monitor for shared links.
-   * Example: "general,engineering,random"
+   * Must exactly match a Redirect URL registered on the Slack App.
+   * Override only if the dev server runs on a non-default host/port.
    */
-  slackChannels: process.env.SLACK_CHANNELS ?? "",
+  slackRedirectUri:
+    process.env.SLACK_REDIRECT_URI ??
+    "http://localhost:3000/api/auth/slack/callback",
 
   /**
    * Password required to wipe all data via DELETE /api/data.
@@ -119,5 +129,22 @@ export const config = {
   publishersEnabled: (process.env.PUBLISHERS_ENABLED ?? "")
     .split(",")
     .map((s) => s.trim())
+    .filter(Boolean),
+
+  /**
+   * Allowlist of Slack channel names (or IDs) to include when syncing.
+   * Matching is case-insensitive; omit the leading "#".
+   *
+   * REQUIRED to sync anything — if empty or unset, Slack sync is skipped
+   * entirely. This prevents accidental ingestion of DMs and unrelated channels.
+   *
+   * Example: SLACK_CHANNELS=general,engineering,product
+   *
+   * The NEXT_PUBLIC_ prefix makes it available to both server and client, so
+   * the Sources page can display the active list without a separate variable.
+   */
+  slackChannels: (process.env.SLACK_SYNC_CHANNELS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
 } as const;
