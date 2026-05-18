@@ -113,7 +113,7 @@ export function FeedbackButtons({ itemId, initialFeedback }: FeedbackButtonsProp
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submitFeedback()}
-            className="h-7 text-xs w-44"
+            className="h-7 md:text-xs w-full sm:w-44"
           />
           <Button
             size="sm"

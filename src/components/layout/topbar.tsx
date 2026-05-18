@@ -98,7 +98,7 @@ export function Topbar() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search articles, topics, authors..."
-            className="pl-9 pr-8 h-9 text-sm"
+            className="pl-9 pr-8 h-9 md:text-sm"
             value={searchValue}
             onChange={handleSearchChange}
             onKeyDown={handleSearchKeyDown}

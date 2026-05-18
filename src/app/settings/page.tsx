@@ -279,7 +279,7 @@ export default function SettingsPage() {
                 type="number"
                 value={pollingFrequency}
                 onChange={(e) => setPollingFrequency(e.target.value)}
-                className="h-9 w-32"
+                className="h-9 w-full sm:w-32"
                 min="5"
                 max="120"
               />
