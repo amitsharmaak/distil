@@ -835,7 +835,7 @@ export default function SourcesPage() {
           </div>
 
           <div
-            className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+            className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors sm:p-6 md:p-8 ${
               isDragging ? "border-primary bg-primary/5" : "border-border"
             }`}
             onDragOver={(e) => {

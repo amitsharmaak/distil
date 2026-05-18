@@ -443,7 +443,7 @@ export default function SettingsPage() {
                     key={cat.id}
                     type="button"
                     onClick={() => toggleEmailCategory(cat.id)}
-                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
+                    className={`flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
                       isEnabled
                         ? "border-primary bg-primary/5"
                         : "border-border bg-muted/30 hover:bg-muted/50"
@@ -458,6 +458,8 @@ export default function SettingsPage() {
                     <Button
                       variant={isEnabled ? "default" : "outline"}
                       size="sm"
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="shrink-0 pointer-events-none"
                     >
                       {isEnabled ? "On" : "Off"}
