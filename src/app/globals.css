@@ -2,6 +2,26 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+.pt-safe {
+  padding-top: var(--safe-top);
+}
+.pr-safe {
+  padding-right: var(--safe-right);
+}
+.pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
+.pl-safe {
+  padding-left: var(--safe-left);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -82,12 +102,12 @@
   /* Sidebar — warm dark */
   --sidebar: oklch(0.15 0.005 60);
   --sidebar-foreground: oklch(0.92 0.003 75);
-  --sidebar-primary: oklch(0.62 0.20 260);
+  --sidebar-primary: oklch(0.62 0.2 260);
   --sidebar-primary-foreground: oklch(0.993 0 0);
   --sidebar-accent: oklch(0.22 0.006 60);
   --sidebar-accent-foreground: oklch(0.92 0.003 75);
   --sidebar-border: oklch(0.22 0.006 60);
-  --sidebar-ring: oklch(0.62 0.20 260);
+  --sidebar-ring: oklch(0.62 0.2 260);
 }
 
 .dark {
@@ -147,7 +167,9 @@
   font-family: var(--font-newsreader), Georgia, serif;
   font-size: 1.0625rem;
   line-height: 1.7;
-  font-feature-settings: "liga" 1, "kern" 1;
+  font-feature-settings:
+    "liga" 1,
+    "kern" 1;
 }
 
 .distil-reader p + p {
