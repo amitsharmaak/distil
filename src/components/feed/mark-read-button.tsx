@@ -65,7 +65,7 @@ export function MarkReadButton({
     <Button
       variant={showLabel ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
-      className={showLabel ? "gap-1.5" : "h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"}
+      className={showLabel ? "gap-1.5" : "h-11 w-11 md:h-8 md:w-8 shrink-0 text-muted-foreground hover:text-foreground"}
       onClick={handleClick}
       disabled={loading}
       title="Mark as read"

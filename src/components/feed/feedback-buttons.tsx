@@ -92,7 +92,7 @@ export function FeedbackButtons({ itemId, initialFeedback }: FeedbackButtonsProp
       <Button
         variant={pendingRating === 1 ? "default" : "ghost"}
         size="sm"
-        className="h-7 w-7 p-0"
+        className="h-11 w-11 md:h-8 md:w-8 p-0"
         onClick={() => handleRate(1)}
       >
         <ThumbsUp className="h-3.5 w-3.5" />
@@ -100,7 +100,7 @@ export function FeedbackButtons({ itemId, initialFeedback }: FeedbackButtonsProp
       <Button
         variant={pendingRating === -1 ? "default" : "ghost"}
         size="sm"
-        className="h-7 w-7 p-0"
+        className="h-11 w-11 md:h-8 md:w-8 p-0"
         onClick={() => handleRate(-1)}
       >
         <ThumbsDown className="h-3.5 w-3.5" />
