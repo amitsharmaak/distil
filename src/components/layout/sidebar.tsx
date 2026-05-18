@@ -45,6 +45,7 @@ export function Sidebar() {
           alt="Distil logo"
           width={28}
           height={28}
+          sizes="(max-width: 768px) 32px, 64px"
           className="h-7 w-7 rounded-md object-cover"
         />
         {!collapsed && (
