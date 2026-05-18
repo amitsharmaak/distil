@@ -16,7 +16,7 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-border bg-background md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-border bg-background pb-safe md:hidden">
       {tabs.map((tab) => {
         const isActive =
           tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);

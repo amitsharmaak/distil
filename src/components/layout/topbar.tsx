@@ -86,7 +86,7 @@ export function Topbar() {
   }, [open, fetchCount]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {/* Date */}
       <span className="hidden text-[13px] text-muted-foreground md:block">
         {formatDate()}

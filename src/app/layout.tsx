@@ -53,7 +53,7 @@ export default function RootLayout({
               <Sidebar />
               <div className="flex-1 md:pl-16 lg:pl-64 transition-all duration-300">
                 <Topbar />
-                <main className="px-8 py-6 pb-[calc(1.5rem+4rem)] md:pb-6">{children}</main>
+                <main className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] md:pb-6">{children}</main>
                 <MobileNav />
               </div>
             </div>
