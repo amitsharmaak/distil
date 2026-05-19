@@ -101,12 +101,6 @@ export const config = {
     "http://localhost:3000/api/auth/slack/callback",
 
   /**
-   * Password required to wipe all data via DELETE /api/data.
-   * Set DISTIL_DELETE_PASSWORD in .env.local to enable the danger-zone reset.
-   */
-  deletePassword: process.env.DISTIL_DELETE_PASSWORD ?? "",
-
-  /**
    * How often (in hours) to automatically sync Gmail and Slack in the background.
    * The scheduler checks every 15 minutes and triggers a sync when this interval
    * has elapsed since the last successful sync. Defaults to 3 hours.

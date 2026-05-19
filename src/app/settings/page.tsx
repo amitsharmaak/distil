@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Mail,
   Hash,
@@ -10,7 +10,6 @@ import {
   Shield,
   Bot,
   Bell,
-  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,13 +72,6 @@ export default function SettingsPage() {
   const [sources, setSources] = useState<DerivedSource[]>([]);
   const [topics, setTopics] = useState<DerivedTopic[]>([]);
 
-  const [deletePassword, setDeletePassword] = useState("");
-  const [deleteError, setDeleteError] = useState("");
-  const [deleteStatus, setDeleteStatus] = useState<
-    "idle" | "confirm" | "deleting" | "done"
-  >("idle");
-  const passwordInputRef = useRef<HTMLInputElement>(null);
-
   const [allowedEmailCategories, setAllowedEmailCategories] = useState<
     string[]
   >(["newsletter", "digest", "announcement"]);
@@ -126,31 +118,6 @@ export default function SettingsPage() {
       })
       .catch(() => {});
   }, []);
-
-  async function handleDeleteAllData() {
-    setDeleteError("");
-    setDeleteStatus("deleting");
-    try {
-      const res = await fetch(`${config.apiBaseUrl}/api/data`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: deletePassword }),
-      });
-      if (res.status === 403) {
-        setDeleteError("Incorrect password.");
-        setDeleteStatus("confirm");
-        return;
-      }
-      if (!res.ok) throw new Error("Server error");
-      setDeleteStatus("done");
-      setDeletePassword("");
-      setSources([]);
-      setTopics([]);
-    } catch {
-      setDeleteError("Something went wrong. Please try again.");
-      setDeleteStatus("confirm");
-    }
-  }
 
   async function toggleHighPriority() {
     const newVal = !highPriorityEnabled;
@@ -473,88 +440,6 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Danger Zone */}
-      <div className="rounded-xl border border-destructive/40 bg-card p-5">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-destructive">
-          <Trash2 className="h-4 w-4" /> Danger Zone
-        </h3>
-
-        {deleteStatus === "done" ? (
-          <p className="text-sm text-muted-foreground">
-            All data has been deleted successfully.
-          </p>
-        ) : deleteStatus === "confirm" || deleteStatus === "deleting" ? (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Enter the password to permanently delete all items, summaries,
-              feedback, and sync history.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                ref={passwordInputRef}
-                type="password"
-                placeholder="Password"
-                value={deletePassword}
-                onChange={(e) => {
-                  setDeletePassword(e.target.value);
-                  setDeleteError("");
-                }}
-                onKeyDown={(e) => e.key === "Enter" && handleDeleteAllData()}
-                className="h-9 w-48"
-                disabled={deleteStatus === "deleting"}
-              />
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDeleteAllData}
-                disabled={
-                  deleteStatus === "deleting" || deletePassword.length === 0
-                }
-              >
-                {deleteStatus === "deleting"
-                  ? "Deleting\u2026"
-                  : "Confirm Delete"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDeleteStatus("idle");
-                  setDeletePassword("");
-                  setDeleteError("");
-                }}
-                disabled={deleteStatus === "deleting"}
-              >
-                Cancel
-              </Button>
-            </div>
-            {deleteError && (
-              <p className="text-xs text-destructive">{deleteError}</p>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Delete all data</p>
-              <p className="text-xs text-muted-foreground">
-                Permanently removes all items, summaries, feedback, and sync
-                history.
-              </p>
-            </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                setDeleteStatus("confirm");
-                setTimeout(() => passwordInputRef.current?.focus(), 50);
-              }}
-            >
-              Delete all data
-            </Button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

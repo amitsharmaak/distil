@@ -83,7 +83,6 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 | `SLACK_SYNC_CHANNELS` | *(empty — syncs nothing)* | Comma-separated channel names/IDs to sync; required to sync anything |
 | `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Reserved for future use; Gmail sync auto-detects newsletters |
 | `GMAIL_SYNC_AFTER_DATE`    | 30 days ago             | Earliest date to sync emails (YYYY/MM/DD)    |
-| `DISTIL_DELETE_PASSWORD`   | *(none)*                | Password for the "Delete All Data" endpoint  |
 
 **Security rules:**
 
@@ -101,7 +100,6 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 - `src/app/api/agent/` — Agentic backend routes: `/api/agent/chat`, `/api/agent/status`, `/api/agent/approvals`
 - `src/app/api/notifications/` — Notification routes (list, read, preferences)
 - `src/app/api/settings/` — Settings routes (e.g. email intelligence config)
-- `src/app/api/data/` — Bulk data export/import route
 - `src/components/` — Organized by feature: `layout/`, `dashboard/`, `feed/`, `agent/`, `brief/`, `notifications/`, `topics/`, `sources/`, `ui/`
 - `src/lib/config.ts` — Central config module (all env vars exported from here)
 - `src/lib/db.ts` — SQLite singleton, schema init, seed, CRUD helpers (server-only)
@@ -342,7 +340,6 @@ distil/
 │   │   │   │   ├── callback/route.ts
 │   │   │   │   ├── route.ts
 │   │   │   │   └── status/route.ts
-│   │   │   ├── data/route.ts
 │   │   │   ├── gmail/sync/route.ts
 │   │   │   ├── items/
 │   │   │   │   ├── [id]/
