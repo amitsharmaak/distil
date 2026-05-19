@@ -21,6 +21,26 @@
  */
 const DISTIL_API_URL = "http://localhost:3000/api/items";
 
+// ── Keyboard shortcut handler ──────────────────────────────────────────────────
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "save-to-distil") return;
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs[0];
+    if (!tab?.url) return;
+
+    saveToAPI({
+      url: tab.url,
+      title: tab.title || "",
+      topics: [],
+      sourceType: "browser-extension",
+      contentType: "article",
+      priority: "medium",
+    }).catch(() => saveToLocalStorage({ url: tab.url, title: tab.title || "" }));
+  });
+});
+
 // ── Context menu setup ─────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {

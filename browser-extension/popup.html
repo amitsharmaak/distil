@@ -12,32 +12,8 @@
         <div class="logo">⚡</div>
         <h1>Distil</h1>
       </div>
-
-      <div id="page-info" class="page-info">
-        <p id="page-title" class="page-title">Loading...</p>
-        <p id="page-url" class="page-url"></p>
-      </div>
-
-      <div class="field">
-        <label for="topics">Topics (comma-separated)</label>
-        <input type="text" id="topics" placeholder="e.g. AI, Web Dev, Design" />
-      </div>
-
-      <div class="field">
-        <label for="notes">Quick note (optional)</label>
-        <textarea id="notes" rows="2" placeholder="Why is this interesting?"></textarea>
-      </div>
-
-      <button id="save-btn" class="save-btn">Save to Distil</button>
-
-      <div id="status" class="status hidden"></div>
-
-      <div id="recent" class="recent hidden">
-        <p class="recent-label">Recently saved</p>
-        <div id="recent-list"></div>
-      </div>
+      <div id="status" class="status saving">Saving…</div>
     </div>
-
     <script src="popup.js"></script>
   </body>
 </html>
