@@ -187,6 +187,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="accounts">
+        <div className="overflow-x-auto">
         <TabsList>
           <TabsTrigger value="accounts" className="gap-1.5">
             <Shield className="h-3.5 w-3.5" /> Accounts
@@ -204,6 +205,7 @@ export default function SettingsPage() {
             <Mail className="h-3.5 w-3.5" /> Email Intelligence
           </TabsTrigger>
         </TabsList>
+        </div>
 
         {/* Accounts Tab */}
         <TabsContent value="accounts" className="mt-4 space-y-4">
@@ -279,7 +281,7 @@ export default function SettingsPage() {
                 type="number"
                 value={pollingFrequency}
                 onChange={(e) => setPollingFrequency(e.target.value)}
-                className="h-9 w-32"
+                className="h-9 w-full sm:w-32"
                 min="5"
                 max="120"
               />
@@ -443,7 +445,7 @@ export default function SettingsPage() {
                     key={cat.id}
                     type="button"
                     onClick={() => toggleEmailCategory(cat.id)}
-                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
+                    className={`flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
                       isEnabled
                         ? "border-primary bg-primary/5"
                         : "border-border bg-muted/30 hover:bg-muted/50"
@@ -458,6 +460,8 @@ export default function SettingsPage() {
                     <Button
                       variant={isEnabled ? "default" : "outline"}
                       size="sm"
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="shrink-0 pointer-events-none"
                     >
                       {isEnabled ? "On" : "Off"}

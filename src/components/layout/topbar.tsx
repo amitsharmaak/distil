@@ -86,7 +86,7 @@ export function Topbar() {
   }, [open, fetchCount]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {/* Date */}
       <span className="hidden text-[13px] text-muted-foreground md:block">
         {formatDate()}
@@ -98,7 +98,7 @@ export function Topbar() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search articles, topics, authors..."
-            className="pl-9 pr-8 h-9 text-sm"
+            className="pl-9 pr-8 h-9 md:text-sm"
             value={searchValue}
             onChange={handleSearchChange}
             onKeyDown={handleSearchKeyDown}

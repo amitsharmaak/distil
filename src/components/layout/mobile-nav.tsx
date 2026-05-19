@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Newspaper, Rss, Hash, Settings } from "lucide-react";
+import { Newspaper, Rss, Hash, Plug, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/topics", label: "Topics", icon: Hash },
+  { href: "/sources", label: "Sources", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -16,7 +17,7 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-border bg-background md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-stretch border-t border-border bg-background pb-safe md:hidden">
       {tabs.map((tab) => {
         const isActive =
           tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);

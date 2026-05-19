@@ -63,7 +63,7 @@ export function ReaderView({
           />
 
           {/* Overlay panel */}
-          <div className="relative z-10 mt-8 mb-8 w-full max-w-3xl max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-border bg-background shadow-2xl">
+          <div className="relative z-10 mt-4 sm:mt-8 mb-4 sm:mb-8 w-full max-w-3xl max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] overflow-y-auto rounded-xl border border-border bg-background shadow-2xl">
             {/* Sticky header bar */}
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/95 backdrop-blur-sm px-6 py-3 rounded-t-xl">
               <span className="text-sm font-medium flex items-center gap-2">

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Newsreader, Outfit, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -25,6 +25,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "Distil — Your AI Knowledge Companion",
   description:
@@ -42,16 +48,16 @@ export default function RootLayout({
         className={`${newsreader.variable} ${outfit.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
-        <TooltipProvider>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <div className="flex-1 md:pl-16 lg:pl-64 transition-all duration-300">
-              <Topbar />
-              <main className="px-8 py-6 pb-[calc(1.5rem+4rem)] md:pb-6">{children}</main>
-              <MobileNav />
+          <TooltipProvider>
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <div className="flex-1 min-w-0 md:pl-16 lg:pl-64 transition-all duration-300">
+                <Topbar />
+                <main className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] md:pb-6">{children}</main>
+                <MobileNav />
+              </div>
             </div>
-          </div>
-        </TooltipProvider>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

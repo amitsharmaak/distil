@@ -91,7 +91,7 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
       <Separator />
 
       {/* Notification list */}
-      <ScrollArea className="max-h-80">
+      <ScrollArea className="max-h-[70dvh] sm:max-h-80">
         {loading ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             Loading...

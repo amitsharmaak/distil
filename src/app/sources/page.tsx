@@ -352,7 +352,7 @@ export default function SourcesPage() {
 
         <Dialog>
           <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5">
+            <Button className="h-11 gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add Source
             </Button>
           </DialogTrigger>
@@ -538,9 +538,8 @@ export default function SourcesPage() {
                 </>
               ) : (
                 <Button
-                  size="sm"
                   variant="outline"
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={() => {
                     window.location.href = "/api/auth/gmail";
                   }}
@@ -581,7 +580,7 @@ export default function SourcesPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 w-full text-xs text-muted-foreground hover:text-destructive"
+                    className="min-h-[44px] w-full text-xs text-muted-foreground hover:text-destructive"
                     onClick={() => setShowDisconnectConfirm(true)}
                   >
                     Disconnect
@@ -611,9 +610,8 @@ export default function SourcesPage() {
             </div>
             <Separator className="my-3" />
             <Button
-              size="sm"
               variant="outline"
-              className="w-full"
+              className="h-11 w-full"
               onClick={() => { window.location.href = "/api/auth/slack"; }}
             >
               Connect Slack
@@ -693,9 +691,8 @@ export default function SourcesPage() {
                 </>
               ) : (
                 <Button
-                  size="sm"
                   variant="outline"
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={() => { window.location.href = "/api/auth/slack"; }}
                 >
                   Reconnect
@@ -731,7 +728,7 @@ export default function SourcesPage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-full text-xs text-muted-foreground hover:text-destructive"
+                  className="min-h-[44px] w-full text-xs text-muted-foreground hover:text-destructive"
                   onClick={() => setShowSlackDisconnectConfirm(workspace.teamId)}
                 >
                   Disconnect
@@ -823,10 +820,10 @@ export default function SourcesPage() {
               value={linkInput}
               onChange={(e) => setLinkInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addLink()}
-              className="h-9"
+              className="h-11"
             />
             <Button
-              size="sm"
+              className="h-11 shrink-0"
               onClick={addLink}
               disabled={saving || !linkInput.trim()}
             >
@@ -835,7 +832,7 @@ export default function SourcesPage() {
           </div>
 
           <div
-            className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+            className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors sm:p-6 md:p-8 ${
               isDragging ? "border-primary bg-primary/5" : "border-border"
             }`}
             onDragOver={(e) => {

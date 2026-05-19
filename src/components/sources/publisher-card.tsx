@@ -165,7 +165,7 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
 
         <div className="flex flex-wrap gap-2">
           <Button
-            size="sm"
+            className="h-11"
             variant={
               publisher.status.state === "connected" ? "outline" : "default"
             }
@@ -175,11 +175,10 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
             {loggingIn ? "Waiting for login\u2026" : connectLabel}
           </Button>
           <Button
-            size="sm"
+            className="h-11 gap-1"
             variant="secondary"
             onClick={handleSync}
             disabled={!canSync}
-            className="gap-1"
           >
             <RefreshCw
               className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
