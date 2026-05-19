@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Newspaper, Rss, Hash, Settings } from "lucide-react";
+import { Newspaper, Rss, Hash, Plug, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/topics", label: "Topics", icon: Hash },
+  { href: "/sources", label: "Sources", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

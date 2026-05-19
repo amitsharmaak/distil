@@ -187,6 +187,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="accounts">
+        <div className="overflow-x-auto">
         <TabsList>
           <TabsTrigger value="accounts" className="gap-1.5">
             <Shield className="h-3.5 w-3.5" /> Accounts
@@ -204,6 +205,7 @@ export default function SettingsPage() {
             <Mail className="h-3.5 w-3.5" /> Email Intelligence
           </TabsTrigger>
         </TabsList>
+        </div>
 
         {/* Accounts Tab */}
         <TabsContent value="accounts" className="mt-4 space-y-4">

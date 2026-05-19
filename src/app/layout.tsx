@@ -51,7 +51,7 @@ export default function RootLayout({
           <TooltipProvider>
             <div className="flex min-h-screen">
               <Sidebar />
-              <div className="flex-1 md:pl-16 lg:pl-64 transition-all duration-300">
+              <div className="flex-1 min-w-0 md:pl-16 lg:pl-64 transition-all duration-300">
                 <Topbar />
                 <main className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] md:pb-6">{children}</main>
                 <MobileNav />
