@@ -58,7 +58,7 @@ Tests use in-memory SQLite (`DB_PATH=":memory:"`) — they never touch your loca
 - **UI components** — add shadcn/ui primitives with `npx shadcn@latest add <component>`; they go in `src/components/ui/`.
 - **AI prompts** — all prompt templates live in `src/lib/prompts/` (split by domain). `index.ts` re-exports everything.
 - **Environment variables** — all env vars are exported from `src/lib/config.ts`. Never read `process.env` directly outside that file.
-- **Comments** — only add a comment when the *why* is non-obvious. Well-named identifiers are preferred over explanatory comments.
+- **Comments** — only add a comment when the _why_ is non-obvious. Well-named identifiers are preferred over explanatory comments.
 
 ## How to Add a New AI Provider
 
@@ -84,7 +84,7 @@ See `docs/authenticated-publisher-framework.md` for full details.
 
 ## Commit Style
 
-Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`. Keep the subject line under 72 characters. Explain *why* in the body if the change isn't obvious from the diff.
+Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`. Keep the subject line under 72 characters. Explain _why_ in the body if the change isn't obvious from the diff.
 
 ## Questions?
 

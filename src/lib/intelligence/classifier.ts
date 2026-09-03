@@ -70,21 +70,17 @@ export async function classify(raw: RawContent): Promise<ContentClassification> 
     ? (parsed.detectedMediaTypes as string[])
     : [];
   const detectedMediaTypes = rawMedia.filter((m): m is MediaType =>
-    VALID_MEDIA_TYPES.includes(m as MediaType),
+    VALID_MEDIA_TYPES.includes(m as MediaType)
   );
   if (detectedMediaTypes.length === 0) detectedMediaTypes.push("text");
 
-  const confidence = typeof parsed.confidence === "number"
-    ? Math.max(0, Math.min(1, parsed.confidence))
-    : 0;
+  const confidence =
+    typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0;
 
-  const isContentPage =
-    typeof parsed.isContentPage === "boolean" ? parsed.isContentPage : true;
+  const isContentPage = typeof parsed.isContentPage === "boolean" ? parsed.isContentPage : true;
 
   const language =
-    typeof parsed.language === "string" && parsed.language.length > 0
-      ? parsed.language
-      : "en";
+    typeof parsed.language === "string" && parsed.language.length > 0 ? parsed.language : "en";
 
   const result: ContentClassification = {
     contentType,

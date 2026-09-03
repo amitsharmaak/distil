@@ -22,15 +22,12 @@ const statusCache = new Map<
   { state: "connected" | "expired" | "never"; checkedAt: string; expiresAt: number }
 >();
 
-async function withLaunchLock<T>(
-  publisherId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+async function withLaunchLock<T>(publisherId: string, fn: () => Promise<T>): Promise<T> {
   const prev = launchLocks.get(publisherId) ?? Promise.resolve();
   const next = prev.then(fn, fn);
   launchLocks.set(
     publisherId,
-    next.catch(() => undefined),
+    next.catch(() => undefined)
   );
   return next;
 }
@@ -50,11 +47,7 @@ function statusFileFor(publisherId: string): string {
 }
 
 function storageStateFileFor(publisherId: string): string {
-  return path.join(
-    config.publisherSessionDir,
-    publisherId,
-    "storage-state.json",
-  );
+  return path.join(config.publisherSessionDir, publisherId, "storage-state.json");
 }
 
 type PersistedStatus = {
@@ -78,9 +71,7 @@ type StorageStateFile = {
   origins?: unknown[];
 };
 
-async function readStorageState(
-  publisherId: string,
-): Promise<StorageStateFile | null> {
+async function readStorageState(publisherId: string): Promise<StorageStateFile | null> {
   try {
     const raw = await readFile(storageStateFileFor(publisherId), "utf-8");
     const parsed = JSON.parse(raw) as StorageStateFile;
@@ -90,31 +81,23 @@ async function readStorageState(
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     connectorLogger.warn(
       { err, publisherId },
-      "Failed to read publisher storage state; proceeding without injection",
+      "Failed to read publisher storage state; proceeding without injection"
     );
     return null;
   }
 }
 
-async function writeStorageState(
-  context: BrowserContext,
-  publisherId: string,
-): Promise<void> {
+async function writeStorageState(context: BrowserContext, publisherId: string): Promise<void> {
   try {
     const file = storageStateFileFor(publisherId);
     await mkdir(path.dirname(file), { recursive: true });
     await context.storageState({ path: file });
   } catch (err) {
-    connectorLogger.warn(
-      { err, publisherId },
-      "Failed to write publisher storage state",
-    );
+    connectorLogger.warn({ err, publisherId }, "Failed to write publisher storage state");
   }
 }
 
-async function readPersistedStatus(
-  publisherId: string,
-): Promise<PersistedStatus | null> {
+async function readPersistedStatus(publisherId: string): Promise<PersistedStatus | null> {
   try {
     const raw = await readFile(statusFileFor(publisherId), "utf-8");
     const parsed = JSON.parse(raw) as PersistedStatus;
@@ -125,10 +108,7 @@ async function readPersistedStatus(
   }
 }
 
-async function writePersistedStatus(
-  publisherId: string,
-  status: PersistedStatus,
-): Promise<void> {
+async function writePersistedStatus(publisherId: string, status: PersistedStatus): Promise<void> {
   await mkdir(path.dirname(statusFileFor(publisherId)), { recursive: true });
   await writeFile(statusFileFor(publisherId), JSON.stringify(status), "utf-8");
 }
@@ -140,7 +120,7 @@ async function clearPersistedStatus(publisherId: string): Promise<void> {
 async function checkProbe(
   page: Page,
   publisher: PublisherDefinition,
-  { waitMs = 0 }: { waitMs?: number } = {},
+  { waitMs = 0 }: { waitMs?: number } = {}
 ): Promise<boolean> {
   const { expectSelector, expectNotSelector } = publisher.sessionProbe;
   try {
@@ -162,17 +142,14 @@ async function checkProbe(
     }
     return true;
   } catch (err) {
-    connectorLogger.warn(
-      { err, publisherId: publisher.id },
-      "Publisher session probe failed",
-    );
+    connectorLogger.warn({ err, publisherId: publisher.id }, "Publisher session probe failed");
     return false;
   }
 }
 
 async function validateProbe(
   context: BrowserContext,
-  publisher: PublisherDefinition,
+  publisher: PublisherDefinition
 ): Promise<boolean> {
   const page = await context.newPage();
   try {
@@ -200,14 +177,14 @@ async function validateProbe(
           title,
           looksLoggedOut: hasLogin,
         },
-        "Publisher session probe selector did not match",
+        "Publisher session probe selector did not match"
       );
     }
     return ok;
   } catch (err) {
     connectorLogger.warn(
       { err, publisherId: publisher.id },
-      "Publisher session probe navigation failed",
+      "Publisher session probe navigation failed"
     );
     return false;
   } finally {
@@ -215,9 +192,7 @@ async function validateProbe(
   }
 }
 
-export async function ensureSession(
-  publisher: PublisherDefinition,
-): Promise<BrowserContext> {
+export async function ensureSession(publisher: PublisherDefinition): Promise<BrowserContext> {
   return withLaunchLock(publisher.id, async () => {
     const dir = sessionDirFor(publisher);
     await mkdir(dir, { recursive: true });
@@ -228,10 +203,7 @@ export async function ensureSession(
     // AutomationControlled is the most reliable bypass without stealth plugins.
     const context = await chromium.launchPersistentContext(dir, {
       headless: false,
-      args: [
-        "--disable-blink-features=AutomationControlled",
-        "--window-position=10000,10000",
-      ],
+      args: ["--disable-blink-features=AutomationControlled", "--window-position=10000,10000"],
     });
 
     // Re-inject session-scoped cookies (e.g. wordpress_logged_in_*) that
@@ -243,7 +215,7 @@ export async function ensureSession(
       } catch (err) {
         connectorLogger.warn(
           { err, publisherId: publisher.id },
-          "Failed to inject persisted cookies into publisher context",
+          "Failed to inject persisted cookies into publisher context"
         );
       }
     }
@@ -265,17 +237,11 @@ export async function ensureSession(
   });
 }
 
-export async function runInteractiveLogin(
-  publisher: PublisherDefinition,
-): Promise<void> {
-  return withLaunchLock(publisher.id, () =>
-    runInteractiveLoginInner(publisher),
-  );
+export async function runInteractiveLogin(publisher: PublisherDefinition): Promise<void> {
+  return withLaunchLock(publisher.id, () => runInteractiveLoginInner(publisher));
 }
 
-async function runInteractiveLoginInner(
-  publisher: PublisherDefinition,
-): Promise<void> {
+async function runInteractiveLoginInner(publisher: PublisherDefinition): Promise<void> {
   const dir = sessionDirFor(publisher);
   await mkdir(dir, { recursive: true });
 
@@ -292,9 +258,7 @@ async function runInteractiveLoginInner(
     const deadline = Date.now() + INTERACTIVE_LOGIN_TIMEOUT_MS;
     let iter = 0;
     while (Date.now() < deadline) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, INTERACTIVE_LOGIN_POLL_MS),
-      );
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_LOGIN_POLL_MS));
       iter++;
       try {
         // Cheap check on the user's current page (works if probe selector is
@@ -302,7 +266,7 @@ async function runInteractiveLoginInner(
         if (await checkProbe(page, publisher)) {
           connectorLogger.info(
             { publisherId: publisher.id },
-            "Publisher interactive login succeeded (in-place probe)",
+            "Publisher interactive login succeeded (in-place probe)"
           );
           // Capture session-scoped auth cookies before context.close() drops them.
           await writeStorageState(context, publisher.id);
@@ -315,7 +279,7 @@ async function runInteractiveLoginInner(
           await page.bringToFront().catch(() => undefined);
           connectorLogger.info(
             { publisherId: publisher.id },
-            "Publisher interactive login succeeded (probe URL)",
+            "Publisher interactive login succeeded (probe URL)"
           );
           // Capture session-scoped auth cookies before context.close() drops them.
           await writeStorageState(context, publisher.id);
@@ -327,7 +291,7 @@ async function runInteractiveLoginInner(
     }
 
     throw new Error(
-      `Interactive login for "${publisher.id}" timed out after ${INTERACTIVE_LOGIN_TIMEOUT_MS}ms`,
+      `Interactive login for "${publisher.id}" timed out after ${INTERACTIVE_LOGIN_TIMEOUT_MS}ms`
     );
   } finally {
     await context.close();
@@ -336,7 +300,7 @@ async function runInteractiveLoginInner(
 
 export async function primeStatusCache(
   publisherId: string,
-  state: "connected" | "expired" | "never",
+  state: "connected" | "expired" | "never"
 ): Promise<void> {
   const checkedAt = new Date().toISOString();
   statusCache.set(publisherId, {
@@ -352,7 +316,7 @@ export async function primeStatusCache(
 }
 
 export async function getStatus(
-  publisher: PublisherDefinition,
+  publisher: PublisherDefinition
 ): Promise<{ state: "connected" | "expired" | "never"; checkedAt: string }> {
   const cached = statusCache.get(publisher.id);
   if (cached && cached.expiresAt > Date.now()) {

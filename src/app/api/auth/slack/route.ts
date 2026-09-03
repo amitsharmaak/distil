@@ -14,10 +14,7 @@ export function GET() {
     return NextResponse.redirect(url);
   } catch (err) {
     console.error("Failed to build Slack auth URL:", err);
-    return NextResponse.json(
-      { error: "Slack OAuth not configured" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Slack OAuth not configured" }, { status: 500 });
   }
 }
 
@@ -28,15 +25,12 @@ export function GET() {
  */
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json().catch(() => ({})) as { teamId?: string };
+    const body = (await req.json().catch(() => ({}))) as { teamId?: string };
     const teamId = body.teamId ?? "";
     await disconnectSlack(teamId);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Failed to disconnect Slack:", err);
-    return NextResponse.json(
-      { error: "Failed to disconnect Slack" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to disconnect Slack" }, { status: 500 });
   }
 }

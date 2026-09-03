@@ -27,10 +27,7 @@ function estimateTokens(text: string): number {
 }
 
 /** Split content into ~targetTokenCount chunks at paragraph boundaries. */
-function splitIntoChunks(
-  content: string,
-  targetTokenCount: number,
-): string[] {
+function splitIntoChunks(content: string, targetTokenCount: number): string[] {
   const paragraphs = content.split(/\n\n+/);
   const chunks: string[] = [];
   let current = "";
@@ -98,7 +95,7 @@ function getSummarizableContent(item: { fullContent?: string; summary: string })
  */
 export async function generateSummary(
   itemId: string,
-  options: { length?: "brief" | "detailed"; force?: boolean } = {},
+  options: { length?: "brief" | "detailed"; force?: boolean } = {}
 ): Promise<{ summary: string; cached: boolean }> {
   const length = options.length ?? "brief";
 
@@ -145,7 +142,12 @@ export async function generateSummary(
   }
 
   const summary = renderSummaryMarkdown(output);
-  const task = estimatedTokens > 8000 ? "summarize-complex" : estimatedTokens >= 2000 ? "summarize-complex" : "summarize";
+  const task =
+    estimatedTokens > 8000
+      ? "summarize-complex"
+      : estimatedTokens >= 2000
+        ? "summarize-complex"
+        : "summarize";
   const { model } = getEffectiveModel(task);
 
   upsertAISummary({

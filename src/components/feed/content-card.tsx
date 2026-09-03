@@ -46,13 +46,11 @@ export function ContentCard({
   if (compact) {
     const compactContent = (
       <>
-        <SourceIcon
-          className={`h-3.5 w-3.5 shrink-0 ${sourceColors[item.sourceType]}`}
-        />
+        <SourceIcon className={`h-3.5 w-3.5 shrink-0 ${sourceColors[item.sourceType]}`} />
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-sm",
-            item.isRead ? "text-muted-foreground" : "font-medium",
+            item.isRead ? "text-muted-foreground" : "font-medium"
           )}
         >
           {item.title}
@@ -70,10 +68,7 @@ export function ContentCard({
                   {item.duration}
                 </Badge>
               )}
-              <Badge
-                variant="outline"
-                className={`text-[10px] ${priorityColors[item.priority]}`}
-              >
+              <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
                 {item.priority}
               </Badge>
             </>
@@ -94,11 +89,7 @@ export function ContentCard({
 
     if (isProcessing) {
       return (
-        <div
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 opacity-75",
-          )}
-        >
+        <div className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 opacity-75")}>
           {compactContent}
         </div>
       );
@@ -120,15 +111,13 @@ export function ContentCard({
         "relative rounded-xl border border-border bg-card p-5 transition-all",
         !isProcessing && "hover:shadow-md",
         !item.isRead && !isProcessing && "border-l-2 border-l-primary",
-        isProcessing && "opacity-75",
+        isProcessing && "opacity-75"
       )}
     >
       {/* Source & time */}
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <SourceIcon
-            className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`}
-          />
+          <SourceIcon className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`} />
           <span>{sourceLabels[item.sourceType]}</span>
           {item.publication && (
             <>
@@ -143,9 +132,7 @@ export function ContentCard({
               Analyzing…
             </Badge>
           )}
-          <span className="text-xs text-muted-foreground">
-            {timeAgo(item.createdAt)}
-          </span>
+          <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
         </div>
       </div>
 
@@ -153,7 +140,7 @@ export function ContentCard({
       <h3
         className={cn(
           "font-serif text-base font-semibold leading-snug tracking-tight line-clamp-2",
-          item.isRead && "text-muted-foreground",
+          item.isRead && "text-muted-foreground"
         )}
       >
         {item.title}
@@ -198,10 +185,7 @@ export function ContentCard({
         <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
           {!isProcessing && item.author && <span>{item.author}</span>}
           {!isProcessing && (
-            <Badge
-              variant="outline"
-              className={`text-[10px] ${priorityColors[item.priority]}`}
-            >
+            <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
               {item.priority}
             </Badge>
           )}

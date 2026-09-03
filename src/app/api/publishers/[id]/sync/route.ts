@@ -12,10 +12,7 @@ export async function POST(_request: Request, context: RouteContext) {
     const { id } = await context.params;
     const publisher = getById(id);
     if (!publisher) {
-      return NextResponse.json(
-        { error: "Publisher not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Publisher not found" }, { status: 404 });
     }
 
     const result = await syncPublisher(publisher.id);
@@ -25,9 +22,6 @@ export async function POST(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: "auth_required" }, { status: 409 });
     }
     apiLogger.error({ err }, "POST /api/publishers/[id]/sync failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

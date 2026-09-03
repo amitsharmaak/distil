@@ -4,13 +4,7 @@ import * as React from "react";
 import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { SourceType, ContentType, Priority } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +56,7 @@ function FilterPill<T extends string>({
         "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
         selected
           ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent",
+          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent"
       )}
     >
       {label}
@@ -91,9 +85,7 @@ function FilterGroup<T extends string>({
 
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[11px] font-medium text-muted-foreground">
-        {label}:
-      </span>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}:</span>
       {options.map((opt) => (
         <FilterPill
           key={opt.value}
@@ -121,10 +113,7 @@ export function FeedFilters({
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
   const activeCount =
-    selectedSources.length +
-    selectedTypes.length +
-    selectedPriorities.length +
-    (showRead ? 0 : 1);
+    selectedSources.length + selectedTypes.length + selectedPriorities.length + (showRead ? 0 : 1);
 
   const viewToggle = (
     <div className="flex items-center rounded-lg border border-border">
@@ -154,7 +143,7 @@ export function FeedFilters({
         "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
         !showRead
           ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:bg-accent",
+          : "border-border bg-card text-muted-foreground hover:bg-accent"
       )}
     >
       {showRead ? "Showing all" : "Unread only"}
@@ -171,10 +160,7 @@ export function FeedFilters({
               <SlidersHorizontal className="h-4 w-4" />
               Filters
               {activeCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs"
-                >
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs">
                   {activeCount}
                 </Badge>
               )}
@@ -208,9 +194,7 @@ export function FeedFilters({
               />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">
-                    Read:
-                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">Read:</span>
                   {readToggle}
                 </div>
                 {viewToggle}

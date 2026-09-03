@@ -8,12 +8,12 @@ import type { FeedbackWithItem, UserPreferenceProfile } from "@/lib/ai/types";
 
 export function prioritizePrompt(
   items: { id: string; title: string; topics: string[]; sourceType: string; author?: string }[],
-  preferences: UserPreferenceProfile,
+  preferences: UserPreferenceProfile
 ): string {
   const itemList = items
     .map(
       (i) =>
-        `- ID: ${i.id} | "${i.title}" | topics: ${i.topics.join(", ")} | source: ${i.sourceType}${i.author ? ` | author: ${i.author}` : ""}`,
+        `- ID: ${i.id} | "${i.title}" | topics: ${i.topics.join(", ")} | source: ${i.sourceType}${i.author ? ` | author: ${i.author}` : ""}`
     )
     .join("\n");
 
@@ -41,13 +41,11 @@ Score guidelines:
 Output ONLY the JSON array, no other text.`;
 }
 
-export function preferenceAnalysisPrompt(
-  feedbackItems: FeedbackWithItem[],
-): string {
+export function preferenceAnalysisPrompt(feedbackItems: FeedbackWithItem[]): string {
   const feedbackList = feedbackItems
     .map(
       (f) =>
-        `- ${f.rating === 1 ? "LIKED" : "DISLIKED"}: "${f.itemTitle}" (topics: ${f.itemTopics.join(", ")}, source: ${f.itemSourceType}, type: ${f.itemContentType}${f.itemAuthor ? `, author: ${f.itemAuthor}` : ""})${f.reason ? ` — Reason: "${f.reason}"` : ""}`,
+        `- ${f.rating === 1 ? "LIKED" : "DISLIKED"}: "${f.itemTitle}" (topics: ${f.itemTopics.join(", ")}, source: ${f.itemSourceType}, type: ${f.itemContentType}${f.itemAuthor ? `, author: ${f.itemAuthor}` : ""})${f.reason ? ` — Reason: "${f.reason}"` : ""}`
     )
     .join("\n");
 

@@ -50,21 +50,14 @@ export function startSyncScheduler(): void {
     return;
   }
 
-  connectorLogger.info(
-    { intervalHours },
-    "Starting background sync scheduler",
-  );
+  connectorLogger.info({ intervalHours }, "Starting background sync scheduler");
 
   // Catch-up check immediately on startup.
-  runDueSync().catch((err) =>
-    connectorLogger.error({ err }, "Startup sync check failed"),
-  );
+  runDueSync().catch((err) => connectorLogger.error({ err }, "Startup sync check failed"));
 
   // Periodic check — fires every 15 min regardless of sync interval.
   const timer = setInterval(() => {
-    runDueSync().catch((err) =>
-      connectorLogger.error({ err }, "Scheduled sync check failed"),
-    );
+    runDueSync().catch((err) => connectorLogger.error({ err }, "Scheduled sync check failed"));
   }, CHECK_INTERVAL_MS);
 
   // Don't keep the process alive just for the scheduler.
@@ -118,13 +111,11 @@ async function runDueSync(): Promise<void> {
       return statuses.some((s) => s.state === "connected");
     },
     sync: async () => {
-      const { syncAllPublishers } = await import(
-        "./connectors/publishers/worker"
-      );
+      const { syncAllPublishers } = await import("./connectors/publishers/worker");
       const results = await syncAllPublishers();
       const count = Object.values(results).reduce(
         (sum, r) => sum + ("fetched" in r ? r.fetched : 0),
-        0,
+        0
       );
       return { count };
     },
@@ -155,28 +146,22 @@ async function maybeSync(task: SyncTask): Promise<void> {
         source: task.name,
         nextSyncIn: Math.round((task.intervalMs - elapsed) / 60_000),
       },
-      "Skipping sync — not due yet",
+      "Skipping sync — not due yet"
     );
     return;
   }
 
   connectorLogger.info(
     { source: task.name, lastSync: lastSync ? new Date(lastSync).toISOString() : "never" },
-    "Auto-sync starting",
+    "Auto-sync starting"
   );
 
   try {
     const result = await task.sync();
     // Only update the timestamp on success so failures are retried next cycle.
     setUserSetting(task.settingKey, String(task.now));
-    connectorLogger.info(
-      { source: task.name, count: result.count },
-      "Auto-sync completed",
-    );
+    connectorLogger.info({ source: task.name, count: result.count }, "Auto-sync completed");
   } catch (err) {
-    connectorLogger.error(
-      { source: task.name, err },
-      "Auto-sync failed — will retry next cycle",
-    );
+    connectorLogger.error({ source: task.name, err }, "Auto-sync failed — will retry next cycle");
   }
 }

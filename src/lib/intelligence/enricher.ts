@@ -19,7 +19,6 @@ import type {
   RawContent,
 } from "./types";
 
-
 /**
  * Enriches content with AI summary, topics, and priority score.
  */
@@ -27,7 +26,7 @@ export async function enrichContent(
   raw: RawContent,
   extracted: ExtractedContentResult,
   analysis: ContentAnalysis,
-  classification: ContentClassification,
+  classification: ContentClassification
 ): Promise<EnrichedContent> {
   const cleanText = extracted.cleanTextContent ?? "";
   const title = extracted.title ?? "Untitled";
@@ -55,19 +54,19 @@ export async function enrichContent(
   }
 
   try {
-    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText, buildTaxonomyPromptSection()), "auto-tag")).trim();
+    const topicsResponse = (
+      await generateText(
+        enrichTopicsPrompt(title, cleanText, buildTaxonomyPromptSection()),
+        "auto-tag"
+      )
+    ).trim();
     const parsed = parseTopicsJson(topicsResponse);
     topics = Array.isArray(parsed) ? normalizeTags(parsed) : [];
   } catch {
     topics = [];
   }
 
-  const priorityScore = computePriorityScore(
-    raw,
-    extracted,
-    analysis,
-    classification,
-  );
+  const priorityScore = computePriorityScore(raw, extracted, analysis, classification);
   const priority = scoreToPriority(priorityScore);
 
   return {
@@ -82,16 +81,13 @@ function computePriorityScore(
   raw: RawContent,
   _extracted: ExtractedContentResult,
   analysis: ContentAnalysis,
-  classification: ContentClassification,
+  classification: ContentClassification
 ): number {
   let score = 50;
 
   if (analysis.informationDensityScore > 0.7) score += 15;
   if (analysis.wordCount > 500) score += 10;
-  if (
-    classification.emailCategory === "newsletter" ||
-    classification.emailCategory === "digest"
-  ) {
+  if (classification.emailCategory === "newsletter" || classification.emailCategory === "digest") {
     score += 10;
   }
   if (classification.contentType === "article") score += 5;

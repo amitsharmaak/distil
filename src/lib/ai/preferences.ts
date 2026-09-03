@@ -9,12 +9,7 @@
 
 import { generateText } from "./router";
 import { preferenceAnalysisPrompt } from "@/lib/prompts/prioritize";
-import {
-  getAllFeedback,
-  getItemById,
-  getUserSetting,
-  setUserSetting,
-} from "@/lib/db";
+import { getAllFeedback, getItemById, getUserSetting, setUserSetting } from "@/lib/db";
 import type { UserPreferenceProfile, FeedbackWithItem } from "./types";
 
 const PREFERENCES_KEY = "agent_preferences";

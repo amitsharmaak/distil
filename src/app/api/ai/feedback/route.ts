@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "itemId is required" }, { status: 400 });
     }
     if (rating !== 1 && rating !== -1) {
-      return NextResponse.json({ error: "rating must be 1 (like) or -1 (dislike)" }, { status: 400 });
+      return NextResponse.json(
+        { error: "rating must be 1 (like) or -1 (dislike)" },
+        { status: 400 }
+      );
     }
 
     const item = getItemById(itemId);
@@ -47,9 +50,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {
     apiLogger.error({ err: error }, "Feedback error");
-    return NextResponse.json(
-      { error: "Failed to submit feedback" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 });
   }
 }

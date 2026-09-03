@@ -1,9 +1,4 @@
-export type SourceType =
-  | "slack"
-  | "gmail"
-  | "manual"
-  | "browser-extension"
-  | "publisher";
+export type SourceType = "slack" | "gmail" | "manual" | "browser-extension" | "publisher";
 
 export type ContentType = "article" | "video" | "podcast";
 

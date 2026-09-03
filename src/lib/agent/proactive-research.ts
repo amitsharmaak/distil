@@ -26,10 +26,7 @@ interface TopicCluster {
 /**
  * Groups recent items by topic and identifies clusters.
  */
-function findTopicClusters(
-  items: ContentItem[],
-  minClusterSize = 3,
-): TopicCluster[] {
+function findTopicClusters(items: ContentItem[], minClusterSize = 3): TopicCluster[] {
   const topicMap = new Map<string, ContentItem[]>();
 
   for (const item of items) {
@@ -45,8 +42,7 @@ function findTopicClusters(
   for (const [topic, clusterItems] of topicMap) {
     if (clusterItems.length >= minClusterSize) {
       const sources = new Set(clusterItems.map((i) => i.sourceType));
-      const significance =
-        clusterItems.length * (1 + sources.size * 0.5);
+      const significance = clusterItems.length * (1 + sources.size * 0.5);
       clusters.push({ topic, items: clusterItems, significance });
     }
   }
@@ -61,9 +57,7 @@ const DEFAULT_QUERY_TEMPLATE = (topic: string) =>
 /**
  * Determines if a topic cluster warrants a research suggestion (not auto-run).
  */
-async function evaluateClusterForSuggestion(
-  cluster: TopicCluster,
-): Promise<{
+async function evaluateClusterForSuggestion(cluster: TopicCluster): Promise<{
   should: boolean;
   reason: string;
   suggestedQuery: string;
@@ -87,8 +81,7 @@ Respond with JSON: { "should": true/false, "reason": "brief explanation", "sugge
     }>(prompt, "research-plan");
 
     const suggestedQuery =
-      (result.suggestedQuery?.trim() || "") ||
-      DEFAULT_QUERY_TEMPLATE(cluster.topic);
+      result.suggestedQuery?.trim() || "" || DEFAULT_QUERY_TEMPLATE(cluster.topic);
 
     return {
       should: result.should,
@@ -118,15 +111,10 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
 
   const recentItems = getItems({ sort: "recent", limit: 100 });
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const filtered = recentItems.filter(
-    (i) => new Date(i.createdAt) > cutoff,
-  );
+  const filtered = recentItems.filter((i) => new Date(i.createdAt) > cutoff);
 
   if (filtered.length < 3) {
-    aiLogger.info(
-      { itemCount: filtered.length },
-      "Not enough recent items for proactive scan",
-    );
+    aiLogger.info({ itemCount: filtered.length }, "Not enough recent items for proactive scan");
     return { clustersFound: 0, suggestionsSaved: 0 };
   }
 
@@ -137,7 +125,7 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
   const recentlyResearchedQueries = new Set(
     recentReports
       .filter((r) => new Date(r.created_at) > recentCutoff)
-      .map((r) => r.query.toLowerCase().trim()),
+      .map((r) => r.query.toLowerCase().trim())
   );
 
   const toSave: Array<{
@@ -152,15 +140,14 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
   for (const cluster of clusters.slice(0, 3)) {
     const topicKey = cluster.topic.toLowerCase().trim();
 
-    const { should, reason, suggestedQuery } =
-      await evaluateClusterForSuggestion(cluster);
+    const { should, reason, suggestedQuery } = await evaluateClusterForSuggestion(cluster);
 
     if (!should) continue;
 
     if (recentlyResearchedQueries.has(suggestedQuery.toLowerCase().trim())) {
       aiLogger.info(
         { topic: cluster.topic },
-        "Skipping suggestion — same query researched recently",
+        "Skipping suggestion — same query researched recently"
       );
       continue;
     }
@@ -189,7 +176,7 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
 
   aiLogger.info(
     { clustersFound: clusters.length, suggestionsSaved: toSave.length },
-    "Proactive scan complete",
+    "Proactive scan complete"
   );
 
   return {

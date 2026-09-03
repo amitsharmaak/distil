@@ -29,7 +29,7 @@ const HREF_REGEX = /href="(https?:\/\/[^"]+)"/gi;
  */
 export async function extractContent(
   raw: RawContent,
-  classification: ContentClassification,
+  classification: ContentClassification
 ): Promise<ExtractedContentResult> {
   try {
     // Authenticated publisher branch — runs FIRST for any URL that matches a
@@ -64,10 +64,7 @@ export async function extractContent(
 async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> {
   const url = raw.url!;
 
-  const [readabilityResult, ogData] = await Promise.all([
-    extractPageContent(url),
-    fetchOG(url),
-  ]);
+  const [readabilityResult, ogData] = await Promise.all([extractPageContent(url), fetchOG(url)]);
 
   if (!readabilityResult) {
     // Readability is intentionally skipped for some URLs (e.g. Twitter/X).
@@ -91,17 +88,13 @@ async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> 
     (link: ContentExtractorLink) => ({
       url: link.url,
       anchorText: link.text || undefined,
-    }),
+    })
   );
 
   return {
     cleanContent: readabilityResult.content,
     cleanTextContent: readabilityResult.textContent,
-    title:
-      ogData.title ??
-      readabilityResult.title ??
-      raw.metadata.pageTitle ??
-      "Untitled",
+    title: ogData.title ?? readabilityResult.title ?? raw.metadata.pageTitle ?? "Untitled",
     author: readabilityResult.byline ?? ogData.author ?? undefined,
     publication: ogData.siteName ?? undefined,
     thumbnailUrl: ogData.image ?? undefined,

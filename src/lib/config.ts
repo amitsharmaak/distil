@@ -51,8 +51,7 @@ export const config = {
    * Must exactly match the redirect URI registered in Google Cloud Console.
    */
   googleRedirectUri:
-    process.env.GOOGLE_REDIRECT_URI ??
-    "http://localhost:3000/api/auth/gmail/callback",
+    process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3000/api/auth/gmail/callback",
 
   /**
    * Google Gemini API key for AI integration.
@@ -97,8 +96,7 @@ export const config = {
    * Override only if the dev server runs on a non-default host/port.
    */
   slackRedirectUri:
-    process.env.SLACK_REDIRECT_URI ??
-    "http://localhost:3000/api/auth/slack/callback",
+    process.env.SLACK_REDIRECT_URI ?? "http://localhost:3000/api/auth/slack/callback",
 
   /**
    * How often (in hours) to automatically sync Gmail and Slack in the background.
@@ -113,8 +111,7 @@ export const config = {
    * Directory where per-publisher Playwright persisted contexts are stored.
    * Each publisher gets a subdirectory keyed by its id (e.g. data/publisher-sessions/the-ken/).
    */
-  publisherSessionDir:
-    process.env.PUBLISHER_SESSION_DIR ?? "data/publisher-sessions",
+  publisherSessionDir: process.env.PUBLISHER_SESSION_DIR ?? "data/publisher-sessions",
 
   /**
    * Optional comma-separated list of publisher ids to enable.

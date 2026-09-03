@@ -1,6 +1,6 @@
 # Distil — Architecture Notes
 
-This document explains non-obvious design decisions that aren't apparent from reading the code or CLAUDE.md. It's aimed at contributors who want to understand *why* things work the way they do.
+This document explains non-obvious design decisions that aren't apparent from reading the code or CLAUDE.md. It's aimed at contributors who want to understand _why_ things work the way they do.
 
 ---
 
@@ -16,7 +16,7 @@ The exported `pendingIngestions` set in `src/app/api/items/route.ts` exists sole
 
 ## Deduplication by Normalized URL
 
-Items are deduplicated using a *normalized* URL stored in the `normalized_url` column. Normalization strips tracking parameters (`utm_*`), sorts query params, and removes fragments, so `https://example.com/article?utm_source=email` and `https://example.com/article` resolve to the same item.
+Items are deduplicated using a _normalized_ URL stored in the `normalized_url` column. Normalization strips tracking parameters (`utm_*`), sorts query params, and removes fragments, so `https://example.com/article?utm_source=email` and `https://example.com/article` resolve to the same item.
 
 The dedup check is synchronous and runs before the background pipeline starts. The pipeline itself has a second dedup guard to handle the race condition when two requests for the same URL arrive within milliseconds of each other.
 
@@ -28,7 +28,7 @@ Implementation: `normalizeUrl()` in `src/lib/utils.ts`, used in `POST /api/items
 
 These are independent states that serve different purposes:
 
-- `processingStatus` — lifecycle of the *pipeline*: `processing → ready | rejected`. Only `ready` items appear in the feed.
+- `processingStatus` — lifecycle of the _pipeline_: `processing → ready | rejected`. Only `ready` items appear in the feed.
 - `isRead` — user's reading state. A `ready` item starts unread; the user marks it read.
 
 An item can be `processing` and unread, `ready` and read, or `rejected` (never shown to user). They are not related.
@@ -79,6 +79,7 @@ Prompt LLM → Parse tool calls from response → Execute tools → Append resul
 ```
 
 Tool calls are wrapped in markdown code fences (` ```tool_call ... ``` `) rather than a structured function-calling API because:
+
 - It works uniformly across all three AI providers (Gemini, OpenAI, Anthropic) without provider-specific tool schemas
 - The LLM can reason about whether to call a tool in the same text turn as the call itself
 

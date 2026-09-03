@@ -20,11 +20,13 @@ The API URL is hardcoded for local development. Before loading the extension aga
 2. `popup.js` line ~8: change `DISTIL_API_URL` to the same deployed URL
 
 Example:
+
 ```js
 const DISTIL_API_URL = "https://distil.yourdomain.com/api/items";
 ```
 
 You will also need to update `manifest.json` to allow the new host:
+
 ```json
 "host_permissions": ["https://distil.yourdomain.com/*"],
 ```
@@ -37,9 +39,9 @@ If you have set `DISTIL_API_TOKEN` on your Distil server (recommended for any ne
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `manifest.json` | Chrome extension manifest (MV3) |
-| `background.js` | Service worker — handles save requests, local queue, API communication |
-| `popup.html` / `popup.js` / `popup.css` | Extension popup UI |
-| `icons/` | Extension icons (16px, 48px, 128px) |
+| File                                    | Purpose                                                                |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `manifest.json`                         | Chrome extension manifest (MV3)                                        |
+| `background.js`                         | Service worker — handles save requests, local queue, API communication |
+| `popup.html` / `popup.js` / `popup.css` | Extension popup UI                                                     |
+| `icons/`                                | Extension icons (16px, 48px, 128px)                                    |

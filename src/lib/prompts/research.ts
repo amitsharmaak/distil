@@ -4,10 +4,7 @@
  * Used by src/lib/ai/research.ts.
  */
 
-export function researchPlanPrompt(
-  query: string,
-  context?: string,
-): string {
+export function researchPlanPrompt(query: string, context?: string): string {
   return `You are a research assistant. The user wants to learn more about a topic. Plan the research by identifying key questions to investigate.
 
 ## Research Topic
@@ -28,10 +25,7 @@ Output a JSON array of strings (the sub-questions):
 Output ONLY the JSON array, no other text.`;
 }
 
-export function researchSynthesizePrompt(
-  query: string,
-  findings: string,
-): string {
+export function researchSynthesizePrompt(query: string, findings: string): string {
   return `You are a research assistant synthesizing findings into a comprehensive report.
 
 ## Original Research Question

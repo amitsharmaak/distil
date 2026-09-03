@@ -6,12 +6,7 @@
  * ExtractedLink from the core types module.
  */
 
-import type {
-  ContentType,
-  ExtractedLink,
-  Priority,
-  SourceType,
-} from "../types";
+import type { ContentType, ExtractedLink, Priority, SourceType } from "../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 0: Connector Output

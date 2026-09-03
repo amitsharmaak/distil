@@ -19,20 +19,14 @@ export async function GET(request: NextRequest) {
   const error = request.nextUrl.searchParams.get("error");
 
   if (error || !code) {
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=gmail_denied`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?error=gmail_denied`);
   }
 
   try {
     await handleCallback(code);
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?connected=gmail`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?connected=gmail`);
   } catch (err) {
     apiLogger.error({ err }, "Gmail callback token exchange failed");
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=gmail_failed`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?error=gmail_failed`);
   }
 }

@@ -59,11 +59,9 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
         method: "PATCH",
       });
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)),
+        prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
       );
-      onCountChange(
-        notifications.filter((n) => !n.isRead && n.id !== notification.id).length,
-      );
+      onCountChange(notifications.filter((n) => !n.isRead && n.id !== notification.id).length);
     }
     onClose();
   }
@@ -93,9 +91,7 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
       {/* Notification list */}
       <ScrollArea className="max-h-[70dvh] sm:max-h-80">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Loading...</div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
             <Bell className="h-5 w-5" />

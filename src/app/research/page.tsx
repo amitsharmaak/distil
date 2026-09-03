@@ -77,10 +77,7 @@ export default function ResearchListPage() {
     setScanResult(null);
     setScanError(null);
     try {
-      const res = await fetch(
-        `${config.apiBaseUrl}/api/ai/research/proactive`,
-        { method: "POST" },
-      );
+      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/proactive`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Scan failed");
@@ -98,10 +95,9 @@ export default function ResearchListPage() {
   async function handleStartSuggestion(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(
-        `${config.apiBaseUrl}/api/ai/research/suggestions/${id}/start`,
-        { method: "POST" },
-      );
+      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/suggestions/${id}/start`, {
+        method: "POST",
+      });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to start research");
@@ -121,10 +117,9 @@ export default function ResearchListPage() {
   async function handleDismiss(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(
-        `${config.apiBaseUrl}/api/ai/research/suggestions/${id}`,
-        { method: "DELETE" },
-      );
+      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/suggestions/${id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) return;
       await fetchSuggestions();
     } finally {
@@ -184,20 +179,16 @@ export default function ResearchListPage() {
         <div className="rounded-md border px-4 py-3 text-sm">
           {scanResult.suggestionsSaved > 0 ? (
             <p>
-              Scanned{" "}
-              <span className="font-medium">{scanResult.clustersFound}</span>{" "}
-              topic{" "}
-              {scanResult.clustersFound === 1 ? "cluster" : "clusters"} and
-              saved{" "}
-              <span className="font-medium">{scanResult.suggestionsSaved}</span>{" "}
-              suggestion
+              Scanned <span className="font-medium">{scanResult.clustersFound}</span> topic{" "}
+              {scanResult.clustersFound === 1 ? "cluster" : "clusters"} and saved{" "}
+              <span className="font-medium">{scanResult.suggestionsSaved}</span> suggestion
               {scanResult.suggestionsSaved === 1 ? "" : "s"} for your review.
             </p>
           ) : scanResult.clustersFound > 0 ? (
             <p className="text-muted-foreground">
               Found {scanResult.clustersFound} topic{" "}
-              {scanResult.clustersFound === 1 ? "cluster" : "clusters"}, but
-              nothing new to suggest right now.
+              {scanResult.clustersFound === 1 ? "cluster" : "clusters"}, but nothing new to suggest
+              right now.
             </p>
           ) : (
             <p className="text-muted-foreground">
@@ -206,15 +197,11 @@ export default function ResearchListPage() {
           )}
         </div>
       )}
-      {scanError && (
-        <p className="text-sm text-destructive">{scanError}</p>
-      )}
+      {scanError && <p className="text-sm text-destructive">{scanError}</p>}
 
       {suggestions.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Suggested topics
-          </h2>
+          <h2 className="text-sm font-semibold text-muted-foreground">Suggested topics</h2>
           {suggestions.map((s) => (
             <Card key={s.id}>
               <CardContent className="p-4 space-y-3">
@@ -249,9 +236,7 @@ export default function ResearchListPage() {
       )}
 
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">
-          Your reports
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground">Your reports</h2>
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
@@ -264,8 +249,8 @@ export default function ResearchListPage() {
               <FileQuestion className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-sm font-medium">No research reports yet</p>
               <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
-                Use <span className="font-medium">Research a topic</span> above,
-                approve a suggestion, or start from any feed item.
+                Use <span className="font-medium">Research a topic</span> above, approve a
+                suggestion, or start from any feed item.
               </p>
             </CardContent>
           </Card>
@@ -277,28 +262,21 @@ export default function ResearchListPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium line-clamp-2">
-                          {report.query}
-                        </p>
+                        <p className="text-sm font-medium line-clamp-2">{report.query}</p>
                         <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                           <span>
-                            {new Date(report.created_at).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              },
-                            )}
+                            {new Date(report.created_at).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
                           </span>
                           {report.completed_at && (
                             <>
                               <span>·</span>
                               <span>
                                 Completed{" "}
-                                {new Date(
-                                  report.completed_at,
-                                ).toLocaleDateString("en-US", {
+                                {new Date(report.completed_at).toLocaleDateString("en-US", {
                                   month: "short",
                                   day: "numeric",
                                   year: "numeric",

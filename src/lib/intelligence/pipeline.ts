@@ -55,8 +55,7 @@ function defaultClassification(): ContentClassification {
 }
 
 function minimalExtraction(raw: RawContent): ExtractedContentResult {
-  const title =
-    raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled";
+  const title = raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled";
   return {
     cleanContent: "",
     cleanTextContent: "",
@@ -116,12 +115,10 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     }
 
     // Step 3: Insert item in 'processing' state
-    const createdAt =
-      raw.metadata.timestamp ?? raw.fetchedAt ?? new Date().toISOString();
+    const createdAt = raw.metadata.timestamp ?? raw.fetchedAt ?? new Date().toISOString();
     const initialItem: ContentItem = {
       id: raw.id,
-      title:
-        raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled",
+      title: raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled",
       url: raw.url ?? "",
       sourceType: raw.sourceType,
       contentType: "article",
@@ -174,9 +171,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     } catch (err) {
       // Surface publisher auth errors to the caller (worker / manual API) so the
       // user can be prompted to reconnect. All other errors degrade gracefully.
-      const { PublisherAuthRequired } = await import(
-        "../connectors/publishers/types"
-      );
+      const { PublisherAuthRequired } = await import("../connectors/publishers/types");
       if (err instanceof PublisherAuthRequired) throw err;
       extracted = minimalExtraction(raw);
     }
@@ -248,8 +243,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       enriched,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     updateItemProcessingStatus(raw.id, "rejected", message);
     return {
       rawContentId: raw.id,

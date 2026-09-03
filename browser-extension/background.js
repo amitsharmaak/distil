@@ -63,7 +63,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   const selectedText = info.selectionText || "";
 
   // Attempt to save to the Distil API first. Fall back to local storage if it fails.
-  saveToAPI({ url, title, selectedText, sourceType: "browser-extension", contentType: "article", priority: "medium", topics: [] }).catch(() => {
+  saveToAPI({
+    url,
+    title,
+    selectedText,
+    sourceType: "browser-extension",
+    contentType: "article",
+    priority: "medium",
+    topics: [],
+  }).catch(() => {
     saveToLocalStorage({ url, title, selectedText });
   });
 });
@@ -78,8 +86,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "distil-save") return false;
 
-  saveToAPI(message.payload)
-    .catch(() => saveToLocalStorage(message.payload));
+  saveToAPI(message.payload).catch(() => saveToLocalStorage(message.payload));
 
   // Ack synchronously so the popup can close right away.
   sendResponse({ ok: true });

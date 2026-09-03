@@ -19,9 +19,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ config: body });
   } catch (error) {
     apiLogger.error({ err: error }, "Preferences update error");
-    return NextResponse.json(
-      { error: "Failed to update preferences" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to update preferences" }, { status: 500 });
   }
 }

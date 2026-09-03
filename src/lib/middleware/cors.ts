@@ -20,10 +20,7 @@ function getAllowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-export function applyCors(
-  request: NextRequest,
-  response: NextResponse,
-): NextResponse {
+export function applyCors(request: NextRequest, response: NextResponse): NextResponse {
   const origin = request.headers.get("origin") ?? "";
   const allowed = getAllowedOrigins();
 
@@ -31,14 +28,8 @@ export function applyCors(
     response.headers.set("Access-Control-Allow-Origin", origin || "*");
   }
 
-  response.headers.set(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization",
-  );
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.headers.set("Access-Control-Max-Age", "86400");
 
   return response;
@@ -57,14 +48,8 @@ export function handlePreflight(request: NextRequest): NextResponse | null {
   if (allowed.includes("*") || allowed.includes(origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin || "*");
   }
-  response.headers.set(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization",
-  );
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.headers.set("Access-Control-Max-Age", "86400");
 
   return response;

@@ -1,10 +1,10 @@
 # Distil — Intelligence at the Speed of Thought
 
-> *The internet produces 2.5 quintillion bytes of data every day. You have 24 hours. Distil gives you back your time.*
+> _The internet produces 2.5 quintillion bytes of data every day. You have 24 hours. Distil gives you back your time._
 
 Distil is an AI-native second brain that intercepts the chaos — emails, Slack threads, bookmarked articles, breaking discoveries — and transforms it into a single, laser-focused intelligence feed. It doesn't just organize your information. It **understands** it, prioritizes it, and evolves with you. The more you use it, the smarter it gets.
 
-This is what it feels like when your tools finally work *for* you.
+This is what it feels like when your tools finally work _for_ you.
 
 ## What Distil Does
 
@@ -49,39 +49,39 @@ That's it. The database is created automatically on first run. No migrations to 
 
 ## Commands
 
-| Command | Description |
-| ----------------------- | ---------------------------------------- |
-| `npm run dev` | Start dev server at localhost:3000 |
-| `npm run build` | Production build (includes type checks) |
-| `npm run start` | Start production server |
-| `npm run lint` | ESLint + Prettier check |
-| `npm run format` | Auto-format all files |
-| `npm test` | Run all tests |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run test:coverage` | Run tests with coverage report |
+| Command                 | Description                             |
+| ----------------------- | --------------------------------------- |
+| `npm run dev`           | Start dev server at localhost:3000      |
+| `npm run build`         | Production build (includes type checks) |
+| `npm run start`         | Start production server                 |
+| `npm run lint`          | ESLint + Prettier check                 |
+| `npm run format`        | Auto-format all files                   |
+| `npm test`              | Run all tests                           |
+| `npm run test:watch`    | Run tests in watch mode                 |
+| `npm run test:coverage` | Run tests with coverage report          |
 
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` and configure. All features are optional — the app works without any API keys (no AI, no connectors).
 
-| Variable | Default | Purpose |
-| ----------------------------- | ----------------------------------- | --------------------------------------------- |
-| `DB_PATH` | `./data/distil.db` | Path to the SQLite database file |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls |
-| `GEMINI_API_KEY` | *(none)* | Google Gemini API key (default AI provider) |
-| `OPENAI_API_KEY` | *(none)* | OpenAI API key (GPT-4o, GPT-4o-mini) |
-| `ANTHROPIC_API_KEY` | *(none)* | Anthropic API key (Claude models) |
-| `GOOGLE_CLIENT_ID` | *(none)* | Google OAuth client ID for Gmail connector |
-| `GOOGLE_CLIENT_SECRET` | *(none)* | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | `http://localhost:3000/api/auth/...` | Must match your Google Cloud Console URI |
-| `SLACK_BOT_TOKEN` | *(none)* | Slack Bot Token (`xoxb-...`) |
-| `SLACK_CHANNELS` | *(empty)* | Comma-separated Slack channel names |
-| `GMAIL_SYNC_AFTER_DATE` | 30 days ago | Earliest date to sync emails (YYYY/MM/DD) |
-| `GMAIL_NEWSLETTER_SENDERS` | *(empty)* | Reserved; Gmail uses inbox scan + auto newsletter detection |
-| `DISTIL_DELETE_PASSWORD` | *(none)* | Password for the "Delete All Data" endpoint |
-| `DISTIL_API_TOKEN` | *(none)* | Bearer token to protect all API endpoints |
-| `DISTIL_ALLOWED_ORIGINS` | *(empty)* | Comma-separated allowed CORS origins |
-| `LOG_LEVEL` | `info` | Log level: trace/debug/info/warn/error |
+| Variable                   | Default                              | Purpose                                                     |
+| -------------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| `DB_PATH`                  | `./data/distil.db`                   | Path to the SQLite database file                            |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000`              | Base URL for client-side API calls                          |
+| `GEMINI_API_KEY`           | _(none)_                             | Google Gemini API key (default AI provider)                 |
+| `OPENAI_API_KEY`           | _(none)_                             | OpenAI API key (GPT-4o, GPT-4o-mini)                        |
+| `ANTHROPIC_API_KEY`        | _(none)_                             | Anthropic API key (Claude models)                           |
+| `GOOGLE_CLIENT_ID`         | _(none)_                             | Google OAuth client ID for Gmail connector                  |
+| `GOOGLE_CLIENT_SECRET`     | _(none)_                             | Google OAuth client secret                                  |
+| `GOOGLE_REDIRECT_URI`      | `http://localhost:3000/api/auth/...` | Must match your Google Cloud Console URI                    |
+| `SLACK_BOT_TOKEN`          | _(none)_                             | Slack Bot Token (`xoxb-...`)                                |
+| `SLACK_CHANNELS`           | _(empty)_                            | Comma-separated Slack channel names                         |
+| `GMAIL_SYNC_AFTER_DATE`    | 30 days ago                          | Earliest date to sync emails (YYYY/MM/DD)                   |
+| `GMAIL_NEWSLETTER_SENDERS` | _(empty)_                            | Reserved; Gmail uses inbox scan + auto newsletter detection |
+| `DISTIL_DELETE_PASSWORD`   | _(none)_                             | Password for the "Delete All Data" endpoint                 |
+| `DISTIL_API_TOKEN`         | _(none)_                             | Bearer token to protect all API endpoints                   |
+| `DISTIL_ALLOWED_ORIGINS`   | _(empty)_                            | Comma-separated allowed CORS origins                        |
+| `LOG_LEVEL`                | `info`                               | Log level: trace/debug/info/warn/error                      |
 
 See `.env.example` for setup instructions for each variable.
 
@@ -89,10 +89,10 @@ See `.env.example` for setup instructions for each variable.
 
 Distil is model-agnostic. Plug in any provider and switch without touching code:
 
-| Provider | Variables | Models Used |
-| ----------- | ---------------------- | -------------------------------- |
-| **Gemini** | `GEMINI_API_KEY` | gemini-2.5-flash (default) |
-| **OpenAI** | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini |
+| Provider      | Variables           | Models Used                 |
+| ------------- | ------------------- | --------------------------- |
+| **Gemini**    | `GEMINI_API_KEY`    | gemini-2.5-flash (default)  |
+| **OpenAI**    | `OPENAI_API_KEY`    | gpt-4o, gpt-4o-mini         |
 | **Anthropic** | `ANTHROPIC_API_KEY` | claude-sonnet, claude-haiku |
 
 Switch models and configure routing preferences live from the Settings page — no redeploy required.
@@ -187,13 +187,13 @@ src/
 
 Every piece of content — regardless of source — flows through the same five-stage pipeline before appearing in your feed:
 
-| Stage | Module | What it does |
-|-------|--------|--------------|
-| **1 — Classify** | `intelligence/classifier.ts` | AI categorizes the content type and, for emails, assigns an `emailCategory` (newsletter, digest, personal, transactional, etc.) |
-| **2 — Relevance gate** | `intelligence/relevance.ts` | Drops items that don't match your preferences. Email categories are checked against your allowlist (configured in Settings → Email Intelligence); all other sources pass through automatically |
-| **3 — Extract** | `intelligence/extractor.ts` | Pulls clean readable content via Readability for URLs, or strips email chrome from raw message bodies |
-| **4 — Analyze** | `intelligence/analyzer.ts` | Detects embedded media, extracts entities and links, and computes an information-density score |
-| **5 — Enrich** | `intelligence/enricher.ts` | Generates a two-sentence AI summary, assigns topic tags, and computes a heuristic priority score |
+| Stage                  | Module                       | What it does                                                                                                                                                                                   |
+| ---------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Classify**       | `intelligence/classifier.ts` | AI categorizes the content type and, for emails, assigns an `emailCategory` (newsletter, digest, personal, transactional, etc.)                                                                |
+| **2 — Relevance gate** | `intelligence/relevance.ts`  | Drops items that don't match your preferences. Email categories are checked against your allowlist (configured in Settings → Email Intelligence); all other sources pass through automatically |
+| **3 — Extract**        | `intelligence/extractor.ts`  | Pulls clean readable content via Readability for URLs, or strips email chrome from raw message bodies                                                                                          |
+| **4 — Analyze**        | `intelligence/analyzer.ts`   | Detects embedded media, extracts entities and links, and computes an information-density score                                                                                                 |
+| **5 — Enrich**         | `intelligence/enricher.ts`   | Generates a two-sentence AI summary, assigns topic tags, and computes a heuristic priority score                                                                                               |
 
 Raw content is persisted before processing so nothing is lost, and deduplication by normalized URL runs before Stage 1.
 

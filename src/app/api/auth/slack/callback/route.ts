@@ -19,20 +19,14 @@ export async function GET(request: NextRequest) {
   const error = request.nextUrl.searchParams.get("error");
 
   if (error || !code) {
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=slack_denied`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?error=slack_denied`);
   }
 
   try {
     await handleCallback(code);
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?connected=slack`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?connected=slack`);
   } catch (err) {
     apiLogger.error({ err }, "Slack callback token exchange failed");
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=slack_failed`,
-    );
+    return NextResponse.redirect(`${config.apiBaseUrl}/sources?error=slack_failed`);
   }
 }

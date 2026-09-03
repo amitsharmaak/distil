@@ -43,10 +43,7 @@ interface ActivityTimelineProps {
 
 export function ActivityTimeline({ items }: ActivityTimelineProps) {
   const recentItems = [...items]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 8);
 
   if (recentItems.length === 0) {
@@ -61,8 +58,7 @@ export function ActivityTimeline({ items }: ActivityTimelineProps) {
     <div className="rounded-xl border border-border bg-card">
       {recentItems.map((item, i) => {
         const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
-        const colors =
-          sourceColors[item.sourceType] ?? "text-muted-foreground bg-muted";
+        const colors = sourceColors[item.sourceType] ?? "text-muted-foreground bg-muted";
 
         return (
           <Link
@@ -77,9 +73,7 @@ export function ActivityTimeline({ items }: ActivityTimelineProps) {
 
             {/* Title + metadata */}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium leading-snug">
-                {item.title}
-              </p>
+              <p className="truncate text-sm font-medium leading-snug">{item.title}</p>
               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span>{item.publication || item.sourceType}</span>
                 <span>&middot;</span>
@@ -88,9 +82,7 @@ export function ActivityTimeline({ items }: ActivityTimelineProps) {
             </div>
 
             {/* Unread dot */}
-            {!item.isRead && (
-              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-            )}
+            {!item.isRead && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
           </Link>
         );
       })}

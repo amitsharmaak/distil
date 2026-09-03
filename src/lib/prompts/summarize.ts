@@ -16,10 +16,7 @@ const SUMMARY_OUTPUT_SCHEMA = `{
   "notableQuotes": ["optional quote 1", "optional quote 2"]
 }`;
 
-export function summarizePrompt(
-  item: ContentItem,
-  length: "brief" | "detailed",
-): string {
+export function summarizePrompt(item: ContentItem, length: "brief" | "detailed"): string {
   const contentSection = item.fullContent
     ? `## Full Content\n${item.fullContent}`
     : item.summary
@@ -59,7 +56,7 @@ ${SUMMARY_OUTPUT_SCHEMA}`;
 export function chunkSummarizePrompt(
   chunk: string,
   chunkIndex: number,
-  totalChunks: number,
+  totalChunks: number
 ): string {
   return `You are summarizing a chunk of a longer document. This is chunk ${chunkIndex + 1} of ${totalChunks}.
 
@@ -73,11 +70,9 @@ ${SUMMARY_OUTPUT_SCHEMA}`;
 
 export function synthesizeChunkSummariesPrompt(
   chunkSummaries: string[],
-  item: ContentItem,
+  item: ContentItem
 ): string {
-  const summariesText = chunkSummaries
-    .map((s, i) => `### Chunk ${i + 1}\n${s}`)
-    .join("\n\n");
+  const summariesText = chunkSummaries.map((s, i) => `### Chunk ${i + 1}\n${s}`).join("\n\n");
 
   return `You are synthesizing multiple chunk summaries into a single coherent summary for a longer document.
 

@@ -8,11 +8,7 @@
 import { NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import {
-  getNotifications,
-  getUnreadNotificationCount,
-  markAllNotificationsRead,
-} from "@/lib/db";
+import { getNotifications, getUnreadNotificationCount, markAllNotificationsRead } from "@/lib/db";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -33,7 +29,7 @@ export function GET() {
     apiLogger.error({ err: error }, "GET /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
@@ -46,7 +42,7 @@ export function POST() {
     apiLogger.error({ err: error }, "POST /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }

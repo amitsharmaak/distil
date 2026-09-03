@@ -26,20 +26,14 @@ export function InsightCard({
     ? stripMarkdown(item.aiSummary).slice(0, 180)
     : item.summary?.slice(0, 180);
 
-  const meta = [
-    item.author,
-    item.publication,
-    timeAgo(item.createdAt),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const meta = [item.author, item.publication, timeAgo(item.createdAt)].filter(Boolean).join(" · ");
 
   return (
     <Link href={`/feed/${item.id}${filterSuffix}`} className="group block">
       <div
         className={cn(
           "flex gap-4 rounded-xl px-4 py-3.5 transition-colors hover:bg-accent/40",
-          !item.isRead && "bg-card",
+          !item.isRead && "bg-card"
         )}
       >
         {/* Left gutter — priority dot */}
@@ -48,7 +42,7 @@ export function InsightCard({
             className={cn(
               "h-2 w-2 shrink-0 rounded-full",
               priorityDot[item.priority] ?? "bg-muted-foreground/40",
-              item.isRead && "opacity-30",
+              item.isRead && "opacity-30"
             )}
           />
         </div>
@@ -58,9 +52,7 @@ export function InsightCard({
           <h3
             className={cn(
               "font-serif text-[15px] leading-snug tracking-tight line-clamp-2",
-              item.isRead
-                ? "font-normal text-muted-foreground"
-                : "font-semibold text-foreground",
+              item.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground"
             )}
           >
             {item.title}

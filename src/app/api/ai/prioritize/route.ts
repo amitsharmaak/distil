@@ -16,9 +16,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     apiLogger.error({ err: error }, "Prioritize error");
-    return NextResponse.json(
-      { error: "Failed to re-prioritize items" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to re-prioritize items" }, { status: 500 });
   }
 }

@@ -29,7 +29,7 @@ async function runDiscovery(publisher: PublisherDefinition): Promise<number> {
       } catch (err) {
         connectorLogger.warn(
           { err, publisherId: publisher.id },
-          "[publishers/worker] rss discovery failed",
+          "[publishers/worker] rss discovery failed"
         );
       }
       continue;
@@ -40,7 +40,7 @@ async function runDiscovery(publisher: PublisherDefinition): Promise<number> {
       } catch (err) {
         connectorLogger.warn(
           { err, publisherId: publisher.id },
-          "[publishers/worker] logged-in-feed discovery skipped",
+          "[publishers/worker] logged-in-feed discovery skipped"
         );
       }
       continue;
@@ -50,17 +50,14 @@ async function runDiscovery(publisher: PublisherDefinition): Promise<number> {
 }
 
 export async function syncPublisher(
-  id: string,
+  id: string
 ): Promise<{ discovered: number; fetched: number; failed: number }> {
   const publisher = getById(id);
   if (!publisher) {
     throw new Error(`Publisher "${id}" not found in registry`);
   }
 
-  connectorLogger.info(
-    { publisherId: publisher.id },
-    "[publishers/worker] sync start",
-  );
+  connectorLogger.info({ publisherId: publisher.id }, "[publishers/worker] sync start");
 
   // Validate session up front; close immediately — fetcher reopens its own.
   const ctx = await ensureSession(publisher);
@@ -100,7 +97,7 @@ export async function syncPublisher(
       if (err instanceof PublisherAuthRequired) {
         connectorLogger.warn(
           { publisherId: publisher.id, url },
-          "[publishers/worker] auth required mid-sync, aborting batch",
+          "[publishers/worker] auth required mid-sync, aborting batch"
         );
         markFailed(publisher.id, url, "PublisherAuthRequired");
         failed++;
@@ -111,24 +108,21 @@ export async function syncPublisher(
       failed++;
       connectorLogger.error(
         { err, publisherId: publisher.id, url },
-        "[publishers/worker] processContent failed",
+        "[publishers/worker] processContent failed"
       );
     }
   }
 
   connectorLogger.info(
     { publisherId: publisher.id, discovered, fetched, failed },
-    "[publishers/worker] sync complete",
+    "[publishers/worker] sync complete"
   );
 
   return { discovered, fetched, failed };
 }
 
 export async function syncAllPublishers(): Promise<
-  Record<
-    string,
-    { discovered: number; fetched: number; failed: number } | { error: string }
-  >
+  Record<string, { discovered: number; fetched: number; failed: number } | { error: string }>
 > {
   const results: Record<
     string,
@@ -140,7 +134,7 @@ export async function syncAllPublishers(): Promise<
     if (status.state !== "connected") {
       connectorLogger.debug(
         { publisherId: publisher.id, state: status.state },
-        "[publishers/worker] skipping publisher — not connected",
+        "[publishers/worker] skipping publisher — not connected"
       );
       continue;
     }
@@ -150,7 +144,7 @@ export async function syncAllPublishers(): Promise<
       const message = err instanceof Error ? err.message : String(err);
       connectorLogger.error(
         { err, publisherId: publisher.id },
-        "[publishers/worker] syncPublisher threw",
+        "[publishers/worker] syncPublisher threw"
       );
       results[publisher.id] = { error: message };
     }

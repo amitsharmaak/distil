@@ -188,10 +188,12 @@ async function fetchTwitterOGFallback(url: string): Promise<OGData> {
 
     const getMeta = (property: string): string | null => {
       const p1 = new RegExp(
-        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"
+        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
+        "i"
       );
       const p2 = new RegExp(
-        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, "i"
+        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
+        "i"
       );
       const match = html.match(p1) ?? html.match(p2);
       return match?.[1]?.trim() ?? null;

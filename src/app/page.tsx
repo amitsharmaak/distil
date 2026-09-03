@@ -21,9 +21,7 @@ export default async function TodayPage() {
     <div className="mx-auto max-w-4xl space-y-10">
       {/* Editorial header */}
       <div>
-        <h1 className="font-serif text-3xl font-semibold tracking-tight">
-          Today&rsquo;s Brief
-        </h1>
+        <h1 className="font-serif text-3xl font-semibold tracking-tight">Today&rsquo;s Brief</h1>
         <StatsOverview items={items} />
       </div>
 

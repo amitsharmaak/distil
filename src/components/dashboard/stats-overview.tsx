@@ -29,8 +29,7 @@ export function StatsOverview({ items }: StatsOverviewProps) {
     <p className="mt-2 text-sm text-muted-foreground">
       {unreadCount > 0 ? (
         <>
-          <span className="font-medium text-foreground">{unreadCount}</span>{" "}
-          unread
+          <span className="font-medium text-foreground">{unreadCount}</span> unread
         </>
       ) : (
         "All caught up"

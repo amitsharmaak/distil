@@ -50,10 +50,7 @@ async function ingestInBackground(params: {
     });
     rawBody = await response.text();
   } catch (fetchError) {
-    apiLogger.warn(
-      { err: fetchError, url: params.trimmedUrl },
-      "background ingest fetch failed"
-    );
+    apiLogger.warn({ err: fetchError, url: params.trimmedUrl }, "background ingest fetch failed");
     return;
   }
 

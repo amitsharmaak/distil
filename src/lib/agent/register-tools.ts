@@ -132,7 +132,7 @@ export function registerAllTools(): void {
     handler: async (params) => {
       const summary = getAISummary(
         params.item_id as string,
-        params.type as "brief" | "detailed" | undefined,
+        params.type as "brief" | "detailed" | undefined
       );
       return summary ?? null;
     },
@@ -271,8 +271,7 @@ export function registerAllTools(): void {
 
   registry.register({
     name: "web_search",
-    description:
-      "Search the web for current information using Google Search grounding",
+    description: "Search the web for current information using Google Search grounding",
     category: "EXTERNAL",
     rateLimit: 20,
     requiresApproval: false,
@@ -288,8 +287,7 @@ export function registerAllTools(): void {
 
   registry.register({
     name: "extract_content",
-    description:
-      "Extract article content and metadata from a URL using Readability",
+    description: "Extract article content and metadata from a URL using Readability",
     category: "EXTERNAL",
     rateLimit: 20,
     requiresApproval: false,
@@ -298,8 +296,7 @@ export function registerAllTools(): void {
     },
     handler: async (params) => {
       const result = await extractContent(params.url as string);
-      if (!result)
-        return { success: false, error: "Could not extract content from URL" };
+      if (!result) return { success: false, error: "Could not extract content from URL" };
       return {
         success: true,
         title: result.title,

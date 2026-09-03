@@ -37,7 +37,7 @@ function scoreToPriority(score: number): Priority {
 function heuristicScore(
   item: ContentItem,
   preferences: UserPreferenceProfile,
-  config: AgentConfig,
+  config: AgentConfig
 ): number {
   const weights = config.priorityWeights;
 
@@ -53,13 +53,12 @@ function heuristicScore(
 
   const sourceScore = (preferences.sourceWeights[item.sourceType] ?? 0.5) * 100;
 
-  const authorScore = item.author
-    ? (preferences.authorWeights[item.author] ?? 0.5) * 100
-    : 50;
+  const authorScore = item.author ? (preferences.authorWeights[item.author] ?? 0.5) * 100 : 50;
 
   const typeScore = (preferences.contentTypeWeights[item.contentType] ?? 0.5) * 100;
 
-  const totalWeight = weights.recency + weights.topicRelevance + weights.sourceReliability + 0.3 + 0.2;
+  const totalWeight =
+    weights.recency + weights.topicRelevance + weights.sourceReliability + 0.3 + 0.2;
   const rawScore =
     (recencyScore * weights.recency +
       topicScore * weights.topicRelevance +
@@ -99,7 +98,7 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
             sourceType: i.sourceType,
             author: i.author,
           })),
-          preferences,
+          preferences
         );
 
         const text = await generateText(prompt, "prioritize");
