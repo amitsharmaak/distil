@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // SQLite performs WAL/schema initialization at module import time. Keep the
+  // page-data worker pool serial until the Phase 1 PostgreSQL cutover removes
+  // that build-time contention.
+  experimental: {
+    cpus: 1,
+  },
   /**
    * Mark better-sqlite3 as a server-external package.
    *

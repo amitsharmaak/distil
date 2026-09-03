@@ -51,6 +51,8 @@ let branches = 0;
 let coveredBranches = 0;
 
 for (const [file, lines] of changed) {
+  if (file.includes("/__tests__/") || /\.test\.[jt]sx?$/.test(file)) continue;
+
   const absolute = path.resolve(file);
   const data = coverage[absolute];
   if (!data) continue;

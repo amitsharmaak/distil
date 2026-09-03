@@ -12,7 +12,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint && prettier --check .",
+    "lint": "eslint && node scripts/check-formatting.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest --runInBand",
