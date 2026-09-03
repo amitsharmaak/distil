@@ -26,15 +26,15 @@ function FeedPageContent() {
 
   /** All items fetched from the API. */
   const [items, setItems] = useState<ContentItem[]>([]);
-  /** True while the initial fetch is in flight. */
-  const [loading, setLoading] = useState(true);
+  /** Search query represented by the current items; null until the first fetch settles. */
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
 
   /** Card layout vs compact list layout toggle. */
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
 
   /** Full-text search query from URL search params. */
   const searchParams = useSearchParams();
-  const searchQuery = searchParams.get('q') ?? '';
+  const searchQuery = searchParams.get("q") ?? "";
 
   /** Active filter selections — empty array means "show all". */
   const [selectedSources, setSelectedSources] = useState<SourceType[]>([]);
@@ -42,7 +42,7 @@ function FeedPageContent() {
   const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([]);
 
   /** When false, already-read items are hidden. Initialized from ?showRead=true param. */
-  const [showRead, setShowRead] = useState(searchParams.get('showRead') === 'true');
+  const [showRead, setShowRead] = useState(searchParams.get("showRead") === "true");
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -59,27 +59,26 @@ function FeedPageContent() {
       .then((res) => res.json())
       .then((data: { items: ContentItem[] }) => {
         setItems(data.items);
-        setLoading(false);
+        setLoadedQuery(searchQuery);
         return data.items;
       })
       .catch(() => {
-        setLoading(false);
+        setLoadedQuery(searchQuery);
         return [] as ContentItem[];
       });
   }, [searchQuery]);
 
   useEffect(() => {
-    setLoading(true);
     fetchItems();
   }, [fetchItems]);
+
+  const loading = loadedQuery !== searchQuery;
 
   /**
    * Poll every 3 seconds while any items are in processing state.
    * Stops polling once all items are ready (or rejected).
    */
-  const hasProcessingItems = items.some(
-    (item) => item.processingStatus === "processing",
-  );
+  const hasProcessingItems = items.some((item) => item.processingStatus === "processing");
 
   useEffect(() => {
     if (!hasProcessingItems) return;
@@ -106,9 +105,7 @@ function FeedPageContent() {
 
   /** Optimistically mark an item as read in local state. */
   function handleMarkRead(id: string) {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
-    );
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)));
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -147,9 +144,7 @@ function FeedPageContent() {
         ) : filteredItems.length === 0 ? (
           // Empty state when filters match nothing (or search returns nothing).
           <div className="py-12 text-center text-muted-foreground">
-            {searchQuery
-              ? `No results found for "${searchQuery}"`
-              : "No items match your filters."}
+            {searchQuery ? `No results found for "${searchQuery}"` : "No items match your filters."}
           </div>
         ) : (
           filteredItems.map((item) => (

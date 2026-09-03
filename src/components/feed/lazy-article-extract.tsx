@@ -29,15 +29,13 @@ export function LazyArticleExtract({
 }: LazyArticleExtractProps) {
   const router = useRouter();
   const alreadyDone = hasFullContent || !!contentExtractedAt;
+  const shouldExtract = !alreadyDone && !!url;
   const [status, setStatus] = useState<"idle" | "loading" | "done">(
-    alreadyDone ? "done" : "idle"
+    shouldExtract ? "idle" : "done"
   );
 
   useEffect(() => {
-    if (alreadyDone || !url) {
-      setStatus("done");
-      return;
-    }
+    if (!shouldExtract) return;
     let cancelled = false;
 
     async function run() {
@@ -63,16 +61,14 @@ export function LazyArticleExtract({
     return () => {
       cancelled = true;
     };
-  }, [itemId, url, alreadyDone, router]);
+  }, [itemId, url, shouldExtract, router]);
 
-  if (status === "loading") {
+  if (shouldExtract && status === "loading") {
     return (
       <Card>
         <CardContent className="flex items-center gap-3 py-6">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Loading article content…
-          </p>
+          <p className="text-sm text-muted-foreground">Loading article content…</p>
         </CardContent>
       </Card>
     );

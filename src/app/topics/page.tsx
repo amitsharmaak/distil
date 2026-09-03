@@ -24,8 +24,16 @@ import type { ContentItem } from "@/lib/types";
 import { config } from "@/lib/config";
 
 const TOPIC_COLORS = [
-  "#4F46E5", "#0891B2", "#D97706", "#059669", "#DC2626",
-  "#2563EB", "#65A30D", "#DB2777", "#7C3AED", "#EA580C",
+  "#4F46E5",
+  "#0891B2",
+  "#D97706",
+  "#059669",
+  "#DC2626",
+  "#2563EB",
+  "#65A30D",
+  "#DB2777",
+  "#7C3AED",
+  "#EA580C",
 ];
 
 interface DerivedTopic {
@@ -38,13 +46,11 @@ export default function TopicsPage() {
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [allItems, setAllItems] = useState<ContentItem[]>([]);
   const [topics, setTopics] = useState<DerivedTopic[]>([]);
-  const [topicItems, setTopicItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTopic, setNewTopic] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
     fetch(`${config.apiBaseUrl}/api/items`)
       .then((res) => res.json())
       .then((data: { items: ContentItem[] }) => {
@@ -68,30 +74,19 @@ export default function TopicsPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!selectedTopic) {
-      setTopicItems([]);
-      return;
-    }
-    const filtered = allItems.filter((item) =>
-      item.topics.some(
-        (t) => t.toLowerCase() === selectedTopic.toLowerCase(),
-      ),
-    );
-    setTopicItems(filtered);
-  }, [selectedTopic, allItems]);
+  const topicItems = selectedTopic
+    ? allItems.filter((item) =>
+        item.topics.some((t) => t.toLowerCase() === selectedTopic.toLowerCase())
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-2xl font-semibold tracking-tight">
-            Topics
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Topics the agent monitors for you
-          </p>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">Topics</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Topics the agent monitors for you</p>
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -111,8 +106,8 @@ export default function TopicsPage() {
                 onChange={(e) => setNewTopic(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                The agent will start monitoring this topic across all your
-                connected sources and fetch relevant content.
+                The agent will start monitoring this topic across all your connected sources and
+                fetch relevant content.
               </p>
               <Button
                 className="w-full"
@@ -129,9 +124,7 @@ export default function TopicsPage() {
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-sm text-muted-foreground">
-          Loading&hellip;
-        </div>
+        <div className="py-16 text-center text-sm text-muted-foreground">Loading&hellip;</div>
       ) : selectedTopic ? (
         /* Topic drill-down */
         <div className="space-y-4">
@@ -144,9 +137,7 @@ export default function TopicsPage() {
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Back
             </Button>
-            <h2 className="font-serif text-lg font-semibold">
-              {selectedTopic}
-            </h2>
+            <h2 className="font-serif text-lg font-semibold">{selectedTopic}</h2>
             <Badge variant="secondary" className="text-xs">
               {topicItems.length} items
             </Badge>
@@ -158,17 +149,13 @@ export default function TopicsPage() {
                 No items found for this topic yet.
               </div>
             ) : (
-              topicItems.map((item) => (
-                <ContentCard key={item.id} item={item} />
-              ))
+              topicItems.map((item) => <ContentCard key={item.id} item={item} />)
             )}
           </div>
         </div>
       ) : topics.length === 0 ? (
         <div className="py-16 text-center">
-          <p className="font-serif text-lg text-muted-foreground">
-            No topics yet
-          </p>
+          <p className="font-serif text-lg text-muted-foreground">No topics yet</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Topics will appear here automatically as you add content.
           </p>
@@ -191,8 +178,7 @@ export default function TopicsPage() {
                   <h3 className="font-serif font-semibold">{topic.name}</h3>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {topic.itemCount} {topic.itemCount === 1 ? "item" : "items"}{" "}
-                  collected
+                  {topic.itemCount} {topic.itemCount === 1 ? "item" : "items"} collected
                 </p>
               </button>
             ))}
@@ -200,10 +186,7 @@ export default function TopicsPage() {
 
           <p className="text-sm text-muted-foreground">
             Click a topic to see its items, or{" "}
-            <Link
-              href="/feed"
-              className="text-foreground underline-offset-4 hover:underline"
-            >
+            <Link href="/feed" className="text-foreground underline-offset-4 hover:underline">
               browse all items in the feed
             </Link>
             .

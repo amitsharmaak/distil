@@ -101,7 +101,7 @@ export default function ResearchPage() {
         setProgress(
           typeof data.report.progress === "string"
             ? JSON.parse(data.report.progress)
-            : data.report.progress,
+            : data.report.progress
         );
       } catch {
         // ignore
@@ -121,9 +121,7 @@ export default function ResearchPage() {
         if (!active) return;
         if (r.status === "completed" || r.status === "failed") return;
         // Connect SSE for progress
-        const es = new EventSource(
-          `${config.apiBaseUrl}/api/ai/research/${id}/stream`,
-        );
+        const es = new EventSource(`${config.apiBaseUrl}/api/ai/research/${id}/stream`);
         es.addEventListener("progress", (e) => {
           try {
             const p = JSON.parse(e.data) as ResearchProgress;
@@ -151,8 +149,7 @@ export default function ResearchPage() {
           es.close();
         };
       } catch (err) {
-        if (active)
-          setError(err instanceof Error ? err.message : "Failed to load report");
+        if (active) setError(err instanceof Error ? err.message : "Failed to load report");
       }
     }
 
@@ -163,12 +160,6 @@ export default function ResearchPage() {
         cleanup.then((fn) => (typeof fn === "function" ? fn() : undefined));
       }
     };
-  }, [id, fetchReport]);
-
-  // Initial fetch when navigating to page (e.g. returning after background research)
-  useEffect(() => {
-    if (!id) return;
-    fetchReport();
   }, [id, fetchReport]);
 
   const handleCopyMarkdown = async () => {
@@ -241,8 +232,7 @@ export default function ResearchPage() {
         <h1 className="text-2xl font-bold tracking-tight">{report.query}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Started {new Date(report.created_at).toLocaleString()}
-          {report.completed_at &&
-            ` · Completed ${new Date(report.completed_at).toLocaleString()}`}
+          {report.completed_at && ` · Completed ${new Date(report.completed_at).toLocaleString()}`}
         </p>
       </div>
 
@@ -264,26 +254,19 @@ export default function ResearchPage() {
                 let label = "";
                 if (stage === "planning") label = "Planning research questions...";
                 else if (stage === "researching") {
-                  const curr = progress?.stage === "researching" ? progress.current ?? 0 : 0;
-                  const tot = progress?.stage === "researching" ? progress.total ?? 1 : 1;
+                  const curr = progress?.stage === "researching" ? (progress.current ?? 0) : 0;
+                  const tot = progress?.stage === "researching" ? (progress.total ?? 1) : 1;
                   const q = progress?.stage === "researching" ? progress.question : "";
                   label = `Researching (${curr}/${tot})${q ? `: ${q}` : ""}`;
                 } else if (stage === "deepening") label = "Deepening research...";
-                else if (stage === "synthesizing")
-                  label = "Synthesizing findings...";
+                else if (stage === "synthesizing") label = "Synthesizing findings...";
 
                 return (
                   <div key={stage} className="flex items-start gap-3">
                     <div className="mt-0.5 shrink-0">
-                      {isCompleted && (
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      )}
-                      {isCurrent && (
-                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                      )}
-                      {isPending && (
-                        <Circle className="h-5 w-5 text-muted-foreground" />
-                      )}
+                      {isCompleted && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                      {isCurrent && <Loader2 className="h-5 w-5 text-primary animate-spin" />}
+                      {isPending && <Circle className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div
                       className={
@@ -312,9 +295,7 @@ export default function ResearchPage() {
         <Card>
           <CardContent className="py-8 text-center">
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-3" />
-            <p className="text-sm">
-              {report.report || "Research failed. Please try again."}
-            </p>
+            <p className="text-sm">{report.report || "Research failed. Please try again."}</p>
           </CardContent>
         </Card>
       )}
@@ -324,19 +305,11 @@ export default function ResearchPage() {
         <>
           {/* Action buttons */}
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleCopyMarkdown}
-            >
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleCopyMarkdown}>
               <Copy className="h-4 w-4" />
               {copied ? "Copied!" : "Copy as Markdown"}
             </Button>
-            <DeepResearch
-              defaultQuery={report.query}
-              itemId={report.item_id ?? undefined}
-            >
+            <DeepResearch defaultQuery={report.query} itemId={report.item_id ?? undefined}>
               <Button variant="outline" size="sm" className="gap-2">
                 <Search className="h-4 w-4" /> Research Further
               </Button>
@@ -354,9 +327,7 @@ export default function ResearchPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {summary}
-                    </ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
                   </div>
                 </CardContent>
               </Card>

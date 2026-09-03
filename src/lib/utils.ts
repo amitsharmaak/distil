@@ -67,7 +67,7 @@ export function sanitizeUrl(raw: string): string {
  */
 export function normalizeUrl(raw: string): string {
   // Decode HTML entities (e.g. &amp; → &) that Slack/email clients add.
-  let cleaned = sanitizeUrl(raw).replace(/&amp;/g, "&");
+  const cleaned = sanitizeUrl(raw).replace(/&amp;/g, "&");
 
   let parsed: URL;
   try {
