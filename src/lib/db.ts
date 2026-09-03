@@ -33,16 +33,16 @@ import { normalizeUrl } from "./utils";
  * Returns an empty string if no valid tokens remain (caller should skip FTS).
  */
 function sanitizeFtsQuery(q: string): string {
-  const FTS_OPERATORS = new Set(["NOT", "AND", "OR"]);
+  const FTS_OPERATORS = new Set(['NOT', 'AND', 'OR']);
   return q
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .map((t) => t.replace(/["'*\[\](){}^~?:!@#$%&=+|<>\\]/g, ""))
-    .filter((t) => t.length > 0)
-    .filter((t) => !FTS_OPERATORS.has(t.toUpperCase()))
-    .map((t) => t + "*")
-    .join(" ");
+    .map(t => t.replace(/["'*\[\](){}^~?:!@#$%&=+|<>\\]/g, ''))
+    .filter(t => t.length > 0)
+    .filter(t => !FTS_OPERATORS.has(t.toUpperCase()))
+    .map(t => t + '*')
+    .join(' ');
 }
 
 // ── Connection singleton ───────────────────────────────────────────────────────
@@ -457,12 +457,13 @@ try {
 
 // Backfill normalized_url for existing rows, deduplicate, then create index.
 {
-  const rows = db.prepare("SELECT id, url FROM items WHERE normalized_url IS NULL").all() as {
-    id: string;
-    url: string;
-  }[];
+  const rows = db
+    .prepare("SELECT id, url FROM items WHERE normalized_url IS NULL")
+    .all() as { id: string; url: string }[];
   if (rows.length > 0) {
-    const update = db.prepare("UPDATE items SET normalized_url = @normalizedUrl WHERE id = @id");
+    const update = db.prepare(
+      "UPDATE items SET normalized_url = @normalizedUrl WHERE id = @id",
+    );
     const backfill = db.transaction(() => {
       for (const row of rows) {
         update.run({ id: row.id, normalizedUrl: normalizeUrl(row.url) });
@@ -485,7 +486,9 @@ try {
 
 // Create unique index on normalized_url (after backfill and dedup).
 try {
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_items_normalized_url ON items(normalized_url)");
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_normalized_url ON items(normalized_url)",
+  );
 } catch {
   // Index already exists — safe to ignore.
 }
@@ -616,9 +619,7 @@ function deserialize(row: DbRow): ContentItem {
     aiSummary: row.ai_summary_text ?? undefined,
     processingStatus: (row.processing_status ?? "ready") as "processing" | "ready" | "rejected",
     rejectionReason: row.rejection_reason ?? undefined,
-    contentClassification: row.content_classification
-      ? JSON.parse(row.content_classification)
-      : undefined,
+    contentClassification: row.content_classification ? JSON.parse(row.content_classification) : undefined,
     detectedMedia: row.detected_media ? JSON.parse(row.detected_media) : undefined,
     informationDensity: row.information_density ?? undefined,
   };
@@ -652,9 +653,7 @@ function serialize(item: ContentItem): Record<string, unknown> {
     content_extracted_at: item.contentExtractedAt ?? null,
     processing_status: item.processingStatus ?? "ready",
     rejection_reason: item.rejectionReason ?? null,
-    content_classification: item.contentClassification
-      ? JSON.stringify(item.contentClassification)
-      : null,
+    content_classification: item.contentClassification ? JSON.stringify(item.contentClassification) : null,
     detected_media: item.detectedMedia ? JSON.stringify(item.detectedMedia) : null,
     information_density: item.informationDensity ?? null,
   };
@@ -800,7 +799,7 @@ export function getItems(filters: ItemFilters = {}): ContentItem[] {
 export function getItemById(id: string): ContentItem | undefined {
   const row = db
     .prepare(
-      "SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id AND ai_summaries.prompt_type = 'brief' WHERE items.id = ?"
+      "SELECT items.*, ai_summaries.summary AS ai_summary_text FROM items LEFT JOIN ai_summaries ON items.id = ai_summaries.item_id AND ai_summaries.prompt_type = 'brief' WHERE items.id = ?",
     )
     .get(id) as DbRow | undefined;
   return row ? deserialize(row) : undefined;
@@ -810,15 +809,14 @@ export function getItemById(id: string): ContentItem | undefined {
  * Returns items with processing_status = 'rejected', for user review.
  * Used by the Settings page to let users review false rejections.
  */
-export function getRejectedItems(
-  limit = 50,
-  offset = 0
-): {
+export function getRejectedItems(limit = 50, offset = 0): {
   items: ContentItem[];
   total: number;
 } {
   const countRow = db
-    .prepare("SELECT COUNT(*) as c FROM items WHERE processing_status = 'rejected'")
+    .prepare(
+      "SELECT COUNT(*) as c FROM items WHERE processing_status = 'rejected'",
+    )
     .get() as { c: number };
   const total = countRow.c;
 
@@ -829,7 +827,7 @@ export function getRejectedItems(
        LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id AND ai_summaries.prompt_type = 'brief'
        WHERE items.processing_status = 'rejected'
        ORDER BY items.createdAt DESC
-       LIMIT ? OFFSET ?`
+       LIMIT ? OFFSET ?`,
     )
     .all(limit, offset) as DbRow[];
   const items = rows.map(deserialize);
@@ -848,7 +846,7 @@ export function getItemByNormalizedUrl(url: string): ContentItem | undefined {
       `SELECT items.*, ai_summaries.summary AS ai_summary_text
        FROM items
        LEFT JOIN ai_summaries ON ai_summaries.item_id = items.id AND ai_summaries.prompt_type = 'brief'
-       WHERE items.normalized_url = ?`
+       WHERE items.normalized_url = ?`,
     )
     .get(norm) as DbRow | undefined;
   return row ? deserialize(row) : undefined;
@@ -991,16 +989,14 @@ export function upsertOAuthToken(
     refresh_token?: string | null;
     expiry_date?: number | null;
     email?: string | null;
-  }
+  },
 ): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT OR REPLACE INTO oauth_tokens
       (provider, team_id, access_token, refresh_token, expiry_date, email, updated_at)
     VALUES
       (@provider, @team_id, @access_token, @refresh_token, @expiry_date, @email, @updated_at)
-  `
-  ).run({
+  `).run({
     provider,
     team_id: teamId,
     access_token: data.access_token,
@@ -1037,7 +1033,7 @@ export interface AISummaryRow {
 
 export function getAISummary(
   itemId: string,
-  promptType?: "brief" | "detailed"
+  promptType?: "brief" | "detailed",
 ): AISummaryRow | undefined {
   if (promptType) {
     return db
@@ -1049,7 +1045,9 @@ export function getAISummary(
     .get(itemId) as AISummaryRow | undefined;
 }
 
-export function getAISummaries(itemId: string): { brief?: string; detailed?: string } {
+export function getAISummaries(
+  itemId: string,
+): { brief?: string; detailed?: string } {
   const rows = db
     .prepare("SELECT summary, prompt_type FROM ai_summaries WHERE item_id = ?")
     .all(itemId) as { summary: string; prompt_type: string }[];
@@ -1068,12 +1066,10 @@ export function upsertAISummary(data: {
   model: string;
   promptType: string;
 }): AISummaryRow {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT OR REPLACE INTO ai_summaries (id, item_id, summary, model, prompt_type, created_at)
     VALUES (@id, @item_id, @summary, @model, @prompt_type, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     item_id: data.itemId,
     summary: data.summary,
@@ -1100,12 +1096,10 @@ export function insertFeedback(data: {
   rating: number;
   reason?: string;
 }): FeedbackRow {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO feedback (id, item_id, rating, reason, created_at)
     VALUES (@id, @item_id, @rating, @reason, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     item_id: data.itemId,
     rating: data.rating,
@@ -1122,7 +1116,9 @@ export function getFeedback(itemId: string): FeedbackRow | undefined {
 }
 
 export function getAllFeedback(): FeedbackRow[] {
-  return db.prepare("SELECT * FROM feedback ORDER BY created_at DESC").all() as FeedbackRow[];
+  return db
+    .prepare("SELECT * FROM feedback ORDER BY created_at DESC")
+    .all() as FeedbackRow[];
 }
 
 // ── Research report helpers ──────────────────────────────────────────────────
@@ -1146,12 +1142,10 @@ export function insertResearchReport(data: {
   query: string;
   model: string;
 }): ResearchReportRow {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO research_reports (id, item_id, query, model, created_at)
     VALUES (@id, @item_id, @query, @model, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     item_id: data.itemId ?? null,
     query: data.query,
@@ -1162,9 +1156,9 @@ export function insertResearchReport(data: {
 }
 
 export function getResearchReport(id: string): ResearchReportRow | undefined {
-  return db.prepare("SELECT * FROM research_reports WHERE id = ?").get(id) as
-    | ResearchReportRow
-    | undefined;
+  return db
+    .prepare("SELECT * FROM research_reports WHERE id = ?")
+    .get(id) as ResearchReportRow | undefined;
 }
 
 export function updateResearchReport(
@@ -1175,13 +1169,12 @@ export function updateResearchReport(
     status?: string;
     completedAt?: string;
     progress?: string | null;
-  }
+  },
 ): ResearchReportRow | undefined {
   const existing = getResearchReport(id);
   if (!existing) return undefined;
 
-  db.prepare(
-    `
+  db.prepare(`
     UPDATE research_reports SET
       report       = @report,
       sources      = @sources,
@@ -1189,14 +1182,13 @@ export function updateResearchReport(
       completed_at = @completed_at,
       progress     = @progress
     WHERE id = @id
-  `
-  ).run({
+  `).run({
     id,
     report: patch.report ?? existing.report,
     sources: patch.sources ?? existing.sources,
     status: patch.status ?? existing.status,
     completed_at: patch.completedAt ?? existing.completed_at,
-    progress: patch.progress !== undefined ? patch.progress : (existing.progress ?? null),
+    progress: patch.progress !== undefined ? patch.progress : existing.progress ?? null,
   });
 
   return getResearchReport(id);
@@ -1224,14 +1216,18 @@ export interface ResearchSuggestionRow {
 
 export function getPendingResearchSuggestions(): ResearchSuggestionRow[] {
   return db
-    .prepare("SELECT * FROM research_suggestions WHERE status = 'pending' ORDER BY created_at DESC")
+    .prepare(
+      "SELECT * FROM research_suggestions WHERE status = 'pending' ORDER BY created_at DESC",
+    )
     .all() as ResearchSuggestionRow[];
 }
 
-export function getResearchSuggestionById(id: string): ResearchSuggestionRow | undefined {
-  return db.prepare("SELECT * FROM research_suggestions WHERE id = ?").get(id) as
-    | ResearchSuggestionRow
-    | undefined;
+export function getResearchSuggestionById(
+  id: string,
+): ResearchSuggestionRow | undefined {
+  return db
+    .prepare("SELECT * FROM research_suggestions WHERE id = ?")
+    .get(id) as ResearchSuggestionRow | undefined;
 }
 
 /**
@@ -1246,9 +1242,11 @@ export function replacePendingResearchSuggestions(
     reason: string;
     suggestedQuery: string;
     sourceItemIds: string[];
-  }>
+  }>,
 ): void {
-  const del = db.prepare("DELETE FROM research_suggestions WHERE status = 'pending'");
+  const del = db.prepare(
+    "DELETE FROM research_suggestions WHERE status = 'pending'",
+  );
   const ins = db.prepare(`
     INSERT INTO research_suggestions (
       id, topic_key, topic, reason, suggested_query, source_item_ids, status, created_at
@@ -1277,37 +1275,38 @@ export function replacePendingResearchSuggestions(
 export function dismissResearchSuggestion(id: string): boolean {
   const row = getResearchSuggestionById(id);
   if (!row || row.status !== "pending") return false;
-  db.prepare("UPDATE research_suggestions SET status = 'dismissed' WHERE id = ?").run(id);
+  db.prepare(
+    "UPDATE research_suggestions SET status = 'dismissed' WHERE id = ?",
+  ).run(id);
   return true;
 }
 
-export function markResearchSuggestionStarted(id: string, researchReportId: string): boolean {
+export function markResearchSuggestionStarted(
+  id: string,
+  researchReportId: string,
+): boolean {
   const row = getResearchSuggestionById(id);
   if (!row || row.status !== "pending") return false;
-  db.prepare(
-    `
+  db.prepare(`
     UPDATE research_suggestions SET status = 'started', research_report_id = @rid WHERE id = @id
-  `
-  ).run({ id, rid: researchReportId });
+  `).run({ id, rid: researchReportId });
   return true;
 }
 
 // ── User settings helpers ────────────────────────────────────────────────────
 
 export function getUserSetting(key: string): string | undefined {
-  const row = db.prepare("SELECT value FROM user_settings WHERE key = ?").get(key) as
-    | { value: string }
-    | undefined;
+  const row = db
+    .prepare("SELECT value FROM user_settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
   return row?.value;
 }
 
 export function setUserSetting(key: string, value: string): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT OR REPLACE INTO user_settings (key, value, updated_at)
     VALUES (@key, @value, @updated_at)
-  `
-  ).run({ key, value, updated_at: new Date().toISOString() });
+  `).run({ key, value, updated_at: new Date().toISOString() });
 }
 
 // ── Raw content helpers (Unified Intelligence Layer) ─────────────────────────
@@ -1320,12 +1319,10 @@ export function insertRawContent(raw: {
   metadata: Record<string, unknown>;
   fetchedAt: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO raw_content (id, item_id, source_type, raw_body, metadata, fetched_at)
     VALUES (@id, @item_id, @source_type, @raw_body, @metadata, @fetched_at)
-  `
-  ).run({
+  `).run({
     id: raw.id,
     item_id: raw.itemId ?? null,
     source_type: raw.sourceType,
@@ -1342,13 +1339,11 @@ export function updateRawContentItemId(rawContentId: string, itemId: string): vo
 export function updateItemProcessingStatus(
   id: string,
   status: "processing" | "ready" | "rejected",
-  rejectionReason?: string
+  rejectionReason?: string,
 ): void {
-  db.prepare(
-    `
+  db.prepare(`
     UPDATE items SET processing_status = @status, rejection_reason = @rejection_reason WHERE id = @id
-  `
-  ).run({
+  `).run({
     id,
     status,
     rejection_reason: rejectionReason ?? null,
@@ -1359,7 +1354,7 @@ export function updateItemProcessingStatus(
 
 export function updateItemPriorityScore(id: string, score: number, priority: Priority): void {
   db.prepare(
-    "UPDATE items SET ai_priority_score = @score, priority = @priority WHERE id = @id"
+    "UPDATE items SET ai_priority_score = @score, priority = @priority WHERE id = @id",
   ).run({ id, score, priority });
 }
 
@@ -1373,12 +1368,10 @@ export function insertNotification(data: {
   title: string;
   message: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO notifications (id, item_id, title, message, created_at)
     VALUES (@id, @item_id, @title, @message, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     item_id: data.itemId,
     title: data.title,
@@ -1409,9 +1402,9 @@ export function getNotifications(limit = 20): Notification[] {
 }
 
 export function getUnreadNotificationCount(): number {
-  const row = db.prepare("SELECT COUNT(*) as c FROM notifications WHERE is_read = 0").get() as {
-    c: number;
-  };
+  const row = db
+    .prepare("SELECT COUNT(*) as c FROM notifications WHERE is_read = 0")
+    .get() as { c: number };
   return row.c;
 }
 
@@ -1426,20 +1419,22 @@ export function markAllNotificationsRead(): void {
 // ── Item embedding helpers ────────────────────────────────────────────────────
 
 export function getItemEmbedding(
-  itemId: string
+  itemId: string,
 ): { item_id: string; embedding: string; model: string; created_at: string } | undefined {
   return db.prepare("SELECT * FROM item_embeddings WHERE item_id = ?").get(itemId) as
     | { item_id: string; embedding: string; model: string; created_at: string }
     | undefined;
 }
 
-export function upsertItemEmbedding(itemId: string, embedding: number[], model: string): void {
-  db.prepare(
-    `
+export function upsertItemEmbedding(
+  itemId: string,
+  embedding: number[],
+  model: string,
+): void {
+  db.prepare(`
     INSERT OR REPLACE INTO item_embeddings (item_id, embedding, model, created_at)
     VALUES (@item_id, @embedding, @model, @created_at)
-  `
-  ).run({
+  `).run({
     item_id: itemId,
     embedding: JSON.stringify(embedding),
     model,
@@ -1447,13 +1442,15 @@ export function upsertItemEmbedding(itemId: string, embedding: number[], model: 
   });
 }
 
-export function getRecentEmbeddings(daysBack = 30): Array<{ item_id: string; embedding: string }> {
-  const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
-  return db
-    .prepare(
-      "SELECT item_id, embedding FROM item_embeddings WHERE created_at > ? ORDER BY created_at DESC"
-    )
-    .all(cutoff) as Array<{ item_id: string; embedding: string }>;
+export function getRecentEmbeddings(
+  daysBack = 30,
+): Array<{ item_id: string; embedding: string }> {
+  const cutoff = new Date(
+    Date.now() - daysBack * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  return db.prepare(
+    "SELECT item_id, embedding FROM item_embeddings WHERE created_at > ? ORDER BY created_at DESC",
+  ).all(cutoff) as Array<{ item_id: string; embedding: string }>;
 }
 
 // ── Audit log helpers ─────────────────────────────────────────────────────────
@@ -1472,14 +1469,12 @@ export function insertAuditLog(data: {
   latencyMs?: number;
   traceId?: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO audit_log (id, action, tool_name, input_hash, output_hash, model, provider,
       tokens_in, tokens_out, cost, latency_ms, trace_id, created_at)
     VALUES (@id, @action, @tool_name, @input_hash, @output_hash, @model, @provider,
       @tokens_in, @tokens_out, @cost, @latency_ms, @trace_id, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     action: data.action,
     tool_name: data.toolName ?? null,
@@ -1497,31 +1492,17 @@ export function insertAuditLog(data: {
 }
 
 export function getAuditLogs(limit = 50): Array<Record<string, unknown>> {
-  return db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?").all(limit) as Array<
-    Record<string, unknown>
-  >;
+  return db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?").all(limit) as Array<Record<string, unknown>>;
 }
 
-export function getDailyAuditStats(): {
-  totalCost: number;
-  totalCalls: number;
-  totalTokens: number;
-} {
+export function getDailyAuditStats(): { totalCost: number; totalCalls: number; totalTokens: number } {
   const today = new Date().toISOString().slice(0, 10);
-  const row = db
-    .prepare(
-      `
+  const row = db.prepare(`
     SELECT COALESCE(SUM(cost), 0) as totalCost,
            COUNT(*) as totalCalls,
            COALESCE(SUM(tokens_in + tokens_out), 0) as totalTokens
     FROM audit_log WHERE created_at >= ?
-  `
-    )
-    .get(today + "T00:00:00.000Z") as {
-    totalCost: number;
-    totalCalls: number;
-    totalTokens: number;
-  };
+  `).get(today + "T00:00:00.000Z") as { totalCost: number; totalCalls: number; totalTokens: number };
   return row;
 }
 
@@ -1534,12 +1515,10 @@ export function insertWorkflowRun(data: {
   traceId?: string;
 }): void {
   const now = new Date().toISOString();
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO workflow_runs (id, workflow_type, item_id, status, trace_id, created_at, updated_at)
     VALUES (@id, @workflow_type, @item_id, 'pending', @trace_id, @created_at, @updated_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     workflow_type: data.workflowType,
     item_id: data.itemId ?? null,
@@ -1549,28 +1528,21 @@ export function insertWorkflowRun(data: {
   });
 }
 
-export function updateWorkflowRun(
-  id: string,
-  patch: {
-    status?: string;
-    currentStep?: string;
-    stepsJson?: string;
-    error?: string;
-    completedAt?: string;
-  }
-): void {
-  const existing = db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as
-    | Record<string, unknown>
-    | undefined;
+export function updateWorkflowRun(id: string, patch: {
+  status?: string;
+  currentStep?: string;
+  stepsJson?: string;
+  error?: string;
+  completedAt?: string;
+}): void {
+  const existing = db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   if (!existing) return;
-  db.prepare(
-    `
+  db.prepare(`
     UPDATE workflow_runs SET
       status = @status, current_step = @current_step, steps_json = @steps_json,
       error = @error, completed_at = @completed_at, updated_at = @updated_at
     WHERE id = @id
-  `
-  ).run({
+  `).run({
     id,
     status: patch.status ?? existing.status,
     current_step: patch.currentStep ?? existing.current_step,
@@ -1582,29 +1554,17 @@ export function updateWorkflowRun(
 }
 
 export function getWorkflowRun(id: string): Record<string, unknown> | undefined {
-  return db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as
-    | Record<string, unknown>
-    | undefined;
+  return db.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
 }
 
-export function getWorkflowRuns(
-  filters: { status?: string; workflowType?: string; limit?: number } = {}
-): Array<Record<string, unknown>> {
+export function getWorkflowRuns(filters: { status?: string; workflowType?: string; limit?: number } = {}): Array<Record<string, unknown>> {
   const conditions: string[] = [];
   const params: Record<string, unknown> = {};
-  if (filters.status) {
-    conditions.push("status = @status");
-    params.status = filters.status;
-  }
-  if (filters.workflowType) {
-    conditions.push("workflow_type = @workflowType");
-    params.workflowType = filters.workflowType;
-  }
+  if (filters.status) { conditions.push("status = @status"); params.status = filters.status; }
+  if (filters.workflowType) { conditions.push("workflow_type = @workflowType"); params.workflowType = filters.workflowType; }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = filters.limit ?? 20;
-  return db
-    .prepare(`SELECT * FROM workflow_runs ${where} ORDER BY created_at DESC LIMIT ${limit}`)
-    .all(params) as Array<Record<string, unknown>>;
+  return db.prepare(`SELECT * FROM workflow_runs ${where} ORDER BY created_at DESC LIMIT ${limit}`).all(params) as Array<Record<string, unknown>>;
 }
 
 // ── Agent action helpers ─────────────────────────────────────────────────────
@@ -1620,12 +1580,10 @@ export function insertAgentAction(data: {
   status?: string;
   traceId?: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO agent_actions (id, workflow_id, action_type, tool_name, input, output, reasoning, status, trace_id, created_at)
     VALUES (@id, @workflow_id, @action_type, @tool_name, @input, @output, @reasoning, @status, @trace_id, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     workflow_id: data.workflowId ?? null,
     action_type: data.actionType,
@@ -1639,16 +1597,12 @@ export function insertAgentAction(data: {
   });
 }
 
-export function getAgentActions(
-  filters: { workflowId?: string; limit?: number } = {}
-): Array<Record<string, unknown>> {
+export function getAgentActions(filters: { workflowId?: string; limit?: number } = {}): Array<Record<string, unknown>> {
   if (filters.workflowId) {
-    return db
-      .prepare("SELECT * FROM agent_actions WHERE workflow_id = ? ORDER BY created_at DESC LIMIT ?")
+    return db.prepare("SELECT * FROM agent_actions WHERE workflow_id = ? ORDER BY created_at DESC LIMIT ?")
       .all(filters.workflowId, filters.limit ?? 50) as Array<Record<string, unknown>>;
   }
-  return db
-    .prepare("SELECT * FROM agent_actions ORDER BY created_at DESC LIMIT ?")
+  return db.prepare("SELECT * FROM agent_actions ORDER BY created_at DESC LIMIT ?")
     .all(filters.limit ?? 50) as Array<Record<string, unknown>>;
 }
 
@@ -1662,12 +1616,10 @@ export function insertApproval(data: {
   payload: string;
   traceId?: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO approval_queue (id, workflow_id, action_type, description, payload, trace_id, created_at)
     VALUES (@id, @workflow_id, @action_type, @description, @payload, @trace_id, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     workflow_id: data.workflowId ?? null,
     action_type: data.actionType,
@@ -1679,26 +1631,21 @@ export function insertApproval(data: {
 }
 
 export function getPendingApprovals(limit = 20): Array<Record<string, unknown>> {
-  return db
-    .prepare(
-      "SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?"
-    )
+  return db.prepare("SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?")
     .all(limit) as Array<Record<string, unknown>>;
 }
 
 export function resolveApproval(id: string, status: "approved" | "rejected"): void {
-  db.prepare(
-    "UPDATE approval_queue SET status = @status, decided_at = @decided_at WHERE id = @id"
-  ).run({ id, status, decided_at: new Date().toISOString() });
+  db.prepare("UPDATE approval_queue SET status = @status, decided_at = @decided_at WHERE id = @id")
+    .run({ id, status, decided_at: new Date().toISOString() });
 }
 
 // ── Chat helpers ──────────────────────────────────────────────────────────────
 
 export function insertChatConversation(data: { id: string; title?: string }): void {
   const now = new Date().toISOString();
-  db.prepare(
-    "INSERT INTO chat_conversations (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)"
-  ).run({ id: data.id, title: data.title ?? null, created_at: now, updated_at: now });
+  db.prepare("INSERT INTO chat_conversations (id, title, created_at, updated_at) VALUES (@id, @title, @created_at, @updated_at)")
+    .run({ id: data.id, title: data.title ?? null, created_at: now, updated_at: now });
 }
 
 export function insertChatMessage(data: {
@@ -1709,12 +1656,10 @@ export function insertChatMessage(data: {
   citations?: string;
   toolCalls?: string;
 }): void {
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO chat_messages (id, conversation_id, role, content, citations, tool_calls, created_at)
     VALUES (@id, @conversation_id, @role, @content, @citations, @tool_calls, @created_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     conversation_id: data.conversationId,
     role: data.role,
@@ -1726,14 +1671,12 @@ export function insertChatMessage(data: {
 }
 
 export function getChatMessages(conversationId: string): Array<Record<string, unknown>> {
-  return db
-    .prepare("SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC")
+  return db.prepare("SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC")
     .all(conversationId) as Array<Record<string, unknown>>;
 }
 
 export function getChatConversations(limit = 20): Array<Record<string, unknown>> {
-  return db
-    .prepare("SELECT * FROM chat_conversations ORDER BY updated_at DESC LIMIT ?")
+  return db.prepare("SELECT * FROM chat_conversations ORDER BY updated_at DESC LIMIT ?")
     .all(limit) as Array<Record<string, unknown>>;
 }
 
@@ -1748,12 +1691,10 @@ export function enqueueJob(data: {
   runAfter?: string;
 }): void {
   const now = new Date().toISOString();
-  db.prepare(
-    `
+  db.prepare(`
     INSERT INTO job_queue (id, job_type, payload, priority, max_retries, run_after, status, created_at, updated_at)
     VALUES (@id, @job_type, @payload, @priority, @max_retries, @run_after, 'pending', @created_at, @updated_at)
-  `
-  ).run({
+  `).run({
     id: data.id,
     job_type: data.jobType,
     payload: data.payload ?? "{}",
@@ -1767,26 +1708,19 @@ export function enqueueJob(data: {
 
 export function dequeueJob(workerId: string): Record<string, unknown> | undefined {
   const now = new Date().toISOString();
-  const job = db
-    .prepare(
-      `
+  const job = db.prepare(`
     SELECT * FROM job_queue
     WHERE status = 'pending'
       AND (run_after IS NULL OR run_after <= @now)
       AND (locked_at IS NULL OR locked_at < @stale)
     ORDER BY priority DESC, created_at ASC
     LIMIT 1
-  `
-    )
-    .get({ now, stale: new Date(Date.now() - 5 * 60 * 1000).toISOString() }) as
-    | Record<string, unknown>
-    | undefined;
+  `).get({ now, stale: new Date(Date.now() - 5 * 60 * 1000).toISOString() }) as Record<string, unknown> | undefined;
 
   if (!job) return undefined;
 
-  db.prepare(
-    "UPDATE job_queue SET locked_at = @locked_at, locked_by = @locked_by, status = 'running', updated_at = @updated_at WHERE id = @id"
-  ).run({ id: job.id, locked_at: now, locked_by: workerId, updated_at: now });
+  db.prepare("UPDATE job_queue SET locked_at = @locked_at, locked_by = @locked_by, status = 'running', updated_at = @updated_at WHERE id = @id")
+    .run({ id: job.id, locked_at: now, locked_by: workerId, updated_at: now });
 
   return db.prepare("SELECT * FROM job_queue WHERE id = ?").get(job.id) as Record<string, unknown>;
 }
@@ -1794,34 +1728,22 @@ export function dequeueJob(workerId: string): Record<string, unknown> | undefine
 export function completeJob(id: string, error?: string): void {
   const now = new Date().toISOString();
   if (error) {
-    const job = db.prepare("SELECT * FROM job_queue WHERE id = ?").get(id) as
-      | Record<string, unknown>
-      | undefined;
+    const job = db.prepare("SELECT * FROM job_queue WHERE id = ?").get(id) as Record<string, unknown> | undefined;
     if (job && (job.attempts as number) < (job.max_retries as number)) {
-      db.prepare(
-        "UPDATE job_queue SET status = 'pending', attempts = attempts + 1, last_error = @error, locked_at = NULL, locked_by = NULL, updated_at = @updated_at WHERE id = @id"
-      ).run({ id, error, updated_at: now });
+      db.prepare("UPDATE job_queue SET status = 'pending', attempts = attempts + 1, last_error = @error, locked_at = NULL, locked_by = NULL, updated_at = @updated_at WHERE id = @id")
+        .run({ id, error, updated_at: now });
     } else {
-      db.prepare(
-        "UPDATE job_queue SET status = 'failed', last_error = @error, completed_at = @completed_at, updated_at = @updated_at WHERE id = @id"
-      ).run({ id, error, completed_at: now, updated_at: now });
+      db.prepare("UPDATE job_queue SET status = 'failed', last_error = @error, completed_at = @completed_at, updated_at = @updated_at WHERE id = @id")
+        .run({ id, error, completed_at: now, updated_at: now });
     }
   } else {
-    db.prepare(
-      "UPDATE job_queue SET status = 'completed', completed_at = @completed_at, updated_at = @updated_at WHERE id = @id"
-    ).run({ id, completed_at: now, updated_at: now });
+    db.prepare("UPDATE job_queue SET status = 'completed', completed_at = @completed_at, updated_at = @updated_at WHERE id = @id")
+      .run({ id, completed_at: now, updated_at: now });
   }
 }
 
-export function getJobStats(): {
-  pending: number;
-  running: number;
-  completed: number;
-  failed: number;
-} {
-  const rows = db
-    .prepare("SELECT status, COUNT(*) as count FROM job_queue GROUP BY status")
-    .all() as Array<{ status: string; count: number }>;
+export function getJobStats(): { pending: number; running: number; completed: number; failed: number } {
+  const rows = db.prepare("SELECT status, COUNT(*) as count FROM job_queue GROUP BY status").all() as Array<{ status: string; count: number }>;
   const stats = { pending: 0, running: 0, completed: 0, failed: 0 };
   for (const row of rows) {
     if (row.status in stats) (stats as Record<string, number>)[row.status] = row.count;

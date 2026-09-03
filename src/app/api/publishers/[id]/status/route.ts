@@ -12,7 +12,10 @@ export async function GET(_request: Request, context: RouteContext) {
     const { id } = await context.params;
     const publisher = getById(id);
     if (!publisher) {
-      return NextResponse.json({ error: "Publisher not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Publisher not found" },
+        { status: 404 },
+      );
     }
 
     const { state, checkedAt } = await getStatus(publisher);
@@ -25,6 +28,9 @@ export async function GET(_request: Request, context: RouteContext) {
     });
   } catch (err) {
     apiLogger.error({ err }, "GET /api/publishers/[id]/status failed");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

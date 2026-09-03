@@ -45,7 +45,7 @@ function sleep(ms: number): Promise<void> {
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  options?: Partial<RetryOptions>
+  options?: Partial<RetryOptions>,
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: unknown;
@@ -59,12 +59,15 @@ export async function withRetry<T>(
       if (attempt === opts.maxAttempts - 1) break;
       if (opts.shouldRetry && !opts.shouldRetry(error)) break;
 
-      const delay = Math.min(opts.baseDelay * Math.pow(2, attempt), opts.maxDelay);
+      const delay = Math.min(
+        opts.baseDelay * Math.pow(2, attempt),
+        opts.maxDelay,
+      );
       const jitter = delay * 0.1 * Math.random();
 
       aiLogger.warn(
         { attempt: attempt + 1, maxAttempts: opts.maxAttempts, delayMs: delay },
-        "Retrying AI call after transient failure"
+        "Retrying AI call after transient failure",
       );
 
       await sleep(delay + jitter);

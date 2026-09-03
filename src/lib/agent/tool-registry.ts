@@ -7,7 +7,12 @@ import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { insertAgentAction } from "@/lib/db";
 
-export type ToolCategory = "READ" | "WRITE-LOW" | "WRITE-MED" | "WRITE-HIGH" | "EXTERNAL";
+export type ToolCategory =
+  | "READ"
+  | "WRITE-LOW"
+  | "WRITE-MED"
+  | "WRITE-HIGH"
+  | "EXTERNAL";
 
 export interface ToolDefinition {
   name: string;
@@ -15,7 +20,10 @@ export interface ToolDefinition {
   category: ToolCategory;
   rateLimit: number; // calls per minute
   requiresApproval: boolean;
-  parameters: Record<string, { type: string; description: string; required?: boolean }>;
+  parameters: Record<
+    string,
+    { type: string; description: string; required?: boolean }
+  >;
   handler: (params: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -45,7 +53,7 @@ class ToolRegistry {
   async execute(
     name: string,
     params: Record<string, unknown>,
-    context?: { workflowId?: string; reasoning?: string }
+    context?: { workflowId?: string; reasoning?: string },
   ): Promise<{ result: unknown; requiresApproval: boolean }> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
@@ -82,7 +90,7 @@ class ToolRegistry {
 
       aiLogger.info(
         { traceId, tool: name, category: tool.category, latencyMs: latency },
-        "Tool executed"
+        "Tool executed",
       );
 
       return { result, requiresApproval: false };

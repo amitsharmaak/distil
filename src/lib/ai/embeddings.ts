@@ -6,7 +6,10 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "@/lib/config";
-import { getRecentEmbeddings, upsertItemEmbedding } from "@/lib/db";
+import {
+  getRecentEmbeddings,
+  upsertItemEmbedding,
+} from "@/lib/db";
 
 const OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
 const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
@@ -27,7 +30,9 @@ function getEmbeddingProvider(): EmbeddingProvider | null {
 export async function generateEmbedding(text: string): Promise<number[]> {
   const provider = getEmbeddingProvider();
   if (!provider) {
-    throw new Error("No embedding provider available. Configure OPENAI_API_KEY or GEMINI_API_KEY.");
+    throw new Error(
+      "No embedding provider available. Configure OPENAI_API_KEY or GEMINI_API_KEY.",
+    );
   }
 
   const trimmed = text.trim();
@@ -87,7 +92,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  */
 export function findSimilarItems(
   embedding: number[],
-  threshold = 0.85
+  threshold = 0.85,
 ): Array<{ itemId: string; similarity: number }> {
   const rows = getRecentEmbeddings(30);
   const results: Array<{ itemId: string; similarity: number }> = [];
@@ -108,7 +113,11 @@ export function findSimilarItems(
  * Generates an embedding for title + summary and stores it in item_embeddings.
  * Fire-and-forget safe: catches and logs errors.
  */
-export async function embedItem(itemId: string, title: string, summary: string): Promise<void> {
+export async function embedItem(
+  itemId: string,
+  title: string,
+  summary: string,
+): Promise<void> {
   const provider = getEmbeddingProvider();
   if (!provider) {
     return; // No provider configured — skip silently
@@ -120,6 +129,7 @@ export async function embedItem(itemId: string, title: string, summary: string):
   }
 
   const embedding = await generateEmbedding(text);
-  const model = provider === "openai" ? OPENAI_EMBEDDING_MODEL : GEMINI_EMBEDDING_MODEL;
+  const model =
+    provider === "openai" ? OPENAI_EMBEDDING_MODEL : GEMINI_EMBEDDING_MODEL;
   upsertItemEmbedding(itemId, embedding, model);
 }

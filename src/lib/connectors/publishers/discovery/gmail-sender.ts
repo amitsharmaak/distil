@@ -47,12 +47,15 @@ export function runGmailSenderDiscovery(message: {
 
   for (const publisher of PUBLISHERS) {
     const matchingStrategies = publisher.discovery.filter(
-      (s): s is { kind: "gmail-sender"; senders: string[] } => s.kind === "gmail-sender"
+      (s): s is { kind: "gmail-sender"; senders: string[] } =>
+        s.kind === "gmail-sender",
     );
     if (matchingStrategies.length === 0) continue;
 
     const senderMatches = matchingStrategies.some((s) =>
-      s.senders.some((sender) => fromAddress.includes(sender.trim().toLowerCase()))
+      s.senders.some((sender) =>
+        fromAddress.includes(sender.trim().toLowerCase()),
+      ),
     );
     if (!senderMatches) continue;
 
@@ -68,7 +71,7 @@ export function runGmailSenderDiscovery(message: {
       } catch (err) {
         connectorLogger.warn(
           { err, publisherId: publisher.id, url },
-          "[publishers/discovery/gmail-sender] enqueue failed"
+          "[publishers/discovery/gmail-sender] enqueue failed",
         );
       }
     }
@@ -80,7 +83,7 @@ export function runGmailSenderDiscovery(message: {
           enqueued,
           from: fromAddress,
         },
-        "[publishers/discovery/gmail-sender] discovered URLs from Gmail message"
+        "[publishers/discovery/gmail-sender] discovered URLs from Gmail message",
       );
     }
   }

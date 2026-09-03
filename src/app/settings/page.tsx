@@ -41,32 +41,12 @@ interface DerivedTopic {
 }
 
 const EMAIL_CATEGORIES: { id: string; label: string; description: string }[] = [
-  {
-    id: "newsletter",
-    label: "Newsletter",
-    description: "Subscriptions and curated content from publishers",
-  },
-  {
-    id: "digest",
-    label: "Digest",
-    description: "Periodic summaries (e.g. daily or weekly digests)",
-  },
-  {
-    id: "announcement",
-    label: "Announcement",
-    description: "Product updates and company announcements",
-  },
-  {
-    id: "notification",
-    label: "Notification",
-    description: "Alerts, confirmations, and system messages",
-  },
+  { id: "newsletter", label: "Newsletter", description: "Subscriptions and curated content from publishers" },
+  { id: "digest", label: "Digest", description: "Periodic summaries (e.g. daily or weekly digests)" },
+  { id: "announcement", label: "Announcement", description: "Product updates and company announcements" },
+  { id: "notification", label: "Notification", description: "Alerts, confirmations, and system messages" },
   { id: "personal", label: "Personal", description: "Direct messages from people" },
-  {
-    id: "transactional",
-    label: "Transactional",
-    description: "Receipts, shipping updates, and account notifications",
-  },
+  { id: "transactional", label: "Transactional", description: "Receipts, shipping updates, and account notifications" },
   { id: "promotional", label: "Promotional", description: "Marketing and sales emails" },
   { id: "automated", label: "Automated", description: "System-generated reports and alerts" },
 ];
@@ -79,30 +59,22 @@ const SOURCE_META: Record<string, { name: string; icon: string }> = {
 };
 
 const TOPIC_COLORS = [
-  "#4F46E5",
-  "#0891B2",
-  "#D97706",
-  "#059669",
-  "#DC2626",
-  "#2563EB",
-  "#65A30D",
-  "#DB2777",
-  "#7C3AED",
-  "#EA580C",
+  "#4F46E5", "#0891B2", "#D97706", "#059669", "#DC2626",
+  "#2563EB", "#65A30D", "#DB2777", "#7C3AED", "#EA580C",
 ];
 
 export default function SettingsPage() {
-  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
+  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">(
+    "detailed",
+  );
   const [pollingFrequency, setPollingFrequency] = useState("15");
   const [highPriorityEnabled, setHighPriorityEnabled] = useState(true);
   const [sources, setSources] = useState<DerivedSource[]>([]);
   const [topics, setTopics] = useState<DerivedTopic[]>([]);
 
-  const [allowedEmailCategories, setAllowedEmailCategories] = useState<string[]>([
-    "newsletter",
-    "digest",
-    "announcement",
-  ]);
+  const [allowedEmailCategories, setAllowedEmailCategories] = useState<
+    string[]
+  >(["newsletter", "digest", "announcement"]);
 
   useEffect(() => {
     fetch(`${config.apiBaseUrl}/api/notifications/preferences`)
@@ -132,7 +104,7 @@ export default function SettingsPage() {
             name: SOURCE_META[type]?.name ?? type,
             icon: SOURCE_META[type]?.icon ?? "Globe",
             itemCount: count,
-          }))
+          })),
         );
         setTopics(
           Array.from(topicMap.entries())
@@ -141,7 +113,7 @@ export default function SettingsPage() {
               name,
               itemCount: count,
               color: TOPIC_COLORS[i % TOPIC_COLORS.length],
-            }))
+            })),
         );
       })
       .catch(() => {});
@@ -173,29 +145,33 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="font-serif text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Configure your Distil preferences</p>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight">
+          Settings
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Configure your Distil preferences
+        </p>
       </div>
 
       <Tabs defaultValue="accounts">
         <div className="overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="accounts" className="gap-1.5">
-              <Shield className="h-3.5 w-3.5" /> Accounts
-            </TabsTrigger>
-            <TabsTrigger value="agent" className="gap-1.5">
-              <Bot className="h-3.5 w-3.5" /> Agent
-            </TabsTrigger>
-            <TabsTrigger value="topics" className="gap-1.5">
-              <Hash className="h-3.5 w-3.5" /> Topics
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-1.5">
-              <Bell className="h-3.5 w-3.5" /> Notifications
-            </TabsTrigger>
-            <TabsTrigger value="email-intelligence" className="gap-1.5">
-              <Mail className="h-3.5 w-3.5" /> Email Intelligence
-            </TabsTrigger>
-          </TabsList>
+        <TabsList>
+          <TabsTrigger value="accounts" className="gap-1.5">
+            <Shield className="h-3.5 w-3.5" /> Accounts
+          </TabsTrigger>
+          <TabsTrigger value="agent" className="gap-1.5">
+            <Bot className="h-3.5 w-3.5" /> Agent
+          </TabsTrigger>
+          <TabsTrigger value="topics" className="gap-1.5">
+            <Hash className="h-3.5 w-3.5" /> Topics
+          </TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-1.5">
+            <Bell className="h-3.5 w-3.5" /> Notifications
+          </TabsTrigger>
+          <TabsTrigger value="email-intelligence" className="gap-1.5">
+            <Mail className="h-3.5 w-3.5" /> Email Intelligence
+          </TabsTrigger>
+        </TabsList>
         </div>
 
         {/* Accounts Tab */}
@@ -248,7 +224,9 @@ export default function SettingsPage() {
                   Brief
                 </Button>
                 <Button
-                  variant={summaryLength === "detailed" ? "default" : "outline"}
+                  variant={
+                    summaryLength === "detailed" ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => setSummaryLength("detailed")}
                 >
@@ -263,7 +241,9 @@ export default function SettingsPage() {
             <Separator />
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Polling Frequency (minutes)</label>
+              <label className="text-sm font-medium">
+                Polling Frequency (minutes)
+              </label>
               <Input
                 type="number"
                 value={pollingFrequency}
@@ -299,10 +279,15 @@ export default function SettingsPage() {
                     value: 60,
                   },
                 ].map((weight) => (
-                  <div key={weight.label} className="flex items-center justify-between">
+                  <div
+                    key={weight.label}
+                    className="flex items-center justify-between"
+                  >
                     <div>
                       <p className="text-sm">{weight.label}</p>
-                      <p className="text-xs text-muted-foreground">{weight.desc}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {weight.desc}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-24 rounded-full bg-secondary">
@@ -311,7 +296,9 @@ export default function SettingsPage() {
                           style={{ width: `${weight.value}%` }}
                         />
                       </div>
-                      <span className="w-8 text-xs text-muted-foreground">{weight.value}%</span>
+                      <span className="w-8 text-xs text-muted-foreground">
+                        {weight.value}%
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -342,7 +329,9 @@ export default function SettingsPage() {
                       />
                       <div>
                         <p className="text-sm font-medium">{topic.name}</p>
-                        <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
+                        <p className="text-xs text-muted-foreground">
+                          {topic.itemCount} items
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -387,7 +376,10 @@ export default function SettingsPage() {
                 desc: "Alert when a topic is trending across sources",
               },
             ].map((pref) => (
-              <div key={pref.label} className="flex items-center justify-between opacity-50">
+              <div
+                key={pref.label}
+                className="flex items-center justify-between opacity-50"
+              >
                 <div>
                   <p className="text-sm font-medium">{pref.label}</p>
                   <p className="text-xs text-muted-foreground">{pref.desc}</p>
@@ -406,8 +398,9 @@ export default function SettingsPage() {
             <div>
               <h3 className="text-sm font-semibold">Email Intelligence</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Control which types of emails are ingested into your feed. The AI will classify
-                incoming emails and only process the selected categories.
+                Control which types of emails are ingested into your feed. The
+                AI will classify incoming emails and only process the selected
+                categories.
               </p>
             </div>
 
@@ -427,7 +420,9 @@ export default function SettingsPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{cat.label}</p>
-                      <p className="text-xs text-muted-foreground">{cat.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {cat.description}
+                      </p>
                     </div>
                     <Button
                       variant={isEnabled ? "default" : "outline"}

@@ -26,6 +26,9 @@ export async function DELETE() {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Failed to disconnect Gmail:", err);
-    return NextResponse.json({ error: "Failed to disconnect Gmail" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to disconnect Gmail" },
+      { status: 500 },
+    );
   }
 }

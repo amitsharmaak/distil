@@ -13,13 +13,22 @@
 
 import crypto from "crypto";
 import { aiLogger } from "@/lib/logger";
-import { generateText, generateTextWithSearch, generateJSON, getEffectiveModel } from "./router";
+import {
+  generateText,
+  generateTextWithSearch,
+  generateJSON,
+  getEffectiveModel,
+} from "./router";
 import {
   researchPlanPrompt,
   researchSynthesizePrompt,
   researchGapsPrompt,
 } from "@/lib/prompts/research";
-import { insertResearchReport, updateResearchReport, getItemById } from "@/lib/db";
+import {
+  insertResearchReport,
+  updateResearchReport,
+  getItemById,
+} from "@/lib/db";
 
 /** Progress payload stored in research_reports.progress as JSON. */
 type ProgressPayload =
@@ -45,7 +54,9 @@ export function startResearch(query: string, itemId?: string): string {
   if (itemId) {
     const item = getItemById(itemId);
     if (item) {
-      context = [item.title, item.summary, item.fullContent].filter(Boolean).join("\n\n");
+      context = [item.title, item.summary, item.fullContent]
+        .filter(Boolean)
+        .join("\n\n");
     }
   }
 
@@ -70,7 +81,11 @@ export function startResearch(query: string, itemId?: string): string {
   return reportId;
 }
 
-async function runResearch(reportId: string, query: string, context?: string): Promise<void> {
+async function runResearch(
+  reportId: string,
+  query: string,
+  context?: string,
+): Promise<void> {
   updateResearchReport(reportId, { status: "running" });
 
   // p-limit is ESM-only; use dynamic import
@@ -96,7 +111,7 @@ async function runResearch(reportId: string, query: string, context?: string): P
   const researchQuestion = (question: string) =>
     limit(async () => {
       const result = await generateTextWithSearch(
-        `Research this question thoroughly and provide detailed findings with source URLs:\n\n${question}`
+        `Research this question thoroughly and provide detailed findings with source URLs:\n\n${question}`,
       );
       completedCount++;
       setProgress(reportId, {
@@ -108,13 +123,18 @@ async function runResearch(reportId: string, query: string, context?: string): P
       return { question, findings: `## ${question}\n\n${result}` };
     });
 
-  const round1Settled = await Promise.allSettled(subQuestions.map((q) => researchQuestion(q)));
+  const round1Settled = await Promise.allSettled(
+    subQuestions.map((q) => researchQuestion(q)),
+  );
 
   for (const settled of round1Settled) {
     if (settled.status === "fulfilled") {
       allFindings.push(settled.value.findings);
     } else {
-      const question = "question" in settled.reason ? String(settled.reason.question) : "Unknown";
+      const question =
+        "question" in settled.reason
+          ? String(settled.reason.question)
+          : "Unknown";
       aiLogger.error({ err: settled.reason, question }, "Research sub-question failed");
       allFindings.push(`## ${question}\n\n(Research on this question failed.)`);
     }
@@ -126,7 +146,10 @@ async function runResearch(reportId: string, query: string, context?: string): P
   const gapsPrompt = researchGapsPrompt(query, combinedFindings);
   let gapsResult: { gaps: string[] };
   try {
-    gapsResult = await generateJSON<{ gaps: string[] }>(gapsPrompt, "research-gaps");
+    gapsResult = await generateJSON<{ gaps: string[] }>(
+      gapsPrompt,
+      "research-gaps",
+    );
   } catch {
     gapsResult = { gaps: [] };
   }
@@ -140,7 +163,7 @@ async function runResearch(reportId: string, query: string, context?: string): P
     const deepenQuestion = (question: string) =>
       limit(async () => {
         const result = await generateTextWithSearch(
-          `Research this specific gap/question concisely with source URLs:\n\n${question}`
+          `Research this specific gap/question concisely with source URLs:\n\n${question}`,
         );
         deepeningCompleted++;
         setProgress(reportId, {
@@ -152,14 +175,19 @@ async function runResearch(reportId: string, query: string, context?: string): P
         return `## ${question}\n\n${result}`;
       });
 
-    const round2Settled = await Promise.allSettled(gaps.map((q) => deepenQuestion(q)));
+    const round2Settled = await Promise.allSettled(
+      gaps.map((q) => deepenQuestion(q)),
+    );
 
     const deepeningFindings: string[] = [];
     for (const settled of round2Settled) {
       if (settled.status === "fulfilled") {
         deepeningFindings.push(settled.value);
       } else {
-        const question = "question" in settled.reason ? String(settled.reason.question) : "Unknown";
+        const question =
+          "question" in settled.reason
+            ? String(settled.reason.question)
+            : "Unknown";
         aiLogger.error({ err: settled.reason, question }, "Deepening sub-question failed");
         deepeningFindings.push(`## ${question}\n\n(Research on this gap failed.)`);
       }

@@ -55,14 +55,21 @@ export interface OrchestratorResult {
  */
 export async function runAgent(
   userMessage: string,
-  context?: { workflowId?: string; conversationHistory?: string[] }
+  context?: { workflowId?: string; conversationHistory?: string[] },
 ): Promise<OrchestratorResult> {
   registerAllTools();
   const registry = getToolRegistry();
   const traceId = getTraceId();
-  const toolDescriptions = JSON.stringify(registry.getToolDescriptions(), null, 2);
+  const toolDescriptions = JSON.stringify(
+    registry.getToolDescriptions(),
+    null,
+    2,
+  );
 
-  const systemPrompt = SYSTEM_PROMPT.replace("{TOOL_DESCRIPTIONS}", toolDescriptions);
+  const systemPrompt = SYSTEM_PROMPT.replace(
+    "{TOOL_DESCRIPTIONS}",
+    toolDescriptions,
+  );
   const { filtered: filteredMessage } = filterPII(userMessage);
 
   let conversationContext = "";
@@ -105,10 +112,14 @@ export async function runAgent(
           params: Record<string, unknown>;
         };
 
-        const { result, requiresApproval } = await registry.execute(tool, params ?? {}, {
-          workflowId: context?.workflowId,
-          reasoning: `User asked: ${filteredMessage.slice(0, 100)}`,
-        });
+        const { result, requiresApproval } = await registry.execute(
+          tool,
+          params ?? {},
+          {
+            workflowId: context?.workflowId,
+            reasoning: `User asked: ${filteredMessage.slice(0, 100)}`,
+          },
+        );
 
         if (requiresApproval) {
           const approvalId = crypto.randomUUID();
@@ -123,7 +134,8 @@ export async function runAgent(
           pendingApprovals.push(approvalId);
           toolResults += `\nTool ${tool}: Requires user approval (queued as ${approvalId})`;
         } else {
-          const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+          const resultStr =
+            typeof result === "string" ? result : JSON.stringify(result);
           toolCalls.push({ tool, params, result });
           toolResults += `\nTool ${tool} result: ${resultStr.slice(0, 2000)}`;
         }
@@ -131,7 +143,10 @@ export async function runAgent(
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         toolResults += `\nTool error: ${errMsg}`;
-        aiLogger.error({ traceId, err: error }, "Tool call failed in orchestrator");
+        aiLogger.error(
+          { traceId, err: error },
+          "Tool call failed in orchestrator",
+        );
       }
     }
 

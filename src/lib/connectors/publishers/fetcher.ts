@@ -4,7 +4,10 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 
 import { connectorLogger } from "../../logger";
-import type { ExtractedContentResult, RawExtractedLink } from "../../intelligence/types";
+import type {
+  ExtractedContentResult,
+  RawExtractedLink,
+} from "../../intelligence/types";
 import { ensureSession } from "./session";
 import { PublisherAuthRequired, type PublisherDefinition } from "./types";
 
@@ -55,7 +58,7 @@ function release(publisher: PublisherDefinition): void {
 
 function parseWithReadability(
   html: string,
-  url: string
+  url: string,
 ): {
   title: string | null;
   byline: string | null;
@@ -69,7 +72,9 @@ function parseWithReadability(
   if (!article) return null;
 
   const articleDom = new JSDOM(article.content ?? undefined, { url });
-  const anchors = Array.from(articleDom.window.document.querySelectorAll("a[href]"));
+  const anchors = Array.from(
+    articleDom.window.document.querySelectorAll("a[href]"),
+  );
   const links: RawExtractedLink[] = anchors
     .map((a) => ({
       anchorText: (a.textContent?.trim() ?? "").slice(0, 200) || undefined,
@@ -90,7 +95,7 @@ function parseWithReadability(
 
 export async function fetchArticle(
   publisher: PublisherDefinition,
-  url: string
+  url: string,
 ): Promise<ExtractedContentResult> {
   await acquire(publisher);
   let context: Awaited<ReturnType<typeof ensureSession>> | undefined;
@@ -136,7 +141,7 @@ export async function fetchArticle(
       await page.close().catch((err) => {
         connectorLogger.warn(
           { err, publisherId: publisher.id },
-          "Failed to close publisher fetch page"
+          "Failed to close publisher fetch page",
         );
       });
     }
@@ -148,7 +153,7 @@ export async function fetchArticle(
       await context.close().catch((err) => {
         connectorLogger.warn(
           { err, publisherId: publisher.id },
-          "Failed to close publisher fetch context"
+          "Failed to close publisher fetch context",
         );
       });
     }

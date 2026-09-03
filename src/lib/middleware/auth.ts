@@ -26,12 +26,18 @@ export function checkAuth(request: NextRequest): NextResponse | null {
 
   const authHeader = request.headers.get("authorization");
   if (!authHeader) {
-    return NextResponse.json({ error: "Missing Authorization header" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Missing Authorization header" },
+      { status: 401 },
+    );
   }
 
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (token !== API_TOKEN) {
-    return NextResponse.json({ error: "Invalid API token" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Invalid API token" },
+      { status: 401 },
+    );
   }
 
   return null;

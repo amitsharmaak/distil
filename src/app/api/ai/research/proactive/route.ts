@@ -9,6 +9,9 @@ export async function POST() {
     return NextResponse.json(result);
   } catch (error) {
     apiLogger.error({ err: error }, "Proactive scan error");
-    return NextResponse.json({ error: "Proactive scan failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Proactive scan failed" },
+      { status: 500 },
+    );
   }
 }

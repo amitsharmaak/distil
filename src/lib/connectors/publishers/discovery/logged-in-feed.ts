@@ -11,11 +11,11 @@ import type { PublisherDefinition } from "../types";
  */
 export async function runLoggedInFeedDiscovery(
   publisher: PublisherDefinition,
-  strategy: { kind: "logged-in-feed"; path: string; linkSelector: string }
+  strategy: { kind: "logged-in-feed"; path: string; linkSelector: string },
 ): Promise<number> {
   void publisher;
   void strategy;
   throw new Error(
-    "runLoggedInFeedDiscovery: not implemented yet (logged-in feed discovery is a future phase)"
+    "runLoggedInFeedDiscovery: not implemented yet (logged-in feed discovery is a future phase)",
   );
 }

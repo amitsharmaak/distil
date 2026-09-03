@@ -110,7 +110,7 @@ export function analyzeContentPrompt(input: {
   const linksSection = linksSlice
     .map(
       (l) =>
-        `- URL: ${l.url} | anchor: "${l.anchorText ?? ""}" | context: "${(l.surroundingContext ?? "").slice(0, 100)}"`
+        `- URL: ${l.url} | anchor: "${l.anchorText ?? ""}" | context: "${(l.surroundingContext ?? "").slice(0, 100)}"`,
     )
     .join("\n");
 
@@ -157,7 +157,7 @@ Respond with just the summary text, no preamble.`;
 export function enrichTopicsPrompt(
   title: string,
   content: string,
-  taxonomySection: string
+  taxonomySection: string,
 ): string {
   return `Assign 2-3 topic tags to the following content. You MUST pick from the canonical taxonomy below.
 

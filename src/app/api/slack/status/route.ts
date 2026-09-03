@@ -20,13 +20,13 @@ export async function GET() {
     const workspaces = await getAllSlackStatuses();
     return NextResponse.json(
       { workspaces, syncChannels: config.slackChannels },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch (err) {
     apiLogger.error({ err }, "GET /api/slack/status failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 }

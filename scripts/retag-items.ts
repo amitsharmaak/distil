@@ -31,7 +31,9 @@ function main() {
   let changed = 0;
   let unchanged = 0;
 
-  const update = DRY_RUN ? null : db.prepare("UPDATE items SET topics = ? WHERE id = ?");
+  const update = DRY_RUN
+    ? null
+    : db.prepare("UPDATE items SET topics = ? WHERE id = ?");
 
   for (const row of rows) {
     let oldTopics: string[] = [];
@@ -66,22 +68,14 @@ function main() {
   const projectedTags = new Set<string>();
   for (const row of rows) {
     let oldTopics: string[] = [];
-    try {
-      oldTopics = row.topics ? JSON.parse(row.topics) : [];
-    } catch {
-      /* ignore */
-    }
+    try { oldTopics = row.topics ? JSON.parse(row.topics) : []; } catch { /* ignore */ }
     const projected = normalizeTags(oldTopics.map(normalizeTag)).slice(0, 3);
     for (const t of projected) projectedTags.add(t);
   }
-  const nonCanonical = [...projectedTags].filter((t) => !CANONICAL_TOPICS.includes(t)).sort();
+  const nonCanonical = [...projectedTags].filter(t => !CANONICAL_TOPICS.includes(t)).sort();
   if (nonCanonical.length > 0) {
-    console.log(
-      `\nNon-canonical tags remaining after migration (${nonCanonical.length}): ${nonCanonical.join(", ")}`
-    );
-    console.log(
-      "(These are too specific to map automatically — they'll be replaced by canonical tags as items are re-processed by AI.)"
-    );
+    console.log(`\nNon-canonical tags remaining after migration (${nonCanonical.length}): ${nonCanonical.join(", ")}`);
+    console.log("(These are too specific to map automatically — they'll be replaced by canonical tags as items are re-processed by AI.)");
   } else {
     console.log("\nAll tags will be canonical after migration.");
   }

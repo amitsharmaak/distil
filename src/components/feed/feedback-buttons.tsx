@@ -60,7 +60,9 @@ export function FeedbackButtons({ itemId, initialFeedback }: FeedbackButtonsProp
         ) : (
           <ThumbsDown className="h-3.5 w-3.5 text-red-500 fill-red-500" />
         )}
-        <span className="text-muted-foreground">{rating === 1 ? "Liked" : "Disliked"}</span>
+        <span className="text-muted-foreground">
+          {rating === 1 ? "Liked" : "Disliked"}
+        </span>
         {reason && (
           <span className="text-muted-foreground italic truncate max-w-xs text-xs">
             — &quot;{reason}&quot;
@@ -113,7 +115,12 @@ export function FeedbackButtons({ itemId, initialFeedback }: FeedbackButtonsProp
             onKeyDown={(e) => e.key === "Enter" && submitFeedback()}
             className="h-7 md:text-xs w-full sm:w-44"
           />
-          <Button size="sm" className="h-7 w-7 p-0" onClick={submitFeedback} disabled={submitting}>
+          <Button
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={submitFeedback}
+            disabled={submitting}
+          >
             <Send className="h-3 w-3" />
           </Button>
           <Button

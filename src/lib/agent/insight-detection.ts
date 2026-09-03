@@ -7,7 +7,11 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItemById, getRecentEmbeddings, insertNotification } from "@/lib/db";
+import {
+  getItemById,
+  getRecentEmbeddings,
+  insertNotification,
+} from "@/lib/db";
 import { generateEmbedding, cosineSimilarity } from "@/lib/ai/embeddings";
 import { aiLogger } from "@/lib/logger";
 import type { ContentItem } from "@/lib/types";
@@ -60,7 +64,9 @@ export async function detectInsights(itemId: string): Promise<Insight[]> {
     });
 
     // Notify about top cross-source connections
-    const crossSourceInsights = insights.filter((i) => i.crossSource).slice(0, 3);
+    const crossSourceInsights = insights
+      .filter((i) => i.crossSource)
+      .slice(0, 3);
     for (const insight of crossSourceInsights) {
       const relatedItem = getItemById(insight.relatedItemId);
       if (!relatedItem) continue;
@@ -79,7 +85,7 @@ export async function detectInsights(itemId: string): Promise<Insight[]> {
           similarity: insight.similarity,
           sources: [item.sourceType, relatedItem.sourceType],
         },
-        "Cross-source insight detected"
+        "Cross-source insight detected",
       );
     }
 

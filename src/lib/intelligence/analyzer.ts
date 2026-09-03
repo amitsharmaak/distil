@@ -18,7 +18,11 @@ import type {
 } from "./types";
 
 // Media detection patterns
-const YOUTUBE_PATTERNS = [/youtube\.com\/embed\//i, /youtube\.com\/watch\?v=/i, /youtu\.be\//i];
+const YOUTUBE_PATTERNS = [
+  /youtube\.com\/embed\//i,
+  /youtube\.com\/watch\?v=/i,
+  /youtu\.be\//i,
+];
 const VIMEO_PATTERN = /vimeo\.com\//i;
 const SPOTIFY_EPISODE_PATTERN = /open\.spotify\.com\/episode/i;
 const SPOTIFY_SHOW_PATTERN = /open\.spotify\.com\/show/i;
@@ -41,7 +45,7 @@ interface AIAnalysisResponse {
 export async function analyzeContent(
   raw: RawContent,
   extracted: ExtractedContentResult,
-  classification: ContentClassification
+  classification: ContentClassification,
 ): Promise<ContentAnalysis> {
   const detectedMedia = detectMedia(extracted);
   const cleanText = extracted.cleanTextContent ?? "";
@@ -65,21 +69,29 @@ export async function analyzeContent(
     const parsed = parseAnalysisResponse(response);
 
     relevantLinks = (parsed.relevantLinks ?? [])
-      .filter((l) => l.relevance === "high" || l.relevance === "medium")
+      .filter(
+        (l) =>
+          l.relevance === "high" || l.relevance === "medium",
+      )
       .map((l) => ({
         url: l.url,
         text: l.title ?? l.url,
       }));
 
     entities = (parsed.entities ?? [])
-      .filter((e) => ["person", "company", "technology", "topic", "place"].includes(e.type))
+      .filter((e) =>
+        ["person", "company", "technology", "topic", "place"].includes(e.type),
+      )
       .map((e) => ({
         name: e.name,
         type: e.type as ContentAnalysis["entities"][0]["type"],
       }));
 
     if (typeof parsed.informationDensityScore === "number") {
-      informationDensityScore = Math.max(0, Math.min(1, parsed.informationDensityScore));
+      informationDensityScore = Math.max(
+        0,
+        Math.min(1, parsed.informationDensityScore),
+      );
     }
   } catch {
     // Use defaults on AI failure

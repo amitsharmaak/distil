@@ -45,8 +45,15 @@ export async function POST(request: NextRequest) {
   try {
     const { message, conversationId } = body;
 
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (
+      !message ||
+      typeof message !== "string" ||
+      message.trim().length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Message is required" },
+        { status: 400 },
+      );
     }
 
     // Get or create conversation
@@ -84,7 +91,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     apiLogger.error({ err: error }, "Chat endpoint error");
-    return NextResponse.json({ error: "Failed to process chat message" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to process chat message" },
+      { status: 500 },
+    );
   }
 }
 
@@ -102,6 +112,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ conversations });
   } catch (error) {
     apiLogger.error({ err: error }, "Chat GET endpoint error");
-    return NextResponse.json({ error: "Failed to fetch chat data" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch chat data" },
+      { status: 500 },
+    );
   }
 }

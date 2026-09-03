@@ -31,7 +31,10 @@ export class CircuitBreaker {
   }
 
   getState(): CircuitState {
-    if (this.state === "open" && Date.now() - this.lastFailure >= this.options.resetTimeout) {
+    if (
+      this.state === "open" &&
+      Date.now() - this.lastFailure >= this.options.resetTimeout
+    ) {
       this.state = "half-open";
     }
     return this.state;
@@ -41,7 +44,9 @@ export class CircuitBreaker {
     const state = this.getState();
 
     if (state === "open") {
-      throw new Error(`Circuit breaker ${this.options.name} is OPEN — provider unavailable`);
+      throw new Error(
+        `Circuit breaker ${this.options.name} is OPEN — provider unavailable`,
+      );
     }
 
     try {
@@ -57,7 +62,10 @@ export class CircuitBreaker {
   private onSuccess(): void {
     this.failures = 0;
     if (this.state === "half-open") {
-      aiLogger.info({ breaker: this.options.name }, "Circuit breaker closed (recovered)");
+      aiLogger.info(
+        { breaker: this.options.name },
+        "Circuit breaker closed (recovered)",
+      );
     }
     this.state = "closed";
   }
@@ -69,7 +77,7 @@ export class CircuitBreaker {
       this.state = "open";
       aiLogger.warn(
         { breaker: this.options.name, failures: this.failures },
-        "Circuit breaker opened"
+        "Circuit breaker opened",
       );
     }
   }

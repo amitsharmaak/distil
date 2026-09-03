@@ -29,8 +29,10 @@ const STATUS_LABEL: Record<PublisherCardData["status"]["state"], string> = {
 };
 
 const STATUS_CLASSES: Record<PublisherCardData["status"]["state"], string> = {
-  connected: "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400",
-  expired: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  connected:
+    "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400",
+  expired:
+    "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
   never: "border-border bg-secondary text-muted-foreground",
 };
 
@@ -58,9 +60,10 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
     setLoggingIn(true);
     setMessage(null);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/publishers/${publisher.id}/login`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `${config.apiBaseUrl}/api/publishers/${publisher.id}/login`,
+        { method: "POST" },
+      );
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setMessage({
@@ -88,9 +91,10 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
     setSyncing(true);
     setMessage(null);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/publishers/${publisher.id}/sync`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `${config.apiBaseUrl}/api/publishers/${publisher.id}/sync`,
+        { method: "POST" },
+      );
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         const count = typeof data?.count === "number" ? data.count : 0;
@@ -145,7 +149,10 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
               </a>
             </div>
           </div>
-          <Badge variant="outline" className={STATUS_CLASSES[publisher.status.state]}>
+          <Badge
+            variant="outline"
+            className={STATUS_CLASSES[publisher.status.state]}
+          >
             {STATUS_LABEL[publisher.status.state]}
           </Badge>
         </div>
@@ -159,7 +166,9 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
         <div className="flex flex-wrap gap-2">
           <Button
             className="h-11"
-            variant={publisher.status.state === "connected" ? "outline" : "default"}
+            variant={
+              publisher.status.state === "connected" ? "outline" : "default"
+            }
             onClick={handleLogin}
             disabled={loggingIn}
           >
@@ -171,7 +180,9 @@ export function PublisherCard({ publisher, onStatusChange }: PublisherCardProps)
             onClick={handleSync}
             disabled={!canSync}
           >
-            <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
+            />
             {syncing ? "Syncing\u2026" : "Sync Now"}
           </Button>
         </div>

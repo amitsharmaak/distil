@@ -22,12 +22,15 @@ export interface DatabaseAdapter {
   deleteItem(id: string): boolean;
 
   // Search
-  searchItems(query: string, filters?: Omit<ItemFilters, "query">): ContentItem[];
+  searchItems(
+    query: string,
+    filters?: Omit<ItemFilters, "query">,
+  ): ContentItem[];
 
   // AI Summaries
   getAISummary(
     itemId: string,
-    promptType?: "brief" | "detailed"
+    promptType?: "brief" | "detailed",
   ): { summary: string; model: string } | undefined;
   upsertAISummary(data: {
     id: string;
@@ -38,7 +41,12 @@ export interface DatabaseAdapter {
   }): void;
 
   // Feedback
-  insertFeedback(data: { id: string; itemId: string; rating: number; reason?: string }): void;
+  insertFeedback(data: {
+    id: string;
+    itemId: string;
+    rating: number;
+    reason?: string;
+  }): void;
   getAllFeedback(): Array<{
     item_id: string;
     rating: number;
@@ -52,7 +60,9 @@ export interface DatabaseAdapter {
 
   // Embeddings
   upsertItemEmbedding(itemId: string, embedding: number[], model: string): void;
-  getRecentEmbeddings(daysBack?: number): Array<{ item_id: string; embedding: string }>;
+  getRecentEmbeddings(
+    daysBack?: number,
+  ): Array<{ item_id: string; embedding: string }>;
 
   // Workflow runs
   insertWorkflowRun(data: {
@@ -62,10 +72,18 @@ export interface DatabaseAdapter {
     traceId?: string;
   }): void;
   updateWorkflowRun(id: string, patch: Record<string, unknown>): void;
-  getWorkflowRuns(filters?: { status?: string; limit?: number }): Array<Record<string, unknown>>;
+  getWorkflowRuns(filters?: {
+    status?: string;
+    limit?: number;
+  }): Array<Record<string, unknown>>;
 
   // Notifications
-  insertNotification(data: { id: string; itemId: string; title: string; message: string }): void;
+  insertNotification(data: {
+    id: string;
+    itemId: string;
+    title: string;
+    message: string;
+  }): void;
   getNotifications(limit?: number): Array<Record<string, unknown>>;
 
   // Audit
@@ -77,7 +95,12 @@ export interface DatabaseAdapter {
   };
 
   // Jobs
-  enqueueJob(data: { id: string; jobType: string; payload?: string; priority?: number }): void;
+  enqueueJob(data: {
+    id: string;
+    jobType: string;
+    payload?: string;
+    priority?: number;
+  }): void;
   dequeueJob(workerId: string): Record<string, unknown> | undefined;
   completeJob(id: string, error?: string): void;
 }
@@ -107,13 +130,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
     return db.deleteItem(id);
   }
 
-  searchItems(query: string, filters?: Omit<ItemFilters, "query">): ContentItem[] {
+  searchItems(
+    query: string,
+    filters?: Omit<ItemFilters, "query">,
+  ): ContentItem[] {
     return db.getItems({ ...filters, query });
   }
 
   getAISummary(
     itemId: string,
-    promptType?: "brief" | "detailed"
+    promptType?: "brief" | "detailed",
   ): { summary: string; model: string } | undefined {
     const row = db.getAISummary(itemId, promptType);
     return row ? { summary: row.summary, model: row.model } : undefined;
@@ -129,7 +155,12 @@ export class SQLiteAdapter implements DatabaseAdapter {
     db.upsertAISummary(data);
   }
 
-  insertFeedback(data: { id: string; itemId: string; rating: number; reason?: string }): void {
+  insertFeedback(data: {
+    id: string;
+    itemId: string;
+    rating: number;
+    reason?: string;
+  }): void {
     db.insertFeedback(data);
   }
 
@@ -159,7 +190,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
     db.upsertItemEmbedding(itemId, embedding, model);
   }
 
-  getRecentEmbeddings(daysBack?: number): Array<{ item_id: string; embedding: string }> {
+  getRecentEmbeddings(
+    daysBack?: number,
+  ): Array<{ item_id: string; embedding: string }> {
     return db.getRecentEmbeddings(daysBack);
   }
 
@@ -182,11 +215,19 @@ export class SQLiteAdapter implements DatabaseAdapter {
     });
   }
 
-  getWorkflowRuns(filters?: { status?: string; limit?: number }): Array<Record<string, unknown>> {
+  getWorkflowRuns(filters?: {
+    status?: string;
+    limit?: number;
+  }): Array<Record<string, unknown>> {
     return db.getWorkflowRuns(filters ?? {}) as Array<Record<string, unknown>>;
   }
 
-  insertNotification(data: { id: string; itemId: string; title: string; message: string }): void {
+  insertNotification(data: {
+    id: string;
+    itemId: string;
+    title: string;
+    message: string;
+  }): void {
     db.insertNotification(data);
   }
 
@@ -241,7 +282,12 @@ export class SQLiteAdapter implements DatabaseAdapter {
     return db.getDailyAuditStats();
   }
 
-  enqueueJob(data: { id: string; jobType: string; payload?: string; priority?: number }): void {
+  enqueueJob(data: {
+    id: string;
+    jobType: string;
+    payload?: string;
+    priority?: number;
+  }): void {
     db.enqueueJob(data);
   }
 

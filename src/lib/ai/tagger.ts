@@ -58,7 +58,7 @@ Rules:
   const topics = normalizeTags(
     result.topics
       .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim())
+      .map((t) => t.trim()),
   ).slice(0, 3);
 
   if (topics.length === 0) return undefined;

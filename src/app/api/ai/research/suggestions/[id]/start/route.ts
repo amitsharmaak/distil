@@ -8,12 +8,18 @@ import {
 import { startResearch } from "@/lib/ai/research";
 
 /** POST /api/ai/research/suggestions/[id]/start — Approve and start deep research. */
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
     const row = getResearchSuggestionById(id);
     if (!row || row.status !== "pending") {
-      return NextResponse.json({ error: "Suggestion not found or not pending" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Suggestion not found or not pending" },
+        { status: 404 },
+      );
     }
 
     let sourceItemIds: string[] = [];
@@ -31,6 +37,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
     apiLogger.error({ err: error }, "Start suggestion research error");
-    return NextResponse.json({ error: "Failed to start research" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to start research" },
+      { status: 500 },
+    );
   }
 }

@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
     apiLogger.error({ err: error }, "Research error");
-    return NextResponse.json({ error: "Failed to start research" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to start research" },
+      { status: 500 },
+    );
   }
 }

@@ -35,7 +35,10 @@ import { Separator } from "@/components/ui/separator";
 import type { SourceType } from "@/lib/types";
 import { config } from "@/lib/config";
 import type { GmailStatusResponse } from "@/app/api/auth/gmail/status/route";
-import { PublisherCard, type PublisherCardData } from "@/components/sources/publisher-card";
+import {
+  PublisherCard,
+  type PublisherCardData,
+} from "@/components/sources/publisher-card";
 
 interface SlackWorkspaceStatus {
   teamId: string;
@@ -67,7 +70,8 @@ const availableIntegrations: {
   {
     type: "gmail",
     name: "Gmail",
-    description: "Connect Gmail to import newsletter-style mail (auto-detected from your inbox)",
+    description:
+      "Connect Gmail to import newsletter-style mail (auto-detected from your inbox)",
     icon: "Mail",
   },
   {
@@ -86,7 +90,11 @@ const availableIntegrations: {
 
 // Sync interval from env (falls back to 3h default). Exposed via NEXT_PUBLIC_
 // so it's available in the client bundle for display purposes.
-const SYNC_INTERVAL_HOURS = parseInt(process.env.NEXT_PUBLIC_SYNC_INTERVAL_HOURS ?? "3", 10);
+const SYNC_INTERVAL_HOURS = parseInt(
+  process.env.NEXT_PUBLIC_SYNC_INTERVAL_HOURS ?? "3",
+  10,
+);
+
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
@@ -106,7 +114,9 @@ export default function SourcesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [gmailStatus, setGmailStatus] = useState<GmailStatusResponse | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<GmailStatusResponse | null>(
+    null,
+  );
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
 
@@ -266,7 +276,9 @@ export default function SourcesPage() {
       });
       if (res.ok) {
         setSlackStatus((prev) =>
-          prev ? { ...prev, workspaces: prev.workspaces.filter((w) => w.teamId !== teamId) } : prev
+          prev
+            ? { ...prev, workspaces: prev.workspaces.filter((w) => w.teamId !== teamId) }
+            : prev,
         );
         setSlackSyncResult(null);
         setShowSlackDisconnectConfirm(null);
@@ -330,7 +342,9 @@ export default function SourcesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-2xl font-semibold tracking-tight">Sources</h1>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">
+            Sources
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage your connected information sources
           </p>
@@ -358,7 +372,9 @@ export default function SourcesPage() {
                     >
                       <IconComponent className="h-5 w-5 text-muted-foreground" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">{integration.name}</p>
+                        <p className="text-sm font-medium">
+                          {integration.name}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {gmailStatus?.connected
                             ? (gmailStatus.email ?? "Connected")
@@ -374,7 +390,9 @@ export default function SourcesPage() {
                             disabled={syncing}
                             className="gap-1"
                           >
-                            <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                            <RefreshCw
+                              className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
+                            />
                             {syncing ? "Syncing\u2026" : "Sync Now"}
                           </Button>
                           {syncResult !== null && (
@@ -398,8 +416,7 @@ export default function SourcesPage() {
                 }
 
                 if (integration.type === "slack") {
-                  const connectedCount =
-                    slackStatus?.workspaces.filter((w) => w.connected).length ?? 0;
+                  const connectedCount = slackStatus?.workspaces.filter((w) => w.connected).length ?? 0;
                   return (
                     <div
                       key={integration.type}
@@ -416,9 +433,7 @@ export default function SourcesPage() {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => {
-                          window.location.href = "/api/auth/slack";
-                        }}
+                        onClick={() => { window.location.href = "/api/auth/slack"; }}
                       >
                         {connectedCount > 0 ? "Add Workspace" : "Connect"}
                       </Button>
@@ -434,7 +449,9 @@ export default function SourcesPage() {
                     <IconComponent className="h-5 w-5 text-muted-foreground" />
                     <div className="flex-1">
                       <p className="text-sm font-medium">{integration.name}</p>
-                      <p className="text-xs text-muted-foreground">{integration.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {integration.description}
+                      </p>
                     </div>
                     <Button size="sm" disabled>
                       Coming Soon
@@ -453,7 +470,9 @@ export default function SourcesPage() {
           Loading sources&hellip;
         </div>
       )}
-      <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3${statusesLoaded ? "" : " hidden"}`}>
+      <div
+        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3${statusesLoaded ? "" : " hidden"}`}
+      >
         {/* Gmail card */}
         {gmailStatus !== null && (
           <div className="rounded-xl border border-border bg-card p-5">
@@ -471,7 +490,9 @@ export default function SourcesPage() {
                       <XCircle className="h-3 w-3 text-red-500" />
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {gmailStatus.connected ? (gmailStatus.email ?? "Connected") : "Not connected"}
+                      {gmailStatus.connected
+                        ? (gmailStatus.email ?? "Connected")
+                        : "Not connected"}
                     </span>
                   </div>
                 </div>
@@ -491,7 +512,9 @@ export default function SourcesPage() {
                     className="h-7 px-2"
                     title="Sync now"
                   >
-                    <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                    <RefreshCw
+                      className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`}
+                    />
                   </Button>
                 </div>
               )}
@@ -501,7 +524,9 @@ export default function SourcesPage() {
               {gmailStatus.connected ? (
                 <>
                   {syncResult !== null && (
-                    <span className="text-green-600">{syncResult.count} new items synced</span>
+                    <span className="text-green-600">
+                      {syncResult.count} new items synced
+                    </span>
                   )}
                   {syncResult === null && <span>Newsletters &amp; digests</span>}
                   {gmailStatus.lastSync && (
@@ -527,7 +552,9 @@ export default function SourcesPage() {
               <div className="mt-3">
                 {showDisconnectConfirm ? (
                   <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
-                    <span className="text-xs text-destructive">Disconnect Gmail?</span>
+                    <span className="text-xs text-destructive">
+                      Disconnect Gmail?
+                    </span>
                     <div className="flex gap-1.5">
                       <Button
                         size="sm"
@@ -585,151 +612,139 @@ export default function SourcesPage() {
             <Button
               variant="outline"
               className="h-11 w-full"
-              onClick={() => {
-                window.location.href = "/api/auth/slack";
-              }}
+              onClick={() => { window.location.href = "/api/auth/slack"; }}
             >
               Connect Slack
             </Button>
           </div>
         )}
-        {slackStatus !== null &&
-          slackStatus.workspaces.map((workspace) => (
-            <div key={workspace.teamId} className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-secondary p-2">
-                    <Hash className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold">
-                      Slack {workspace.teamName ? `· ${workspace.teamName}` : ""}
-                    </h3>
-                    <div className="mt-0.5 flex items-center gap-1">
-                      {workspace.connected ? (
-                        <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <XCircle className="h-3 w-3 text-red-500" />
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {workspace.connected
-                          ? workspace.userName
-                            ? `@${workspace.userName}`
-                            : "Connected"
-                          : "Token invalid"}
-                      </span>
-                    </div>
+        {slackStatus !== null && slackStatus.workspaces.map((workspace) => (
+          <div key={workspace.teamId} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-secondary p-2">
+                  <Hash className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Slack {workspace.teamName ? `· ${workspace.teamName}` : ""}
+                  </h3>
+                  <div className="mt-0.5 flex items-center gap-1">
+                    {workspace.connected ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-red-500" />
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {workspace.connected
+                        ? workspace.userName
+                          ? `@${workspace.userName}`
+                          : "Connected"
+                        : "Token invalid"}
+                    </span>
                   </div>
                 </div>
-                {workspace.connected && (
-                  <div className="flex items-center gap-1">
-                    {SYNC_INTERVAL_HOURS > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        every {SYNC_INTERVAL_HOURS}h
-                      </span>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={syncSlack}
-                      disabled={slackSyncing}
-                      className="h-7 px-2"
-                      title="Sync all workspaces"
-                    >
-                      <RefreshCw className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`} />
-                    </Button>
-                  </div>
-                )}
               </div>
-              <Separator className="my-3" />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                {workspace.connected ? (
-                  <>
-                    {slackSyncResult !== null ? (
-                      <span
-                        className={
-                          slackSyncResult.count > 0 ? "text-green-600" : "text-muted-foreground"
-                        }
-                      >
-                        {slackSyncResult.count > 0
-                          ? `${slackSyncResult.count} new items synced`
-                          : slackSyncResult.stats
-                            ? `0 new — scanned ${slackSyncResult.stats.messagesScanned} msgs across ${slackSyncResult.stats.channels} channels`
-                            : "0 new items synced"}
-                      </span>
-                    ) : (
-                      <span>
-                        {slackStatus.syncChannels.length > 0
-                          ? `#${slackStatus.syncChannels.join(", #")}`
-                          : "No channels configured — set SLACK_SYNC_CHANNELS"}
-                      </span>
-                    )}
-                    {workspace.lastSync && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {timeAgo(workspace.lastSync)}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full"
-                    onClick={() => {
-                      window.location.href = "/api/auth/slack";
-                    }}
-                  >
-                    Reconnect
-                  </Button>
-                )}
-              </div>
-              <div className="mt-3">
-                {showSlackDisconnectConfirm === workspace.teamId ? (
-                  <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
-                    <span className="text-xs text-destructive">
-                      Disconnect {workspace.teamName ?? "workspace"}?
-                    </span>
-                    <div className="flex gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => setShowSlackDisconnectConfirm(null)}
-                        disabled={slackDisconnecting === workspace.teamId}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => disconnectSlackHandler(workspace.teamId)}
-                        disabled={slackDisconnecting === workspace.teamId}
-                      >
-                        {slackDisconnecting === workspace.teamId ? "Disconnecting…" : "Confirm"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
+              {workspace.connected && (
+                <div className="flex items-center gap-1">
+                  {SYNC_INTERVAL_HOURS > 0 && (
+                    <span className="text-[10px] text-muted-foreground">every {SYNC_INTERVAL_HOURS}h</span>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="min-h-[44px] w-full text-xs text-muted-foreground hover:text-destructive"
-                    onClick={() => setShowSlackDisconnectConfirm(workspace.teamId)}
+                    onClick={syncSlack}
+                    disabled={slackSyncing}
+                    className="h-7 px-2"
+                    title="Sync all workspaces"
                   >
-                    Disconnect
+                    <RefreshCw className={`h-3 w-3 ${slackSyncing ? "animate-spin" : ""}`} />
                   </Button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          ))}
+            <Separator className="my-3" />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              {workspace.connected ? (
+                <>
+                  {slackSyncResult !== null ? (
+                    <span className={slackSyncResult.count > 0 ? "text-green-600" : "text-muted-foreground"}>
+                      {slackSyncResult.count > 0
+                        ? `${slackSyncResult.count} new items synced`
+                        : slackSyncResult.stats
+                          ? `0 new — scanned ${slackSyncResult.stats.messagesScanned} msgs across ${slackSyncResult.stats.channels} channels`
+                          : "0 new items synced"}
+                    </span>
+                  ) : (
+                    <span>
+                      {slackStatus.syncChannels.length > 0
+                        ? `#${slackStatus.syncChannels.join(", #")}`
+                        : "No channels configured — set SLACK_SYNC_CHANNELS"}
+                    </span>
+                  )}
+                  {workspace.lastSync && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {timeAgo(workspace.lastSync)}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="h-11 w-full"
+                  onClick={() => { window.location.href = "/api/auth/slack"; }}
+                >
+                  Reconnect
+                </Button>
+              )}
+            </div>
+            <div className="mt-3">
+              {showSlackDisconnectConfirm === workspace.teamId ? (
+                <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
+                  <span className="text-xs text-destructive">Disconnect {workspace.teamName ?? "workspace"}?</span>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setShowSlackDisconnectConfirm(null)}
+                      disabled={slackDisconnecting === workspace.teamId}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => disconnectSlackHandler(workspace.teamId)}
+                      disabled={slackDisconnecting === workspace.teamId}
+                    >
+                      {slackDisconnecting === workspace.teamId ? "Disconnecting…" : "Confirm"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="min-h-[44px] w-full text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => setShowSlackDisconnectConfirm(workspace.teamId)}
+                >
+                  Disconnect
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
 
         {/* Dynamic cards for other active sources */}
         {Object.entries(sourceCounts)
           .filter(([type]) => type !== "gmail" && type !== "slack")
           .map(([type, count]) => {
             const meta = availableIntegrations.find((i) => i.type === type);
-            const IconComponent = sourceIcons[meta?.icon ?? "Link"] ?? LinkIcon;
+            const IconComponent =
+              sourceIcons[meta?.icon ?? "Link"] ?? LinkIcon;
             const label =
               meta?.name ??
               (type === "browser-extension"
@@ -738,7 +753,10 @@ export default function SourcesPage() {
                   ? "Manual Links"
                   : type);
             return (
-              <div key={type} className="rounded-xl border border-border bg-card p-5">
+              <div
+                key={type}
+                className="rounded-xl border border-border bg-card p-5"
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="rounded-lg bg-secondary p-2">
@@ -748,7 +766,9 @@ export default function SourcesPage() {
                       <h3 className="text-sm font-semibold">{label}</h3>
                       <div className="mt-0.5 flex items-center gap-1">
                         <CheckCircle2 className="h-3 w-3 text-green-500" />
-                        <span className="text-xs text-muted-foreground">Active</span>
+                        <span className="text-xs text-muted-foreground">
+                          Active
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -776,7 +796,9 @@ export default function SourcesPage() {
                 publisher={p}
                 onStatusChange={(updated) =>
                   setPublishers((prev) =>
-                    prev.map((existing) => (existing.id === updated.id ? updated : existing))
+                    prev.map((existing) =>
+                      existing.id === updated.id ? updated : existing,
+                    ),
                   )
                 }
               />
@@ -821,7 +843,9 @@ export default function SourcesPage() {
             onDrop={handleDrop}
           >
             <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">Drag &amp; drop links here</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Drag &amp; drop links here
+            </p>
             <p className="text-xs text-muted-foreground">
               The agent will process and categorize them automatically
             </p>
@@ -829,7 +853,9 @@ export default function SourcesPage() {
 
           {savedLinks.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Recently saved:</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Recently saved:
+              </p>
               {savedLinks.map((link, i) => (
                 <div
                   key={i}

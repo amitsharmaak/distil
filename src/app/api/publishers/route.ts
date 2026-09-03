@@ -17,12 +17,15 @@ export async function GET() {
           status,
           queueStats: getQueueStats(p.id),
         };
-      })
+      }),
     );
 
     return NextResponse.json({ publishers });
   } catch (err) {
     apiLogger.error({ err }, "GET /api/publishers failed");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

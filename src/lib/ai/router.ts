@@ -9,7 +9,11 @@ import type { AIProvider, GenerateOptions } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider } from "./providers";
 import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
-import { DEFAULT_MODEL_CONFIG, PROVIDER_FALLBACK_MODELS, MODEL_COSTS } from "./ai-config";
+import {
+  DEFAULT_MODEL_CONFIG,
+  PROVIDER_FALLBACK_MODELS,
+  MODEL_COSTS,
+} from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { insertAuditLog } from "@/lib/db";
@@ -107,7 +111,7 @@ class AIRouter {
       };
     }
     throw new Error(
-      "No AI providers available. Configure at least one of GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY."
+      "No AI providers available. Configure at least one of GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.",
     );
   }
 
@@ -119,7 +123,11 @@ class AIRouter {
     return p;
   }
 
-  private persistUsage(metrics: UsageMetrics, action: string, traceId: string | undefined): void {
+  private persistUsage(
+    metrics: UsageMetrics,
+    action: string,
+    traceId: string | undefined,
+  ): void {
     getUsageTrackerInstance().record(metrics);
     try {
       insertAuditLog({
@@ -147,18 +155,22 @@ class AIRouter {
     const dailyTotal = tracker.getDailyTotal();
     if (dailyTotal >= budget) {
       throw new Error(
-        `Daily AI budget exceeded ($${dailyTotal.toFixed(2)} >= $${budget.toFixed(2)}). Set DISTIL_DAILY_AI_BUDGET to increase or disable.`
+        `Daily AI budget exceeded ($${dailyTotal.toFixed(2)} >= $${budget.toFixed(2)}). Set DISTIL_DAILY_AI_BUDGET to increase or disable.`,
       );
     }
     if (dailyTotal >= budget * BUDGET_WARN_THRESHOLD) {
       aiLogger.warn(
         { dailyTotal, budget, threshold: BUDGET_WARN_THRESHOLD },
-        "Approaching daily AI budget limit"
+        "Approaching daily AI budget limit",
       );
     }
   }
 
-  async generateText(prompt: string, task: AITask, options?: GenerateOptions): Promise<string> {
+  async generateText(
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions,
+  ): Promise<string> {
     const { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
     const tokensIn = estimateTokens(prompt);
@@ -174,17 +186,9 @@ class AIRouter {
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
     this.persistUsage(
-      {
-        task,
-        provider,
-        model,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_estimate: costEstimate,
-      },
+      { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
       `ai:${task}`,
-      traceId
+      traceId,
     );
 
     aiLogger.info(
@@ -198,13 +202,17 @@ class AIRouter {
         latencyMs,
         costEstimate: costEstimate.toFixed(6),
       },
-      "AI call completed"
+      "AI call completed",
     );
 
     return result;
   }
 
-  async generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions): Promise<T> {
+  async generateJSON<T>(
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions,
+  ): Promise<T> {
     const { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
     const tokensIn = estimateTokens(prompt);
@@ -221,17 +229,9 @@ class AIRouter {
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
     this.persistUsage(
-      {
-        task,
-        provider,
-        model,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_estimate: costEstimate,
-      },
+      { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
       `ai:${task}`,
-      traceId
+      traceId,
     );
 
     aiLogger.info(
@@ -245,7 +245,7 @@ class AIRouter {
         latencyMs,
         costEstimate: costEstimate.toFixed(6),
       },
-      "AI call completed"
+      "AI call completed",
     );
 
     return result;
@@ -266,24 +266,18 @@ class AIRouter {
 
       this.checkBudget();
 
-      const result = await (gemini as GeminiProvider).generateTextWithSearch(prompt);
+      const result = await (gemini as GeminiProvider).generateTextWithSearch(
+        prompt,
+      );
 
       const latencyMs = Date.now() - start;
       const tokensOut = estimateTokens(result);
       const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
       this.persistUsage(
-        {
-          task,
-          provider,
-          model,
-          tokens_in: tokensIn,
-          tokens_out: tokensOut,
-          latency_ms: latencyMs,
-          cost_estimate: costEstimate,
-        },
+        { task, provider, model, tokens_in: tokensIn, tokens_out: tokensOut, latency_ms: latencyMs, cost_estimate: costEstimate },
         `ai:${task}`,
-        traceId
+        traceId,
       );
 
       aiLogger.info(
@@ -297,7 +291,7 @@ class AIRouter {
           latencyMs,
           costEstimate: costEstimate.toFixed(6),
         },
-        "AI call completed"
+        "AI call completed",
       );
 
       return result;
@@ -312,7 +306,7 @@ class AIRouter {
 export async function generateText(
   prompt: string,
   task: AITask,
-  options?: GenerateOptions
+  options?: GenerateOptions,
 ): Promise<string> {
   return _getRouter().generateText(prompt, task, options);
 }
@@ -323,7 +317,7 @@ export async function generateText(
 export async function generateJSON<T>(
   prompt: string,
   task: AITask,
-  options?: GenerateOptions
+  options?: GenerateOptions,
 ): Promise<T> {
   return _getRouter().generateJSON<T>(prompt, task, options);
 }

@@ -130,7 +130,7 @@ export async function handleCallback(code: string): Promise<void> {
   const teamId = data.team?.id ?? "";
   const teamName = data.team?.name ?? "";
   const userId = data.authed_user.id ?? "";
-  const identity = teamName && userId ? `${teamName}:${userId}` : teamName || userId || null;
+  const identity = teamName && userId ? `${teamName}:${userId}` : (teamName || userId || null);
 
   upsertOAuthToken(PROVIDER, teamId, {
     access_token: data.authed_user.access_token,
@@ -205,15 +205,9 @@ export async function getAllSlackStatuses(): Promise<SlackWorkspaceStatus[]> {
           lastSync,
         };
       } catch {
-        return {
-          teamId: token.team_id,
-          teamName: null,
-          userName: null,
-          connected: false,
-          lastSync,
-        };
+        return { teamId: token.team_id, teamName: null, userName: null, connected: false, lastSync };
       }
-    })
+    }),
   );
 }
 
@@ -263,15 +257,8 @@ export async function syncSlackMessages(): Promise<{
   }
 
   const count = allItems.filter((r) => r.status !== "rejected").length;
-  const stats = {
-    channels: totalChannels,
-    messagesScanned: totalMessagesScanned,
-    messagesWithUrls: totalMessagesWithUrls,
-  };
-  connectorLogger.info(
-    { workspaces: tokens.length, ...stats, kept: count },
-    "Slack sync completed"
-  );
+  const stats = { channels: totalChannels, messagesScanned: totalMessagesScanned, messagesWithUrls: totalMessagesWithUrls };
+  connectorLogger.info({ workspaces: tokens.length, ...stats, kept: count }, "Slack sync completed");
   return { count, items: allItems, stats };
 }
 
@@ -294,7 +281,9 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
   // Fall back to legacy key for tokens migrated from before multi-workspace support.
   const lastSyncRaw = getUserSetting(key) ?? getUserSetting("slack_last_sync");
   const lastSyncTs =
-    lastSyncRaw && Number(lastSyncRaw) > sevenDaysAgoTs ? lastSyncRaw : String(sevenDaysAgoTs);
+    lastSyncRaw && Number(lastSyncRaw) > sevenDaysAgoTs
+      ? lastSyncRaw
+      : String(sevenDaysAgoTs);
 
   const conversations: ResolvedConversation[] = [];
   let cursor: string | undefined;
@@ -314,11 +303,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
           : ch.is_private
             ? "private_channel"
             : "public_channel";
-      conversations.push({
-        id: ch.id,
-        name: ch.name ?? "",
-        type: type as ResolvedConversation["type"],
-      });
+      conversations.push({ id: ch.id, name: ch.name ?? "", type: type as ResolvedConversation["type"] });
     }
     cursor = list.response_metadata?.next_cursor || undefined;
   } while (cursor);
@@ -327,7 +312,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
   if (allowlist.length === 0) {
     connectorLogger.info(
       { teamId: token.team_id },
-      "SLACK_CHANNELS not configured — skipping sync. Set SLACK_CHANNELS to an allowlist of channel names."
+      "SLACK_CHANNELS not configured — skipping sync. Set SLACK_CHANNELS to an allowlist of channel names.",
     );
     return { items: [], stats: { channels: 0, messagesScanned: 0, messagesWithUrls: 0 } };
   }
@@ -344,7 +329,8 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 
   try {
     for (const conv of filteredConversations) {
-      const channelLabel = (await resolveConversationLabel(client, conv, userCache)) || conv.id;
+      const channelLabel =
+        (await resolveConversationLabel(client, conv, userCache)) || conv.id;
 
       let historyCursor: string | undefined;
       do {
@@ -360,7 +346,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
           const code = (err as { data?: { error?: string } })?.data?.error;
           connectorLogger.warn(
             { channel: channelLabel, teamId: token.team_id, err: code ?? err },
-            "Failed to read Slack conversation"
+            "Failed to read Slack conversation",
           );
           break;
         }
@@ -373,23 +359,16 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 
           const textUrls = extractUrls(message.text ?? "");
 
-          interface SlackAttachment {
-            original_url?: string;
-            from_url?: string;
-          }
+          interface SlackAttachment { original_url?: string; from_url?: string; }
           const attachmentUrls: string[] = [];
           const attachments = (message.attachments as SlackAttachment[] | undefined) ?? [];
           for (const att of attachments) {
-            if (att.original_url && !isSlackUrl(att.original_url))
-              attachmentUrls.push(sanitizeUrl(att.original_url));
-            if (att.from_url && !isSlackUrl(att.from_url))
-              attachmentUrls.push(sanitizeUrl(att.from_url));
+            if (att.original_url && !isSlackUrl(att.original_url)) attachmentUrls.push(sanitizeUrl(att.original_url));
+            if (att.from_url && !isSlackUrl(att.from_url)) attachmentUrls.push(sanitizeUrl(att.from_url));
           }
 
           const blockUrls = extractUrlsFromBlocks((message.blocks as unknown[]) ?? []);
-          const allUrls = [...new Set([...textUrls, ...attachmentUrls, ...blockUrls])].filter(
-            (u) => !isSlackUrl(u)
-          );
+          const allUrls = [...new Set([...textUrls, ...attachmentUrls, ...blockUrls])].filter((u) => !isSlackUrl(u));
           if (allUrls.length === 0) continue;
 
           messagesWithUrls++;
@@ -408,10 +387,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
               });
               results.push(await processContent(raw));
             } catch (err) {
-              connectorLogger.error(
-                { err, url, channel: channelLabel },
-                "Failed to process Slack URL"
-              );
+              connectorLogger.error({ err, url, channel: channelLabel }, "Failed to process Slack URL");
             }
           }
         }
@@ -438,7 +414,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 async function resolveConversationLabel(
   client: WebClient,
   conv: ResolvedConversation,
-  userCache: Map<string, string>
+  userCache: Map<string, string>,
 ): Promise<string> {
   if (conv.name) return conv.name;
 
@@ -464,7 +440,7 @@ async function resolveConversationLabel(
       const names = await Promise.all(
         (members.members ?? [])
           .slice(0, 6)
-          .map((u) => resolveUserName(client, u, userCache).then((n) => n ?? u))
+          .map((u) => resolveUserName(client, u, userCache).then((n) => n ?? u)),
       );
       return `Group DM: ${names.join(", ")}`;
     }
@@ -530,7 +506,7 @@ function extractUrlsFromBlocks(blocks: unknown[]): string[] {
 async function resolveUserName(
   client: WebClient,
   userId: string,
-  cache: Map<string, string>
+  cache: Map<string, string>,
 ): Promise<string | undefined> {
   if (cache.has(userId)) {
     return cache.get(userId);

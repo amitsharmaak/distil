@@ -29,7 +29,7 @@ export function GET() {
     apiLogger.error({ err: error }, "GET /api/notifications/preferences failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 }
@@ -40,19 +40,19 @@ export async function PUT(request: NextRequest) {
     if (typeof body.highPriorityItems !== "boolean") {
       return NextResponse.json(
         { error: "highPriorityItems must be a boolean" },
-        { status: 400, headers: CORS_HEADERS }
+        { status: 400, headers: CORS_HEADERS },
       );
     }
     setUserSetting("notification_high_priority", String(body.highPriorityItems));
     return NextResponse.json(
       { highPriorityItems: body.highPriorityItems },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch (error) {
     apiLogger.error({ err: error }, "PUT /api/notifications/preferences failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 }

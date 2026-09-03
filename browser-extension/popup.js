@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
         statusEl.textContent = "Saved!";
         statusEl.className = "status success";
         setTimeout(() => window.close(), 800);
-      }
+      },
     );
   });
 });

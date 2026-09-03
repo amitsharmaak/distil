@@ -6,7 +6,9 @@ import type { PublisherDefinition } from "./types";
 
 const ALL_PUBLISHERS: PublisherDefinition[] = [theKen];
 
-function applyEnabledFilter(publishers: PublisherDefinition[]): PublisherDefinition[] {
+function applyEnabledFilter(
+  publishers: PublisherDefinition[],
+): PublisherDefinition[] {
   const enabled = config.publishersEnabled;
   if (!enabled || enabled.length === 0) return publishers;
   const allow = new Set(enabled);

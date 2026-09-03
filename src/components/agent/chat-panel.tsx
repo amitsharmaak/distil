@@ -43,7 +43,7 @@ export function ChatPanel() {
     const text = input.trim();
     if (!text || loading) return;
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }]);
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "user", content: text }]);
     setInput("");
     setLoading(true);
 
@@ -55,24 +55,18 @@ export function ChatPanel() {
       });
       const data = await res.json();
       if (!conversationId && data.conversationId) setConversationId(data.conversationId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.answer ?? "Something went wrong.",
-          citations: data.citations,
-        },
-      ]);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.answer ?? "Something went wrong.",
+        citations: data.citations,
+      }]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Connection error. Please try again.",
-        },
-      ]);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Connection error. Please try again.",
+      }]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -80,10 +74,7 @@ export function ChatPanel() {
   }, [input, loading, conversationId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   return (
@@ -93,14 +84,7 @@ export function ChatPanel() {
           <Bot className="h-5 w-5 text-primary" />
           <span className="font-semibold">Ask Distil</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setMessages([]);
-            setConversationId(null);
-          }}
-        >
+        <Button variant="ghost" size="sm" onClick={() => { setMessages([]); setConversationId(null); }}>
           <Plus className="h-4 w-4 mr-1" /> New
         </Button>
       </div>
@@ -111,23 +95,17 @@ export function ChatPanel() {
             <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
               <Bot className="h-12 w-12 mb-4 opacity-20" />
               <p className="text-sm">Ask me anything about your saved content.</p>
-              <p className="text-xs mt-1">
-                I search your articles, summarize findings, and cite sources.
-              </p>
+              <p className="text-xs mt-1">I search your articles, summarize findings, and cite sources.</p>
             </div>
           )}
-          {messages.map((msg) => (
+          {messages.map(msg => (
             <div key={msg.id} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
               {msg.role === "assistant" && (
                 <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                    <Bot className="h-4 w-4" />
-                  </AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs"><Bot className="h-4 w-4" /></AvatarFallback>
                 </Avatar>
               )}
-              <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-              >
+              <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                 {msg.role === "assistant" ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
@@ -141,14 +119,8 @@ export function ChatPanel() {
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Sources:</p>
                       {msg.citations.map((c, i) => (
-                        <a
-                          key={c.id}
-                          href={`/feed/${c.id}`}
-                          className="flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                            {i + 1}
-                          </Badge>
+                        <a key={c.id} href={`/feed/${c.id}`} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                          <Badge variant="outline" className="h-4 px-1 text-[10px]">{i + 1}</Badge>
                           <span className="truncate">{c.title}</span>
                           <ExternalLink className="h-3 w-3 shrink-0" />
                         </a>
@@ -159,25 +131,15 @@ export function ChatPanel() {
               </div>
               {msg.role === "user" && (
                 <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    <User className="h-4 w-4" />
-                  </AvatarFallback>
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs"><User className="h-4 w-4" /></AvatarFallback>
                 </Avatar>
               )}
             </div>
           ))}
           {loading && (
             <div className="flex gap-3">
-              <Avatar className="h-7 w-7 shrink-0">
-                <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                  <Bot className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="space-y-2 rounded-lg bg-muted px-3 py-2">
-                <Skeleton className="h-3 w-48" />
-                <Skeleton className="h-3 w-36" />
-                <Skeleton className="h-3 w-24" />
-              </div>
+              <Avatar className="h-7 w-7 shrink-0"><AvatarFallback className="bg-primary/10 text-primary text-xs"><Bot className="h-4 w-4" /></AvatarFallback></Avatar>
+              <div className="space-y-2 rounded-lg bg-muted px-3 py-2"><Skeleton className="h-3 w-48" /><Skeleton className="h-3 w-36" /><Skeleton className="h-3 w-24" /></div>
             </div>
           )}
         </div>
@@ -185,15 +147,8 @@ export function ChatPanel() {
 
       <div className="border-t p-3">
         <div className="flex gap-2">
-          <Textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask Distil anything..."
-            className="min-h-[40px] max-h-[120px] resize-none text-sm"
-            rows={1}
-          />
+          <Textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+            placeholder="Ask Distil anything..." className="min-h-[40px] max-h-[120px] resize-none text-sm" rows={1} />
           <Button size="icon" onClick={sendMessage} disabled={!input.trim() || loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>

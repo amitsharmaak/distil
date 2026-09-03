@@ -22,7 +22,7 @@
 - **Impact:** Cross-origin data theft and manipulation.
 - **Recommendation:** Restrict CORS to deployment domain and `chrome-extension://` origin. Use environment-based configuration:
   ```typescript
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") ?? ["http://localhost:3000"];
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'];
   ```
 
 ### 3. Plaintext Password Comparison
@@ -119,18 +119,13 @@
 - **Impact:** Broader XSS impact; clickjacking via iframe embedding.
 - **Recommendation:** Add headers in `next.config.ts`:
   ```typescript
-  headers: async () => [
-    {
-      source: "/(.*)",
-      headers: [
-        { key: "X-Frame-Options", value: "DENY" },
-        {
-          key: "Content-Security-Policy",
-          value: "default-src 'self'; script-src 'self' 'unsafe-inline';",
-        },
-      ],
-    },
-  ];
+  headers: async () => [{
+    source: '/(.*)',
+    headers: [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline';" },
+    ],
+  }]
   ```
 
 ### 13. Feedback Reason Not Validated
@@ -188,36 +183,36 @@
 
 ### High Priority (Blocks Deployment)
 
-| Value             | Location                                            | Current                                            | Recommendation                                                   |
-| ----------------- | --------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------- |
-| Extension API URL | `browser-extension/background.js:22`, `popup.js:20` | `http://localhost:3000/api/items`                  | Make configurable via extension settings or build-time injection |
-| AI model names    | `src/lib/ai/ai-config.ts:27-81`                     | gemini-3-flash, claude-sonnet-4, gpt-4o-mini, etc. | Add env vars: `DEFAULT_SUMMARIZE_MODEL`, `DEFAULT_COMPLEX_MODEL` |
+| Value | Location | Current | Recommendation |
+|-------|----------|---------|----------------|
+| Extension API URL | `browser-extension/background.js:22`, `popup.js:20` | `http://localhost:3000/api/items` | Make configurable via extension settings or build-time injection |
+| AI model names | `src/lib/ai/ai-config.ts:27-81` | gemini-3-flash, claude-sonnet-4, gpt-4o-mini, etc. | Add env vars: `DEFAULT_SUMMARIZE_MODEL`, `DEFAULT_COMPLEX_MODEL` |
 
 ### Medium Priority (Usability)
 
-| Value                      | Location                            | Current                  | Recommendation                                                          |
-| -------------------------- | ----------------------------------- | ------------------------ | ----------------------------------------------------------------------- |
-| Gmail sync window          | `src/lib/connectors/gmail.ts:40-45` | 30 days                  | Add `GMAIL_SYNC_WINDOW_DAYS` env var                                    |
-| Slack sync window          | `src/lib/connectors/slack.ts:100`   | 30 days                  | Add `SLACK_SYNC_WINDOW_DAYS` env var                                    |
-| AI daily budget            | `src/lib/ai/router.ts:52`           | $5                       | Already has `DISTIL_DAILY_AI_BUDGET` env var; move default to config.ts |
-| Budget warning threshold   | `src/lib/ai/router.ts:53`           | 90%                      | Add `DISTIL_BUDGET_WARN_THRESHOLD` env var                              |
-| Priority score thresholds  | `src/lib/ai/prioritize.ts:31-34`    | High >= 70, Medium >= 40 | Add env vars or store in user_settings                                  |
-| Summarization token limits | `src/lib/ai/summarize.ts:122-137`   | 4000/2000/8000 tokens    | Add to config                                                           |
-| Research concurrency       | `src/lib/ai/research.ts:93`         | 3 concurrent             | Add `RESEARCH_CONCURRENCY_LIMIT` env var                                |
-| Research gap limit         | `src/lib/ai/research.ts:158`        | 2 gaps max               | Add `RESEARCH_MAX_GAPS` env var                                         |
-| Gmail fetch page size      | `src/lib/connectors/gmail.ts:169`   | 100 results              | Add `GMAIL_SYNC_PAGE_SIZE` env var                                      |
-| Slack message fetch limit  | `src/lib/connectors/slack.ts:187`   | 200 per channel          | Add `SLACK_MESSAGE_FETCH_LIMIT` env var                                 |
+| Value | Location | Current | Recommendation |
+|-------|----------|---------|----------------|
+| Gmail sync window | `src/lib/connectors/gmail.ts:40-45` | 30 days | Add `GMAIL_SYNC_WINDOW_DAYS` env var |
+| Slack sync window | `src/lib/connectors/slack.ts:100` | 30 days | Add `SLACK_SYNC_WINDOW_DAYS` env var |
+| AI daily budget | `src/lib/ai/router.ts:52` | $5 | Already has `DISTIL_DAILY_AI_BUDGET` env var; move default to config.ts |
+| Budget warning threshold | `src/lib/ai/router.ts:53` | 90% | Add `DISTIL_BUDGET_WARN_THRESHOLD` env var |
+| Priority score thresholds | `src/lib/ai/prioritize.ts:31-34` | High >= 70, Medium >= 40 | Add env vars or store in user_settings |
+| Summarization token limits | `src/lib/ai/summarize.ts:122-137` | 4000/2000/8000 tokens | Add to config |
+| Research concurrency | `src/lib/ai/research.ts:93` | 3 concurrent | Add `RESEARCH_CONCURRENCY_LIMIT` env var |
+| Research gap limit | `src/lib/ai/research.ts:158` | 2 gaps max | Add `RESEARCH_MAX_GAPS` env var |
+| Gmail fetch page size | `src/lib/connectors/gmail.ts:169` | 100 results | Add `GMAIL_SYNC_PAGE_SIZE` env var |
+| Slack message fetch limit | `src/lib/connectors/slack.ts:187` | 200 per channel | Add `SLACK_MESSAGE_FETCH_LIMIT` env var |
 
 ### Low Priority (Polish)
 
-| Value                        | Location                                             | Current                               | Recommendation                                  |
-| ---------------------------- | ---------------------------------------------------- | ------------------------------------- | ----------------------------------------------- |
-| Brand name "Distil"          | sidebar.tsx:49, layout.tsx:19, settings/page.tsx:147 | Hardcoded                             | Create `SITE_NAME` config constant              |
-| Extension auto-close timeout | `browser-extension/popup.js:98`                      | 1200ms                                | Move to extension config                        |
-| Extension recent items count | `browser-extension/popup.js:53`                      | 3 items                               | Move to extension config                        |
-| Sidebar width                | `src/components/layout/sidebar.tsx:37`               | w-64 / w-16                           | Consider CSS custom properties                  |
-| Priority weight defaults     | `src/lib/ai/prioritize.ts:22-26`                     | Recency: 0.7, Topic: 0.9, Source: 0.6 | Configurable via env or settings                |
-| Recency decay factor         | `src/lib/ai/prioritize.ts:46`                        | 10 days                               | Add `PRIORITIZE_RECENCY_HALF_LIFE_DAYS` env var |
+| Value | Location | Current | Recommendation |
+|-------|----------|---------|----------------|
+| Brand name "Distil" | sidebar.tsx:49, layout.tsx:19, settings/page.tsx:147 | Hardcoded | Create `SITE_NAME` config constant |
+| Extension auto-close timeout | `browser-extension/popup.js:98` | 1200ms | Move to extension config |
+| Extension recent items count | `browser-extension/popup.js:53` | 3 items | Move to extension config |
+| Sidebar width | `src/components/layout/sidebar.tsx:37` | w-64 / w-16 | Consider CSS custom properties |
+| Priority weight defaults | `src/lib/ai/prioritize.ts:22-26` | Recency: 0.7, Topic: 0.9, Source: 0.6 | Configurable via env or settings |
+| Recency decay factor | `src/lib/ai/prioritize.ts:46` | 10 days | Add `PRIORITIZE_RECENCY_HALF_LIFE_DAYS` env var |
 
 ---
 

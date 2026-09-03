@@ -63,7 +63,10 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
 export const GEMINI_SEARCH_MODEL = "gemini-3-flash-preview";
 
 /** Best model for each task when only ONE provider is available. */
-export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, string>> = {
+export const PROVIDER_FALLBACK_MODELS: Record<
+  ProviderName,
+  Record<AITask, string>
+> = {
   gemini: {
     summarize: "gemini-2.5-flash",
     "summarize-complex": "gemini-2.5-flash",

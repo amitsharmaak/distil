@@ -29,7 +29,10 @@ export const FAST_MODEL = "gemini-2.5-flash-lite";
  * Generate text from a prompt using Gemini.
  * No web search — for summarization, prioritization, and preference analysis.
  */
-export async function generateText(prompt: string, model = DEFAULT_MODEL): Promise<string> {
+export async function generateText(
+  prompt: string,
+  model = DEFAULT_MODEL,
+): Promise<string> {
   const m = genai.getGenerativeModel({ model });
   const result = await m.generateContent(prompt);
   return result.response.text();

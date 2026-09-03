@@ -16,7 +16,7 @@ import type { ContentItem } from "@/lib/types";
  */
 export async function hybridSearch(
   query: string,
-  filters: Omit<ItemFilters, "query"> = {}
+  filters: Omit<ItemFilters, "query"> = {},
 ): Promise<ContentItem[]> {
   // Run FTS and semantic search in parallel
   const [ftsResults, semanticResults] = await Promise.all([
@@ -45,7 +45,7 @@ export async function hybridSearch(
 
 async function semanticSearch(
   query: string,
-  filters: Omit<ItemFilters, "query">
+  filters: Omit<ItemFilters, "query">,
 ): Promise<ContentItem[]> {
   try {
     const queryEmbedding = await generateEmbedding(query);
@@ -73,10 +73,14 @@ async function semanticSearch(
       .map((id) => getItemById(id))
       .filter((item): item is ContentItem => item != null)
       .filter((item) => {
-        if (filters.sourceType && item.sourceType !== filters.sourceType) return false;
-        if (filters.contentType && item.contentType !== filters.contentType) return false;
-        if (filters.priority && item.priority !== filters.priority) return false;
-        if (filters.isRead !== undefined && item.isRead !== filters.isRead) return false;
+        if (filters.sourceType && item.sourceType !== filters.sourceType)
+          return false;
+        if (filters.contentType && item.contentType !== filters.contentType)
+          return false;
+        if (filters.priority && item.priority !== filters.priority)
+          return false;
+        if (filters.isRead !== undefined && item.isRead !== filters.isRead)
+          return false;
         return true;
       });
 

@@ -6,7 +6,14 @@
  */
 
 import Link from "next/link";
-import { Mail, Hash, Globe, Link as LinkIcon, Play, Headphones } from "lucide-react";
+import {
+  Mail,
+  Hash,
+  Globe,
+  Link as LinkIcon,
+  Play,
+  Headphones,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ContentItem, SourceType, ContentType } from "@/lib/types";
@@ -36,6 +43,7 @@ const sourceColors: Record<SourceType, string> = {
   manual: "text-muted-foreground",
   publisher: "text-blue-500",
 };
+
 
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3 w-3" />;
@@ -71,8 +79,12 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
   if (priorityItems.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border py-12 text-center">
-        <p className="font-serif text-lg text-muted-foreground">All caught up</p>
-        <p className="mt-1 text-sm text-muted-foreground">No unread items right now.</p>
+        <p className="font-serif text-lg text-muted-foreground">
+          All caught up
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          No unread items right now.
+        </p>
       </div>
     );
   }
@@ -84,11 +96,15 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
         const isLead = index === 0;
 
         return (
-          <Link key={item.id} href={`/feed/${item.id}?filter=unread`} className="group block">
+          <Link
+            key={item.id}
+            href={`/feed/${item.id}?filter=unread`}
+            className="group block"
+          >
             <article
               className={cn(
                 "relative rounded-xl border border-border bg-card transition-all hover:shadow-md",
-                isLead ? "p-6" : "p-4"
+                isLead ? "p-6" : "p-4",
               )}
             >
               {/* Unread accent */}
@@ -97,7 +113,9 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
               {/* Source & time */}
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <SourceIcon className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`} />
+                  <SourceIcon
+                    className={`h-3.5 w-3.5 ${sourceColors[item.sourceType]}`}
+                  />
                   <span>{sourceLabels[item.sourceType]}</span>
                   {item.publication && (
                     <>
@@ -106,14 +124,18 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
                     </>
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {timeAgo(item.createdAt)}
+                </span>
               </div>
 
               {/* Title */}
               <h3
                 className={cn(
                   "font-serif font-semibold leading-snug tracking-tight",
-                  isLead ? "text-xl line-clamp-2" : "text-base line-clamp-1"
+                  isLead
+                    ? "text-xl line-clamp-2"
+                    : "text-base line-clamp-1",
                 )}
               >
                 {item.title}
@@ -123,7 +145,7 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
               <p
                 className={cn(
                   "mt-1.5 text-sm leading-relaxed text-muted-foreground",
-                  isLead ? "line-clamp-3" : "line-clamp-2"
+                  isLead ? "line-clamp-3" : "line-clamp-2",
                 )}
               >
                 {item.summary}
@@ -147,7 +169,9 @@ export function PriorityFeed({ items }: PriorityFeedProps) {
                 ))}
                 <div className="ml-auto flex items-center gap-1.5">
                   {item.author && (
-                    <span className="text-[11px] text-muted-foreground">{item.author}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {item.author}
+                    </span>
                   )}
                   <Badge
                     variant="outline"

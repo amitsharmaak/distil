@@ -19,20 +19,20 @@ export async function POST() {
     if (!isSlackConfigured()) {
       return NextResponse.json(
         { error: "Slack not connected" },
-        { status: 400, headers: CORS_HEADERS }
+        { status: 400, headers: CORS_HEADERS },
       );
     }
 
     const result = await syncSlackMessages();
     return NextResponse.json(
       { count: result.count, items: result.items, stats: result.stats },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch (err) {
     apiLogger.error({ err }, "POST /api/slack/sync failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 }
