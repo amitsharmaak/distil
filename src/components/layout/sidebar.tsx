@@ -67,7 +67,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-sidebar-foreground/45 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/75"
+                  : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80"
               )}
             >
               <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -89,6 +89,7 @@ export function Sidebar() {
           size="sm"
           className="w-full justify-center text-sidebar-foreground/30 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/50"
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </Button>

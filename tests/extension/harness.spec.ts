@@ -29,6 +29,9 @@ test("launches and inspects the unpacked MV3 extension", async ({
       status: 202,
     });
   });
+  await context.addInitScript(() => {
+    Object.defineProperty(window, "close", { value: () => undefined });
+  });
 
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);

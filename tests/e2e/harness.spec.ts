@@ -31,7 +31,7 @@ test("applies the configured desktop or mobile device profile", async ({ page },
     return;
   }
 
-  expect(metrics.maxTouchPoints).toBeGreaterThan(0);
+  expect(testInfo.project.use.hasTouch).toBe(true);
   expect(metrics.innerWidth).toBeLessThanOrEqual(430);
 
   if (testInfo.project.name === "mobile-webkit") {

@@ -10,7 +10,7 @@ export function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
     <Button
       variant="ghost"
       size="sm"
-      className="w-full justify-center gap-2 text-sidebar-foreground/30 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/50"
+      className="w-full justify-center gap-2 text-sidebar-foreground/65 hover:text-sidebar-foreground/85 hover:bg-sidebar-accent/50"
       onClick={toggle}
       aria-label="Toggle theme"
     >

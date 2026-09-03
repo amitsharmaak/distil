@@ -50,10 +50,17 @@ const config: Config = {
   testMatch: ["**/__tests__/**/*.test.ts?(x)", "**/*.test.ts?(x)"],
 
   // Paths to ignore when discovering test files.
-  testPathIgnorePatterns: ["/node_modules/", "/.next/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/.next/",
+    "\\.live\\.test\\.[jt]sx?$",
+    "\\.integration\\.test\\.[jt]sx?$",
+    "/tests/e2e/",
+    "/tests/extension/",
+  ],
 
   // Show a coverage summary when running `npm run test:coverage`.
-  coverageReporters: ["text", "lcov"],
+  coverageReporters: ["text", "lcov", "json"],
 
   // Collect coverage from source files, excluding generated/config files.
   collectCoverageFrom: [

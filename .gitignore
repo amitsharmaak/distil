@@ -23,6 +23,9 @@ data/publisher-sessions/
 
 # testing
 /coverage
+/playwright-report
+/test-results
+/blob-report
 
 # next.js
 /.next/

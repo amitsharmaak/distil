@@ -59,12 +59,6 @@ export async function launchExtension(options: LaunchExtensionOptions): Promise<
   context.on("page", rememberVideo);
 
   try {
-    await context.tracing.start({
-      screenshots: true,
-      snapshots: true,
-      sources: true,
-    });
-
     const serviceWorker =
       context.serviceWorkers()[0] ??
       (await context.waitForEvent("serviceworker", { timeout: 15_000 }));
@@ -98,7 +92,6 @@ async function attachIfPresent(
 /** Close a persistent extension context and apply retain-on-failure semantics. */
 export async function closeExtension(session: ExtensionSession, testInfo: TestInfo): Promise<void> {
   const failed = testInfo.status !== testInfo.expectedStatus;
-  const tracePath = testInfo.outputPath("trace.zip");
   const screenshotPath = testInfo.outputPath("test-failed-1.png");
   const openPages = session.context.pages().filter((page) => !page.isClosed());
 
@@ -106,11 +99,6 @@ export async function closeExtension(session: ExtensionSession, testInfo: TestIn
     await openPages[0].screenshot({ path: screenshotPath, fullPage: true });
   }
 
-  if (failed) {
-    await session.context.tracing.stop({ path: tracePath });
-  } else {
-    await session.context.tracing.stop();
-  }
   await session.context.close();
 
   const videoFiles = await Promise.all(
@@ -124,7 +112,6 @@ export async function closeExtension(session: ExtensionSession, testInfo: TestIn
   );
 
   if (failed) {
-    await attachIfPresent(testInfo, "trace", tracePath, "application/zip");
     await attachIfPresent(testInfo, "screenshot", screenshotPath, "image/png");
     await Promise.all(
       videoFiles.map((path, index) =>

@@ -43,7 +43,7 @@ export function Topbar() {
         router.push(`/feed?q=${encodeURIComponent(value.trim())}`);
       }, 300);
     },
-    [router],
+    [router]
   );
 
   const handleSearchKeyDown = useCallback(
@@ -59,7 +59,7 @@ export function Topbar() {
         router.push("/feed");
       }
     },
-    [router, searchValue],
+    [router, searchValue]
   );
 
   const handleSearchClear = useCallback(() => {
@@ -88,9 +88,7 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {/* Date */}
-      <span className="hidden text-[13px] text-muted-foreground md:block">
-        {formatDate()}
-      </span>
+      <span className="hidden text-[13px] text-muted-foreground md:block">{formatDate()}</span>
 
       {/* Search */}
       <div className="relative ml-auto flex max-w-sm flex-1 items-center gap-2">
@@ -158,7 +156,12 @@ export function Topbar() {
       <div className="flex items-center gap-2">
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-9 w-9">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-9 w-9"
+              aria-label="Notifications"
+            >
               <Bell className="h-[18px] w-[18px]" />
               {unreadCount > 0 && (
                 <Badge className="absolute -right-1 -top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full p-0 text-[10px]">
@@ -168,10 +171,7 @@ export function Topbar() {
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-80 p-0">
-            <NotificationPanel
-              onClose={() => setOpen(false)}
-              onCountChange={setUnreadCount}
-            />
+            <NotificationPanel onClose={() => setOpen(false)} onCountChange={setUnreadCount} />
           </PopoverContent>
         </Popover>
       </div>
