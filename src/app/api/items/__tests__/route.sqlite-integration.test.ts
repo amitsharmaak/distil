@@ -71,6 +71,18 @@ jest.mock("@/lib/intelligence/pipeline", () => {
   };
 });
 
+// Keep route search deterministic even if developer API keys are present.
+// The route contract only needs the repository-backed keyword result here;
+// semantic-provider behavior is covered by its own unit tests.
+jest.mock("@/lib/ai/search", () => {
+  const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
+  return {
+    hybridSearch: jest.fn(async (query: string, filters: import("@/lib/db").ItemFilters = {}) =>
+      actualDb.getItems({ ...filters, query })
+    ),
+  };
+});
+
 import { NextRequest } from "next/server";
 
 // Import DB helpers to set up and tear down test data.
