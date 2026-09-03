@@ -152,13 +152,13 @@ describe("reprioritize — basic behaviour", () => {
     expect(mockUpdateItemPriorityScore).toHaveBeenCalledWith(
       techCrunchItem.id,
       expect.any(Number),
-      expect.stringMatching(/^(high|medium|low)$/),
+      expect.stringMatching(/^(high|medium|low)$/)
     );
   });
 
   it("each ScoredItem has score in range 0–100", async () => {
     const items = Array.from({ length: 5 }, (_, i) =>
-      makeItem({ id: `item-${i}`, createdAt: daysAgo(i * 5) }),
+      makeItem({ id: `item-${i}`, createdAt: daysAgo(i * 5) })
     );
     mockGetItems.mockReturnValue(items);
 
@@ -329,7 +329,7 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
 
     // AI returns a score of 90 for the TechCrunch article.
     mockGenerateText.mockResolvedValue(
-      JSON.stringify([{ id: techCrunchItem.id, score: 90, reason: "Top AI content" }]),
+      JSON.stringify([{ id: techCrunchItem.id, score: 90, reason: "Top AI content" }])
     );
 
     mockGetItems.mockReturnValue([techCrunchItem]);

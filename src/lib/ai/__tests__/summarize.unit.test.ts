@@ -190,8 +190,8 @@ describe("generateSummary — cache behaviour", () => {
       prompt_type: "brief",
       created_at: new Date().toISOString(),
     };
-    mockGetAISummary.mockImplementation(
-      (_id: string, type?: string) => (type === "brief" ? briefRow : undefined),
+    mockGetAISummary.mockImplementation((_id: string, type?: string) =>
+      type === "brief" ? briefRow : undefined
     );
 
     mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
@@ -219,7 +219,7 @@ describe("generateSummary — generation", () => {
         summary: mockBriefSummary,
         promptType: "brief",
         model: "gemini-2.5-flash",
-      }),
+      })
     );
   });
 
@@ -241,9 +241,7 @@ describe("generateSummary — generation", () => {
   it("throws an error when the item does not exist in the DB", async () => {
     mockGetItemById.mockReturnValue(undefined);
 
-    await expect(
-      generateSummary("nonexistent-item-id"),
-    ).rejects.toThrow("Item not found");
+    await expect(generateSummary("nonexistent-item-id")).rejects.toThrow("Item not found");
   });
 
   it("includes the article title in the prompt sent to the AI", async () => {

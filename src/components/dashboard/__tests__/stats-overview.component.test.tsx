@@ -30,14 +30,12 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("StatsOverview", () => {
-  it("shows 0 for all stats when items is empty", () => {
+  it("shows onboarding guidance when items is empty", () => {
     render(<StatsOverview items={[]} />);
 
-    // Total Items
-    expect(screen.getByText("Total Items")).toBeInTheDocument();
-    // All stat values should be "0"
-    const zeros = screen.getAllByText("0");
-    expect(zeros.length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByText("No items yet. Connect a source or add a link to get started.")
+    ).toBeInTheDocument();
   });
 
   it("shows the correct total item count", () => {
@@ -45,8 +43,9 @@ describe("StatsOverview", () => {
     const items = [makeItem(), makeItem(), makeItem({ isRead: true })];
     render(<StatsOverview items={items} />);
 
-    // "3" should appear exactly once — as the Total Items count.
-    expect(screen.getAllByText("3")).toHaveLength(1);
+    expect(screen.getByText(/unread/)).toHaveTextContent(
+      "2 unread · 3 total items · 1 source · 1 topic"
+    );
   });
 
   it("shows the correct unread count", () => {
@@ -69,8 +68,7 @@ describe("StatsOverview", () => {
     ];
     render(<StatsOverview items={items} />);
 
-    // 2 distinct sources: gmail and slack.
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText(/sources/)).toHaveTextContent("2 sources");
   });
 
   it("shows the number of distinct topics", () => {
@@ -80,16 +78,14 @@ describe("StatsOverview", () => {
     ];
     render(<StatsOverview items={items} />);
 
-    // 3 distinct topics: AI, Tech, Web.
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText(/topics/)).toHaveTextContent("3 topics");
   });
 
-  it("renders all four stat card labels", () => {
-    render(<StatsOverview items={[]} />);
+  it("renders all four inline stat labels", () => {
+    render(<StatsOverview items={[makeItem()]} />);
 
-    expect(screen.getByText("Total Items")).toBeInTheDocument();
-    expect(screen.getByText("Unread")).toBeInTheDocument();
-    expect(screen.getByText("Sources")).toBeInTheDocument();
-    expect(screen.getByText("Topics")).toBeInTheDocument();
+    expect(screen.getByText(/unread/)).toHaveTextContent(
+      "1 unread · 1 total item · 1 source · 1 topic"
+    );
   });
 });

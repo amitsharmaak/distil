@@ -1,5 +1,5 @@
 /**
- * Tests for GET /api/items and POST /api/items.
+ * SQLite integration tests for GET /api/items and POST /api/items.
  *
  * We test the route handler functions directly (not via HTTP) to keep tests
  * fast and avoid needing a running Next.js server.
@@ -20,34 +20,54 @@ global.fetch = mockFetch as typeof fetch;
 jest.mock("@/lib/intelligence/pipeline", () => {
   const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
   return {
-    buildRawContent: jest.fn((params: { sourceType: string; rawBody: string; url?: string; metadata?: Record<string, unknown> }) => ({
-      id: "mock-raw-id",
-      sourceType: params.sourceType,
-      rawBody: params.rawBody,
-      url: params.url,
-      metadata: params.metadata ?? {},
-      fetchedAt: new Date().toISOString(),
-    })),
-    processContent: jest.fn().mockImplementation(async (raw: { id: string; sourceType: string; url?: string; metadata?: { pageTitle?: string; userNotes?: string; priority?: string; contentType?: string; topics?: string[] } }) => {
-      const existing = actualDb.getItemByNormalizedUrl(raw.url ?? "");
-      if (existing) return { status: "ready" as const };
+    buildRawContent: jest.fn(
+      (params: {
+        sourceType: string;
+        rawBody: string;
+        url?: string;
+        metadata?: Record<string, unknown>;
+      }) => ({
+        id: "mock-raw-id",
+        sourceType: params.sourceType,
+        rawBody: params.rawBody,
+        url: params.url,
+        metadata: params.metadata ?? {},
+        fetchedAt: new Date().toISOString(),
+      })
+    ),
+    processContent: jest.fn().mockImplementation(
+      async (raw: {
+        id: string;
+        sourceType: string;
+        url?: string;
+        metadata?: {
+          pageTitle?: string;
+          userNotes?: string;
+          priority?: string;
+          contentType?: string;
+          topics?: string[];
+        };
+      }) => {
+        const existing = actualDb.getItemByNormalizedUrl(raw.url ?? "");
+        if (existing) return { status: "ready" as const };
 
-      const meta = raw.metadata ?? {};
-      const item = {
-        id: raw.id,
-        title: meta.pageTitle ?? raw.url ?? "Untitled",
-        summary: meta.userNotes ?? "Enriched summary",
-        sourceType: raw.sourceType as import("@/lib/types").SourceType,
-        contentType: (meta.contentType as "article" | "video" | "podcast") ?? "article",
-        topics: meta.topics ?? [],
-        url: raw.url ?? "",
-        priority: (meta.priority as "high" | "medium" | "low") ?? "medium",
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      };
-      actualDb.insertItem(item);
-      return { status: "ready" as const };
-    }),
+        const meta = raw.metadata ?? {};
+        const item = {
+          id: raw.id,
+          title: meta.pageTitle ?? raw.url ?? "Untitled",
+          summary: meta.userNotes ?? "Enriched summary",
+          sourceType: raw.sourceType as import("@/lib/types").SourceType,
+          contentType: (meta.contentType as "article" | "video" | "podcast") ?? "article",
+          topics: meta.topics ?? [],
+          url: raw.url ?? "",
+          priority: (meta.priority as "high" | "medium" | "low") ?? "medium",
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        actualDb.insertItem(item);
+        return { status: "ready" as const };
+      }
+    ),
   };
 });
 
@@ -93,7 +113,10 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
   };
 }
 
-function makeRequest(url: string, options?: RequestInit): NextRequest {
+function makeRequest(
+  url: string,
+  options?: ConstructorParameters<typeof NextRequest>[1]
+): NextRequest {
   return new NextRequest(url, options);
 }
 
@@ -184,7 +207,9 @@ describe("GET /api/items", () => {
 
   it("excludes processing items by default (includeProcessing absent)", async () => {
     insertItem(makeItem({ id: "ready1", url: "https://example.com/ready1" }));
-    insertItem(makeItem({ id: "proc1", url: "https://example.com/proc1", processingStatus: "processing" }));
+    insertItem(
+      makeItem({ id: "proc1", url: "https://example.com/proc1", processingStatus: "processing" })
+    );
 
     const req = makeRequest("http://localhost:3000/api/items");
     const res = await GET(req);
@@ -196,7 +221,9 @@ describe("GET /api/items", () => {
 
   it("includes processing items when includeProcessing=true", async () => {
     insertItem(makeItem({ id: "ready2", url: "https://example.com/ready2" }));
-    insertItem(makeItem({ id: "proc2", url: "https://example.com/proc2", processingStatus: "processing" }));
+    insertItem(
+      makeItem({ id: "proc2", url: "https://example.com/proc2", processingStatus: "processing" })
+    );
 
     const req = makeRequest("http://localhost:3000/api/items?includeProcessing=true");
     const res = await GET(req);

@@ -1,5 +1,5 @@
 /**
- * Tests for POST /api/agent/chat and GET /api/agent/chat.
+ * Contract tests for POST /api/agent/chat and GET /api/agent/chat.
  *
  * The RAG pipeline and DB calls are mocked so tests run without a live DB or
  * Gemini API key. We verify that the route correctly delegates to ragQuery,
@@ -36,13 +36,20 @@ import type { RAGResult } from "@/lib/agent/rag";
 
 const mockRagQuery = ragQuery as jest.MockedFunction<typeof ragQuery>;
 const mockGetChatMessages = getChatMessages as jest.MockedFunction<typeof getChatMessages>;
-const mockGetChatConversations = getChatConversations as jest.MockedFunction<typeof getChatConversations>;
-const mockInsertChatConversation = insertChatConversation as jest.MockedFunction<typeof insertChatConversation>;
+const mockGetChatConversations = getChatConversations as jest.MockedFunction<
+  typeof getChatConversations
+>;
+const mockInsertChatConversation = insertChatConversation as jest.MockedFunction<
+  typeof insertChatConversation
+>;
 const mockInsertChatMessage = insertChatMessage as jest.MockedFunction<typeof insertChatMessage>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeRequest(url: string, options?: RequestInit): NextRequest {
+function makeRequest(
+  url: string,
+  options?: ConstructorParameters<typeof NextRequest>[1]
+): NextRequest {
   return new NextRequest(url, options);
 }
 
@@ -145,7 +152,7 @@ describe("POST /api/agent/chat", () => {
     await POST(req);
 
     expect(mockInsertChatConversation).toHaveBeenCalledWith(
-      expect.objectContaining({ title: expect.any(String) }),
+      expect.objectContaining({ title: expect.any(String) })
     );
   });
 
@@ -227,13 +234,16 @@ describe("GET /api/agent/chat", () => {
   it("returns messages for a given conversationId", async () => {
     const mockMessages = [
       { id: "msg-1", role: "user", content: "hello", created_at: new Date().toISOString() },
-      { id: "msg-2", role: "assistant", content: "Hi there!", created_at: new Date().toISOString() },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: "Hi there!",
+        created_at: new Date().toISOString(),
+      },
     ];
     mockGetChatMessages.mockReturnValue(mockMessages as ReturnType<typeof getChatMessages>);
 
-    const req = makeRequest(
-      "http://localhost:3000/api/agent/chat?conversationId=conv-123",
-    );
+    const req = makeRequest("http://localhost:3000/api/agent/chat?conversationId=conv-123");
 
     const res = await GET(req);
     const body = await res.json();
@@ -244,9 +254,7 @@ describe("GET /api/agent/chat", () => {
   });
 
   it("returns all conversations when no conversationId is provided", async () => {
-    const mockConvs = [
-      { id: "conv-1", title: "First chat", created_at: new Date().toISOString() },
-    ];
+    const mockConvs = [{ id: "conv-1", title: "First chat", created_at: new Date().toISOString() }];
     mockGetChatConversations.mockReturnValue(mockConvs as ReturnType<typeof getChatConversations>);
 
     const req = makeRequest("http://localhost:3000/api/agent/chat");

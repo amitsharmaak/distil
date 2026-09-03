@@ -77,10 +77,10 @@ describe("summarizePrompt", () => {
     expect(prompt).not.toContain("Available Summary");
   });
 
-  it("falls back gracefully when both summary and fullContent are absent", () => {
+  it("falls back gracefully when summary is empty and fullContent is absent", () => {
     const titleOnly: ContentItem = {
       ...techCrunchItem,
-      summary: undefined,
+      summary: "",
       fullContent: undefined,
     };
     const prompt = summarizePrompt(titleOnly, "brief");

@@ -1,5 +1,5 @@
 /**
- * Tests for PATCH /api/items/[id] and DELETE /api/items/[id].
+ * SQLite integration tests for PATCH /api/items/[id] and DELETE /api/items/[id].
  *
  * Uses in-memory SQLite and calls route handlers directly.
  */
@@ -36,7 +36,7 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
  */
 function makeRequest(
   id: string,
-  options?: RequestInit
+  options?: ConstructorParameters<typeof NextRequest>[1]
 ): [NextRequest, { params: Promise<{ id: string }> }] {
   const url = `http://localhost:3000/api/items/${id}`;
   return [new NextRequest(url, options), { params: Promise.resolve({ id }) }];

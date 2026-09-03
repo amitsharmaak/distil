@@ -1,5 +1,5 @@
 /**
- * Tests for the RAG (Retrieval-Augmented Generation) pipeline.
+ * Unit tests for the RAG (Retrieval-Augmented Generation) pipeline.
  *
  * Covers intent classification, retrieval routing, fallback behaviour,
  * citation building, and error handling — all with mocked I/O so the
@@ -159,10 +159,9 @@ describe("ragQuery — specific intent", () => {
 
     await ragQuery("tell me about React hooks");
 
-    expect(mockHybridSearch).toHaveBeenCalledWith(
-      expect.stringContaining("React hooks"),
-      { limit: 20 },
-    );
+    expect(mockHybridSearch).toHaveBeenCalledWith(expect.stringContaining("React hooks"), {
+      limit: 20,
+    });
     expect(mockGetItems).not.toHaveBeenCalled();
   });
 

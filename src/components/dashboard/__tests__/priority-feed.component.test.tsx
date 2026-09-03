@@ -97,9 +97,9 @@ describe("PriorityFeed", () => {
     expect(screen.getByText("high")).toBeInTheDocument();
   });
 
-  it("shows the section title", () => {
+  it("shows supplemental guidance in the empty state", () => {
     render(<PriorityFeed items={[]} />);
 
-    expect(screen.getByText("Priority Reading")).toBeInTheDocument();
+    expect(screen.getByText("No unread items right now.")).toBeInTheDocument();
   });
 });

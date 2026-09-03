@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/lib/db.ts — SQLite database module.
+ * SQLite integration tests for src/lib/db.ts.
  *
  * Tests run against an in-memory SQLite database (DB_PATH=":memory:") so they
  * never touch the real data/distil.db file and are fully isolated from each other.
@@ -260,9 +260,11 @@ describe("getItems — FTS5 full-text search", () => {
         id: "fts-summary",
         title: "Generic Title",
         summary: "This article covers photosynthesis in detail.",
-      }),
+      })
     );
-    insertItem(makeItem({ id: "fts-other2", title: "Another Article", summary: "Nothing relevant." }));
+    insertItem(
+      makeItem({ id: "fts-other2", title: "Another Article", summary: "Nothing relevant." })
+    );
 
     const results = getItems({ query: "photosynthesis" });
     expect(results).toHaveLength(1);
@@ -276,14 +278,14 @@ describe("getItems — FTS5 full-text search", () => {
         id: "fts-topics",
         title: "Some Title",
         topics: ["MachineLearning", "Tech"],
-      }),
+      })
     );
     insertItem(
       makeItem({
         id: "fts-topics-other",
         title: "Other Title",
         topics: ["Cooking", "Food"],
-      }),
+      })
     );
 
     const results = getItems({ query: "MachineLearning" });
@@ -330,14 +332,14 @@ describe("getItems — FTS5 full-text search", () => {
         id: "fts-multi-match",
         title: "Machine Learning basics",
         summary: "An intro to machine learning techniques.",
-      }),
+      })
     );
     insertItem(
       makeItem({
         id: "fts-multi-nomatch",
         title: "Machine tools for woodworking",
         summary: "Using machine tools.",
-      }),
+      })
     );
 
     // Both tokens 'machine*' and 'learning*' must be present
@@ -352,14 +354,14 @@ describe("getItems — FTS5 full-text search", () => {
         id: "fts-combined-gmail",
         title: "Blockchain Revolution",
         sourceType: "gmail",
-      }),
+      })
     );
     insertItem(
       makeItem({
         id: "fts-combined-slack",
         title: "Blockchain Update",
         sourceType: "slack",
-      }),
+      })
     );
 
     const results = getItems({ query: "Blockchain", sourceType: "gmail" });
