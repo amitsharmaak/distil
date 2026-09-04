@@ -161,6 +161,16 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100dvh;
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    padding-top: var(--safe-top);
   }
 }
 

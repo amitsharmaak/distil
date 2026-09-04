@@ -10,6 +10,7 @@ import {
   Plug,
   Search,
   Settings,
+  BookmarkPlus,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
+  { href: "/save", label: "Save", icon: BookmarkPlus },
   { href: "/topics", label: "Topics", icon: Hash },
   { href: "/sources", label: "Sources", icon: Plug },
   { href: "/research", label: "Research", icon: Search },

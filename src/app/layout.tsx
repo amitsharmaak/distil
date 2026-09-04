@@ -1,11 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Newsreader, Outfit, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Topbar } from "@/components/layout/topbar";
-import { MobileNav } from "@/components/layout/mobile-nav";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/layout/theme-provider";
+import { AppShell } from "@/components/layout/app-shell";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -32,9 +30,18 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  applicationName: "Distil",
   title: "Distil — Your AI Knowledge Companion",
-  description:
-    "Distil transforms the relentless flow of information into focused, actionable insight.",
+  description: "Save articles and turn them into focused, actionable insight.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Distil" },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
@@ -49,14 +56,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <TooltipProvider>
-            <div className="flex min-h-screen">
-              <Sidebar />
-              <div className="flex-1 min-w-0 md:pl-16 lg:pl-64 transition-all duration-300">
-                <Topbar />
-                <main className="px-4 sm:px-6 md:px-8 py-4 sm:py-6 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] md:pb-6">{children}</main>
-                <MobileNav />
-              </div>
-            </div>
+            <AppShell>{children}</AppShell>
           </TooltipProvider>
         </ThemeProvider>
       </body>
