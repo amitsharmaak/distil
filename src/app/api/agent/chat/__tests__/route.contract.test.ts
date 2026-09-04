@@ -14,7 +14,7 @@ jest.mock("@/lib/agent/rag", () => ({
   ragQuery: jest.fn(),
 }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/database", () => ({
   insertChatConversation: jest.fn().mockResolvedValue(undefined),
   insertChatMessage: jest.fn().mockResolvedValue(undefined),
   getChatMessages: jest.fn().mockResolvedValue([]),
@@ -31,7 +31,7 @@ import {
   insertChatMessage,
   getChatMessages,
   getChatConversations,
-} from "@/lib/db";
+} from "@/lib/database";
 import type { RAGResult } from "@/lib/agent/rag";
 
 const mockRagQuery = ragQuery as jest.MockedFunction<typeof ragQuery>;

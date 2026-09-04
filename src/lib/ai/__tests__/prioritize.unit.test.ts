@@ -19,7 +19,7 @@ jest.mock("../router", () => ({
   generateTextWithSearch: jest.fn(),
 }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/database", () => ({
   getItems: jest.fn(),
   updateItemPriorityScore: jest.fn(),
   getUserSetting: jest.fn(),
@@ -32,7 +32,7 @@ jest.mock("../preferences", () => ({
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import { reprioritize } from "../prioritize";
-import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
+import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/database";
 import { getPreferences } from "../preferences";
 import { generateText } from "../router";
 import type { ContentItem } from "@/lib/types";

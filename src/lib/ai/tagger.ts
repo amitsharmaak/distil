@@ -6,7 +6,7 @@
  */
 
 import { generateJSON } from "./router";
-import { updateItem, getItemById } from "@/lib/db";
+import { updateItem, getItemById } from "@/lib/database";
 import { buildTaxonomyPromptSection, normalizeTags } from "./taxonomy";
 
 interface TaggingResult {

@@ -18,7 +18,7 @@ import { google, gmail_v1 } from "googleapis";
 
 import { config } from "@/lib/config";
 import { runGmailSenderDiscovery } from "@/lib/connectors/publishers/discovery/gmail-sender";
-import { getOAuthToken, upsertOAuthToken, deleteOAuthToken } from "@/lib/db";
+import { getOAuthToken, upsertOAuthToken, deleteOAuthToken } from "@/lib/database";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { connectorLogger } from "@/lib/logger";
 import { sanitizeUrl } from "@/lib/utils";
@@ -204,7 +204,7 @@ export async function syncNewsletters(): Promise<{
           refresh_token: newTokens.refresh_token ?? tokenRow.refresh_token,
           expiry_date: newTokens.expiry_date ?? tokenRow.expiry_date,
           email: tokenRow.email,
-        }),
+        })
       ).catch((err: unknown) => {
         connectorLogger.warn({ err }, "[gmail] failed to persist refreshed token");
       });

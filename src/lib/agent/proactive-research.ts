@@ -12,7 +12,7 @@ import {
   getResearchReports,
   insertNotification,
   replacePendingResearchSuggestions,
-} from "@/lib/db";
+} from "@/lib/database";
 import { generateJSON } from "@/lib/ai/router";
 import { aiLogger } from "@/lib/logger";
 import type { ContentItem } from "@/lib/types";

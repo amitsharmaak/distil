@@ -14,7 +14,7 @@ import {
   getAllFeedback,
   getAISummary,
   insertNotification,
-} from "@/lib/db";
+} from "@/lib/database";
 import { hybridSearch } from "@/lib/ai/search";
 import { getPreferences } from "@/lib/ai/preferences";
 import { generateSummary } from "@/lib/ai/summarize";

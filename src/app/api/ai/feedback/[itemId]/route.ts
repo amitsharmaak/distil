@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import { getFeedback } from "@/lib/db";
+import { getFeedback } from "@/lib/database";
 
 /** GET /api/ai/feedback/[itemId] — Get most recent feedback for an item. */
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ itemId: string }> },
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = await params;
   const feedback = await getFeedback(itemId);
 

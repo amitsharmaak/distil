@@ -10,7 +10,7 @@ import { hybridSearch } from "@/lib/ai/search";
 import { generateText } from "@/lib/ai/router";
 import { filterPII } from "@/lib/pii-filter";
 import { aiLogger } from "@/lib/logger";
-import { getItems } from "@/lib/db";
+import { getItems } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────

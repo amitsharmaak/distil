@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { updateItem, deleteItem } from "@/lib/db";
+import { updateItem, deleteItem } from "@/lib/database";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 

@@ -43,7 +43,7 @@ import {
   getUserSetting,
   setUserSetting,
   type OAuthTokenRow,
-} from "@/lib/db";
+} from "@/lib/database";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { sanitizeUrl } from "@/lib/utils";
 import type { ProcessingResult } from "@/lib/intelligence/types";

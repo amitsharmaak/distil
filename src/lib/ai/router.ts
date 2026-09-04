@@ -12,7 +12,7 @@ import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
 import { DEFAULT_MODEL_CONFIG, PROVIDER_FALLBACK_MODELS, MODEL_COSTS } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
-import { insertAuditLog } from "@/lib/db";
+import { insertAuditLog } from "@/lib/database";
 
 /** Per-call metrics for AI usage. */
 export interface UsageMetrics {

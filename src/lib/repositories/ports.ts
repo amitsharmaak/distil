@@ -158,7 +158,7 @@ export interface ResearchReportRecord {
   status: string;
   createdAt: string;
   completedAt?: string;
-  progress?: string;
+  progress?: string | null;
 }
 
 export interface ResearchSuggestionRecord {

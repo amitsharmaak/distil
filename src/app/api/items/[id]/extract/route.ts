@@ -14,7 +14,7 @@
 
 import { NextResponse } from "next/server";
 
-import { getItemById, updateItem } from "@/lib/db";
+import { getItemById, updateItem } from "@/lib/database";
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 
@@ -26,10 +26,7 @@ export async function POST(_request: Request, context: RouteContext) {
     const item = await getItemById(id);
 
     if (!item) {
-      return NextResponse.json(
-        { error: `Item with id "${id}" not found` },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: `Item with id "${id}" not found` }, { status: 404 });
     }
 
     // Already extracted (success or failure) — return what we have.
@@ -38,10 +35,7 @@ export async function POST(_request: Request, context: RouteContext) {
     }
 
     if (!item.url) {
-      return NextResponse.json(
-        { error: "Item has no URL to extract" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Item has no URL to extract" }, { status: 400 });
     }
 
     const [extraction, og] = await Promise.all([
@@ -61,9 +55,6 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ item: updated, extracted: true });
   } catch (err) {
     console.error("POST /api/items/[id]/extract error:", err);
-    return NextResponse.json(
-      { error: "Failed to extract content" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to extract content" }, { status: 500 });
   }
 }

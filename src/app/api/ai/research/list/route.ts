@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getResearchReports } from "@/lib/db";
+import { getResearchReports } from "@/lib/database";
 
 /** GET /api/ai/research/list — List recent research reports. */
 export async function GET() {

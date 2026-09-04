@@ -11,7 +11,7 @@ import {
   getPendingApprovals,
   getDailyAuditStats,
   getJobStats,
-} from "@/lib/db";
+} from "@/lib/database";
 import { getDailyUsage } from "@/lib/ai/router";
 
 export async function GET() {
@@ -45,9 +45,6 @@ export async function GET() {
     });
   } catch (error) {
     apiLogger.error({ err: error }, "Agent status endpoint error");
-    return NextResponse.json(
-      { error: "Failed to fetch agent status" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch agent status" }, { status: 500 });
   }
 }

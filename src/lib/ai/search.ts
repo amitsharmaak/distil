@@ -4,10 +4,10 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItems, getItemById, getRecentEmbeddings } from "@/lib/db";
+import { getItems, getItemById, getRecentEmbeddings } from "@/lib/database";
 import { aiLogger } from "@/lib/logger";
 import { generateEmbedding, cosineSimilarity } from "./embeddings";
-import type { ItemFilters } from "@/lib/db";
+import type { ItemFilters } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
 
 /**

@@ -15,7 +15,7 @@ jest.mock("../router", () => ({
   getEffectiveModel: jest.fn(() => ({ model: "gemini-2.5-flash" })),
 }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/database", () => ({
   getAISummary: jest.fn(),
   upsertAISummary: jest.fn(),
   getItemById: jest.fn(),
@@ -25,7 +25,7 @@ jest.mock("@/lib/db", () => ({
 
 import { generateSummary } from "../summarize";
 import { generateJSON } from "../router";
-import { getAISummary, upsertAISummary, getItemById } from "@/lib/db";
+import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
 
 // Typed mock helpers.

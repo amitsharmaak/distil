@@ -19,7 +19,7 @@ jest.mock("@/lib/ai/router", () => ({
   generateText: jest.fn(),
 }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/database", () => ({
   getItems: jest.fn(),
 }));
 
@@ -32,7 +32,7 @@ jest.mock("@/lib/pii-filter", () => ({
 import { ragQuery } from "../rag";
 import { hybridSearch } from "@/lib/ai/search";
 import { generateText } from "@/lib/ai/router";
-import { getItems } from "@/lib/db";
+import { getItems } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
 
 const mockHybridSearch = hybridSearch as jest.MockedFunction<typeof hybridSearch>;
@@ -62,7 +62,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGenerateText.mockResolvedValue("Here is a helpful answer based on your content.");
   mockHybridSearch.mockResolvedValue([]);
-  mockGetItems.mockReturnValue([]);
+  mockGetItems.mockResolvedValue([]);
 });
 
 // ── Intent classification — conversational ────────────────────────────────────
@@ -114,7 +114,7 @@ describe("ragQuery — general intent", () => {
 
   it.each(generalQueries)('routes "%s" to general retrieval (getItems)', async (query) => {
     const item = makeItem({ isRead: false });
-    mockGetItems.mockReturnValue([item]);
+    mockGetItems.mockResolvedValue([item]);
 
     await ragQuery(query);
 
@@ -124,7 +124,7 @@ describe("ragQuery — general intent", () => {
 
   it("prefers unread items for general queries", async () => {
     const unread = makeItem({ id: "unread-1", isRead: false });
-    mockGetItems.mockImplementation((filters) => {
+    mockGetItems.mockImplementation(async (filters) => {
       if (filters && filters.isRead === false) return [unread];
       return [];
     });
@@ -137,7 +137,7 @@ describe("ragQuery — general intent", () => {
 
   it("falls back to all items when no unread items exist", async () => {
     const read = makeItem({ id: "read-1", isRead: true });
-    mockGetItems.mockImplementation((filters) => {
+    mockGetItems.mockImplementation(async (filters) => {
       if (filters && filters.isRead === false) return [];
       return [read];
     });
@@ -169,7 +169,7 @@ describe("ragQuery — specific intent", () => {
     mockHybridSearch.mockResolvedValue([]);
     const item = makeItem({ title: "Fallback Article" });
     // getItems is called by the general fallback
-    mockGetItems.mockReturnValue([item]);
+    mockGetItems.mockResolvedValue([item]);
 
     const result = await ragQuery("obscure topic xyz123abc");
 
@@ -184,7 +184,7 @@ describe("ragQuery — specific intent", () => {
 describe("ragQuery — empty library", () => {
   it("returns empty-library message when no items exist anywhere", async () => {
     mockHybridSearch.mockResolvedValue([]);
-    mockGetItems.mockReturnValue([]);
+    mockGetItems.mockResolvedValue([]);
 
     const result = await ragQuery("what should I read today");
 
@@ -196,7 +196,7 @@ describe("ragQuery — empty library", () => {
   it("does NOT return empty-library message for specific queries when items exist", async () => {
     mockHybridSearch.mockResolvedValue([]); // specific search finds nothing
     const item = makeItem({ title: "General Fallback Article" });
-    mockGetItems.mockReturnValue([item]); // but items exist
+    mockGetItems.mockResolvedValue([item]); // but items exist
 
     const result = await ragQuery("some obscure specific query");
 

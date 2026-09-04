@@ -8,7 +8,7 @@ import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { getToolRegistry } from "./tool-registry";
 import { registerAllTools } from "./register-tools";
-import { insertApproval } from "@/lib/db";
+import { insertApproval } from "@/lib/database";
 import { filterPII } from "@/lib/pii-filter";
 
 // Caps runaway loops where the LLM keeps calling tools without converging.

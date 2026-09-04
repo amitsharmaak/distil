@@ -1,4 +1,4 @@
-import { getResearchReport } from "@/lib/db";
+import { getResearchReport } from "@/lib/database";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -48,7 +48,7 @@ export async function GET(_req: Request, context: RouteContext) {
             JSON.stringify({
               status: current.status,
               report: current.status === "completed" ? current.report : undefined,
-            }),
+            })
           );
           controller.close();
           return;

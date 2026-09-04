@@ -19,7 +19,7 @@ import {
   researchSynthesizePrompt,
   researchGapsPrompt,
 } from "@/lib/prompts/research";
-import { insertResearchReport, updateResearchReport, getItemById } from "@/lib/db";
+import { insertResearchReport, updateResearchReport, getItemById } from "@/lib/database";
 
 /** Progress payload stored in research_reports.progress as JSON. */
 type ProgressPayload =

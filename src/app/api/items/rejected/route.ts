@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getRejectedItems } from "@/lib/db";
+import { getRejectedItems } from "@/lib/database";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,9 +27,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items, total });
   } catch (error) {
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

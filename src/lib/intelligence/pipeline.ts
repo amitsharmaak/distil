@@ -19,7 +19,7 @@ import {
   updateItemProcessingStatus,
   updateItemPriorityScore,
   updateRawContentItemId,
-} from "../db";
+} from "../database";
 import type { ContentItem, SourceType } from "../types";
 import { generateSummary } from "../ai/summarize";
 import { embedItem } from "../ai/embeddings";

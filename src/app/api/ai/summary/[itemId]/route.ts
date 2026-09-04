@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAISummary, getAISummaries } from "@/lib/db";
+import { getAISummary, getAISummaries } from "@/lib/database";
 
 /** GET /api/ai/summary/[itemId] — Get cached AI summary for an item. */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ itemId: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = await params;
   const type = req.nextUrl.searchParams.get("type") as "brief" | "detailed" | null;
 

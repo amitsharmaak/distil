@@ -374,7 +374,7 @@ class PostgresResearch implements ResearchRepository {
     if (!old) return undefined;
     const r = await this.sql<
       Row[]
-    >`UPDATE research_reports SET report=${p.report ?? old.report},sources=${p.sources ?? old.sources},status=${p.status ?? old.status},completed_at=${p.completedAt ?? old.completedAt ?? null},progress=${p.progress ?? old.progress ?? null} WHERE id=${id} RETURNING *`;
+    >`UPDATE research_reports SET report=${p.report ?? old.report},sources=${p.sources ?? old.sources},status=${p.status ?? old.status},completed_at=${p.completedAt ?? old.completedAt ?? null},progress=${p.progress !== undefined ? p.progress : (old.progress ?? null)} WHERE id=${id} RETURNING *`;
     return this.report(r[0]);
   }
   async listReports(limit = 20) {

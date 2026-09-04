@@ -7,18 +7,10 @@
  */
 
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Play,
-  Headphones,
-  Mail,
-  Hash,
-  Globe,
-  Link as LinkIcon,
-} from "lucide-react";
+import { ArrowLeft, Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getItemById, getItems, getFeedback, getAISummaries } from "@/lib/db";
+import { getItemById, getItems, getFeedback, getAISummaries } from "@/lib/database";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
 import { priorityColors } from "@/lib/constants";
@@ -46,7 +38,6 @@ const sourceLabels: Record<SourceType, string> = {
   publisher: "Publisher",
 };
 
-
 /* ── Helpers ── */
 
 /**
@@ -54,11 +45,7 @@ const sourceLabels: Record<SourceType, string> = {
  * Falls back to the first sentence of the summary when the title is missing
  * or is just a raw URL.
  */
-function getDisplayTitle(
-  title: string,
-  summary: string,
-  maxLen = 100,
-): string {
+function getDisplayTitle(title: string, summary: string, maxLen = 100): string {
   const isUrl = /^https?:\/\//.test(title);
   let text = !isUrl && title ? title : "";
 
@@ -72,10 +59,7 @@ function getDisplayTitle(
 
   const truncated = text.slice(0, maxLen);
   const lastSpace = truncated.lastIndexOf(" ");
-  return (
-    (lastSpace > maxLen * 0.6 ? truncated.slice(0, lastSpace) : truncated) +
-    "\u2026"
-  );
+  return (lastSpace > maxLen * 0.6 ? truncated.slice(0, lastSpace) : truncated) + "\u2026";
 }
 
 /** Tokenise tweet text into clickable @mentions, #hashtags, and URLs. */
@@ -102,7 +86,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           className={`${linkClass} break-all`}
         >
           {display}
-        </a>,
+        </a>
       );
     } else if (token.startsWith("@")) {
       nodes.push(
@@ -114,7 +98,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           className={linkClass}
         >
           {token}
-        </a>,
+        </a>
       );
     } else {
       nodes.push(
@@ -126,7 +110,7 @@ function renderTweetText(text: string): React.ReactNode[] {
           className={linkClass}
         >
           {token}
-        </a>,
+        </a>
       );
     }
     lastIndex = start + token.length;
@@ -154,10 +138,7 @@ export default async function ItemDetailPage({
     return (
       <div className="py-16 text-center">
         <h2 className="font-serif text-lg font-semibold">Item not found</h2>
-        <Link
-          href="/feed"
-          className="mt-2 text-sm text-muted-foreground hover:underline"
-        >
+        <Link href="/feed" className="mt-2 text-sm text-muted-foreground hover:underline">
           Back to feed
         </Link>
       </div>
@@ -167,9 +148,13 @@ export default async function ItemDetailPage({
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
-  const isXArticle = baseStrategy.detail.showTweetRenderer && !!item.fullContent && item.fullContent.length > 200;
+  const isXArticle =
+    baseStrategy.detail.showTweetRenderer && !!item.fullContent && item.fullContent.length > 200;
   const strategy = isXArticle
-    ? { ...baseStrategy, detail: { ...baseStrategy.detail, showTweetRenderer: false, showAISummary: true } }
+    ? {
+        ...baseStrategy,
+        detail: { ...baseStrategy.detail, showTweetRenderer: false, showAISummary: true },
+      }
     : baseStrategy;
   const [aiSummaries, existingFeedback, allItems] = await Promise.all([
     getAISummaries(item.id),
@@ -178,13 +163,10 @@ export default async function ItemDetailPage({
   ]);
 
   const navItems =
-    filter === "all"
-      ? allItems
-      : allItems.filter((i) => !i.isRead || i.id === item.id);
+    filter === "all" ? allItems : allItems.filter((i) => !i.isRead || i.id === item.id);
   const currentIndex = navItems.findIndex((i) => i.id === item.id);
   const prevItem = currentIndex > 0 ? navItems[currentIndex - 1] : null;
-  const nextItem =
-    currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
+  const nextItem = currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
 
   const displayTitle = getDisplayTitle(item.title, item.summary);
   const formattedDate = new Date(item.createdAt).toLocaleDateString("en-US", {
@@ -289,11 +271,7 @@ export default async function ItemDetailPage({
         {/* Video embed (when applicable) */}
         {strategy.detail.showEmbedPlayer && (
           <div className="mb-6">
-            <VideoEmbed
-              url={item.url}
-              contentType={item.contentType}
-              duration={item.duration}
-            />
+            <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
           </div>
         )}
 
@@ -301,8 +279,11 @@ export default async function ItemDetailPage({
           /* Tweet — rendered directly in reader typography, with inline video if present */
           <div className="space-y-5">
             {(() => {
-              const twitterVideo = (item.detectedMedia as Array<{ type: string; platform?: string; embedUrl?: string }> | undefined)
-                ?.find((m) => m.type === "video" && m.platform === "twitter");
+              const twitterVideo = (
+                item.detectedMedia as
+                  | Array<{ type: string; platform?: string; embedUrl?: string }>
+                  | undefined
+              )?.find((m) => m.type === "video" && m.platform === "twitter");
               return twitterVideo?.embedUrl ? (
                 <video
                   src={twitterVideo.embedUrl}
@@ -336,8 +317,7 @@ export default async function ItemDetailPage({
               initialDetailedSummary={aiSummaries.detailed ?? null}
             />
           </LazyArticleExtract>
-        ) : item.contentType === "podcast" &&
-          !strategy.detail.showEmbedPlayer ? (
+        ) : item.contentType === "podcast" && !strategy.detail.showEmbedPlayer ? (
           /* Podcast placeholder */
           <Card>
             <CardContent className="flex flex-col items-center justify-center p-12">
@@ -345,9 +325,7 @@ export default async function ItemDetailPage({
                 <Headphones className="h-8 w-8 text-primary" />
               </div>
               <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
-              {item.duration && (
-                <p className="text-xs text-muted-foreground">{item.duration}</p>
-              )}
+              {item.duration && <p className="text-xs text-muted-foreground">{item.duration}</p>}
             </CardContent>
           </Card>
         ) : null}

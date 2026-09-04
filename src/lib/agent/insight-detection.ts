@@ -7,7 +7,7 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItemById, getRecentEmbeddings, insertNotification } from "@/lib/db";
+import { getItemById, getRecentEmbeddings, insertNotification } from "@/lib/database";
 import { generateEmbedding, cosineSimilarity } from "@/lib/ai/embeddings";
 import { aiLogger } from "@/lib/logger";
 

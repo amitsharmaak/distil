@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPendingResearchSuggestions } from "@/lib/db";
+import { getPendingResearchSuggestions } from "@/lib/database";
 
 /** GET /api/ai/research/suggestions — Pending topic suggestions from proactive scan. */
 export async function GET() {

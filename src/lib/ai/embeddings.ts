@@ -6,7 +6,7 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "@/lib/config";
-import { getRecentEmbeddings, upsertItemEmbedding } from "@/lib/db";
+import { getRecentEmbeddings, upsertItemEmbedding } from "@/lib/database";
 
 const OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
 const GEMINI_EMBEDDING_MODEL = "text-embedding-004";

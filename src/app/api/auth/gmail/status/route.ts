@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getConnectedEmail } from "@/lib/connectors/gmail";
-import { getOAuthToken } from "@/lib/db";
+import { getOAuthToken } from "@/lib/database";
 
 export interface GmailStatusResponse {
   connected: boolean;
@@ -16,10 +16,7 @@ export interface GmailStatusResponse {
  * to decide whether to show the "Connect" or "Sync Now" button.
  */
 export async function GET(): Promise<NextResponse> {
-  const [email, token] = await Promise.all([
-    getConnectedEmail(),
-    getOAuthToken("gmail"),
-  ]);
+  const [email, token] = await Promise.all([getConnectedEmail(), getOAuthToken("gmail")]);
 
   const response: GmailStatusResponse = {
     connected: email !== null,

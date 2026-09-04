@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import { getPendingApprovals, resolveApproval } from "@/lib/db";
+import { getPendingApprovals, resolveApproval } from "@/lib/database";
 
 export async function GET() {
   try {
@@ -13,10 +13,7 @@ export async function GET() {
     return NextResponse.json({ approvals });
   } catch (error) {
     apiLogger.error({ err: error }, "Approvals GET error");
-    return NextResponse.json(
-      { error: "Failed to fetch approvals" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch approvals" }, { status: 500 });
   }
 }
 
@@ -31,14 +28,14 @@ export async function POST(request: NextRequest) {
     if (!approvalId || !decision) {
       return NextResponse.json(
         { error: "approvalId and decision (approved/rejected) are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (decision !== "approved" && decision !== "rejected") {
       return NextResponse.json(
         { error: "decision must be 'approved' or 'rejected'" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -52,9 +49,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, approvalId, decision });
   } catch (error) {
     apiLogger.error({ err: error }, "Approvals POST error");
-    return NextResponse.json(
-      { error: "Failed to process approval" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to process approval" }, { status: 500 });
   }
 }

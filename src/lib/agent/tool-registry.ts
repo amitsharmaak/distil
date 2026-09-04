@@ -5,7 +5,7 @@
 
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
-import { insertAgentAction } from "@/lib/db";
+import { insertAgentAction } from "@/lib/database";
 
 export type ToolCategory = "READ" | "WRITE-LOW" | "WRITE-MED" | "WRITE-HIGH" | "EXTERNAL";
 

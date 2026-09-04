@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { getItems, updateItem, db } from "@/lib/db";
+import { deleteAISummaries, getItems, updateItem } from "@/lib/database";
 import { fetchOG } from "@/lib/og";
 import { apiLogger } from "@/lib/logger";
 
@@ -41,7 +41,7 @@ export async function POST() {
       }
 
       // Clear any stale AI summary so the tweet renderer shows raw text
-      db.prepare("DELETE FROM ai_summaries WHERE item_id = ?").run(tweet.id);
+      await deleteAISummaries(tweet.id);
 
       updated++;
     } catch (err) {

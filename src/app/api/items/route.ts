@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { getItems, getItemByNormalizedUrl } from "@/lib/db";
+import { getItems, getItemByNormalizedUrl } from "@/lib/database";
 import { hybridSearch } from "@/lib/ai/search";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       const { query, ...otherFilters } = filters;
       items = await hybridSearch(query!, otherFilters);
     } else {
-      items = getItems(filters);
+      items = await getItems(filters);
     }
 
     return NextResponse.json({ items, total: items.length }, { headers: CORS_HEADERS });
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     // ── Dedup check (sync, cheap) ────────────────────────────────────────────
 
-    const existing = getItemByNormalizedUrl(normalizedUrl);
+    const existing = await getItemByNormalizedUrl(normalizedUrl);
     if (existing) {
       return NextResponse.json(
         { item: existing, status: "duplicate" },

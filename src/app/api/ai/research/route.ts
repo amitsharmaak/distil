@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { startResearch } from "@/lib/ai/research";
-import { getResearchReport } from "@/lib/db";
+import { getResearchReport } from "@/lib/database";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,9 +37,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
     apiLogger.error({ err: error }, "Research error");
-    return NextResponse.json(
-      { error: "Failed to start research" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to start research" }, { status: 500 });
   }
 }

@@ -12,7 +12,7 @@ import {
   getNotifications,
   getUnreadNotificationCount,
   markAllNotificationsRead,
-} from "@/lib/db";
+} from "@/lib/database";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -35,7 +35,7 @@ export async function GET() {
     apiLogger.error({ err: error }, "GET /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
@@ -48,7 +48,7 @@ export async function POST() {
     apiLogger.error({ err: error }, "POST /api/notifications failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }

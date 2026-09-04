@@ -7,7 +7,7 @@
  * SERVER-SIDE ONLY.
  */
 
-import { dequeueJob, completeJob, enqueueJob } from "@/lib/db";
+import { dequeueJob, completeJob, enqueueJob } from "@/lib/database";
 import { aiLogger } from "@/lib/logger";
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;

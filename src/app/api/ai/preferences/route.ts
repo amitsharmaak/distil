@@ -4,10 +4,7 @@ import { getPreferences, getAgentConfig, saveAgentConfig } from "@/lib/ai/prefer
 
 /** GET /api/ai/preferences — Get current user preferences and agent config. */
 export async function GET() {
-  const [preferences, configRaw] = await Promise.all([
-    getPreferences(),
-    getAgentConfig(),
-  ]);
+  const [preferences, configRaw] = await Promise.all([getPreferences(), getAgentConfig()]);
   const agentConfig = configRaw ? JSON.parse(configRaw) : null;
 
   return NextResponse.json({ preferences, config: agentConfig });
@@ -21,9 +18,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ config: body });
   } catch (error) {
     apiLogger.error({ err: error }, "Preferences update error");
-    return NextResponse.json(
-      { error: "Failed to update preferences" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to update preferences" }, { status: 500 });
   }
 }

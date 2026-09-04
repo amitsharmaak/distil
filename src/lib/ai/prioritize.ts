@@ -12,7 +12,7 @@ import { generateText } from "./router";
 import { aiLogger } from "@/lib/logger";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { getPreferences } from "./preferences";
-import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
+import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/database";
 import type { ContentItem, Priority } from "@/lib/types";
 import type { AgentConfig, ScoredItem, UserPreferenceProfile } from "./types";
 

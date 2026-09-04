@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { markNotificationRead } from "@/lib/db";
+import { markNotificationRead } from "@/lib/database";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -19,10 +19,7 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function PATCH(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     await markNotificationRead(id);
@@ -31,7 +28,7 @@ export async function PATCH(
     apiLogger.error({ err: error }, "PATCH /api/notifications/[id] failed");
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS },
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }

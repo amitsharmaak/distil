@@ -3,7 +3,7 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItemById } from "@/lib/db";
+import { getItemById } from "@/lib/database";
 import { generateSummary } from "@/lib/ai/summarize";
 import { embedItem } from "@/lib/ai/embeddings";
 import { reprioritize } from "@/lib/ai/prioritize";

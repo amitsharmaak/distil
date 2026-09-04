@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { generateSummary } from "@/lib/ai/summarize";
-import { getItemById } from "@/lib/db";
+import { getItemById } from "@/lib/database";
 import { isTwitterUrl } from "@/lib/utils";
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (isTwitterUrl(item.url)) {
       return NextResponse.json(
         { error: "AI summaries are not available for Twitter/X posts" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     apiLogger.error({ err: error }, "Summarize error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate summary" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
