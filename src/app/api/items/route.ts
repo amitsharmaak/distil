@@ -18,6 +18,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
 import { getItems, getItemByNormalizedUrl } from "@/lib/database";
+import { verifyLegacyCaptureToken } from "@/lib/auth";
+import { readAuthEnvironment } from "@/lib/auth/environment";
+import { composeCaptureRoutes } from "@/lib/capture/composition";
+import { createCaptureCollectionHandlers } from "@/lib/capture/http";
+import { createCaptureSchema } from "@/lib/capture/schema";
+import { config } from "@/lib/config";
 import { hybridSearch } from "@/lib/ai/search";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
 import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
@@ -50,10 +56,7 @@ async function ingestInBackground(params: {
     });
     rawBody = await response.text();
   } catch (fetchError) {
-    apiLogger.warn(
-      { err: fetchError, url: params.trimmedUrl },
-      "background ingest fetch failed"
-    );
+    apiLogger.warn({ err: fetchError, url: params.trimmedUrl }, "background ingest fetch failed");
     return;
   }
 
@@ -195,6 +198,42 @@ export async function POST(request: NextRequest) {
         { error: "Missing required field: url" },
         { status: 400, headers: CORS_HEADERS }
       );
+    }
+
+    // Hosted requests must use the durable capture state machine. The local
+    // SQLite compatibility path below is retained only until migration.
+    if (config.databaseUrl || process.env.VERCEL === "1") {
+      const composition = await composeCaptureRoutes();
+      const captureBody = {
+        url,
+        title: typeof body.title === "string" ? body.title : undefined,
+        notes: typeof body.notes === "string" ? body.notes : undefined,
+        topics: Array.isArray(body.topics) ? body.topics : undefined,
+        priority: body.priority,
+        source: body.sourceType === "browser-extension" ? "browser-extension" : "web",
+      };
+      const capture = createCaptureSchema.safeParse(captureBody);
+      if (!capture.success) {
+        return NextResponse.json(
+          { error: { code: "INVALID_REQUEST", message: "The capture request is invalid" } },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      if (verifyLegacyCaptureToken(request, readAuthEnvironment().legacyCaptureToken)) {
+        const result = await composition.service.create(capture.data);
+        return NextResponse.json(result, {
+          status: result.duplicate ? 200 : 202,
+          headers: CORS_HEADERS,
+        });
+      }
+
+      const durableRequest = new Request(request.url, {
+        method: "POST",
+        headers: request.headers,
+        body: JSON.stringify(capture.data),
+      });
+      return createCaptureCollectionHandlers(composition).POST(durableRequest);
     }
 
     const trimmedUrl = sanitizeUrl(url);
