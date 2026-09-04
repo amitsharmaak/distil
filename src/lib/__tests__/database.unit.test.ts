@@ -315,6 +315,17 @@ describe("database facade using PostgreSQL", () => {
     });
     await expect(db.getOAuthToken("missing")).resolves.toBeUndefined();
     await expect(db.getOAuthTokensByProvider("slack")).resolves.toHaveLength(2);
+    g.oauthTokens.find.mockResolvedValue({
+      ...oauth,
+      refreshToken: undefined,
+      expiryDate: undefined,
+      email: undefined,
+    });
+    await expect(db.getOAuthToken("slack", "team-2")).resolves.toMatchObject({
+      refresh_token: null,
+      expiry_date: null,
+      email: null,
+    });
     await db.upsertOAuthToken("slack", "team-1", {
       access_token: "new-secret",
       refresh_token: null,
@@ -330,6 +341,19 @@ describe("database facade using PostgreSQL", () => {
         expiryDate: undefined,
         email: undefined,
         updatedAt: expect.any(String),
+      })
+    );
+    await db.upsertOAuthToken("slack", "team-2", {
+      access_token: "new-secret",
+      refresh_token: "refresh-2",
+      expiry_date: 456,
+      email: "two@example.com",
+    });
+    expect(g.oauthTokens.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        refreshToken: "refresh-2",
+        expiryDate: 456,
+        email: "two@example.com",
       })
     );
     await db.deleteOAuthToken("slack");
@@ -422,6 +446,17 @@ describe("database facade using PostgreSQL", () => {
     });
     await expect(db.getResearchReports()).resolves.toHaveLength(1);
     expect(g.research.listReports).toHaveBeenCalledWith(20);
+    g.research.findReport.mockResolvedValue({
+      ...report,
+      itemId: "item-1",
+      completedAt: "2026-01-02T00:00:00.000Z",
+      progress: "complete",
+    });
+    await expect(db.getResearchReport("complete")).resolves.toMatchObject({
+      item_id: "item-1",
+      completed_at: "2026-01-02T00:00:00.000Z",
+      progress: "complete",
+    });
 
     const suggestion = {
       id: "suggestion-1",
@@ -443,6 +478,10 @@ describe("database facade using PostgreSQL", () => {
       topic_key: "typescript",
     });
     await expect(db.getResearchSuggestionById("missing")).resolves.toBeUndefined();
+    g.research.findSuggestion.mockResolvedValue({ ...suggestion, researchReportId: "report-1" });
+    await expect(db.getResearchSuggestionById("started")).resolves.toMatchObject({
+      research_report_id: "report-1",
+    });
     await db.replacePendingResearchSuggestions([
       {
         id: "suggestion-1",
