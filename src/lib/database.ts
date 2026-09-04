@@ -1,6 +1,7 @@
 import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem, Priority } from "@/lib/types";
 import type * as Legacy from "@/lib/db";
+import { config } from "@/lib/config";
 
 type LegacyModule = typeof import("@/lib/db");
 
@@ -8,7 +9,7 @@ let repositoriesPromise: Promise<RepositorySet> | undefined;
 let legacyPromise: Promise<LegacyModule> | undefined;
 
 function usesPostgres(): boolean {
-  return Boolean(process.env.DATABASE_URL);
+  return Boolean(config.databaseUrl);
 }
 
 async function repositories(): Promise<RepositorySet> {
@@ -17,10 +18,18 @@ async function repositories(): Promise<RepositorySet> {
       import("@/lib/postgres/client"),
       import("@/lib/postgres/repositories"),
     ]).then(([client, adapters]) =>
-      adapters.createPostgresRepositories(client.createPostgresClient())
+      adapters.createPostgresRepositories(client.createPostgresClient({ url: config.databaseUrl }))
     );
   }
   return repositoriesPromise;
+}
+
+/** Repository composition root for new Phase 1 services. */
+export async function getRepositorySet(): Promise<RepositorySet> {
+  if (!usesPostgres()) {
+    throw new Error("DATABASE_URL is required for Phase 1 repositories");
+  }
+  return repositories();
 }
 
 async function legacy(): Promise<LegacyModule> {
