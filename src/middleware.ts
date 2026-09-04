@@ -10,17 +10,21 @@ import { checkAuth } from "@/lib/middleware/auth";
 import { checkRateLimit } from "@/lib/middleware/rate-limit";
 import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isApi = pathname.startsWith("/api/");
+  const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
+
   // Handle CORS preflight
-  const preflightResponse = handlePreflight(request);
+  const preflightResponse = isApi ? handlePreflight(request) : null;
   if (preflightResponse) return preflightResponse;
 
   // Auth check
-  const authError = checkAuth(request);
+  const authError = await checkAuth(request);
   if (authError) return authError;
 
   // Rate limiting
-  const rateLimitError = checkRateLimit(request);
+  const rateLimitError = isApi && !isInfrastructure ? checkRateLimit(request) : null;
   if (rateLimitError) return rateLimitError;
 
   // Add trace ID header for downstream use (Edge runtime uses Web Crypto API)
@@ -36,9 +40,9 @@ export function middleware(request: NextRequest) {
   response.headers.set("x-trace-id", traceId);
 
   // Apply CORS headers
-  return applyCors(request, response);
+  return isApi ? applyCors(request, response) : response;
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/).*)"],
 };

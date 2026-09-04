@@ -1,44 +1,93 @@
 /**
  * Authentication middleware for API routes.
  *
- * Single-user auth via API token:
- * - If DISTIL_API_TOKEN is set in env, all /api/* requests must include
- *   Authorization: Bearer <token>
- * - If DISTIL_API_TOKEN is not set, all requests are allowed (dev mode).
+ * Single-user authentication for private pages and legacy APIs. Routes with
+ * specialized authentication (login, capture tokens, queue callbacks) enforce
+ * their own policies and are explicitly passed through here.
  *
  * SERVER-SIDE ONLY.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { readAuthEnvironment } from "@/lib/auth/environment";
+import { readSessionCookie } from "@/lib/auth/request";
+import { verifySessionToken } from "@/lib/auth/session";
 
-const API_TOKEN = process.env.DISTIL_API_TOKEN ?? "";
+const SELF_AUTHENTICATING_PATHS = [
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/session",
+  "/api/health",
+  "/api/queue/capture-requests",
+  "/api/v1/captures",
+  "/api/v1/capture-tokens",
+] as const;
 
 export function isAuthEnabled(): boolean {
-  return API_TOKEN.length > 0;
+  const environment = readAuthEnvironment();
+  return Boolean(environment.passwordHash && environment.sessionSecret);
 }
 
-/**
- * Checks the Authorization header against the configured API token.
- * Returns null if auth passes, or a 401 NextResponse if it fails.
- */
-export function checkAuth(request: NextRequest): NextResponse | null {
-  if (!isAuthEnabled()) return null;
+function hasSpecializedAuth(pathname: string): boolean {
+  return SELF_AUTHENTICATING_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+}
 
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) {
+async function legacyTokenMatches(request: NextRequest, expected?: string): Promise<boolean> {
+  if (!expected) return false;
+  const authorization = request.headers.get("authorization");
+  const provided = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : request.headers.get("x-api-key");
+  if (!provided) return false;
+
+  const encoder = new TextEncoder();
+  const [providedDigest, expectedDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const left = new Uint8Array(providedDigest);
+  const right = new Uint8Array(expectedDigest);
+  let difference = 0;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference === 0;
+}
+
+export async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
+  const pathname = request.nextUrl.pathname;
+  if (pathname === "/login" || hasSpecializedAuth(pathname)) return null;
+
+  const environment = readAuthEnvironment();
+  if (!isAuthEnabled()) {
+    if (process.env.NODE_ENV !== "production") return null;
     return NextResponse.json(
-      { error: "Missing Authorization header" },
-      { status: 401 },
+      { error: { code: "UNAUTHORIZED", message: "Authentication is not configured" } },
+      { status: 503 }
     );
   }
 
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  if (token !== API_TOKEN) {
+  if (
+    pathname === "/api/items" &&
+    (await legacyTokenMatches(request, environment.legacyCaptureToken))
+  ) {
+    return null;
+  }
+
+  if (await verifySessionToken(readSessionCookie(request), environment.sessionSecret)) {
+    return null;
+  }
+
+  if (pathname.startsWith("/api/")) {
     return NextResponse.json(
-      { error: "Invalid API token" },
-      { status: 401 },
+      { error: { code: "UNAUTHORIZED", message: "Authentication is required" } },
+      { status: 401 }
     );
   }
 
-  return null;
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+  return NextResponse.redirect(loginUrl);
 }
