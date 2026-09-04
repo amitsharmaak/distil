@@ -9,10 +9,12 @@ import type {
   FeedbackRepository,
   ItemFilters,
   ItemRepository,
+  JobQueueRepository,
   NewCaptureRecord,
   NotificationRepository,
   OAuthTokenRecord,
   OAuthTokenRepository,
+  PublisherQueueRepository,
   RateLimitRepository,
   RawContentRepository,
   RepositorySet,
@@ -499,6 +501,143 @@ class PostgresRawContent implements RawContentRepository {
   }
 }
 
+class PostgresPublisherQueue implements PublisherQueueRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async enqueue(publisherId: string, url: string) {
+    await this.sql`
+      INSERT INTO publisher_queue (publisher_id, url, discovered_at)
+      VALUES (${publisherId}, ${url}, now())
+      ON CONFLICT (publisher_id, url) DO NOTHING
+    `;
+  }
+
+  async listPending(publisherId: string, limit = 20) {
+    const rows = await this.sql<Row[]>`
+      SELECT * FROM publisher_queue
+      WHERE publisher_id=${publisherId} AND status='pending'
+      ORDER BY discovered_at ASC
+      LIMIT ${limit}
+    `;
+    return rows.map((row) => ({
+      publisherId: String(row.publisher_id),
+      url: String(row.url),
+      discoveredAt: iso(row.discovered_at),
+      status: String(row.status) as "pending" | "fetched" | "failed",
+      attempts: Number(row.attempts),
+      lastError: row.last_error == null ? undefined : String(row.last_error),
+    }));
+  }
+
+  async markFetched(publisherId: string, url: string) {
+    await this.sql`
+      UPDATE publisher_queue SET status='fetched'
+      WHERE publisher_id=${publisherId} AND url=${url}
+    `;
+  }
+
+  async markFailed(publisherId: string, url: string, error: string, maxAttempts = 3) {
+    await this.sql`
+      UPDATE publisher_queue
+      SET attempts=attempts+1,
+          last_error=${error},
+          status=CASE WHEN attempts+1 >= ${maxAttempts} THEN 'failed' ELSE 'pending' END
+      WHERE publisher_id=${publisherId} AND url=${url}
+    `;
+  }
+
+  async getStats(publisherId: string) {
+    const rows = await this.sql<{ status: string; count: number }[]>`
+      SELECT status, count(*)::int AS count FROM publisher_queue
+      WHERE publisher_id=${publisherId}
+      GROUP BY status
+    `;
+    const stats = { pending: 0, fetched: 0, failed: 0 };
+    for (const row of rows) {
+      if (row.status === "pending") stats.pending = row.count;
+      else if (row.status === "fetched") stats.fetched = row.count;
+      else if (row.status === "failed") stats.failed = row.count;
+    }
+    return stats;
+  }
+}
+
+class PostgresJobs implements JobQueueRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async enqueue(input: Parameters<JobQueueRepository["enqueue"]>[0]) {
+    let payload: unknown = {};
+    try {
+      payload = input.payload ? JSON.parse(input.payload) : {};
+    } catch {
+      payload = input.payload ?? {};
+    }
+    await this.sql`
+      INSERT INTO job_queue
+        (id, job_type, payload, priority, max_retries, run_after, status, created_at, updated_at)
+      VALUES
+        (${input.id}, ${input.jobType}, ${this.sql.json(payload as never)},
+         ${input.priority ?? 0}, ${input.maxRetries ?? 3}, ${input.runAfter ?? null},
+         'pending', now(), now())
+    `;
+  }
+
+  async dequeue(workerId: string) {
+    return this.sql.begin(async (tx) => {
+      const rows = await tx<Row[]>`
+        SELECT * FROM job_queue
+        WHERE status='pending'
+          AND (run_after IS NULL OR run_after <= now())
+          AND (locked_at IS NULL OR locked_at < now() - interval '5 minutes')
+        ORDER BY priority DESC, created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `;
+      const job = rows[0];
+      if (!job) return undefined;
+      const updated = await tx<Row[]>`
+        UPDATE job_queue
+        SET locked_at=now(), locked_by=${workerId}, status='running', updated_at=now()
+        WHERE id=${String(job.id)}
+        RETURNING *
+      `;
+      return updated[0];
+    });
+  }
+
+  async complete(id: string, error?: string) {
+    if (!error) {
+      await this.sql`
+        UPDATE job_queue SET status='completed', completed_at=now(), updated_at=now()
+        WHERE id=${id}
+      `;
+      return;
+    }
+    await this.sql`
+      UPDATE job_queue
+      SET attempts=attempts+1,
+          last_error=${error},
+          status=CASE WHEN attempts+1 < max_retries THEN 'pending' ELSE 'failed' END,
+          locked_at=NULL,
+          locked_by=NULL,
+          completed_at=CASE WHEN attempts+1 < max_retries THEN NULL ELSE now() END,
+          updated_at=now()
+      WHERE id=${id}
+    `;
+  }
+
+  async getStats() {
+    const rows = await this.sql<{ status: string; count: number }[]>`
+      SELECT status, count(*)::int AS count FROM job_queue GROUP BY status
+    `;
+    const stats = { pending: 0, running: 0, completed: 0, failed: 0 };
+    for (const row of rows) {
+      if (row.status in stats) stats[row.status as keyof typeof stats] = row.count;
+    }
+    return stats;
+  }
+}
+
 class PostgresAgent implements AgentRepository {
   constructor(private readonly sql: Sql) {}
   private now() {
@@ -617,6 +756,8 @@ export function createPostgresRepositories(sql: Sql): RepositorySet {
     notifications: new PostgresNotifications(sql),
     embeddings: new PostgresEmbeddings(sql),
     rawContent: new PostgresRawContent(sql),
+    publisherQueue: new PostgresPublisherQueue(sql),
+    jobs: new PostgresJobs(sql),
     agent: new PostgresAgent(sql),
   };
 }
