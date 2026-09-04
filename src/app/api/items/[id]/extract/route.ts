@@ -23,7 +23,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(_request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const item = getItemById(id);
+    const item = await getItemById(id);
 
     if (!item) {
       return NextResponse.json(
@@ -57,7 +57,7 @@ export async function POST(_request: Request, context: RouteContext) {
     if (og?.image && !item.thumbnailUrl) patch.thumbnailUrl = og.image;
     if (og?.siteName && !item.publication) patch.publication = og.siteName;
 
-    const updated = updateItem(id, patch);
+    const updated = await updateItem(id, patch);
     return NextResponse.json({ item: updated, extracted: true });
   } catch (err) {
     console.error("POST /api/items/[id]/extract error:", err);

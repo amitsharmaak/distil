@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ itemId: string }> },
 ) {
   const { itemId } = await params;
-  const feedback = getFeedback(itemId);
+  const feedback = await getFeedback(itemId);
 
   return NextResponse.json({ feedback: feedback ?? null });
 }

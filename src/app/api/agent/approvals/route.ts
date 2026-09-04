@@ -9,7 +9,7 @@ import { getPendingApprovals, resolveApproval } from "@/lib/db";
 
 export async function GET() {
   try {
-    const approvals = getPendingApprovals();
+    const approvals = await getPendingApprovals();
     return NextResponse.json({ approvals });
   } catch (error) {
     apiLogger.error({ err: error }, "Approvals GET error");
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    resolveApproval(approvalId, decision);
+    await resolveApproval(approvalId, decision);
 
     // If approved, execute the tool
     // The approval payload contains the tool call details

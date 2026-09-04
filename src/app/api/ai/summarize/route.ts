@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "itemId is required" }, { status: 400 });
     }
 
-    const item = getItemById(itemId);
+    const item = await getItemById(itemId);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }

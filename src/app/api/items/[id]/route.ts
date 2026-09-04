@@ -76,7 +76,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // updateItem merges the patch onto the existing item, so only provided
     // fields change. Returns undefined if the item was not found.
 
-    const updated = updateItem(id, patch);
+    const updated = await updateItem(id, patch);
 
     if (!updated) {
       return NextResponse.json(
@@ -107,7 +107,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
 
     // deleteItem returns false if no row matched the given ID.
-    const deleted = deleteItem(id);
+    const deleted = await deleteItem(id);
 
     if (!deleted) {
       return NextResponse.json(

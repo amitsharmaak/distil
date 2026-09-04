@@ -15,9 +15,11 @@ export interface GmailStatusResponse {
  * Returns the current Gmail connection status. Used by the Sources page
  * to decide whether to show the "Connect" or "Sync Now" button.
  */
-export function GET(): NextResponse {
-  const email = getConnectedEmail();
-  const token = getOAuthToken("gmail");
+export async function GET(): Promise<NextResponse> {
+  const [email, token] = await Promise.all([
+    getConnectedEmail(),
+    getOAuthToken("gmail"),
+  ]);
 
   const response: GmailStatusResponse = {
     connected: email !== null,

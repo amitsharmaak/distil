@@ -12,9 +12,9 @@ import { getUserSetting, setUserSetting } from "@/lib/db";
 
 const DEFAULT_EMAIL_CATEGORIES = ["newsletter", "digest", "announcement"];
 
-export function GET() {
+export async function GET() {
   try {
-    const raw = getUserSetting("email_intelligence_categories");
+    const raw = await getUserSetting("email_intelligence_categories");
     const allowedCategories =
       raw === undefined
         ? DEFAULT_EMAIL_CATEGORIES
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    setUserSetting(
+    await setUserSetting(
       "email_intelligence_categories",
       JSON.stringify(body.allowedCategories),
     );

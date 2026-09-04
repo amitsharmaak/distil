@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "query is required" }, { status: 400 });
     }
 
-    const reportId = startResearch(query.trim(), itemId);
-    const report = getResearchReport(reportId);
+    const reportId = await startResearch(query.trim(), itemId);
+    const report = await getResearchReport(reportId);
 
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {

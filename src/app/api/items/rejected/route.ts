@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get("limit") ? Number(searchParams.get("limit")) : 50;
     const offset = searchParams.get("offset") ? Number(searchParams.get("offset")) : 0;
 
-    const { items, total } = getRejectedItems(limit, offset);
+    const { items, total } = await getRejectedItems(limit, offset);
 
     return NextResponse.json({ items, total });
   } catch (error) {

@@ -60,11 +60,11 @@ export async function POST(request: NextRequest) {
     let convId = conversationId;
     if (!convId) {
       convId = crypto.randomUUID();
-      insertChatConversation({ id: convId, title: message.slice(0, 100) });
+      await insertChatConversation({ id: convId, title: message.slice(0, 100) });
     }
 
     // Store user message
-    insertChatMessage({
+    await insertChatMessage({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "user",
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const result = await ragQuery(message);
 
     // Store assistant response
-    insertChatMessage({
+    await insertChatMessage({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "assistant",
@@ -104,11 +104,11 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get("conversationId");
 
     if (conversationId) {
-      const messages = getChatMessages(conversationId);
+      const messages = await getChatMessages(conversationId);
       return NextResponse.json({ messages });
     }
 
-    const conversations = getChatConversations();
+    const conversations = await getChatConversations();
     return NextResponse.json({ conversations });
   } catch (error) {
     apiLogger.error({ err: error }, "Chat GET endpoint error");

@@ -10,10 +10,10 @@ export async function GET(
   const type = req.nextUrl.searchParams.get("type") as "brief" | "detailed" | null;
 
   if (type) {
-    const summary = getAISummary(itemId, type);
+    const summary = await getAISummary(itemId, type);
     return NextResponse.json({ summary: summary ?? null });
   }
 
-  const summaries = getAISummaries(itemId);
+  const summaries = await getAISummaries(itemId);
   return NextResponse.json({ summaries });
 }

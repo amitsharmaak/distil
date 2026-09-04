@@ -16,7 +16,7 @@ export function OPTIONS() {
 
 export async function POST() {
   try {
-    if (!isSlackConfigured()) {
+    if (!(await isSlackConfigured())) {
       return NextResponse.json(
         { error: "Slack not connected" },
         { status: 400, headers: CORS_HEADERS },

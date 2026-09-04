@@ -48,7 +48,7 @@ jest.mock("@/lib/intelligence/pipeline", () => {
           topics?: string[];
         };
       }) => {
-        const existing = actualDb.getItemByNormalizedUrl(raw.url ?? "");
+        const existing = await actualDb.getItemByNormalizedUrl(raw.url ?? "");
         if (existing) return { status: "ready" as const };
 
         const meta = raw.metadata ?? {};
@@ -64,7 +64,7 @@ jest.mock("@/lib/intelligence/pipeline", () => {
           isRead: false,
           createdAt: new Date().toISOString(),
         };
-        actualDb.insertItem(item);
+        await actualDb.insertItem(item);
         return { status: "ready" as const };
       }
     ),
@@ -163,8 +163,8 @@ describe("GET /api/items", () => {
   });
 
   it("returns all items", async () => {
-    insertItem(makeItem({ id: "a" }));
-    insertItem(makeItem({ id: "b" }));
+    await insertItem(makeItem({ id: "a" }));
+    await insertItem(makeItem({ id: "b" }));
 
     const req = makeRequest("http://localhost:3000/api/items");
     const res = await GET(req);
@@ -175,8 +175,8 @@ describe("GET /api/items", () => {
   });
 
   it("filters by source query param", async () => {
-    insertItem(makeItem({ id: "g", sourceType: "gmail" }));
-    insertItem(makeItem({ id: "s", sourceType: "slack" }));
+    await insertItem(makeItem({ id: "g", sourceType: "gmail" }));
+    await insertItem(makeItem({ id: "s", sourceType: "slack" }));
 
     const req = makeRequest("http://localhost:3000/api/items?source=gmail");
     const res = await GET(req);
@@ -187,8 +187,8 @@ describe("GET /api/items", () => {
   });
 
   it("filters by type query param", async () => {
-    insertItem(makeItem({ id: "v", contentType: "video" }));
-    insertItem(makeItem({ id: "a", contentType: "article" }));
+    await insertItem(makeItem({ id: "v", contentType: "video" }));
+    await insertItem(makeItem({ id: "a", contentType: "article" }));
 
     const req = makeRequest("http://localhost:3000/api/items?type=video");
     const res = await GET(req);
@@ -199,8 +199,8 @@ describe("GET /api/items", () => {
   });
 
   it("filters unread items when unread=true", async () => {
-    insertItem(makeItem({ id: "u", isRead: false }));
-    insertItem(makeItem({ id: "r", isRead: true }));
+    await insertItem(makeItem({ id: "u", isRead: false }));
+    await insertItem(makeItem({ id: "r", isRead: true }));
 
     const req = makeRequest("http://localhost:3000/api/items?unread=true");
     const res = await GET(req);
@@ -218,8 +218,8 @@ describe("GET /api/items", () => {
   });
 
   it("excludes processing items by default (includeProcessing absent)", async () => {
-    insertItem(makeItem({ id: "ready1", url: "https://example.com/ready1" }));
-    insertItem(
+    await insertItem(makeItem({ id: "ready1", url: "https://example.com/ready1" }));
+    await insertItem(
       makeItem({ id: "proc1", url: "https://example.com/proc1", processingStatus: "processing" })
     );
 
@@ -232,8 +232,8 @@ describe("GET /api/items", () => {
   });
 
   it("includes processing items when includeProcessing=true", async () => {
-    insertItem(makeItem({ id: "ready2", url: "https://example.com/ready2" }));
-    insertItem(
+    await insertItem(makeItem({ id: "ready2", url: "https://example.com/ready2" }));
+    await insertItem(
       makeItem({ id: "proc2", url: "https://example.com/proc2", processingStatus: "processing" })
     );
 
@@ -252,8 +252,8 @@ describe("GET /api/items", () => {
 
 describe("GET /api/items — search", () => {
   it("?q=<term> returns only items whose title matches", async () => {
-    insertItem(makeItem({ id: "s1", title: "TypeScript tutorial for beginners" }));
-    insertItem(makeItem({ id: "s2", title: "Cooking recipes for dinner" }));
+    await insertItem(makeItem({ id: "s1", title: "TypeScript tutorial for beginners" }));
+    await insertItem(makeItem({ id: "s2", title: "Cooking recipes for dinner" }));
 
     const req = makeRequest("http://localhost:3000/api/items?q=TypeScript");
     const res = await GET(req);
@@ -265,8 +265,8 @@ describe("GET /api/items — search", () => {
   });
 
   it("?q= (empty string) returns all items without FTS filtering", async () => {
-    insertItem(makeItem({ id: "e1", title: "First item" }));
-    insertItem(makeItem({ id: "e2", title: "Second item" }));
+    await insertItem(makeItem({ id: "e1", title: "First item" }));
+    await insertItem(makeItem({ id: "e2", title: "Second item" }));
 
     const req = makeRequest("http://localhost:3000/api/items?q=");
     const res = await GET(req);
@@ -277,7 +277,7 @@ describe("GET /api/items — search", () => {
   });
 
   it("?q=<nomatch> returns empty items array and total: 0", async () => {
-    insertItem(makeItem({ id: "n1", title: "Completely unrelated content" }));
+    await insertItem(makeItem({ id: "n1", title: "Completely unrelated content" }));
 
     const req = makeRequest("http://localhost:3000/api/items?q=xyznonexistentterm");
     const res = await GET(req);
@@ -289,9 +289,9 @@ describe("GET /api/items — search", () => {
   });
 
   it("?q=<term>&source=<sourceType> applies both filters (intersection)", async () => {
-    insertItem(makeItem({ id: "i1", title: "JavaScript news", sourceType: "gmail" }));
-    insertItem(makeItem({ id: "i2", title: "JavaScript news", sourceType: "slack" }));
-    insertItem(makeItem({ id: "i3", title: "Python tutorial", sourceType: "gmail" }));
+    await insertItem(makeItem({ id: "i1", title: "JavaScript news", sourceType: "gmail" }));
+    await insertItem(makeItem({ id: "i2", title: "JavaScript news", sourceType: "slack" }));
+    await insertItem(makeItem({ id: "i3", title: "Python tutorial", sourceType: "gmail" }));
 
     const req = makeRequest("http://localhost:3000/api/items?q=JavaScript&source=gmail");
     const res = await GET(req);
@@ -330,7 +330,7 @@ describe("POST /api/items", () => {
 
     expect(res.status).toBe(202);
     await flushIngestions();
-    const item = getItemByNormalizedUrl("https://example.com/default-source");
+    const item = await getItemByNormalizedUrl("https://example.com/default-source");
     expect(item?.sourceType).toBe("manual");
   });
 
@@ -363,7 +363,7 @@ describe("POST /api/items", () => {
     expect(body.status).toBe("accepted");
 
     await flushIngestions();
-    const item = getItemByNormalizedUrl("https://example.com/create-test");
+    const item = await getItemByNormalizedUrl("https://example.com/create-test");
     expect(item).toBeDefined();
     expect(item?.sourceType).toBe("manual");
     expect(item?.priority).toBe("high");
@@ -371,7 +371,7 @@ describe("POST /api/items", () => {
   });
 
   it("returns 200 with the existing item when the URL is a duplicate", async () => {
-    insertItem(makeItem({ id: "dup-1", url: "https://example.com/dup" }));
+    await insertItem(makeItem({ id: "dup-1", url: "https://example.com/dup" }));
 
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
@@ -385,7 +385,7 @@ describe("POST /api/items", () => {
     expect(body.status).toBe("duplicate");
     expect(body.item.id).toBe("dup-1");
     // Should not have spawned a background ingestion.
-    expect(getItems({ includeProcessing: true })).toHaveLength(1);
+    expect(await getItems({ includeProcessing: true })).toHaveLength(1);
   });
 
   it("uses caller-provided title in metadata", async () => {
@@ -401,7 +401,7 @@ describe("POST /api/items", () => {
     await POST(req);
     await flushIngestions();
 
-    const item = getItemByNormalizedUrl("https://example.com/title-test");
+    const item = await getItemByNormalizedUrl("https://example.com/title-test");
     expect(item?.title).toBe("My Custom Title");
   });
 
@@ -418,7 +418,7 @@ describe("POST /api/items", () => {
     await POST(req);
     await flushIngestions();
 
-    const item = getItemByNormalizedUrl("https://example.com/notes-test");
+    const item = await getItemByNormalizedUrl("https://example.com/notes-test");
     expect(item?.summary).toBe("My personal notes about this page.");
   });
 
@@ -431,7 +431,7 @@ describe("POST /api/items", () => {
     await POST(req);
     await flushIngestions();
 
-    const item = getItemByNormalizedUrl("https://example.com/defaults-test");
+    const item = await getItemByNormalizedUrl("https://example.com/defaults-test");
     expect(item?.contentType).toBe("article");
     expect(item?.priority).toBe("medium");
   });

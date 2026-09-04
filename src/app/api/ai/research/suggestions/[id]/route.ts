@@ -9,7 +9,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const ok = dismissResearchSuggestion(id);
+    const ok = await dismissResearchSuggestion(id);
     if (!ok) {
       return NextResponse.json(
         { error: "Suggestion not found or not pending" },

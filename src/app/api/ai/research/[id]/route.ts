@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const report = getResearchReport(id);
+  const report = await getResearchReport(id);
 
   if (!report) {
     return NextResponse.json({ error: "Report not found" }, { status: 404 });

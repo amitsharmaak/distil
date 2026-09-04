@@ -3,7 +3,7 @@ import { getResearchReports } from "@/lib/db";
 
 /** GET /api/ai/research/list — List recent research reports. */
 export async function GET() {
-  const reports = getResearchReports(50);
+  const reports = await getResearchReports(50);
   return NextResponse.json({
     reports: reports.map((r) => ({
       ...r,

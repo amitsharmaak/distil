@@ -20,9 +20,9 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export function GET() {
+export async function GET() {
   try {
-    const raw = getUserSetting("notification_high_priority");
+    const raw = await getUserSetting("notification_high_priority");
     const highPriorityItems = raw === undefined ? true : raw === "true";
     return NextResponse.json({ highPriorityItems }, { headers: CORS_HEADERS });
   } catch (error) {
@@ -43,7 +43,10 @@ export async function PUT(request: NextRequest) {
         { status: 400, headers: CORS_HEADERS },
       );
     }
-    setUserSetting("notification_high_priority", String(body.highPriorityItems));
+    await setUserSetting(
+      "notification_high_priority",
+      String(body.highPriorityItems),
+    );
     return NextResponse.json(
       { highPriorityItems: body.highPriorityItems },
       { headers: CORS_HEADERS },

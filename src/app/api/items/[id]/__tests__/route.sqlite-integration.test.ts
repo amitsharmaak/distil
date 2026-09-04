@@ -62,7 +62,7 @@ describe("OPTIONS /api/items/[id]", () => {
 
 describe("PATCH /api/items/[id]", () => {
   it("marks an item as read", async () => {
-    const item = insertItem(makeItem({ id: "patch-read", isRead: false }));
+    const item = await insertItem(makeItem({ id: "patch-read", isRead: false }));
 
     const [req, ctx] = makeRequest(item.id, {
       method: "PATCH",
@@ -79,7 +79,7 @@ describe("PATCH /api/items/[id]", () => {
   });
 
   it("updates priority", async () => {
-    const item = insertItem(makeItem({ id: "patch-prio", priority: "low" }));
+    const item = await insertItem(makeItem({ id: "patch-prio", priority: "low" }));
 
     const [req, ctx] = makeRequest(item.id, {
       method: "PATCH",
@@ -93,7 +93,7 @@ describe("PATCH /api/items/[id]", () => {
   });
 
   it("updates topics array", async () => {
-    const item = insertItem(makeItem({ id: "patch-topics", topics: ["Old"] }));
+    const item = await insertItem(makeItem({ id: "patch-topics", topics: ["Old"] }));
 
     const [req, ctx] = makeRequest(item.id, {
       method: "PATCH",
@@ -120,7 +120,7 @@ describe("PATCH /api/items/[id]", () => {
   });
 
   it("returns 400 for empty body", async () => {
-    const item = insertItem(makeItem({ id: "patch-empty" }));
+    const item = await insertItem(makeItem({ id: "patch-empty" }));
 
     const [req, ctx] = makeRequest(item.id, {
       method: "PATCH",
@@ -144,7 +144,7 @@ describe("PATCH /api/items/[id]", () => {
   });
 
   it("includes CORS headers", async () => {
-    const item = insertItem(makeItem({ id: "patch-cors" }));
+    const item = await insertItem(makeItem({ id: "patch-cors" }));
     const [req, ctx] = makeRequest(item.id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -160,7 +160,7 @@ describe("PATCH /api/items/[id]", () => {
 
 describe("DELETE /api/items/[id]", () => {
   it("deletes an existing item and returns success", async () => {
-    const item = insertItem(makeItem({ id: "del-exists" }));
+    const item = await insertItem(makeItem({ id: "del-exists" }));
 
     const [req, ctx] = makeRequest(item.id, { method: "DELETE" });
     const res = await DELETE(req, ctx);
@@ -180,7 +180,7 @@ describe("DELETE /api/items/[id]", () => {
   });
 
   it("includes CORS headers", async () => {
-    const item = insertItem(makeItem({ id: "del-cors" }));
+    const item = await insertItem(makeItem({ id: "del-cors" }));
     const [req, ctx] = makeRequest(item.id, { method: "DELETE" });
     const res = await DELETE(req, ctx);
 

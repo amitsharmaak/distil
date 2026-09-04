@@ -23,14 +23,14 @@ export async function GET() {
       pendingApprovals,
       auditStats,
       jobStats,
-    ] = [
+    ] = await Promise.all([
       getWorkflowRuns({ status: "running", limit: 10 }),
       getWorkflowRuns({ limit: 10 }),
       getAgentActions({ limit: 20 }),
       getPendingApprovals(10),
       getDailyAuditStats(),
       getJobStats(),
-    ];
+    ]);
 
     return NextResponse.json({
       runningWorkflows,

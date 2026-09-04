@@ -14,7 +14,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const row = getResearchSuggestionById(id);
+    const row = await getResearchSuggestionById(id);
     if (!row || row.status !== "pending") {
       return NextResponse.json(
         { error: "Suggestion not found or not pending" },
@@ -30,10 +30,10 @@ export async function POST(
     }
     const itemId = sourceItemIds[0];
 
-    const reportId = startResearch(row.suggested_query, itemId);
-    markResearchSuggestionStarted(id, reportId);
+    const reportId = await startResearch(row.suggested_query, itemId);
+    await markResearchSuggestionStarted(id, reportId);
 
-    const report = getResearchReport(reportId);
+    const report = await getResearchReport(reportId);
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
     apiLogger.error({ err: error }, "Start suggestion research error");

@@ -24,10 +24,12 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export function GET() {
+export async function GET() {
   try {
-    const notifications = getNotifications();
-    const unreadCount = getUnreadNotificationCount();
+    const [notifications, unreadCount] = await Promise.all([
+      getNotifications(),
+      getUnreadNotificationCount(),
+    ]);
     return NextResponse.json({ notifications, unreadCount }, { headers: CORS_HEADERS });
   } catch (error) {
     apiLogger.error({ err: error }, "GET /api/notifications failed");
@@ -38,9 +40,9 @@ export function GET() {
   }
 }
 
-export function POST() {
+export async function POST() {
   try {
-    markAllNotificationsRead();
+    await markAllNotificationsRead();
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
     apiLogger.error({ err: error }, "POST /api/notifications failed");

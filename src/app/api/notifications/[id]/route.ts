@@ -19,20 +19,19 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export function PATCH(
+export async function PATCH(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  return params.then(({ id }) => {
-    try {
-      markNotificationRead(id);
-      return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
-    } catch (error) {
-      apiLogger.error({ err: error }, "PATCH /api/notifications/[id] failed");
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500, headers: CORS_HEADERS },
-      );
-    }
-  });
+  try {
+    const { id } = await params;
+    await markNotificationRead(id);
+    return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
+  } catch (error) {
+    apiLogger.error({ err: error }, "PATCH /api/notifications/[id] failed");
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500, headers: CORS_HEADERS },
+    );
+  }
 }

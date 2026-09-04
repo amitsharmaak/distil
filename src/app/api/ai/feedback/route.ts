@@ -22,12 +22,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "rating must be 1 (like) or -1 (dislike)" }, { status: 400 });
     }
 
-    const item = getItemById(itemId);
+    const item = await getItemById(itemId);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    const feedback = insertFeedback({
+    const feedback = await insertFeedback({
       id: crypto.randomUUID(),
       itemId,
       rating,

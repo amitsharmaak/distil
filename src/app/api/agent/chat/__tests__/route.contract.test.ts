@@ -15,10 +15,10 @@ jest.mock("@/lib/agent/rag", () => ({
 }));
 
 jest.mock("@/lib/db", () => ({
-  insertChatConversation: jest.fn(),
-  insertChatMessage: jest.fn(),
-  getChatMessages: jest.fn(),
-  getChatConversations: jest.fn(),
+  insertChatConversation: jest.fn().mockResolvedValue(undefined),
+  insertChatMessage: jest.fn().mockResolvedValue(undefined),
+  getChatMessages: jest.fn().mockResolvedValue([]),
+  getChatConversations: jest.fn().mockResolvedValue([]),
 }));
 
 // ── Imports ──────────────────────────────────────────────────────────────────
@@ -35,14 +35,26 @@ import {
 import type { RAGResult } from "@/lib/agent/rag";
 
 const mockRagQuery = ragQuery as jest.MockedFunction<typeof ragQuery>;
-const mockGetChatMessages = getChatMessages as jest.MockedFunction<typeof getChatMessages>;
-const mockGetChatConversations = getChatConversations as jest.MockedFunction<
-  typeof getChatConversations
+const mockGetChatMessages = getChatMessages as unknown as jest.MockedFunction<
+  (
+    ...args: Parameters<typeof getChatMessages>
+  ) => Promise<Awaited<ReturnType<typeof getChatMessages>>>
 >;
-const mockInsertChatConversation = insertChatConversation as jest.MockedFunction<
-  typeof insertChatConversation
+const mockGetChatConversations = getChatConversations as unknown as jest.MockedFunction<
+  (
+    ...args: Parameters<typeof getChatConversations>
+  ) => Promise<Awaited<ReturnType<typeof getChatConversations>>>
 >;
-const mockInsertChatMessage = insertChatMessage as jest.MockedFunction<typeof insertChatMessage>;
+const mockInsertChatConversation = insertChatConversation as unknown as jest.MockedFunction<
+  (
+    ...args: Parameters<typeof insertChatConversation>
+  ) => Promise<Awaited<ReturnType<typeof insertChatConversation>>>
+>;
+const mockInsertChatMessage = insertChatMessage as unknown as jest.MockedFunction<
+  (
+    ...args: Parameters<typeof insertChatMessage>
+  ) => Promise<Awaited<ReturnType<typeof insertChatMessage>>>
+>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,8 +80,8 @@ function makeRagResult(overrides: Partial<RAGResult> = {}): RAGResult {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRagQuery.mockResolvedValue(makeRagResult());
-  mockGetChatMessages.mockReturnValue([]);
-  mockGetChatConversations.mockReturnValue([]);
+  mockGetChatMessages.mockResolvedValue([]);
+  mockGetChatConversations.mockResolvedValue([]);
 });
 
 // ── POST /api/agent/chat ──────────────────────────────────────────────────────
@@ -226,6 +238,20 @@ describe("POST /api/agent/chat", () => {
     const body = await res.json();
     expect(body.error).toBeDefined();
   });
+
+  it("waits for message persistence and reports an asynchronous DB failure", async () => {
+    mockInsertChatMessage.mockRejectedValueOnce(new Error("DB write failed"));
+    const req = makeRequest("http://localhost:3000/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "save this conversation" }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(500);
+    expect(mockRagQuery).not.toHaveBeenCalled();
+  });
 });
 
 // ── GET /api/agent/chat ───────────────────────────────────────────────────────
@@ -241,7 +267,9 @@ describe("GET /api/agent/chat", () => {
         created_at: new Date().toISOString(),
       },
     ];
-    mockGetChatMessages.mockReturnValue(mockMessages as ReturnType<typeof getChatMessages>);
+    mockGetChatMessages.mockResolvedValue(
+      mockMessages as Awaited<ReturnType<typeof getChatMessages>>
+    );
 
     const req = makeRequest("http://localhost:3000/api/agent/chat?conversationId=conv-123");
 
@@ -255,7 +283,9 @@ describe("GET /api/agent/chat", () => {
 
   it("returns all conversations when no conversationId is provided", async () => {
     const mockConvs = [{ id: "conv-1", title: "First chat", created_at: new Date().toISOString() }];
-    mockGetChatConversations.mockReturnValue(mockConvs as ReturnType<typeof getChatConversations>);
+    mockGetChatConversations.mockResolvedValue(
+      mockConvs as Awaited<ReturnType<typeof getChatConversations>>
+    );
 
     const req = makeRequest("http://localhost:3000/api/agent/chat");
 
@@ -267,10 +297,8 @@ describe("GET /api/agent/chat", () => {
     expect(mockGetChatMessages).not.toHaveBeenCalled();
   });
 
-  it("returns 500 when DB lookup throws", async () => {
-    mockGetChatConversations.mockImplementation(() => {
-      throw new Error("DB error");
-    });
+  it("returns 500 when an asynchronous DB lookup rejects", async () => {
+    mockGetChatConversations.mockRejectedValueOnce(new Error("DB error"));
 
     const req = makeRequest("http://localhost:3000/api/agent/chat");
 

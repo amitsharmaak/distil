@@ -3,7 +3,7 @@ import { getPendingResearchSuggestions } from "@/lib/db";
 
 /** GET /api/ai/research/suggestions — Pending topic suggestions from proactive scan. */
 export async function GET() {
-  const suggestions = getPendingResearchSuggestions();
+  const suggestions = await getPendingResearchSuggestions();
   return NextResponse.json({
     suggestions: suggestions.map((s) => ({
       id: s.id,

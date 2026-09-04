@@ -148,7 +148,7 @@ export default async function ItemDetailPage({
   const { id } = await params;
   const { filter } = await searchParams;
 
-  const item = getItemById(id);
+  const item = await getItemById(id);
 
   if (!item) {
     return (
@@ -171,10 +171,12 @@ export default async function ItemDetailPage({
   const strategy = isXArticle
     ? { ...baseStrategy, detail: { ...baseStrategy.detail, showTweetRenderer: false, showAISummary: true } }
     : baseStrategy;
-  const aiSummaries = getAISummaries(item.id);
-  const existingFeedback = getFeedback(item.id);
+  const [aiSummaries, existingFeedback, allItems] = await Promise.all([
+    getAISummaries(item.id),
+    getFeedback(item.id),
+    getItems(),
+  ]);
 
-  const allItems = getItems();
   const navItems =
     filter === "all"
       ? allItems

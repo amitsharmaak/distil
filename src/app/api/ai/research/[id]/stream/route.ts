@@ -6,7 +6,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(_req: Request, context: RouteContext) {
   const { id } = await context.params;
 
-  const report = getResearchReport(id);
+  const report = await getResearchReport(id);
   if (!report) {
     return new Response("Report not found", { status: 404 });
   }
@@ -22,7 +22,7 @@ export async function GET(_req: Request, context: RouteContext) {
       };
 
       const poll = async () => {
-        const current = getResearchReport(id);
+        const current = await getResearchReport(id);
         if (!current) {
           sendEvent("error", JSON.stringify({ message: "Report not found" }));
           controller.close();

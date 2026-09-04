@@ -15,7 +15,7 @@ import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { ArrowRight } from "lucide-react";
 
 export default async function TodayPage() {
-  const items = getItems();
+  const items = await getItems();
 
   return (
     <div className="mx-auto max-w-4xl space-y-10">

@@ -16,7 +16,7 @@ import { apiLogger } from "@/lib/logger";
 const TWEET_PATTERN = /^https?:\/\/(www\.)?(twitter|x)\.com/;
 
 export async function POST() {
-  const allItems = getItems({ limit: 1000 });
+  const allItems = await getItems({ limit: 1000 });
   const tweets = allItems.filter((item) => TWEET_PATTERN.test(item.url));
 
   apiLogger.info({ count: tweets.length }, "Reprocessing tweet items");
@@ -30,7 +30,7 @@ export async function POST() {
       const tweetText = og.description ?? "";
 
       if (tweetText) {
-        updateItem(tweet.id, {
+        await updateItem(tweet.id, {
           summary: tweetText,
           fullContent: tweetText,
           // Update title only when OG returned something more specific than the
