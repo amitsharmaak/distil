@@ -9,19 +9,14 @@
 
 import { generateText } from "./router";
 import { preferenceAnalysisPrompt } from "@/lib/prompts/prioritize";
-import {
-  getAllFeedback,
-  getItemById,
-  getUserSetting,
-  setUserSetting,
-} from "@/lib/db";
+import { getAllFeedback, getItemById, getUserSetting, setUserSetting } from "@/lib/db";
 import type { UserPreferenceProfile, FeedbackWithItem } from "./types";
 
 const PREFERENCES_KEY = "agent_preferences";
 const CONFIG_KEY = "agent_config";
 
-export function getPreferences(): UserPreferenceProfile {
-  const raw = getUserSetting(PREFERENCES_KEY);
+export async function getPreferences(): Promise<UserPreferenceProfile> {
+  const raw = await getUserSetting(PREFERENCES_KEY);
   if (!raw) {
     return {
       topicWeights: {},
@@ -35,8 +30,8 @@ export function getPreferences(): UserPreferenceProfile {
   return JSON.parse(raw) as UserPreferenceProfile;
 }
 
-function savePreferences(prefs: UserPreferenceProfile): void {
-  setUserSetting(PREFERENCES_KEY, JSON.stringify(prefs));
+async function savePreferences(prefs: UserPreferenceProfile): Promise<void> {
+  await setUserSetting(PREFERENCES_KEY, JSON.stringify(prefs));
 }
 
 /**
@@ -44,15 +39,15 @@ function savePreferences(prefs: UserPreferenceProfile): void {
  * Uses the fast preference-analysis model via the AI router.
  */
 export async function updatePreferencesFromFeedback(): Promise<UserPreferenceProfile> {
-  const allFeedback = getAllFeedback();
+  const allFeedback = await getAllFeedback();
 
   if (allFeedback.length === 0) {
-    return getPreferences();
+    return await getPreferences();
   }
 
   const feedbackWithItems: FeedbackWithItem[] = [];
   for (const fb of allFeedback) {
-    const item = getItemById(fb.item_id);
+    const item = await getItemById(fb.item_id);
     if (!item) continue;
     feedbackWithItems.push({
       feedbackId: fb.id,
@@ -69,7 +64,7 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
   }
 
   if (feedbackWithItems.length === 0) {
-    return getPreferences();
+    return await getPreferences();
   }
 
   const prompt = preferenceAnalysisPrompt(feedbackWithItems);
@@ -82,14 +77,14 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
     lastUpdated: new Date().toISOString(),
   };
 
-  savePreferences(preferences);
+  await savePreferences(preferences);
   return preferences;
 }
 
-export function getAgentConfig(): string | undefined {
-  return getUserSetting(CONFIG_KEY);
+export async function getAgentConfig(): Promise<string | undefined> {
+  return await getUserSetting(CONFIG_KEY);
 }
 
-export function saveAgentConfig(configJson: string): void {
-  setUserSetting(CONFIG_KEY, configJson);
+export async function saveAgentConfig(configJson: string): Promise<void> {
+  await setUserSetting(CONFIG_KEY, configJson);
 }

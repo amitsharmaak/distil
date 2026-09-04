@@ -19,7 +19,7 @@ const HREF_REGEX = /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\/?\s*>/gi;
  */
 export async function runRssDiscovery(
   publisher: PublisherDefinition,
-  strategy: { kind: "rss"; url: string },
+  strategy: { kind: "rss"; url: string }
 ): Promise<number> {
   let xml: string;
   try {
@@ -27,7 +27,7 @@ export async function runRssDiscovery(
     if (!res.ok) {
       connectorLogger.warn(
         { publisherId: publisher.id, url: strategy.url, status: res.status },
-        "[publishers/discovery/rss] fetch failed",
+        "[publishers/discovery/rss] fetch failed"
       );
       return 0;
     }
@@ -35,7 +35,7 @@ export async function runRssDiscovery(
   } catch (err) {
     connectorLogger.warn(
       { err, publisherId: publisher.id, url: strategy.url },
-      "[publishers/discovery/rss] fetch threw",
+      "[publishers/discovery/rss] fetch threw"
     );
     return 0;
   }
@@ -62,12 +62,12 @@ export async function runRssDiscovery(
   for (const url of found) {
     if (!publisher.urlMatcher(url)) continue;
     try {
-      enqueue(publisher.id, url);
+      await enqueue(publisher.id, url);
       enqueued++;
     } catch (err) {
       connectorLogger.warn(
         { err, publisherId: publisher.id, url },
-        "[publishers/discovery/rss] enqueue failed",
+        "[publishers/discovery/rss] enqueue failed"
       );
     }
   }

@@ -16,8 +16,8 @@ import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/db";
 import type { ContentItem, Priority } from "@/lib/types";
 import type { AgentConfig, ScoredItem, UserPreferenceProfile } from "./types";
 
-function loadAgentConfig(): AgentConfig {
-  const raw = getUserSetting("agent_config");
+async function loadAgentConfig(): Promise<AgentConfig> {
+  const raw = await getUserSetting("agent_config");
   if (!raw) {
     return {
       summaryLength: "brief",
@@ -37,7 +37,7 @@ function scoreToPriority(score: number): Priority {
 function heuristicScore(
   item: ContentItem,
   preferences: UserPreferenceProfile,
-  config: AgentConfig,
+  config: AgentConfig
 ): number {
   const weights = config.priorityWeights;
 
@@ -53,13 +53,12 @@ function heuristicScore(
 
   const sourceScore = (preferences.sourceWeights[item.sourceType] ?? 0.5) * 100;
 
-  const authorScore = item.author
-    ? (preferences.authorWeights[item.author] ?? 0.5) * 100
-    : 50;
+  const authorScore = item.author ? (preferences.authorWeights[item.author] ?? 0.5) * 100 : 50;
 
   const typeScore = (preferences.contentTypeWeights[item.contentType] ?? 0.5) * 100;
 
-  const totalWeight = weights.recency + weights.topicRelevance + weights.sourceReliability + 0.3 + 0.2;
+  const totalWeight =
+    weights.recency + weights.topicRelevance + weights.sourceReliability + 0.3 + 0.2;
   const rawScore =
     (recencyScore * weights.recency +
       topicScore * weights.topicRelevance +
@@ -78,9 +77,11 @@ function heuristicScore(
  * fields in the database.
  */
 export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
-  const preferences = getPreferences();
-  const agentConfig = loadAgentConfig();
-  const items = getItems();
+  const [preferences, agentConfig, items] = await Promise.all([
+    getPreferences(),
+    loadAgentConfig(),
+    getItems(),
+  ]);
 
   const scored: ScoredItem[] = items.map((item) => {
     const score = heuristicScore(item, preferences, agentConfig);
@@ -99,7 +100,7 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
             sourceType: i.sourceType,
             author: i.author,
           })),
-          preferences,
+          preferences
         );
 
         const text = await generateText(prompt, "prioritize");
@@ -119,7 +120,7 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
   }
 
   for (const s of scored) {
-    updateItemPriorityScore(s.itemId, s.score, s.priority);
+    await updateItemPriorityScore(s.itemId, s.score, s.priority);
   }
 
   return scored.sort((a, b) => b.score - a.score);

@@ -16,12 +16,11 @@ import type { ContentItem } from "@/lib/types";
  */
 export async function hybridSearch(
   query: string,
-  filters: Omit<ItemFilters, "query"> = {},
+  filters: Omit<ItemFilters, "query"> = {}
 ): Promise<ContentItem[]> {
   // Run FTS and semantic search in parallel
   const [ftsResults, semanticResults] = await Promise.all([
-    // FTS keyword search (synchronous but wrapped in Promise for parallel execution)
-    Promise.resolve(getItems({ ...filters, query })),
+    getItems({ ...filters, query }),
     // Semantic search
     semanticSearch(query, filters),
   ]);
@@ -45,11 +44,11 @@ export async function hybridSearch(
 
 async function semanticSearch(
   query: string,
-  filters: Omit<ItemFilters, "query">,
+  filters: Omit<ItemFilters, "query">
 ): Promise<ContentItem[]> {
   try {
     const queryEmbedding = await generateEmbedding(query);
-    const recentEmbeddings = getRecentEmbeddings(90); // 90 days for search
+    const recentEmbeddings = await getRecentEmbeddings(90); // 90 days for search
 
     // Compute similarities
     const similarities: Array<{ itemId: string; similarity: number }> = [];
@@ -69,18 +68,13 @@ async function semanticSearch(
     if (topIds.length === 0) return [];
 
     // Fetch the actual items and apply filters
-    const items = topIds
-      .map((id) => getItemById(id))
+    const items = (await Promise.all(topIds.map((id) => getItemById(id))))
       .filter((item): item is ContentItem => item != null)
       .filter((item) => {
-        if (filters.sourceType && item.sourceType !== filters.sourceType)
-          return false;
-        if (filters.contentType && item.contentType !== filters.contentType)
-          return false;
-        if (filters.priority && item.priority !== filters.priority)
-          return false;
-        if (filters.isRead !== undefined && item.isRead !== filters.isRead)
-          return false;
+        if (filters.sourceType && item.sourceType !== filters.sourceType) return false;
+        if (filters.contentType && item.contentType !== filters.contentType) return false;
+        if (filters.priority && item.priority !== filters.priority) return false;
+        if (filters.isRead !== undefined && item.isRead !== filters.isRead) return false;
         return true;
       });
 

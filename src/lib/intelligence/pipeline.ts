@@ -55,8 +55,7 @@ function defaultClassification(): ContentClassification {
 }
 
 function minimalExtraction(raw: RawContent): ExtractedContentResult {
-  const title =
-    raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled";
+  const title = raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled";
   return {
     cleanContent: "",
     cleanTextContent: "",
@@ -96,7 +95,7 @@ function minimalEnrichment(extracted: ExtractedContentResult): EnrichedContent {
 export async function processContent(raw: RawContent): Promise<ProcessingResult> {
   try {
     // Step 1: Save RawContent to DB (before any AI processing)
-    insertRawContent({
+    await insertRawContent({
       id: raw.id,
       sourceType: raw.sourceType,
       rawBody: raw.rawBody,
@@ -106,7 +105,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
 
     // Step 2: Deduplication check
     if (raw.url) {
-      const existing = getItemByNormalizedUrl(raw.url);
+      const existing = await getItemByNormalizedUrl(raw.url);
       if (existing) {
         return {
           rawContentId: raw.id,
@@ -116,12 +115,10 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     }
 
     // Step 3: Insert item in 'processing' state
-    const createdAt =
-      raw.metadata.timestamp ?? raw.fetchedAt ?? new Date().toISOString();
+    const createdAt = raw.metadata.timestamp ?? raw.fetchedAt ?? new Date().toISOString();
     const initialItem: ContentItem = {
       id: raw.id,
-      title:
-        raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled",
+      title: raw.metadata.subject ?? raw.metadata.pageTitle ?? raw.url ?? "Untitled",
       url: raw.url ?? "",
       sourceType: raw.sourceType,
       contentType: "article",
@@ -133,18 +130,18 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       processingStatus: "processing",
     };
 
-    const insertedItem = insertItem(initialItem);
+    const insertedItem = await insertItem(initialItem);
 
     // If insertItem returned an existing item (race condition), link and return
     if (insertedItem.id !== raw.id) {
-      updateRawContentItemId(raw.id, insertedItem.id);
+      await updateRawContentItemId(raw.id, insertedItem.id);
       return {
         rawContentId: raw.id,
         status: "ready",
       };
     }
 
-    updateRawContentItemId(raw.id, insertedItem.id);
+    await updateRawContentItemId(raw.id, insertedItem.id);
 
     // Step 4: Stage 1 — Classify
     let classification: ContentClassification;
@@ -155,10 +152,12 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     }
 
     // Step 5: Stage 2 — Relevance Gate
-    const gateResult = await checkRelevance(raw, classification, getUserSetting);
+    const gateResult = await checkRelevance(raw, classification, async (key) =>
+      getUserSetting(key)
+    );
 
     if (gateResult.accepted === false) {
-      updateItemProcessingStatus(raw.id, "rejected", gateResult.reason);
+      await updateItemProcessingStatus(raw.id, "rejected", gateResult.reason);
       return {
         rawContentId: raw.id,
         status: "rejected",
@@ -174,9 +173,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     } catch (err) {
       // Surface publisher auth errors to the caller (worker / manual API) so the
       // user can be prompted to reconnect. All other errors degrade gracefully.
-      const { PublisherAuthRequired } = await import(
-        "../connectors/publishers/types"
-      );
+      const { PublisherAuthRequired } = await import("../connectors/publishers/types");
       if (err instanceof PublisherAuthRequired) throw err;
       extracted = minimalExtraction(raw);
     }
@@ -207,7 +204,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       : analysis.detectedMedia;
 
     // Step 9: Update item in DB with full data
-    updateItem(raw.id, {
+    await updateItem(raw.id, {
       title: extracted.title,
       summary: enriched.summary,
       fullContent: extracted.cleanContent,
@@ -225,18 +222,18 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     });
 
     // Step 10: Update ai_priority_score
-    updateItemProcessingStatus(raw.id, "ready");
-    updateItemPriorityScore(raw.id, enriched.priorityScore, enriched.priority);
+    await updateItemProcessingStatus(raw.id, "ready");
+    await updateItemPriorityScore(raw.id, enriched.priorityScore, enriched.priority);
 
-    // Step 10b: Fire-and-forget deep AI summary — skipped for content types
+    // Step 10b: Generate the deep AI summary before reporting durable success — skipped for content types
     // that don't use AI summarization (e.g. tweets), but enabled for X Articles.
     const strategy = detectStrategy(raw.url ?? "");
     if (strategy.generateAISummary || extracted.isXArticle) {
-      generateSummary(raw.id, { length: "brief" }).catch(() => {});
+      await generateSummary(raw.id, { length: "brief" }).catch(() => undefined);
     }
 
-    // Step 10c: Fire-and-forget embedding for semantic search.
-    embedItem(raw.id, extracted.title, enriched.summary).catch(() => {});
+    // Step 10c: Finish embedding work before returning from the pipeline.
+    await embedItem(raw.id, extracted.title, enriched.summary).catch(() => undefined);
 
     // Step 11: Return ProcessingResult
     return {
@@ -248,9 +245,8 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       enriched,
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
-    updateItemProcessingStatus(raw.id, "rejected", message);
+    const message = error instanceof Error ? error.message : String(error);
+    await updateItemProcessingStatus(raw.id, "rejected", message);
     return {
       rawContentId: raw.id,
       status: "rejected",

@@ -29,7 +29,7 @@ export async function autoTagItem(
   title: string,
   summary: string
 ): Promise<TaggingResult | undefined> {
-  const item = getItemById(itemId);
+  const item = await getItemById(itemId);
   if (!item || (item.topics?.length ?? 0) > 0) {
     return undefined;
   }
@@ -58,11 +58,11 @@ Rules:
   const topics = normalizeTags(
     result.topics
       .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-      .map((t) => t.trim()),
+      .map((t) => t.trim())
   ).slice(0, 3);
 
   if (topics.length === 0) return undefined;
 
-  updateItem(itemId, { topics });
+  await updateItem(itemId, { topics });
   return { topics, confidence: result.confidence ?? 0 };
 }

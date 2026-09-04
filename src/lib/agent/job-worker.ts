@@ -66,7 +66,7 @@ export function registerJobHandler(type: string, handler: JobHandler): void {
  * Returns true if a job was processed, false if queue was empty.
  */
 export async function processNextJob(workerId = "main"): Promise<boolean> {
-  const job = dequeueJob(workerId);
+  const job = await dequeueJob(workerId);
   if (!job) return false;
 
   const jobType = job.job_type as string;
@@ -75,18 +75,18 @@ export async function processNextJob(workerId = "main"): Promise<boolean> {
 
   if (!handler) {
     aiLogger.error({ jobId, jobType }, "No handler registered for job type");
-    completeJob(jobId, `No handler for job type: ${jobType}`);
+    await completeJob(jobId, `No handler for job type: ${jobType}`);
     return true;
   }
 
   try {
     const payload = JSON.parse((job.payload as string) || "{}");
     await handler(payload);
-    completeJob(jobId);
+    await completeJob(jobId);
     aiLogger.info({ jobId, jobType }, "Job completed successfully");
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    completeJob(jobId, errMsg);
+    await completeJob(jobId, errMsg);
     aiLogger.error({ jobId, jobType, err: error }, "Job failed");
   }
 
@@ -132,8 +132,8 @@ export function stopJobWorker(): void {
 /**
  * Helper to enqueue a triage job.
  */
-export function enqueueTriageJob(itemId: string): void {
-  enqueueJob({
+export async function enqueueTriageJob(itemId: string): Promise<void> {
+  await enqueueJob({
     id: crypto.randomUUID(),
     jobType: "triage",
     payload: JSON.stringify({ itemId }),
@@ -144,8 +144,8 @@ export function enqueueTriageJob(itemId: string): void {
 /**
  * Helper to enqueue a proactive research scan.
  */
-export function enqueueProactiveScan(): void {
-  enqueueJob({
+export async function enqueueProactiveScan(): Promise<void> {
+  await enqueueJob({
     id: crypto.randomUUID(),
     jobType: "proactive_research_scan",
     payload: "{}",

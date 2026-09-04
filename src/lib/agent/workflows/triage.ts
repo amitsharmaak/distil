@@ -17,7 +17,7 @@ import { detectStrategy } from "@/lib/content-strategies";
  * 3. Re-prioritize all items (updates this item's score)
  */
 export async function runTriageWorkflow(itemId: string): Promise<void> {
-  const item = getItemById(itemId);
+  const item = await getItemById(itemId);
   if (!item) {
     aiLogger.warn({ itemId }, "Triage skipped: item not found");
     return;

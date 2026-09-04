@@ -33,29 +33,26 @@ function extractUrls(...sources: Array<string | undefined>): string[] {
  * `gmail-sender` strategy that matches `message.from`, extracts URLs from the
  * message body/html and enqueues those that match `publisher.urlMatcher`.
  *
- * Synchronous (no awaiting) — `enqueue` is sync-safe and we don't want to slow
- * down the Gmail sync loop. Errors are swallowed by the caller.
+ * Queue persistence is awaited so discovery completion means every reported URL
+ * has been durably recorded. Errors are isolated per URL.
  */
-export function runGmailSenderDiscovery(message: {
+export async function runGmailSenderDiscovery(message: {
   from: string;
   body?: string;
   html?: string;
   subject?: string;
-}): void {
+}): Promise<void> {
   const fromAddress = extractEmailAddress(message.from);
   if (!fromAddress) return;
 
   for (const publisher of PUBLISHERS) {
     const matchingStrategies = publisher.discovery.filter(
-      (s): s is { kind: "gmail-sender"; senders: string[] } =>
-        s.kind === "gmail-sender",
+      (s): s is { kind: "gmail-sender"; senders: string[] } => s.kind === "gmail-sender"
     );
     if (matchingStrategies.length === 0) continue;
 
     const senderMatches = matchingStrategies.some((s) =>
-      s.senders.some((sender) =>
-        fromAddress.includes(sender.trim().toLowerCase()),
-      ),
+      s.senders.some((sender) => fromAddress.includes(sender.trim().toLowerCase()))
     );
     if (!senderMatches) continue;
 
@@ -66,12 +63,12 @@ export function runGmailSenderDiscovery(message: {
     for (const url of urls) {
       if (!publisher.urlMatcher(url)) continue;
       try {
-        enqueue(publisher.id, url);
+        await enqueue(publisher.id, url);
         enqueued++;
       } catch (err) {
         connectorLogger.warn(
           { err, publisherId: publisher.id, url },
-          "[publishers/discovery/gmail-sender] enqueue failed",
+          "[publishers/discovery/gmail-sender] enqueue failed"
         );
       }
     }
@@ -83,7 +80,7 @@ export function runGmailSenderDiscovery(message: {
           enqueued,
           from: fromAddress,
         },
-        "[publishers/discovery/gmail-sender] discovered URLs from Gmail message",
+        "[publishers/discovery/gmail-sender] discovered URLs from Gmail message"
       );
     }
   }

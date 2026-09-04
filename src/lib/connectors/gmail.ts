@@ -37,8 +37,7 @@ function getSyncAfterDate(): string {
     ? new Date(process.env.GMAIL_SYNC_AFTER_DATE.replace(/\//g, "-"))
     : null;
 
-  const cutoff =
-    configured && configured > twoDaysAgo ? configured : twoDaysAgo;
+  const cutoff = configured && configured > twoDaysAgo ? configured : twoDaysAgo;
 
   return `${cutoff.getFullYear()}/${String(cutoff.getMonth() + 1).padStart(2, "0")}/${String(cutoff.getDate()).padStart(2, "0")}`;
 }
@@ -53,7 +52,7 @@ function createOAuth2Client() {
   return new google.auth.OAuth2(
     config.googleClientId,
     config.googleClientSecret,
-    config.googleRedirectUri,
+    config.googleRedirectUri
   );
 }
 
@@ -91,7 +90,7 @@ export async function handleCallback(code: string): Promise<void> {
   const profile = await gmail.users.getProfile({ userId: "me" });
   const email = profile.data.emailAddress ?? null;
 
-  upsertOAuthToken("gmail", "", {
+  await upsertOAuthToken("gmail", "", {
     access_token: tokens.access_token!,
     refresh_token: tokens.refresh_token ?? null,
     expiry_date: tokens.expiry_date ?? null,
@@ -102,8 +101,8 @@ export async function handleCallback(code: string): Promise<void> {
 /**
  * Returns the connected Gmail address, or null if Gmail is not connected.
  */
-export function getConnectedEmail(): string | null {
-  const token = getOAuthToken("gmail");
+export async function getConnectedEmail(): Promise<string | null> {
+  const token = await getOAuthToken("gmail");
   return token?.email ?? null;
 }
 
@@ -113,7 +112,7 @@ export function getConnectedEmail(): string | null {
  * Google revoke call fails (e.g. token already expired/revoked).
  */
 export async function disconnectGmail(): Promise<void> {
-  const stored = getOAuthToken("gmail");
+  const stored = await getOAuthToken("gmail");
   if (stored) {
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials({ access_token: stored.access_token });
@@ -123,7 +122,7 @@ export async function disconnectGmail(): Promise<void> {
       // Token may already be expired or revoked — that's fine.
     }
   }
-  deleteOAuthToken("gmail");
+  await deleteOAuthToken("gmail");
 }
 
 const MAX_MESSAGES_PER_SYNC = 500;
@@ -134,11 +133,10 @@ const MAX_MESSAGES_PER_SYNC = 500;
  */
 function triageGmailMessageForNewsletter(
   labelIds: string[],
-  headers: gmail_v1.Schema$MessagePartHeader[],
+  headers: gmail_v1.Schema$MessagePartHeader[]
 ): "skip" | "fetch_full" {
   const get = (name: string): string =>
-    headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ??
-    "";
+    headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 
   const listUnsub = get("List-Unsubscribe");
   const listId = get("List-Id");
@@ -187,7 +185,7 @@ export async function syncNewsletters(): Promise<{
   count: number;
   items: ProcessingResult[];
 }> {
-  const tokenRow = getOAuthToken("gmail");
+  const tokenRow = await getOAuthToken("gmail");
   if (!tokenRow) throw new Error("Gmail not connected");
 
   const oauth2Client = createOAuth2Client();
@@ -200,11 +198,15 @@ export async function syncNewsletters(): Promise<{
   // Persist refreshed tokens automatically when googleapis refreshes them.
   oauth2Client.on("tokens", (newTokens) => {
     if (newTokens.access_token) {
-      upsertOAuthToken("gmail", "", {
-        access_token: newTokens.access_token,
-        refresh_token: newTokens.refresh_token ?? tokenRow.refresh_token,
-        expiry_date: newTokens.expiry_date ?? tokenRow.expiry_date,
-        email: tokenRow.email,
+      void Promise.resolve(
+        upsertOAuthToken("gmail", "", {
+          access_token: newTokens.access_token,
+          refresh_token: newTokens.refresh_token ?? tokenRow.refresh_token,
+          expiry_date: newTokens.expiry_date ?? tokenRow.expiry_date,
+          email: tokenRow.email,
+        }),
+      ).catch((err: unknown) => {
+        connectorLogger.warn({ err }, "[gmail] failed to persist refreshed token");
       });
     }
   });
@@ -269,20 +271,16 @@ export async function syncNewsletters(): Promise<{
       try {
         const headers = full.data.payload?.headers ?? [];
         const getHeader = (name: string): string =>
-          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
-            ?.value ?? "";
+          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
         const from = getHeader("From");
         const subject = getHeader("Subject");
         const html = findHtmlPart(full.data.payload) ?? undefined;
         const body = findTextPart(full.data.payload) ?? undefined;
         if (from) {
-          runGmailSenderDiscovery({ from, body, html, subject });
+          await runGmailSenderDiscovery({ from, body, html, subject });
         }
       } catch (err) {
-        connectorLogger.warn(
-          { err, msgId },
-          "[gmail] publisher discovery failed (non-fatal)",
-        );
+        connectorLogger.warn({ err, msgId }, "[gmail] publisher discovery failed (non-fatal)");
       }
 
       const result = await processContent(raw);
@@ -301,15 +299,11 @@ export async function syncNewsletters(): Promise<{
 /**
  * Builds a RawContent object from a Gmail message for the intelligence pipeline.
  */
-function buildRawContentFromMessage(
-  message: gmail_v1.Schema$Message,
-  messageId: string,
-) {
+function buildRawContentFromMessage(message: gmail_v1.Schema$Message, messageId: string) {
   const headers = message.payload?.headers ?? [];
 
   const getHeader = (name: string): string =>
-    headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ??
-    "";
+    headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 
   const subject = getHeader("Subject");
   const from = getHeader("From");
@@ -323,9 +317,7 @@ function buildRawContentFromMessage(
   // Parse sender domain from "Display Name <email@domain.com>" or bare "email@domain.com".
   const nameAngleMatch = from.match(/^"?([^"<]+)"?\s*<([^>]+)>/);
   const senderDomain =
-    nameAngleMatch?.[2].match(/@([^\s>]+)/)?.[1] ??
-    from.match(/@([^\s>]+)/)?.[1] ??
-    "";
+    nameAngleMatch?.[2].match(/@([^\s>]+)/)?.[1] ?? from.match(/@([^\s>]+)/)?.[1] ?? "";
 
   const textBody = findTextPart(message.payload);
   const htmlBody = findHtmlPart(message.payload);
@@ -336,9 +328,7 @@ function buildRawContentFromMessage(
   const viewInBrowserUrl = htmlBody ? extractViewInBrowserUrl(htmlBody) : null;
   const firstHttpsUrl = htmlBody ? extractFirstHttpsUrl(htmlBody) : null;
   const url = sanitizeUrl(
-    viewInBrowserUrl ??
-    firstHttpsUrl ??
-    `https://mail.google.com/mail/u/0/#inbox/${messageId}`,
+    viewInBrowserUrl ?? firstHttpsUrl ?? `https://mail.google.com/mail/u/0/#inbox/${messageId}`
   );
 
   const timestamp =
@@ -388,9 +378,7 @@ function extractFirstHttpsUrl(html: string): string | null {
  * Recursively searches a MIME message payload for the first text/plain part.
  * Returns the decoded string, or null if no plain text part is found.
  */
-function findTextPart(
-  payload: gmail_v1.Schema$MessagePart | undefined,
-): string | null {
+function findTextPart(payload: gmail_v1.Schema$MessagePart | undefined): string | null {
   if (!payload) return null;
   if (payload.mimeType === "text/plain" && payload.body?.data) {
     return Buffer.from(payload.body.data, "base64url").toString("utf-8");
@@ -424,9 +412,7 @@ function stripHtml(html: string): string {
  * Recursively searches a MIME message payload for the first text/html part.
  * Returns the decoded HTML string, or null if no HTML part is found.
  */
-function findHtmlPart(
-  payload: gmail_v1.Schema$MessagePart | undefined,
-): string | null {
+function findHtmlPart(payload: gmail_v1.Schema$MessagePart | undefined): string | null {
   if (!payload) return null;
   if (payload.mimeType === "text/html" && payload.body?.data) {
     return Buffer.from(payload.body.data, "base64url").toString("utf-8");
@@ -449,13 +435,13 @@ function extractViewInBrowserUrl(html: string): string | null {
 
   // Pattern 1: href before the link text (e.g. <a href="...">View in browser</a>)
   const beforeMatch = head.match(
-    /href=["'](https?:\/\/[^"']+)["'][^>]*>[^<]*(?:view|browser|web\s+version|online)/i,
+    /href=["'](https?:\/\/[^"']+)["'][^>]*>[^<]*(?:view|browser|web\s+version|online)/i
   );
   if (beforeMatch?.[1]) return beforeMatch[1];
 
   // Pattern 2: link text before the href (e.g. View online <a href="...">)
   const afterMatch = head.match(
-    /(?:view|browser|web\s+version|online)[^<]*<[^>]*href=["'](https?:\/\/[^"']+)["']/i,
+    /(?:view|browser|web\s+version|online)[^<]*<[^>]*href=["'](https?:\/\/[^"']+)["']/i
   );
   if (afterMatch?.[1]) return afterMatch[1];
 

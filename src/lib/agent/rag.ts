@@ -136,10 +136,7 @@ function chunkContent(text: string, targetSize = 500): string[] {
 // Retrieval strategies
 // ─────────────────────────────────────────────────────────────────────────────
 
-function itemsToChunks(
-  items: ContentItem[],
-  maxChunks: number,
-): RAGChunk[] {
+function itemsToChunks(items: ContentItem[], maxChunks: number): RAGChunk[] {
   const chunks: RAGChunk[] = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -163,19 +160,16 @@ function itemsToChunks(
   return chunks.slice(0, maxChunks);
 }
 
-async function retrieveForSpecific(
-  query: string,
-  maxChunks: number,
-): Promise<RAGChunk[]> {
+async function retrieveForSpecific(query: string, maxChunks: number): Promise<RAGChunk[]> {
   const items = await hybridSearch(query, { limit: 20 });
   return itemsToChunks(items, maxChunks);
 }
 
-function retrieveForGeneral(maxChunks: number): RAGChunk[] {
+async function retrieveForGeneral(maxChunks: number): Promise<RAGChunk[]> {
   // Prefer unread items; fall back to all recent if nothing is unread
-  let items = getItems({ isRead: false, limit: 15 });
+  let items = await getItems({ isRead: false, limit: 15 });
   if (items.length === 0) {
-    items = getItems({ limit: 15 });
+    items = await getItems({ limit: 15 });
   }
   return itemsToChunks(items, maxChunks);
 }
@@ -195,10 +189,16 @@ export async function ragQuery(query: string): Promise<RAGResult> {
     const prompt = CONVERSATIONAL_PROMPT.replace("{QUESTION}", filteredQuery);
     try {
       const answer = await generateText(prompt, "research-synthesize");
-      return { answer, citations: [], chunksUsed: 0, totalTokensEstimate: Math.ceil(prompt.length / 4) };
+      return {
+        answer,
+        citations: [],
+        chunksUsed: 0,
+        totalTokensEstimate: Math.ceil(prompt.length / 4),
+      };
     } catch {
       return {
-        answer: "Hey! I'm Distil, your information assistant. Ask me anything about your saved content.",
+        answer:
+          "Hey! I'm Distil, your information assistant. Ask me anything about your saved content.",
         citations: [],
         chunksUsed: 0,
         totalTokensEstimate: 0,
@@ -214,10 +214,10 @@ export async function ragQuery(query: string): Promise<RAGResult> {
     chunks = await retrieveForSpecific(filteredQuery, maxChunks);
     // Fall back to general retrieval when specific search finds nothing but items exist
     if (chunks.length === 0) {
-      chunks = retrieveForGeneral(maxChunks);
+      chunks = await retrieveForGeneral(maxChunks);
     }
   } else {
-    chunks = retrieveForGeneral(maxChunks);
+    chunks = await retrieveForGeneral(maxChunks);
   }
 
   if (chunks.length === 0) {
@@ -250,16 +250,13 @@ export async function ragQuery(query: string): Promise<RAGResult> {
 
     const { filtered } = filterPII(chunk.text);
     contextParts.push(
-      `[Source ${sourceNum}: "${chunk.title}" (${chunk.sourceType})]:\n${filtered}`,
+      `[Source ${sourceNum}: "${chunk.title}" (${chunk.sourceType})]:\n${filtered}`
     );
   }
 
   const context = contextParts.join("\n\n---\n\n");
-  const promptTemplate =
-    intent === "general" ? GENERAL_PROMPT : SPECIFIC_PROMPT;
-  const prompt = promptTemplate
-    .replace("{CONTEXT}", context)
-    .replace("{QUESTION}", filteredQuery);
+  const promptTemplate = intent === "general" ? GENERAL_PROMPT : SPECIFIC_PROMPT;
+  const prompt = promptTemplate.replace("{CONTEXT}", context).replace("{QUESTION}", filteredQuery);
 
   const totalTokensEstimate = Math.ceil(prompt.length / 4);
 
@@ -275,8 +272,7 @@ export async function ragQuery(query: string): Promise<RAGResult> {
   } catch (error) {
     aiLogger.error({ err: error }, "RAG query generation failed");
     return {
-      answer:
-        "I encountered an error while processing your question. Please try again.",
+      answer: "I encountered an error while processing your question. Please try again.",
       citations,
       chunksUsed: chunks.length,
       totalTokensEstimate,

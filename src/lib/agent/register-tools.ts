@@ -66,7 +66,7 @@ export function registerAllTools(): void {
       id: { type: "string", description: "Item ID", required: true },
     },
     handler: async (params) => {
-      const item = getItemById(params.id as string);
+      const item = await getItemById(params.id as string);
       if (!item) throw new Error(`Item not found: ${params.id}`);
       return item;
     },
@@ -79,7 +79,7 @@ export function registerAllTools(): void {
     rateLimit: 10,
     requiresApproval: false,
     parameters: {},
-    handler: async () => getPreferences(),
+    handler: async () => await getPreferences(),
   });
 
   registry.register({
@@ -92,7 +92,7 @@ export function registerAllTools(): void {
       limit: { type: "number", description: "Max results" },
     },
     handler: async (params) => {
-      const all = getAllFeedback();
+      const all = await getAllFeedback();
       const limit = (params.limit as number) ?? 50;
       return all.slice(0, limit);
     },
@@ -106,7 +106,7 @@ export function registerAllTools(): void {
     requiresApproval: false,
     parameters: {},
     handler: async () => {
-      const items = getItems({ limit: 500 });
+      const items = await getItems({ limit: 500 });
       const topicCounts = new Map<string, number>();
       for (const item of items) {
         for (const topic of item.topics) {
@@ -130,9 +130,9 @@ export function registerAllTools(): void {
       type: { type: "string", description: "brief or detailed" },
     },
     handler: async (params) => {
-      const summary = getAISummary(
+      const summary = await getAISummary(
         params.item_id as string,
-        params.type as "brief" | "detailed" | undefined,
+        params.type as "brief" | "detailed" | undefined
       );
       return summary ?? null;
     },
@@ -148,7 +148,7 @@ export function registerAllTools(): void {
       item_id: { type: "string", description: "Item ID", required: true },
     },
     handler: async (params) => {
-      const result = updateItem(params.item_id as string, { isRead: true });
+      const result = await updateItem(params.item_id as string, { isRead: true });
       return { success: !!result };
     },
   });
@@ -169,7 +169,7 @@ export function registerAllTools(): void {
       reason: { type: "string", description: "Why this priority (for audit)" },
     },
     handler: async (params) => {
-      const result = updateItem(params.item_id as string, {
+      const result = await updateItem(params.item_id as string, {
         priority: params.priority as "high" | "medium" | "low",
       });
       return { success: !!result };
@@ -213,7 +213,7 @@ export function registerAllTools(): void {
       },
     },
     handler: async (params) => {
-      insertNotification({
+      await insertNotification({
         id: crypto.randomUUID(),
         itemId: params.item_id as string,
         title: params.title as string,
@@ -251,7 +251,7 @@ export function registerAllTools(): void {
         isRead: false,
         createdAt: new Date().toISOString(),
       };
-      return insertItem(item);
+      return await insertItem(item);
     },
   });
 
@@ -265,14 +265,13 @@ export function registerAllTools(): void {
       item_id: { type: "string", description: "Item ID", required: true },
     },
     handler: async (params) => {
-      return { deleted: deleteItem(params.item_id as string) };
+      return { deleted: await deleteItem(params.item_id as string) };
     },
   });
 
   registry.register({
     name: "web_search",
-    description:
-      "Search the web for current information using Google Search grounding",
+    description: "Search the web for current information using Google Search grounding",
     category: "EXTERNAL",
     rateLimit: 20,
     requiresApproval: false,
@@ -288,8 +287,7 @@ export function registerAllTools(): void {
 
   registry.register({
     name: "extract_content",
-    description:
-      "Extract article content and metadata from a URL using Readability",
+    description: "Extract article content and metadata from a URL using Readability",
     category: "EXTERNAL",
     rateLimit: 20,
     requiresApproval: false,
@@ -298,8 +296,7 @@ export function registerAllTools(): void {
     },
     handler: async (params) => {
       const result = await extractContent(params.url as string);
-      if (!result)
-        return { success: false, error: "Could not extract content from URL" };
+      if (!result) return { success: false, error: "Could not extract content from URL" };
       return {
         success: true,
         title: result.title,

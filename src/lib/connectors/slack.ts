@@ -130,9 +130,9 @@ export async function handleCallback(code: string): Promise<void> {
   const teamId = data.team?.id ?? "";
   const teamName = data.team?.name ?? "";
   const userId = data.authed_user.id ?? "";
-  const identity = teamName && userId ? `${teamName}:${userId}` : (teamName || userId || null);
+  const identity = teamName && userId ? `${teamName}:${userId}` : teamName || userId || null;
 
-  upsertOAuthToken(PROVIDER, teamId, {
+  await upsertOAuthToken(PROVIDER, teamId, {
     access_token: data.authed_user.access_token,
     refresh_token: null, // Slack user tokens don't expire by default.
     expiry_date: null,
@@ -140,7 +140,7 @@ export async function handleCallback(code: string): Promise<void> {
   });
 
   // Clear the watermark for this workspace so the next sync uses the full lookback window.
-  setUserSetting(syncKey(teamId), "0");
+  await setUserSetting(syncKey(teamId), "0");
 }
 
 /** Per-workspace sync watermark key. Handles legacy '' team_id from pre-migration tokens. */
@@ -159,8 +159,8 @@ export interface SlackWorkspaceStatus {
 /**
  * Returns true if at least one Slack workspace is connected.
  */
-export function isSlackConfigured(): boolean {
-  return getOAuthTokensByProvider(PROVIDER).length > 0;
+export async function isSlackConfigured(): Promise<boolean> {
+  return (await getOAuthTokensByProvider(PROVIDER)).length > 0;
 }
 
 /**
@@ -168,7 +168,7 @@ export function isSlackConfigured(): boolean {
  * Best-effort token revocation, then removes the local row.
  */
 export async function disconnectSlack(teamId: string): Promise<void> {
-  const stored = getOAuthToken(PROVIDER, teamId);
+  const stored = await getOAuthToken(PROVIDER, teamId);
   if (stored) {
     try {
       const client = new WebClient(stored.access_token);
@@ -177,19 +177,19 @@ export async function disconnectSlack(teamId: string): Promise<void> {
       // Token may already be revoked or network may be flaky — drop it locally regardless.
     }
   }
-  deleteOAuthToken(PROVIDER, teamId);
+  await deleteOAuthToken(PROVIDER, teamId);
 }
 
 /**
  * Returns status for all connected Slack workspaces.
  */
 export async function getAllSlackStatuses(): Promise<SlackWorkspaceStatus[]> {
-  const tokens = getOAuthTokensByProvider(PROVIDER);
+  const tokens = await getOAuthTokensByProvider(PROVIDER);
   if (tokens.length === 0) return [];
 
   return Promise.all(
     tokens.map(async (token) => {
-      const lastSyncRaw = getUserSetting(syncKey(token.team_id));
+      const lastSyncRaw = await getUserSetting(syncKey(token.team_id));
       const lastSync =
         lastSyncRaw && Number(lastSyncRaw) > 0
           ? new Date(Number(lastSyncRaw) * 1000).toISOString()
@@ -205,9 +205,15 @@ export async function getAllSlackStatuses(): Promise<SlackWorkspaceStatus[]> {
           lastSync,
         };
       } catch {
-        return { teamId: token.team_id, teamName: null, userName: null, connected: false, lastSync };
+        return {
+          teamId: token.team_id,
+          teamName: null,
+          userName: null,
+          connected: false,
+          lastSync,
+        };
       }
-    }),
+    })
   );
 }
 
@@ -240,7 +246,7 @@ export async function syncSlackMessages(): Promise<{
   items: ProcessingResult[];
   stats: { channels: number; messagesScanned: number; messagesWithUrls: number };
 }> {
-  const tokens = getOAuthTokensByProvider(PROVIDER);
+  const tokens = await getOAuthTokensByProvider(PROVIDER);
   if (tokens.length === 0) throw new Error("Slack not connected");
 
   const allItems: ProcessingResult[] = [];
@@ -257,8 +263,15 @@ export async function syncSlackMessages(): Promise<{
   }
 
   const count = allItems.filter((r) => r.status !== "rejected").length;
-  const stats = { channels: totalChannels, messagesScanned: totalMessagesScanned, messagesWithUrls: totalMessagesWithUrls };
-  connectorLogger.info({ workspaces: tokens.length, ...stats, kept: count }, "Slack sync completed");
+  const stats = {
+    channels: totalChannels,
+    messagesScanned: totalMessagesScanned,
+    messagesWithUrls: totalMessagesWithUrls,
+  };
+  connectorLogger.info(
+    { workspaces: tokens.length, ...stats, kept: count },
+    "Slack sync completed"
+  );
   return { count, items: allItems, stats };
 }
 
@@ -279,11 +292,9 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
   // Cap first-sync window to the last 7 days.
   const sevenDaysAgoTs = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
   // Fall back to legacy key for tokens migrated from before multi-workspace support.
-  const lastSyncRaw = getUserSetting(key) ?? getUserSetting("slack_last_sync");
+  const lastSyncRaw = (await getUserSetting(key)) ?? (await getUserSetting("slack_last_sync"));
   const lastSyncTs =
-    lastSyncRaw && Number(lastSyncRaw) > sevenDaysAgoTs
-      ? lastSyncRaw
-      : String(sevenDaysAgoTs);
+    lastSyncRaw && Number(lastSyncRaw) > sevenDaysAgoTs ? lastSyncRaw : String(sevenDaysAgoTs);
 
   const conversations: ResolvedConversation[] = [];
   let cursor: string | undefined;
@@ -303,7 +314,11 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
           : ch.is_private
             ? "private_channel"
             : "public_channel";
-      conversations.push({ id: ch.id, name: ch.name ?? "", type: type as ResolvedConversation["type"] });
+      conversations.push({
+        id: ch.id,
+        name: ch.name ?? "",
+        type: type as ResolvedConversation["type"],
+      });
     }
     cursor = list.response_metadata?.next_cursor || undefined;
   } while (cursor);
@@ -312,7 +327,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
   if (allowlist.length === 0) {
     connectorLogger.info(
       { teamId: token.team_id },
-      "SLACK_CHANNELS not configured — skipping sync. Set SLACK_CHANNELS to an allowlist of channel names.",
+      "SLACK_CHANNELS not configured — skipping sync. Set SLACK_CHANNELS to an allowlist of channel names."
     );
     return { items: [], stats: { channels: 0, messagesScanned: 0, messagesWithUrls: 0 } };
   }
@@ -329,8 +344,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 
   try {
     for (const conv of filteredConversations) {
-      const channelLabel =
-        (await resolveConversationLabel(client, conv, userCache)) || conv.id;
+      const channelLabel = (await resolveConversationLabel(client, conv, userCache)) || conv.id;
 
       let historyCursor: string | undefined;
       do {
@@ -346,7 +360,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
           const code = (err as { data?: { error?: string } })?.data?.error;
           connectorLogger.warn(
             { channel: channelLabel, teamId: token.team_id, err: code ?? err },
-            "Failed to read Slack conversation",
+            "Failed to read Slack conversation"
           );
           break;
         }
@@ -359,16 +373,23 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 
           const textUrls = extractUrls(message.text ?? "");
 
-          interface SlackAttachment { original_url?: string; from_url?: string; }
+          interface SlackAttachment {
+            original_url?: string;
+            from_url?: string;
+          }
           const attachmentUrls: string[] = [];
           const attachments = (message.attachments as SlackAttachment[] | undefined) ?? [];
           for (const att of attachments) {
-            if (att.original_url && !isSlackUrl(att.original_url)) attachmentUrls.push(sanitizeUrl(att.original_url));
-            if (att.from_url && !isSlackUrl(att.from_url)) attachmentUrls.push(sanitizeUrl(att.from_url));
+            if (att.original_url && !isSlackUrl(att.original_url))
+              attachmentUrls.push(sanitizeUrl(att.original_url));
+            if (att.from_url && !isSlackUrl(att.from_url))
+              attachmentUrls.push(sanitizeUrl(att.from_url));
           }
 
           const blockUrls = extractUrlsFromBlocks((message.blocks as unknown[]) ?? []);
-          const allUrls = [...new Set([...textUrls, ...attachmentUrls, ...blockUrls])].filter((u) => !isSlackUrl(u));
+          const allUrls = [...new Set([...textUrls, ...attachmentUrls, ...blockUrls])].filter(
+            (u) => !isSlackUrl(u)
+          );
           if (allUrls.length === 0) continue;
 
           messagesWithUrls++;
@@ -387,7 +408,10 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
               });
               results.push(await processContent(raw));
             } catch (err) {
-              connectorLogger.error({ err, url, channel: channelLabel }, "Failed to process Slack URL");
+              connectorLogger.error(
+                { err, url, channel: channelLabel },
+                "Failed to process Slack URL"
+              );
             }
           }
         }
@@ -396,7 +420,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
       } while (historyCursor);
     }
   } finally {
-    setUserSetting(key, syncStartTs);
+    await setUserSetting(key, syncStartTs);
   }
 
   return {
@@ -414,7 +438,7 @@ async function syncWorkspace(token: OAuthTokenRow): Promise<{
 async function resolveConversationLabel(
   client: WebClient,
   conv: ResolvedConversation,
-  userCache: Map<string, string>,
+  userCache: Map<string, string>
 ): Promise<string> {
   if (conv.name) return conv.name;
 
@@ -440,7 +464,7 @@ async function resolveConversationLabel(
       const names = await Promise.all(
         (members.members ?? [])
           .slice(0, 6)
-          .map((u) => resolveUserName(client, u, userCache).then((n) => n ?? u)),
+          .map((u) => resolveUserName(client, u, userCache).then((n) => n ?? u))
       );
       return `Group DM: ${names.join(", ")}`;
     }
@@ -506,7 +530,7 @@ function extractUrlsFromBlocks(blocks: unknown[]): string[] {
 async function resolveUserName(
   client: WebClient,
   userId: string,
-  cache: Map<string, string>,
+  cache: Map<string, string>
 ): Promise<string | undefined> {
   if (cache.has(userId)) {
     return cache.get(userId);
