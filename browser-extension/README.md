@@ -1,45 +1,29 @@
 # Distil Browser Extension
 
-A Chrome (Manifest V3) extension that saves any page to your Distil feed with a single click.
+A Chrome Manifest V3 extension that sends pages to Distil's durable capture API.
 
-## Loading the Extension (Development)
+## Load for development
 
-1. Open `chrome://extensions` and enable **Developer Mode** (top-right toggle)
-2. Click **Load unpacked** and select this `browser-extension/` folder
-3. The extension connects to `http://localhost:3000` by default — make sure the Distil dev server is running
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Choose **Load unpacked** and select `browser-extension/`.
+3. Open the extension's **Options** page.
+4. Enter the Distil origin (for local development, `http://localhost:3000`) and a dedicated capture token from Distil Settings.
+5. Approve access to that origin.
 
-## Using the Extension
+The token is kept only in `chrome.storage.local`, is never rendered after it is saved, and is sent solely in the `Authorization` header to the configured origin.
 
-Click the Distil icon in the Chrome toolbar while on any page. The page URL, title, and your optional notes are sent to your local Distil instance. If the API is unreachable, the item is saved locally in `chrome.storage` and synced on the next successful connection.
+## Capture and replay behavior
 
-## Deploying with a Production Distil Instance
+Toolbar, context-menu, and keyboard captures are normalized and persisted before any network request. Duplicate pending URLs share one queue entry. The extension replays pending captures when the service worker starts, Chrome starts, the five-minute alarm fires, configuration changes, and after new saves.
 
-The API URL is hardcoded for local development. Before loading the extension against a deployed Distil instance, update **two files**:
-
-1. `background.js` line ~22: change `DISTIL_API_URL` to your deployed URL
-2. `popup.js` line ~8: change `DISTIL_API_URL` to the same deployed URL
-
-Example:
-```js
-const DISTIL_API_URL = "https://distil.yourdomain.com/api/items";
-```
-
-You will also need to update `manifest.json` to allow the new host:
-```json
-"host_permissions": ["https://distil.yourdomain.com/*"],
-```
-
-Then reload the unpacked extension in `chrome://extensions`.
-
-## API Token (optional)
-
-If you have set `DISTIL_API_TOKEN` on your Distil server (recommended for any networked deployment), add the same value to `background.js` and `popup.js` where the `Authorization` header is constructed. See the Distil README's production security checklist for details.
+Successful `200` and `202` responses remove the queue entry. `401` and `403` preserve all pending entries and pause replay until the token is updated. `400` and `422` are terminal for that entry. Rate limits, server errors, and network failures remain queued for retry.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `manifest.json` | Chrome extension manifest (MV3) |
-| `background.js` | Service worker — handles save requests, local queue, API communication |
-| `popup.html` / `popup.js` / `popup.css` | Extension popup UI |
-| `icons/` | Extension icons (16px, 48px, 128px) |
+| File            | Purpose                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `manifest.json` | Manifest V3 permissions, commands, worker, and options registration |
+| `background.js` | Persist-first capture queue, API transport, and replay lifecycle    |
+| `options.*`     | Origin permission and capture-token configuration                   |
+| `popup.*`       | Capture status UI                                                   |
+| `icons/`        | Extension icons                                                     |

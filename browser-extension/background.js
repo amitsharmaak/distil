@@ -1,151 +1,334 @@
-/**
- * Distil Browser Extension — Background Service Worker
- *
- * Handles the right-click context menu "Save to Distil" option.
- * When triggered, it sends the page/link URL to the Distil API.
- *
- * API target: POST http://localhost:3000/api/items
- * The API must be running (npm run dev) for saves to reach the database.
- *
- * Fallback: if the API is unreachable (e.g. Distil server is not running),
- * the item is saved to chrome.storage.local so nothing is lost. Items
- * saved locally while offline can be synced in a future phase.
- */
+/** Distil Browser Extension — durable capture service worker. */
 
-// ── Configuration ──────────────────────────────────────────────────────────────
-
-/**
- * The base URL of the running Distil web app.
- * Change this when deploying Distil to a public URL so the extension can reach it.
- * Example: "https://distil.yourdomain.com"
- */
-const DISTIL_API_URL = "http://localhost:3000/api/items";
-
-// ── Keyboard shortcut handler ──────────────────────────────────────────────────
-
-chrome.commands.onCommand.addListener((command) => {
-  if (command !== "save-to-distil") return;
-
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tab = tabs[0];
-    if (!tab?.url) return;
-
-    saveToAPI({
-      url: tab.url,
-      title: tab.title || "",
-      topics: [],
-      sourceType: "browser-extension",
-      contentType: "article",
-      priority: "medium",
-    }).catch(() => saveToLocalStorage({ url: tab.url, title: tab.title || "" }));
-  });
+const STORAGE = Object.freeze({
+  config: "distilConfig",
+  queue: "distilCaptureQueue",
+  state: "distilExtensionState",
 });
+const ALARM_NAME = "distil-replay-captures";
+const ALARM_PERIOD_MINUTES = 5;
+const CAPTURE_PATH = "/api/v1/captures";
+const SUCCESS_STATUSES = new Set([200, 202]);
+const AUTH_STATUSES = new Set([401, 403]);
+const TERMINAL_STATUSES = new Set([400, 422]);
 
-// ── Context menu setup ─────────────────────────────────────────────────────────
+let queueOperation = Promise.resolve();
+let replayPromise = null;
 
-chrome.runtime.onInstalled.addListener(() => {
-  // Register the right-click menu item available on pages, selected text, and links.
-  chrome.contextMenus.create({
-    id: "save-to-distil",
-    title: "Save to Distil",
-    contexts: ["page", "selection", "link"],
+function storageGet(defaults) {
+  return chrome.storage.local.get(defaults);
+}
+
+function storageSet(values) {
+  return chrome.storage.local.set(values);
+}
+
+function normalizeCaptureUrl(value) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only HTTP and HTTPS pages can be saved.");
+  }
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+function normalizeOrigin(value) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("The Distil origin must use HTTP or HTTPS.");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("The Distil origin cannot contain credentials, a query, or a fragment.");
+  }
+  if (parsed.pathname !== "/") {
+    throw new Error("Enter the Distil origin without a path.");
+  }
+  return parsed.origin;
+}
+
+function permissionPattern(origin) {
+  return `${normalizeOrigin(origin)}/*`;
+}
+
+function publicState(kind, message, extra = {}) {
+  return { kind, message, updatedAt: new Date().toISOString(), ...extra };
+}
+
+async function setState(kind, message, extra) {
+  const state = publicState(kind, message, extra);
+  await storageSet({ [STORAGE.state]: state });
+  return state;
+}
+
+function serializedQueueOperation(operation) {
+  const next = queueOperation.then(operation, operation);
+  queueOperation = next.catch(() => undefined);
+  return next;
+}
+
+async function enqueueCapture(payload) {
+  return serializedQueueOperation(async () => {
+    const normalizedUrl = normalizeCaptureUrl(payload.url);
+    const stored = await storageGet({ [STORAGE.queue]: [] });
+    const queue = stored[STORAGE.queue];
+    const existing = queue.find((entry) => entry.normalizedUrl === normalizedUrl);
+
+    if (existing) {
+      existing.title = payload.title || existing.title;
+      existing.notes = payload.notes || payload.selectedText || existing.notes;
+      existing.topics = Array.isArray(payload.topics) ? payload.topics : existing.topics;
+      await storageSet({ [STORAGE.queue]: queue });
+      return existing;
+    }
+
+    const entry = {
+      id: crypto.randomUUID(),
+      normalizedUrl,
+      title: payload.title || "",
+      notes: payload.notes || payload.selectedText || "",
+      topics: Array.isArray(payload.topics) ? payload.topics : [],
+      priority: ["high", "medium", "low"].includes(payload.priority) ? payload.priority : "medium",
+      savedAt: new Date().toISOString(),
+      attempts: 0,
+    };
+    queue.push(entry);
+    await storageSet({ [STORAGE.queue]: queue });
+    return entry;
   });
-});
+}
 
-// ── Context menu click handler ─────────────────────────────────────────────────
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== "save-to-distil") return;
-
-  // Prefer the right-clicked link URL; fall back to the full page URL.
-  const url = info.linkUrl || info.pageUrl;
-  const title = tab?.title || "";
-  const selectedText = info.selectionText || "";
-
-  // Attempt to save to the Distil API first. Fall back to local storage if it fails.
-  saveToAPI({ url, title, selectedText, sourceType: "browser-extension", contentType: "article", priority: "medium", topics: [] }).catch(() => {
-    saveToLocalStorage({ url, title, selectedText });
+async function removeQueueEntry(id) {
+  return serializedQueueOperation(async () => {
+    const stored = await storageGet({ [STORAGE.queue]: [] });
+    const queue = stored[STORAGE.queue].filter((entry) => entry.id !== id);
+    await storageSet({ [STORAGE.queue]: queue });
+    return queue;
   });
-});
+}
 
-// ── Popup-driven async save ────────────────────────────────────────────────────
-
-/**
- * The popup forwards saves here and then closes immediately. Because the
- * service worker outlives the popup, the fetch keeps running in the background
- * and the API itself returns 202 quickly — so the user never waits on ingestion.
- */
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "distil-save") return false;
-
-  saveToAPI(message.payload)
-    .catch(() => saveToLocalStorage(message.payload));
-
-  // Ack synchronously so the popup can close right away.
-  sendResponse({ ok: true });
-  return false;
-});
-
-// ── API save ───────────────────────────────────────────────────────────────────
-
-/**
- * Sends a saved item to the Distil API.
- *
- * Maps the extension's minimal data model to the full ContentItem shape:
- * - url       → required
- * - title     → used as the title (OG fetch will enrich it server-side)
- * - notes     → selected text from the page, used as the item's summary
- * - sourceType → always "browser-extension"
- * - contentType → defaults to "article" (the most common web content type)
- * - priority  → defaults to "medium"
- *
- * @throws if the network request fails (caller handles the fallback)
- */
-async function saveToAPI(payload) {
-  const { url, title, selectedText, notes, sourceType, contentType, priority, topics } = payload;
-  const response = await fetch(DISTIL_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      url,
-      title: title || undefined,
-      sourceType: sourceType || "browser-extension",
-      contentType: contentType || "article",
-      notes: notes || selectedText || undefined,
-      priority: priority || "medium",
-      topics: topics || [],
-    }),
+async function recordAttempt(id) {
+  return serializedQueueOperation(async () => {
+    const stored = await storageGet({ [STORAGE.queue]: [] });
+    const queue = stored[STORAGE.queue];
+    const entry = queue.find((candidate) => candidate.id === id);
+    if (entry) entry.attempts = (entry.attempts || 0) + 1;
+    await storageSet({ [STORAGE.queue]: queue });
   });
+}
 
-  // 202 is accepted-async; treat it as success.
-  if (!response.ok && response.status !== 202) {
-    throw new Error(`Distil API returned ${response.status}`);
+async function getConfiguration() {
+  const stored = await storageGet({ [STORAGE.config]: null });
+  const config = stored[STORAGE.config];
+  if (!config?.origin || !config?.token) return null;
+  return {
+    origin: normalizeOrigin(config.origin),
+    token: config.token,
+    authPaused: Boolean(config.authPaused),
+  };
+}
+
+async function hasOriginPermission(origin) {
+  return chrome.permissions.contains({ origins: [permissionPattern(origin)] });
+}
+
+async function pauseForAuthentication(config) {
+  await storageSet({ [STORAGE.config]: { ...config, authPaused: true } });
+}
+
+async function deliverCapture(entry, config) {
+  await recordAttempt(entry.id);
+  try {
+    const response = await fetch(`${config.origin}${CAPTURE_PATH}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: entry.normalizedUrl,
+        title: entry.title || undefined,
+        notes: entry.notes || undefined,
+        topics: entry.topics,
+        priority: entry.priority,
+        source: "browser-extension",
+      }),
+    });
+
+    if (SUCCESS_STATUSES.has(response.status)) return { kind: "saved" };
+    if (AUTH_STATUSES.has(response.status)) return { kind: "auth", status: response.status };
+    if (TERMINAL_STATUSES.has(response.status))
+      return { kind: "terminal", status: response.status };
+    return { kind: "retry", status: response.status };
+  } catch {
+    return { kind: "retry", status: 0 };
   }
 }
 
-// ── Local storage fallback ─────────────────────────────────────────────────────
+async function replayQueue() {
+  if (replayPromise) return replayPromise;
 
-/**
- * Saves an item to chrome.storage.local as a fallback when the API is down.
- * Items are stored under the "distilItems" key as an array (newest first).
- *
- * These locally-stored items are not yet synced to the database automatically.
- * A future sync mechanism can pick them up and POST them when the API is back.
- */
-function saveToLocalStorage({ url, title, selectedText, notes, topics }) {
-  const item = {
-    url,
-    title,
-    selectedText,
-    notes,
-    savedAt: new Date().toISOString(),
-    topics: topics || [],
-    pendingSync: true,
-  };
+  replayPromise = (async () => {
+    const config = await getConfiguration();
+    const queueResult = await storageGet({ [STORAGE.queue]: [] });
+    const queued = queueResult[STORAGE.queue];
 
-  chrome.storage.local.get({ distilItems: [] }, (result) => {
-    const items = result.distilItems;
-    items.unshift(item);
-    chrome.storage.local.set({ distilItems: items });
+    if (queued.length === 0) return setState("idle", "Ready to save.", { queued: 0 });
+    if (!config) {
+      return setState("unconfigured", "Configure your Distil origin and capture token.", {
+        queued: queued.length,
+      });
+    }
+    if (!(await hasOriginPermission(config.origin))) {
+      return setState("permission-required", "Allow access to your Distil origin in Settings.", {
+        queued: queued.length,
+      });
+    }
+    if (config.authPaused) {
+      return setState("auth-required", "Your capture token was rejected. Update it in Settings.", {
+        queued: queued.length,
+      });
+    }
+
+    let saved = 0;
+    let rejected = 0;
+    for (const entry of queued) {
+      const outcome = await deliverCapture(entry, config);
+      if (outcome.kind === "saved") {
+        await removeQueueEntry(entry.id);
+        saved += 1;
+        continue;
+      }
+      if (outcome.kind === "terminal") {
+        await removeQueueEntry(entry.id);
+        rejected += 1;
+        await setState("rejected", "Distil rejected this page.", {
+          queued: Math.max(queued.length - saved - rejected, 0),
+          status: outcome.status,
+        });
+        continue;
+      }
+      if (outcome.kind === "auth") {
+        await pauseForAuthentication(config);
+        return setState(
+          "auth-required",
+          "Your capture token was rejected. Update it in Settings.",
+          {
+            queued: queued.length - saved - rejected,
+            status: outcome.status,
+          }
+        );
+      }
+      return setState("queued", "Saved offline. Distil will retry automatically.", {
+        queued: queued.length - saved - rejected,
+        status: outcome.status,
+      });
+    }
+
+    if (rejected > 0 && saved === 0) return getState();
+    return setState("saved", saved === 1 ? "Saved to Distil." : `Saved ${saved} pages to Distil.`, {
+      queued: 0,
+    });
+  })().finally(() => {
+    replayPromise = null;
   });
+
+  return replayPromise;
 }
+
+async function saveCapture(payload) {
+  try {
+    // Do not enqueue behind a replay snapshot that has already been read. Waiting
+    // here ensures every newly persisted entry is included in the next drain.
+    if (replayPromise) await replayPromise;
+    await enqueueCapture(payload);
+    return await replayQueue();
+  } catch (error) {
+    return setState(
+      "unsupported",
+      error instanceof Error ? error.message : "This page cannot be saved."
+    );
+  }
+}
+
+async function getState() {
+  const stored = await storageGet({
+    [STORAGE.queue]: [],
+    [STORAGE.config]: null,
+    [STORAGE.state]: publicState("idle", "Ready to save."),
+  });
+  return {
+    ...stored[STORAGE.state],
+    configured: Boolean(stored[STORAGE.config]?.origin && stored[STORAGE.config]?.token),
+    queued: stored[STORAGE.queue].length,
+  };
+}
+
+function handleMessage(message) {
+  switch (message?.type) {
+    case "distil-save":
+      return saveCapture(message.payload || {});
+    case "distil-replay":
+      return replayQueue();
+    case "distil-get-state":
+      return getState();
+    case "distil-config-updated":
+      return replayQueue();
+    default:
+      return null;
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const response = handleMessage(message);
+  if (!response) return false;
+  response.then(sendResponse, () =>
+    sendResponse(publicState("error", "The extension could not finish that action."))
+  );
+  return true;
+});
+
+function captureFromTab(tab, extra = {}) {
+  if (!tab?.url) return;
+  void saveCapture({ url: tab.url, title: tab.title || "", ...extra });
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "save-to-distil") return;
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => captureFromTab(tab));
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== "save-to-distil") return;
+  captureFromTab(tab, {
+    ...(info.linkUrl || info.pageUrl ? { url: info.linkUrl || info.pageUrl } : {}),
+    notes: info.selectionText || "",
+  });
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "save-to-distil",
+      title: "Save to Distil",
+      contexts: ["page", "selection", "link"],
+    });
+  });
+  void ensureReplayAlarm();
+  void replayQueue();
+});
+
+chrome.runtime.onStartup.addListener(() => void replayQueue());
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) void replayQueue();
+});
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[STORAGE.config]) void replayQueue();
+});
+
+async function ensureReplayAlarm() {
+  const existing = await chrome.alarms.get(ALARM_NAME);
+  if (!existing) await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD_MINUTES });
+}
+
+void ensureReplayAlarm();
+void replayQueue();

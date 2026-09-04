@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Distil Extension Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Distil extension</h1>
+      <p class="intro">Connect this browser to your Distil account.</p>
+      <form id="configuration">
+        <label for="origin">Distil origin</label>
+        <input
+          id="origin"
+          name="origin"
+          type="url"
+          required
+          placeholder="https://distil.example.com"
+        />
+        <p class="hint">Enter the origin only, without a path.</p>
+
+        <label for="token">Capture token</label>
+        <input id="token" name="token" type="password" autocomplete="off" required />
+        <p id="token-hint" class="hint">
+          Create a dedicated browser-extension token in Distil Settings.
+        </p>
+
+        <button type="submit">Save connection</button>
+      </form>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
