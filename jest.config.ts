@@ -74,8 +74,11 @@ const config: Config = {
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",
-    "!src/app/layout.tsx",
+    "!src/**/__tests__/**",
+    "!src/**/*.test.{ts,tsx}",
     "!src/lib/mock-data.ts",
+    "!src/lib/contracts/**",
+    "!src/lib/repositories/ports.ts",
   ],
 };
 
