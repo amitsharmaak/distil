@@ -19,6 +19,9 @@ export const config = {
   /** Unpooled PostgreSQL URL used only by explicit migrations and imports. */
   databaseMigrationUrl: process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL ?? "",
 
+  /** Source connectors stay off in hosted Phase 1 deployments. */
+  featureConnectors: process.env.FEATURE_CONNECTORS !== "false",
+
   /**
    * Absolute or relative path to the SQLite database file.
    * Defaults to `./data/distil.db` relative to the project root.
