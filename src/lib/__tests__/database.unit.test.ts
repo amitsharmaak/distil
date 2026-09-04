@@ -85,25 +85,75 @@ async function loadPostgres() {
 async function loadLegacy() {
   jest.resetModules();
   const legacyNames = [
-    "getItems", "getItemById", "getRejectedItems", "getItemByNormalizedUrl", "insertItem",
-    "updateItem", "deleteItem", "getOAuthToken", "getOAuthTokensByProvider", "upsertOAuthToken",
-    "deleteOAuthToken", "getAISummary", "getAISummaries", "upsertAISummary", "insertFeedback",
-    "getFeedback", "getAllFeedback", "insertResearchReport", "getResearchReport",
-    "updateResearchReport", "getResearchReports", "getPendingResearchSuggestions",
-    "getResearchSuggestionById", "replacePendingResearchSuggestions", "dismissResearchSuggestion",
-    "markResearchSuggestionStarted", "getUserSetting", "setUserSetting", "insertRawContent",
-    "updateRawContentItemId", "updateItemProcessingStatus", "updateItemPriorityScore",
-    "insertNotification", "getNotifications", "getUnreadNotificationCount", "markNotificationRead",
-    "markAllNotificationsRead", "getItemEmbedding", "upsertItemEmbedding", "getRecentEmbeddings",
-    "insertAuditLog", "getAuditLogs", "getDailyAuditStats", "insertWorkflowRun", "updateWorkflowRun",
-    "getWorkflowRun", "getWorkflowRuns", "insertAgentAction", "getAgentActions", "insertApproval",
-    "getPendingApprovals", "resolveApproval", "insertChatConversation", "insertChatMessage",
-    "getChatMessages", "getChatConversations", "enqueueJob", "dequeueJob", "completeJob", "getJobStats",
+    "getItems",
+    "getItemById",
+    "getRejectedItems",
+    "getItemByNormalizedUrl",
+    "insertItem",
+    "updateItem",
+    "deleteItem",
+    "getOAuthToken",
+    "getOAuthTokensByProvider",
+    "upsertOAuthToken",
+    "deleteOAuthToken",
+    "getAISummary",
+    "getAISummaries",
+    "upsertAISummary",
+    "insertFeedback",
+    "getFeedback",
+    "getAllFeedback",
+    "insertResearchReport",
+    "getResearchReport",
+    "updateResearchReport",
+    "getResearchReports",
+    "getPendingResearchSuggestions",
+    "getResearchSuggestionById",
+    "replacePendingResearchSuggestions",
+    "dismissResearchSuggestion",
+    "markResearchSuggestionStarted",
+    "getUserSetting",
+    "setUserSetting",
+    "insertRawContent",
+    "updateRawContentItemId",
+    "updateItemProcessingStatus",
+    "updateItemPriorityScore",
+    "insertNotification",
+    "getNotifications",
+    "getUnreadNotificationCount",
+    "markNotificationRead",
+    "markAllNotificationsRead",
+    "getItemEmbedding",
+    "upsertItemEmbedding",
+    "getRecentEmbeddings",
+    "insertAuditLog",
+    "getAuditLogs",
+    "getDailyAuditStats",
+    "insertWorkflowRun",
+    "updateWorkflowRun",
+    "getWorkflowRun",
+    "getWorkflowRuns",
+    "insertAgentAction",
+    "getAgentActions",
+    "insertApproval",
+    "getPendingApprovals",
+    "resolveApproval",
+    "insertChatConversation",
+    "insertChatMessage",
+    "getChatMessages",
+    "getChatConversations",
+    "enqueueJob",
+    "dequeueJob",
+    "completeJob",
+    "getJobStats",
   ];
   const legacy: Record<string, jest.Mock | { prepare: jest.Mock }> = Object.fromEntries(
     legacyNames.map((name) => [name, jest.fn().mockResolvedValue(name)])
   );
-  const attempts: Array<{ attempts: number } | undefined> = [undefined, { attempts: 1 }, { attempts: 2 }];
+  const attempts: Array<{ attempts: number } | undefined> = [
+    undefined,
+    { attempts: 1 },
+    { attempts: 2 },
+  ];
   const run = jest.fn();
   const prepare = jest.fn((sql: string) => ({
     run,
@@ -331,9 +381,9 @@ describe("database facade using PostgreSQL", () => {
     g.feedback.insert.mockResolvedValue(feedback);
     g.feedback.findForItem.mockResolvedValueOnce(feedback).mockResolvedValueOnce(undefined);
     g.feedback.list.mockResolvedValue([{ ...feedback, reason: "useful" }]);
-    await expect(db.insertFeedback({ id: "feedback-1", itemId: "item-1", rating: 1 })).resolves.toEqual(
-      expect.objectContaining({ item_id: "item-1", reason: null })
-    );
+    await expect(
+      db.insertFeedback({ id: "feedback-1", itemId: "item-1", rating: 1 })
+    ).resolves.toEqual(expect.objectContaining({ item_id: "item-1", reason: null }));
     await expect(db.getFeedback("item-1")).resolves.toEqual(
       expect.objectContaining({ id: "feedback-1" })
     );
@@ -365,7 +415,9 @@ describe("database facade using PostgreSQL", () => {
     });
     await expect(db.getResearchReport("report-1")).resolves.toMatchObject({ id: "report-1" });
     await expect(db.getResearchReport("missing")).resolves.toBeUndefined();
-    await expect(db.updateResearchReport("report-1", { status: "complete" })).resolves.toMatchObject({
+    await expect(
+      db.updateResearchReport("report-1", { status: "complete" })
+    ).resolves.toMatchObject({
       status: "complete",
     });
     await expect(db.getResearchReports()).resolves.toHaveLength(1);
@@ -436,20 +488,52 @@ describe("database facade using PostgreSQL", () => {
   test("delegates the agent repository surface with defaults intact", async () => {
     const { database: db, groups: g } = await loadPostgres();
     const calls: Array<[() => Promise<unknown>, string, unknown[]]> = [
-      [() => db.insertAuditLog({ id: "audit-1", action: "capture" } as never), "insertAuditLog", [{ id: "audit-1", action: "capture" }]],
+      [
+        () => db.insertAuditLog({ id: "audit-1", action: "capture" } as never),
+        "insertAuditLog",
+        [{ id: "audit-1", action: "capture" }],
+      ],
       [() => db.getAuditLogs(), "listAuditLogs", [50]],
       [() => db.getDailyAuditStats(), "getDailyAuditStats", []],
-      [() => db.insertWorkflowRun({ id: "workflow-1" } as never), "insertWorkflow", [{ id: "workflow-1" }]],
-      [() => db.updateWorkflowRun("workflow-1", { status: "complete" } as never), "updateWorkflow", ["workflow-1", { status: "complete" }]],
+      [
+        () => db.insertWorkflowRun({ id: "workflow-1" } as never),
+        "insertWorkflow",
+        [{ id: "workflow-1" }],
+      ],
+      [
+        () => db.updateWorkflowRun("workflow-1", { status: "complete" } as never),
+        "updateWorkflow",
+        ["workflow-1", { status: "complete" }],
+      ],
       [() => db.getWorkflowRun("workflow-1"), "findWorkflow", ["workflow-1"]],
       [() => db.getWorkflowRuns(), "listWorkflows", [{}]],
-      [() => db.insertAgentAction({ id: "action-1" } as never), "insertAction", [{ id: "action-1" }]],
+      [
+        () => db.insertAgentAction({ id: "action-1" } as never),
+        "insertAction",
+        [{ id: "action-1" }],
+      ],
       [() => db.getAgentActions(), "listActions", [{}]],
-      [() => db.insertApproval({ id: "approval-1" } as never), "insertApproval", [{ id: "approval-1" }]],
+      [
+        () => db.insertApproval({ id: "approval-1" } as never),
+        "insertApproval",
+        [{ id: "approval-1" }],
+      ],
       [() => db.getPendingApprovals(), "listPendingApprovals", [20]],
-      [() => db.resolveApproval("approval-1", "approved"), "resolveApproval", ["approval-1", "approved"]],
-      [() => db.insertChatConversation({ id: "conversation-1" } as never), "insertConversation", [{ id: "conversation-1" }]],
-      [() => db.insertChatMessage({ id: "message-1" } as never), "insertMessage", [{ id: "message-1" }]],
+      [
+        () => db.resolveApproval("approval-1", "approved"),
+        "resolveApproval",
+        ["approval-1", "approved"],
+      ],
+      [
+        () => db.insertChatConversation({ id: "conversation-1" } as never),
+        "insertConversation",
+        [{ id: "conversation-1" }],
+      ],
+      [
+        () => db.insertChatMessage({ id: "message-1" } as never),
+        "insertMessage",
+        [{ id: "message-1" }],
+      ],
       [() => db.getChatMessages("conversation-1"), "listMessages", ["conversation-1"]],
       [() => db.getChatConversations(), "listConversations", [20]],
     ];
@@ -499,7 +583,11 @@ describe("database facade fail-closed and legacy behavior", () => {
       [() => db.deleteItem("item-1"), "deleteItem", ["item-1"]],
       [() => db.getOAuthToken("slack", "team-1"), "getOAuthToken", ["slack", "team-1"]],
       [() => db.getOAuthTokensByProvider("slack"), "getOAuthTokensByProvider", ["slack"]],
-      [() => db.upsertOAuthToken("slack", "team-1", { access_token: "token" }), "upsertOAuthToken", ["slack", "team-1", { access_token: "token" }]],
+      [
+        () => db.upsertOAuthToken("slack", "team-1", { access_token: "token" }),
+        "upsertOAuthToken",
+        ["slack", "team-1", { access_token: "token" }],
+      ],
       [() => db.deleteOAuthToken("slack", "team-1"), "deleteOAuthToken", ["slack", "team-1"]],
       [() => db.getAISummary("item-1", "brief"), "getAISummary", ["item-1", "brief"]],
       [() => db.getAISummaries("item-1"), "getAISummaries", ["item-1"]],
@@ -507,28 +595,56 @@ describe("database facade fail-closed and legacy behavior", () => {
       [() => db.insertFeedback({ id: "f-1" } as never), "insertFeedback", [{ id: "f-1" }]],
       [() => db.getFeedback("item-1"), "getFeedback", ["item-1"]],
       [() => db.getAllFeedback(), "getAllFeedback", []],
-      [() => db.insertResearchReport({ id: "r-1" } as never), "insertResearchReport", [{ id: "r-1" }]],
+      [
+        () => db.insertResearchReport({ id: "r-1" } as never),
+        "insertResearchReport",
+        [{ id: "r-1" }],
+      ],
       [() => db.getResearchReport("r-1"), "getResearchReport", ["r-1"]],
-      [() => db.updateResearchReport("r-1", { status: "done" }), "updateResearchReport", ["r-1", { status: "done" }]],
+      [
+        () => db.updateResearchReport("r-1", { status: "done" }),
+        "updateResearchReport",
+        ["r-1", { status: "done" }],
+      ],
       [() => db.getResearchReports(), "getResearchReports", [20]],
       [() => db.getPendingResearchSuggestions(), "getPendingResearchSuggestions", []],
       [() => db.getResearchSuggestionById("sg-1"), "getResearchSuggestionById", ["sg-1"]],
       [() => db.replacePendingResearchSuggestions([]), "replacePendingResearchSuggestions", [[]]],
       [() => db.dismissResearchSuggestion("sg-1"), "dismissResearchSuggestion", ["sg-1"]],
-      [() => db.markResearchSuggestionStarted("sg-1", "r-1"), "markResearchSuggestionStarted", ["sg-1", "r-1"]],
+      [
+        () => db.markResearchSuggestionStarted("sg-1", "r-1"),
+        "markResearchSuggestionStarted",
+        ["sg-1", "r-1"],
+      ],
       [() => db.getUserSetting("key"), "getUserSetting", ["key"]],
       [() => db.setUserSetting("key", "value"), "setUserSetting", ["key", "value"]],
       [() => db.insertRawContent({ id: "raw-1" } as never), "insertRawContent", [{ id: "raw-1" }]],
-      [() => db.updateRawContentItemId("raw-1", "item-1"), "updateRawContentItemId", ["raw-1", "item-1"]],
-      [() => db.updateItemProcessingStatus("item-1", "ready"), "updateItemProcessingStatus", ["item-1", "ready", undefined]],
-      [() => db.updateItemPriorityScore("item-1", 0.8, "high"), "updateItemPriorityScore", ["item-1", 0.8, "high"]],
+      [
+        () => db.updateRawContentItemId("raw-1", "item-1"),
+        "updateRawContentItemId",
+        ["raw-1", "item-1"],
+      ],
+      [
+        () => db.updateItemProcessingStatus("item-1", "ready"),
+        "updateItemProcessingStatus",
+        ["item-1", "ready", undefined],
+      ],
+      [
+        () => db.updateItemPriorityScore("item-1", 0.8, "high"),
+        "updateItemPriorityScore",
+        ["item-1", 0.8, "high"],
+      ],
       [() => db.insertNotification({ id: "n-1" } as never), "insertNotification", [{ id: "n-1" }]],
       [() => db.getNotifications(), "getNotifications", [20]],
       [() => db.getUnreadNotificationCount(), "getUnreadNotificationCount", []],
       [() => db.markNotificationRead("n-1"), "markNotificationRead", ["n-1"]],
       [() => db.markAllNotificationsRead(), "markAllNotificationsRead", []],
       [() => db.getItemEmbedding("item-1"), "getItemEmbedding", ["item-1"]],
-      [() => db.upsertItemEmbedding("item-1", [0.1], "model"), "upsertItemEmbedding", ["item-1", [0.1], "model"]],
+      [
+        () => db.upsertItemEmbedding("item-1", [0.1], "model"),
+        "upsertItemEmbedding",
+        ["item-1", [0.1], "model"],
+      ],
       [() => db.getRecentEmbeddings(), "getRecentEmbeddings", [30]],
       [() => db.insertAuditLog({ id: "a-1" } as never), "insertAuditLog", [{ id: "a-1" }]],
       [() => db.getAuditLogs(), "getAuditLogs", [50]],
@@ -542,7 +658,11 @@ describe("database facade fail-closed and legacy behavior", () => {
       [() => db.insertApproval({ id: "ap-1" } as never), "insertApproval", [{ id: "ap-1" }]],
       [() => db.getPendingApprovals(), "getPendingApprovals", [20]],
       [() => db.resolveApproval("ap-1", "rejected"), "resolveApproval", ["ap-1", "rejected"]],
-      [() => db.insertChatConversation({ id: "c-1" } as never), "insertChatConversation", [{ id: "c-1" }]],
+      [
+        () => db.insertChatConversation({ id: "c-1" } as never),
+        "insertChatConversation",
+        [{ id: "c-1" }],
+      ],
       [() => db.insertChatMessage({ id: "m-1" } as never), "insertChatMessage", [{ id: "m-1" }]],
       [() => db.getChatMessages("c-1"), "getChatMessages", ["c-1"]],
       [() => db.getChatConversations(), "getChatConversations", [20]],
