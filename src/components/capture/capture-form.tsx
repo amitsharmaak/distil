@@ -34,7 +34,8 @@ export function CaptureForm() {
           source: "web",
         }),
       });
-      const payload = (await response.json()) as CreateCaptureResponse & ErrorEnvelope;
+      const payload = (await response.json().catch(() => ({}))) as CreateCaptureResponse &
+        ErrorEnvelope;
       if (!response.ok || !payload.receipt) {
         throw new Error(payload.error?.message ?? "Could not save this article.");
       }

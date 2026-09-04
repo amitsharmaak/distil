@@ -59,4 +59,23 @@ describe("CaptureForm", () => {
     );
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
   });
+
+  it("shows a stable fallback when an upstream failure is not JSON", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      },
+    } as unknown as Response);
+    render(<CaptureForm />);
+    fireEvent.change(screen.getByLabelText("Article URL"), {
+      target: { value: "https://example.com/article" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Save to Distil" }).closest("form")!);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Could not save this article.")
+    );
+  });
 });
