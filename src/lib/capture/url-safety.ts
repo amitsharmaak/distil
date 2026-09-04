@@ -136,6 +136,18 @@ export async function assertSafeUrl(
   raw: string,
   resolve: DnsResolver = defaultDnsResolver
 ): Promise<URL> {
+  return (await resolveSafeUrl(raw, resolve)).url;
+}
+
+export interface ResolvedSafeUrl {
+  url: URL;
+  addresses: readonly DnsAddress[];
+}
+
+export async function resolveSafeUrl(
+  raw: string,
+  resolve: DnsResolver = defaultDnsResolver
+): Promise<ResolvedSafeUrl> {
   const url = parseCaptureUrl(raw);
   const hostname = url.hostname
     .replace(/^\[|\]$/g, "")
@@ -175,5 +187,5 @@ export async function assertSafeUrl(
       "rejected"
     );
   }
-  return url;
+  return { url, addresses };
 }

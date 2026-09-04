@@ -1,5 +1,9 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
+
 import { CaptureProcessingError, processingError } from "./errors";
-import { assertSafeUrl, type DnsResolver } from "./url-safety";
+import { resolveSafeUrl, type DnsAddress, type DnsResolver } from "./url-safety";
 
 export interface SafeFetchOptions {
   fetch?: typeof globalThis.fetch;
@@ -16,6 +20,45 @@ export interface FetchedArticle {
 }
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
+function pinnedFetch(
+  url: URL,
+  addresses: readonly DnsAddress[],
+  init: RequestInit
+): Promise<Response> {
+  const address = addresses[0];
+  return new Promise((resolve, reject) => {
+    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
+      {
+        protocol: url.protocol,
+        hostname: address.address,
+        family: address.family,
+        port: url.port || undefined,
+        path: `${url.pathname}${url.search}`,
+        method: "GET",
+        servername: url.hostname,
+        headers: { ...Object.fromEntries(new Headers(init.headers).entries()), Host: url.host },
+        signal: init.signal ?? undefined,
+      },
+      (incoming) => {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
+          else if (value !== undefined) headers.set(name, value);
+        }
+        resolve(
+          new Response(Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
+            status: incoming.statusCode ?? 500,
+            statusText: incoming.statusMessage,
+            headers,
+          })
+        );
+      }
+    );
+    request.once("error", reject);
+    request.end();
+  });
+}
 
 async function readBounded(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) return "";
@@ -52,7 +95,8 @@ export async function fetchArticle(
   const seen = new Set<string>();
 
   for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
-    const safeUrl = await assertSafeUrl(current, resolve);
+    const safe = await resolveSafeUrl(current, resolve);
+    const safeUrl = safe.url;
     const key = safeUrl.toString();
     if (seen.has(key)) {
       throw new CaptureProcessingError(
@@ -67,11 +111,14 @@ export async function fetchArticle(
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
     let response: Response;
     try {
-      response = await fetchImpl(safeUrl, {
+      const init: RequestInit = {
         redirect: "manual",
         signal: controller.signal,
         headers: { Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.8" },
-      });
+      };
+      response = options.fetch
+        ? await fetchImpl(safeUrl, init)
+        : await pinnedFetch(safeUrl, safe.addresses, init);
     } catch (error) {
       throw processingError(error);
     } finally {
