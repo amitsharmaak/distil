@@ -493,8 +493,13 @@ class PostgresEmbeddings implements EmbeddingRepository {
 class PostgresRawContent implements RawContentRepository {
   constructor(private readonly sql: Sql) {}
   async insert(v: Parameters<RawContentRepository["insert"]>[0]) {
-    await this
-      .sql`INSERT INTO raw_content(id,item_id,source_type,raw_body,metadata,fetched_at) VALUES(${v.id},${v.itemId ?? null},${v.sourceType},${v.rawBody},${this.sql.json(v.metadata as never)},${v.fetchedAt})`;
+    await this.sql`INSERT INTO raw_content(id,item_id,source_type,raw_body,metadata,fetched_at)
+           VALUES(${v.id},${v.itemId ?? null},${v.sourceType},${v.rawBody},${this.sql.json(v.metadata as never)},${v.fetchedAt})
+           ON CONFLICT(id) DO UPDATE SET
+             source_type=EXCLUDED.source_type,
+             raw_body=EXCLUDED.raw_body,
+             metadata=EXCLUDED.metadata,
+             fetched_at=EXCLUDED.fetched_at`;
   }
   async attachItem(rawId: string, itemId: string) {
     await this.sql`UPDATE raw_content SET item_id=${itemId} WHERE id=${rawId}`;
@@ -586,9 +591,10 @@ class PostgresJobs implements JobQueueRepository {
     return this.sql.begin(async (tx) => {
       const rows = await tx<Row[]>`
         SELECT * FROM job_queue
-        WHERE status='pending'
-          AND (run_after IS NULL OR run_after <= now())
-          AND (locked_at IS NULL OR locked_at < now() - interval '5 minutes')
+        WHERE (
+          (status='pending' AND (run_after IS NULL OR run_after <= now()))
+          OR (status='running' AND locked_at < now() - interval '5 minutes')
+        )
         ORDER BY priority DESC, created_at ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1

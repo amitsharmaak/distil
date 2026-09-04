@@ -6,12 +6,7 @@
  * ExtractedLink from the core types module.
  */
 
-import type {
-  ContentType,
-  ExtractedLink,
-  Priority,
-  SourceType,
-} from "../types";
+import type { ContentType, ExtractedLink, Priority, SourceType } from "../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 0: Connector Output
@@ -268,6 +263,8 @@ export type ProcessingStatus = "processing" | "ready" | "rejected";
 export interface ProcessingResult {
   /** ID of the RawContent that was processed */
   rawContentId: string;
+  /** Durable item created or resumed by this processing attempt. */
+  itemId?: string;
   /** Current pipeline status */
   status: ProcessingStatus;
   /** Populated when status="rejected" */

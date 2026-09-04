@@ -112,6 +112,30 @@ describe("capture HTTP contracts", () => {
     );
   });
 
+  it("limits capture-token credentials to creating captures", async () => {
+    const dependencies = setup();
+    dependencies.authenticate.mockResolvedValue({
+      kind: "capture-token",
+      tokenId: "token-1",
+    });
+
+    const list = await createCaptureCollectionHandlers(dependencies).GET(
+      new Request("http://localhost/api/v1/captures")
+    );
+    const resource = await createCaptureResourceHandlers(dependencies).GET(
+      new Request("http://localhost/api/v1/captures/capture-1"),
+      { params: Promise.resolve({ id: captureRecord().id }) }
+    );
+    const retry = await createCaptureRetryHandlers(dependencies).POST(
+      new Request("http://localhost/api/v1/captures/capture-1/retry", { method: "POST" }),
+      { params: Promise.resolve({ id: captureRecord().id }) }
+    );
+
+    expect(list.status).toBe(403);
+    expect(resource.status).toBe(403);
+    expect(retry.status).toBe(403);
+  });
+
   it("GET by id returns 200 or 404 CAPTURE_NOT_FOUND", async () => {
     const handler = createCaptureResourceHandlers(setup()).GET;
     expect(

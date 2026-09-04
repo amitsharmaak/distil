@@ -1,4 +1,5 @@
 import { test, expect } from "../support/browser/extension-test";
+import { closeExtension, launchExtension } from "../support/browser/extension";
 
 declare const chrome: {
   alarms: {
@@ -145,6 +146,15 @@ test("configures a runtime origin permission without rendering the saved token",
   await expect(options.getByText("dst_cap_playwright_only")).toHaveCount(0);
 });
 
+test("rejects plaintext remote Distil origins", async ({ context, extensionId }) => {
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await options.getByLabel("Distil origin").fill("http://distil.example.com");
+  await options.getByLabel("Capture token").fill("dst_cap_not_transmitted");
+  await options.getByRole("button", { name: "Save connection" }).click();
+  await expect(options.getByRole("status")).toContainText("Use HTTPS");
+});
+
 test("posts the v1 capture contract and removes successful captures", async ({
   context,
   extensionId,
@@ -201,11 +211,14 @@ test("deduplicates normalized offline captures and replays them from persistent 
 
   const first = await sendWorkerMessage(serviceWorker, {
     type: "distil-save",
-    payload: { url: "https://example.com/offline#one", title: "First" },
+    payload: {
+      url: "https://www.example.com/offline/?utm_source=newsletter&b=2&a=1#one",
+      title: "First",
+    },
   });
   const second = await sendWorkerMessage(serviceWorker, {
     type: "distil-save",
-    payload: { url: "https://example.com/offline#two", title: "Updated" },
+    payload: { url: "https://example.com/offline?a=1&b=2#two", title: "Updated" },
   });
   expect(first.kind).toBe("queued");
   expect(second.kind).toBe("queued");
@@ -214,7 +227,7 @@ test("deduplicates normalized offline captures and replays them from persistent 
     async () => (await chrome.storage.local.get("distilCaptureQueue")).distilCaptureQueue
   );
   expect(queued).toMatchObject([
-    { normalizedUrl: "https://example.com/offline", title: "Updated", attempts: 2 },
+    { normalizedUrl: "https://example.com/offline?a=1&b=2", title: "Updated", attempts: 2 },
   ]);
 
   await context.unroute(CAPTURE_ENDPOINT);
@@ -224,6 +237,63 @@ test("deduplicates normalized offline captures and replays them from persistent 
   const replay = await sendWorkerMessage(serviceWorker, { type: "distil-replay" });
   expect(replay.kind).toBe("saved");
   expect(replay.queued).toBe(0);
+});
+
+test("continues replaying later captures after a retryable failure", async ({
+  context,
+  extensionId,
+  serviceWorker,
+}) => {
+  await context.route(CAPTURE_ENDPOINT, async (route) => {
+    const body = route.request().postDataJSON() as { url: string };
+    await route.fulfill({
+      status: body.url.endsWith("/blocked") ? 429 : 202,
+      contentType: "application/json",
+      body: "{}",
+    });
+  });
+  await configureExtension(context, extensionId);
+  await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/blocked" },
+  });
+  await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/succeeds" },
+  });
+
+  const queue = await serviceWorker.evaluate(
+    async () => (await chrome.storage.local.get("distilCaptureQueue")).distilCaptureQueue
+  );
+  expect(queue).toMatchObject([{ normalizedUrl: "https://example.com/blocked" }]);
+});
+
+test("replays an offline capture after restarting the browser context", async ({
+  context,
+  extensionId,
+  serviceWorker,
+}, testInfo) => {
+  await context.route(CAPTURE_ENDPOINT, (route) => route.abort("failed"));
+  await configureExtension(context, extensionId);
+  await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/restart" },
+  });
+  await context.close();
+
+  const restarted = await launchExtension({ testInfo });
+  try {
+    await restarted.context.route(CAPTURE_ENDPOINT, (route) =>
+      route.fulfill({ status: 202, contentType: "application/json", body: "{}" })
+    );
+    const replayed = await sendWorkerMessage(restarted.serviceWorker, {
+      type: "distil-replay",
+    });
+    expect(replayed.kind).toBe("saved");
+    expect(replayed.queued).toBe(0);
+  } finally {
+    await closeExtension(restarted, testInfo);
+  }
 });
 
 test("preserves and pauses unauthorized captures until configuration is refreshed", async ({

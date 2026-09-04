@@ -4,6 +4,7 @@ import path from "node:path";
 import postgres from "postgres";
 
 import { config } from "../src/lib/config";
+import { planMigrations } from "../src/lib/postgres/migration-plan";
 
 async function migrate(): Promise<void> {
   if (!config.databaseMigrationUrl) {
@@ -11,9 +12,7 @@ async function migrate(): Promise<void> {
   }
 
   const migrationsDirectory = path.resolve("src/lib/postgres/migrations");
-  const files = (await fs.readdir(migrationsDirectory))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
+  const directoryEntries = await fs.readdir(migrationsDirectory);
   const sql = postgres(config.databaseMigrationUrl, { max: 1, prepare: false });
 
   try {
@@ -26,6 +25,7 @@ async function migrate(): Promise<void> {
     const applied = new Set(
       (await sql<{ name: string }[]>`SELECT name FROM distil_migrations`).map((row) => row.name)
     );
+    const files = planMigrations(directoryEntries, applied);
 
     for (const file of files) {
       if (applied.has(file)) continue;

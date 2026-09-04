@@ -44,7 +44,15 @@ const config: Config = {
         },
       },
     ],
+    "^.+\\.jsx?$": ["babel-jest", { presets: ["next/babel"] }],
   },
+
+  // sanitize-html 2.17+ depends on ESM-only parser packages. Transform that
+  // narrow dependency graph so the CommonJS Jest harness tests the same current
+  // sanitizer build used in production.
+  transformIgnorePatterns: [
+    "/node_modules/(?!(?:sanitize-html/node_modules/)?(?:htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)/)",
+  ],
 
   // Only pick up files in __tests__ directories or with .test.ts(x) suffix.
   testMatch: ["**/__tests__/**/*.test.ts?(x)", "**/*.test.ts?(x)"],

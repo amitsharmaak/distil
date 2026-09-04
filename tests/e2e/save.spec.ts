@@ -69,3 +69,13 @@ test("publishes install metadata and keeps login outside the app shell", async (
     display: "standalone",
   });
 });
+
+test("returns to a validated protected destination after login", async ({ page }) => {
+  await page.route("**/api/auth/login", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+  );
+  await page.goto("/login?next=%2Fsettings%3Ftab%3Dcapture");
+  await page.getByLabel("Password").fill("test-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/settings\?tab=capture$/);
+});

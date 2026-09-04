@@ -11,6 +11,18 @@ const CAPTURE_PATH = "/api/v1/captures";
 const SUCCESS_STATUSES = new Set([200, 202]);
 const AUTH_STATUSES = new Set([401, 403]);
 const TERMINAL_STATUSES = new Set([400, 422]);
+const TRACKING_PARAMS = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "ref",
+  "fbclid",
+  "gclid",
+  "mc_cid",
+  "mc_eid",
+]);
 
 let queueOperation = Promise.resolve();
 let replayPromise = null;
@@ -29,6 +41,13 @@ function normalizeCaptureUrl(value) {
     throw new Error("Only HTTP and HTTPS pages can be saved.");
   }
   parsed.hash = "";
+  parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  const entries = [...parsed.searchParams.entries()]
+    .filter(([key]) => !TRACKING_PARAMS.has(key.toLowerCase()))
+    .sort(([left], [right]) => left.localeCompare(right));
+  parsed.search = "";
+  for (const [key, value] of entries) parsed.searchParams.set(key, value);
+  if (parsed.pathname.length > 1) parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   return parsed.toString();
 }
 
@@ -42,6 +61,13 @@ function normalizeOrigin(value) {
   }
   if (parsed.pathname !== "/") {
     throw new Error("Enter the Distil origin without a path.");
+  }
+  const developmentHost =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "[::1]";
+  if (parsed.protocol !== "https:" && !developmentHost) {
+    throw new Error("The Distil origin must use HTTPS outside local development.");
   }
   return parsed.origin;
 }
@@ -191,6 +217,8 @@ async function replayQueue() {
 
     let saved = 0;
     let rejected = 0;
+    let retrying = 0;
+    let retryStatus = 0;
     for (const entry of queued) {
       const outcome = await deliverCapture(entry, config);
       if (outcome.kind === "saved") {
@@ -218,9 +246,14 @@ async function replayQueue() {
           }
         );
       }
+      retrying += 1;
+      retryStatus = outcome.status;
+    }
+
+    if (retrying > 0) {
       return setState("queued", "Saved offline. Distil will retry automatically.", {
-        queued: queued.length - saved - rejected,
-        status: outcome.status,
+        queued: retrying,
+        status: retryStatus,
       });
     }
 

@@ -4,9 +4,10 @@ import type { CaptureRecord, CaptureRepository, ItemRepository } from "@/lib/rep
 import { captureQueueMessageSchema } from "./schema";
 import { CaptureProcessingError, CaptureRetryScheduledError, processingError } from "./errors";
 import { fetchArticle, type SafeFetchOptions } from "./fetch";
+import { normalizeCaptureUrl } from "./url-safety";
 
 export const MAX_CAPTURE_ATTEMPTS = 5;
-export const CAPTURE_PROCESSING_STALE_MS = 5 * 60 * 1000;
+export const CAPTURE_PROCESSING_STALE_MS = 6 * 60 * 1000;
 
 export interface CaptureProcessorResult {
   status: "ready" | "rejected";
@@ -45,7 +46,9 @@ export class CaptureWorker {
 
     if (capture.status === "processing") {
       const age = this.now().getTime() - new Date(capture.updatedAt).getTime();
-      if (age < (this.dependencies.staleAfterMs ?? CAPTURE_PROCESSING_STALE_MS)) return capture;
+      if (age < (this.dependencies.staleAfterMs ?? CAPTURE_PROCESSING_STALE_MS)) {
+        throw new CaptureRetryScheduledError(capture.id);
+      }
       const recovered = await this.dependencies.captures.transition(capture.id, ["processing"], {
         status: "queued",
         retryable: true,
@@ -142,7 +145,8 @@ export function createDefaultCaptureProcessor(
     if (result.status === "rejected") {
       return { status: "rejected", reason: result.rejectionReason };
     }
-    const item = await dependencies.items.findByNormalizedUrl(capture.normalizedUrl);
+    if (result.itemId) return { status: "ready", itemId: result.itemId };
+    const item = await dependencies.items.findByNormalizedUrl(normalizeCaptureUrl(article.url));
     if (!item) {
       throw new CaptureProcessingError(
         "PROCESSING_FAILED",

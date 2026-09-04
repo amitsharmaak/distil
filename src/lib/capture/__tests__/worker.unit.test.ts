@@ -123,12 +123,13 @@ describe("CaptureWorker state machine", () => {
   it("leaves a recently processing capture alone on concurrent duplicate delivery", async () => {
     const processor = jest.fn();
     const record = captureRecord({ status: "processing", updatedAt: "2026-01-01T00:59:00.000Z" });
-    const result = await new CaptureWorker({
-      captures: new MemoryCaptureRepository([record]),
-      processor,
-      now,
-    }).handle({ version: 1, captureId: record.id });
-    expect(result?.status).toBe("processing");
+    await expect(
+      new CaptureWorker({
+        captures: new MemoryCaptureRepository([record]),
+        processor,
+        now,
+      }).handle({ version: 1, captureId: record.id })
+    ).rejects.toBeInstanceOf(CaptureRetryScheduledError);
     expect(processor).not.toHaveBeenCalled();
   });
 
@@ -208,5 +209,33 @@ describe("default capture processor", () => {
       code: "PROCESSING_FAILED",
       kind: "transient",
     });
+  });
+
+  it("resolves a redirected capture by its final normalized URL", async () => {
+    const findByNormalizedUrl = jest.fn().mockResolvedValue({ id: "redirected-item" });
+    const fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://final.example.com/story?utm_source=redirect" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response("<article>Readable</article>", {
+          headers: { "content-type": "text/html" },
+        })
+      );
+    const processor = createDefaultCaptureProcessor({
+      items: { findByNormalizedUrl } as never,
+      pipeline: jest.fn().mockResolvedValue({ rawContentId: "raw", status: "ready" }),
+      fetchOptions: { resolve: publicDns, fetch },
+    });
+
+    await expect(processor(captureRecord())).resolves.toEqual({
+      status: "ready",
+      itemId: "redirected-item",
+    });
+    expect(findByNormalizedUrl).toHaveBeenCalledWith("https://final.example.com/story");
   });
 });

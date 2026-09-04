@@ -133,4 +133,33 @@ describe("PostgreSQL repository contracts", () => {
     expect(attempts.filter((x) => x.allowed)).toHaveLength(2);
     expect(attempts.map((x) => x.remaining).sort()).toEqual([0, 0, 1]);
   });
+
+  it("can safely replay raw ingestion without losing its item attachment", async () => {
+    const repos = createPostgresRepositories(harness.sql);
+    await repos.items.insert(item("raw-item", "https://example.com/raw"));
+    const raw = {
+      id: "raw-replay",
+      itemId: "raw-item",
+      sourceType: "manual",
+      rawBody: "first body",
+      metadata: { attempt: 1 },
+      fetchedAt: "2026-01-01T00:00:00Z",
+    };
+    await repos.rawContent.insert(raw);
+    await repos.rawContent.insert({
+      ...raw,
+      itemId: undefined,
+      rawBody: "replayed body",
+      metadata: { attempt: 2 },
+    });
+
+    const [stored] = await harness.sql<
+      { item_id: string; raw_body: string; metadata: { attempt: number } }[]
+    >`SELECT item_id,raw_body,metadata FROM raw_content WHERE id='raw-replay'`;
+    expect(stored).toEqual({
+      item_id: "raw-item",
+      raw_body: "replayed body",
+      metadata: { attempt: 2 },
+    });
+  });
 });

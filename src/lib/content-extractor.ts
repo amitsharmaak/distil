@@ -12,6 +12,7 @@
 
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
+import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -42,6 +43,35 @@ export interface ExtractedContent {
   extractedLinks: ExtractedLink[];
 }
 
+/** Parses an already-fetched response without performing another network request. */
+export function extractContentFromHtml(html: string, url: string): ExtractedContent | null {
+  if (isUnextractable(url)) return null;
+  const dom = new JSDOM(html, { url });
+  const reader = new Readability(dom.window.document);
+  const article = reader.parse();
+  if (!article) return null;
+
+  const content = sanitizeArticleHtml(article.content ?? "");
+  const articleDom = new JSDOM(content, { url });
+  const anchors = Array.from(articleDom.window.document.querySelectorAll("a[href]"));
+  const extractedLinks: ExtractedLink[] = anchors
+    .map((a) => ({
+      text: (a.textContent?.trim() ?? "").slice(0, 200),
+      url: a.getAttribute("href") ?? "",
+    }))
+    .filter((link) => link.url.startsWith("http") && link.text.length > 0)
+    .filter((link, index, links) => links.findIndex((other) => other.url === link.url) === index)
+    .slice(0, 50);
+
+  return {
+    title: article.title ?? null,
+    byline: article.byline ?? null,
+    content,
+    textContent: article.textContent ?? "",
+    extractedLinks,
+  };
+}
+
 /**
  * Fetches a URL and extracts the main article content using Readability.
  * Returns null on any failure (network error, timeout, non-parseable page).
@@ -66,33 +96,7 @@ export async function extractContent(url: string): Promise<ExtractedContent | nu
 
     const html = await response.text();
 
-    // Parse the full page with JSDOM. Passing `url` resolves relative hrefs to absolute.
-    const dom = new JSDOM(html, { url });
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
-
-    if (!article) return null;
-
-    // Extract links from the article body (not the full page nav/footer).
-    const articleDom = new JSDOM(article.content ?? undefined, { url });
-    const anchors = Array.from(articleDom.window.document.querySelectorAll("a[href]"));
-    const extractedLinks: ExtractedLink[] = anchors
-      .map((a) => ({
-        text: (a.textContent?.trim() ?? "").slice(0, 200),
-        url: a.getAttribute("href") ?? "",
-      }))
-      .filter((l) => l.url.startsWith("http") && l.text.length > 0)
-      // Deduplicate by URL
-      .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i)
-      .slice(0, 50);
-
-    return {
-      title: article.title ?? null,
-      byline: article.byline ?? null,
-      content: article.content ?? "",
-      textContent: article.textContent ?? "",
-      extractedLinks,
-    };
+    return extractContentFromHtml(html, url);
   } catch {
     clearTimeout(timeoutId);
     return null;

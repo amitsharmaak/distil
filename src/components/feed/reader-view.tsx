@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { BookOpen, X, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 import type { ExtractedLink } from "@/lib/types";
 
 interface ReaderViewProps {
@@ -99,7 +100,7 @@ export function ReaderView({
               {/* Rendered article HTML from Readability (clean — no scripts/iframes) */}
               <div
                 className="prose prose-lg dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: fullContent }}
+                dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(fullContent) }}
               />
 
               {/* Extracted links section */}

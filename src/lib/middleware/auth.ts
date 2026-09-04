@@ -22,6 +22,7 @@ const SELF_AUTHENTICATING_PATHS = [
   "/api/v1/captures",
   "/api/v1/capture-tokens",
 ] as const;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export function isAuthEnabled(): boolean {
   const environment = readAuthEnvironment();
@@ -70,6 +71,7 @@ export async function checkAuth(request: NextRequest): Promise<NextResponse | nu
   }
 
   if (
+    request.method === "POST" &&
     pathname === "/api/items" &&
     (await legacyTokenMatches(request, environment.legacyCaptureToken))
   ) {
@@ -77,6 +79,15 @@ export async function checkAuth(request: NextRequest): Promise<NextResponse | nu
   }
 
   if (await verifySessionToken(readSessionCookie(request), environment.sessionSecret)) {
+    if (
+      !SAFE_METHODS.has(request.method) &&
+      !environment.allowedOrigins.has(request.headers.get("origin") ?? "")
+    ) {
+      return NextResponse.json(
+        { error: { code: "ORIGIN_NOT_ALLOWED", message: "The request origin is not allowed" } },
+        { status: 403 }
+      );
+    }
     return null;
   }
 

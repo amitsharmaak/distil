@@ -157,6 +157,7 @@ export async function fetchArticle(
     }
 
     if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      await response.body?.cancel();
       throw new CaptureProcessingError(
         `UPSTREAM_${response.status}`,
         `The source returned HTTP ${response.status}`,
@@ -164,6 +165,7 @@ export async function fetchArticle(
       );
     }
     if (response.status >= 400) {
+      await response.body?.cancel();
       throw new CaptureProcessingError(
         `UPSTREAM_${response.status}`,
         `The source returned HTTP ${response.status}`,
@@ -173,6 +175,7 @@ export async function fetchArticle(
 
     const declaredLength = Number(response.headers.get("content-length") ?? 0);
     if (declaredLength > maxBytes) {
+      await response.body?.cancel();
       throw new CaptureProcessingError(
         "CONTENT_TOO_LARGE",
         "The source is too large to process",

@@ -18,11 +18,16 @@ function apiError(code: string, message: string, status: number, details?: unkno
 
 async function authorized(
   request: Request,
-  authenticate: CaptureHttpDependencies["authenticate"]
+  authenticate: CaptureHttpDependencies["authenticate"],
+  allowedKinds: ReadonlySet<AuthPrincipal["kind"]> = new Set(["session", "capture-token"])
 ): Promise<AuthPrincipal | Response> {
   try {
     const principal = await authenticate(request);
-    return principal ?? apiError("UNAUTHORIZED", "Authentication is required", 401);
+    if (!principal) return apiError("UNAUTHORIZED", "Authentication is required", 401);
+    if (!allowedKinds.has(principal.kind)) {
+      return apiError("UNAUTHORIZED", "This credential is not authorized for this operation", 403);
+    }
+    return principal;
   } catch (error) {
     const code =
       typeof error === "object" && error !== null && "code" in error
@@ -92,7 +97,7 @@ export function createCaptureCollectionHandlers(dependencies: CaptureHttpDepende
       }
     },
     GET: async (request: Request): Promise<Response> => {
-      const principal = await authorized(request, dependencies.authenticate);
+      const principal = await authorized(request, dependencies.authenticate, new Set(["session"]));
       if (principal instanceof Response) return principal;
       const value = new URL(request.url).searchParams.get("limit");
       const limit = value === null ? 50 : Number(value);
@@ -110,7 +115,7 @@ export function createCaptureResourceHandlers(dependencies: CaptureHttpDependenc
       request: Request,
       context: { params: Promise<{ id: string }> }
     ): Promise<Response> => {
-      const principal = await authorized(request, dependencies.authenticate);
+      const principal = await authorized(request, dependencies.authenticate, new Set(["session"]));
       if (principal instanceof Response) return principal;
       try {
         return Response.json({
@@ -131,7 +136,7 @@ export function createCaptureRetryHandlers(dependencies: CaptureHttpDependencies
       request: Request,
       context: { params: Promise<{ id: string }> }
     ): Promise<Response> => {
-      const principal = await authorized(request, dependencies.authenticate);
+      const principal = await authorized(request, dependencies.authenticate, new Set(["session"]));
       if (principal instanceof Response) return principal;
       try {
         return Response.json(

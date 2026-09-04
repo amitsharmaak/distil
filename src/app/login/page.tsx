@@ -25,7 +25,10 @@ export default function LoginPage() {
       });
       const payload = (await response.json()) as { error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? "Unable to sign in.");
-      router.replace("/save");
+      const requested = new URLSearchParams(window.location.search).get("next");
+      const destination =
+        requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/save";
+      router.replace(destination);
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to sign in.");

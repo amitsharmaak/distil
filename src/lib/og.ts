@@ -50,6 +50,30 @@ function emptyOGData(): OGData {
   return { title: null, description: null, image: null, author: null, siteName: null };
 }
 
+/** Extracts metadata from a response body that has already passed URL safety checks. */
+export function extractOGFromHtml(html: string): OGData {
+  const getMeta = (property: string): string | null => {
+    const pattern1 = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
+      "i"
+    );
+    const pattern2 = new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
+      "i"
+    );
+    const match = html.match(pattern1) ?? html.match(pattern2);
+    return match?.[1]?.trim() ?? null;
+  };
+  const titleTagValue = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? null;
+  return {
+    title: getMeta("og:title") ?? titleTagValue,
+    description: getMeta("og:description") ?? getMeta("description"),
+    image: getMeta("og:image"),
+    author: getMeta("article:author") ?? getMeta("author"),
+    siteName: getMeta("og:site_name"),
+  };
+}
+
 /**
  * Extracts a tweet ID from a Twitter/X URL.
  * Supports: twitter.com/user/status/ID, x.com/user/status/ID (with optional query params).
@@ -188,10 +212,12 @@ async function fetchTwitterOGFallback(url: string): Promise<OGData> {
 
     const getMeta = (property: string): string | null => {
       const p1 = new RegExp(
-        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"
+        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
+        "i"
       );
       const p2 = new RegExp(
-        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, "i"
+        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
+        "i"
       );
       const match = html.match(p1) ?? html.match(p2);
       return match?.[1]?.trim() ?? null;
@@ -251,41 +277,7 @@ export async function fetchOG(url: string): Promise<OGData> {
       return emptyOGData();
     }
 
-    const html = await response.text();
-
-    /**
-     * Extracts the `content` attribute value for a given meta property/name.
-     *
-     * Handles two attribute orderings:
-     *   <meta property="og:title" content="My Title">
-     *   <meta content="My Title" property="og:title">
-     *
-     * The `i` flag makes matching case-insensitive for robustness.
-     */
-    const getMeta = (property: string): string | null => {
-      const pattern1 = new RegExp(
-        `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
-        "i"
-      );
-      const pattern2 = new RegExp(
-        `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
-        "i"
-      );
-
-      const match = html.match(pattern1) ?? html.match(pattern2);
-      return match?.[1]?.trim() ?? null;
-    };
-
-    const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const titleTagValue = titleTagMatch?.[1]?.trim() ?? null;
-
-    return {
-      title: getMeta("og:title") ?? titleTagValue,
-      description: getMeta("og:description") ?? getMeta("description"),
-      image: getMeta("og:image"),
-      author: getMeta("article:author") ?? getMeta("author"),
-      siteName: getMeta("og:site_name"),
-    };
+    return extractOGFromHtml(await response.text());
   } catch {
     clearTimeout(timeoutId);
     return emptyOGData();

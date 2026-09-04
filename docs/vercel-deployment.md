@@ -51,12 +51,14 @@ SQLite file, or database polling as a queue substitute.
 1. Create a disposable Neon branch in the Singapore region where available.
 2. Store its pooled URL as Preview `DATABASE_URL`.
 3. Keep its unpooled URL in the release environment as `DATABASE_MIGRATION_URL`.
-4. Apply each unapplied SQL migration explicitly before deployment. For the initial schema:
+4. Apply every unapplied SQL migration through the ledger-aware release command:
 
    ```bash
-   psql "$DATABASE_MIGRATION_URL" -v ON_ERROR_STOP=1 \
-     -f src/lib/postgres/migrations/0001_phase1.sql
+   npm run db:migrate
    ```
+
+   Do not apply migration files directly with `psql`: bypassing `distil_migrations` makes a later
+   release attempt to replay already-created schema objects.
 
 5. Run the importer without `--execute` and inspect its table counts and exclusions:
 
@@ -83,8 +85,7 @@ not modify the source SQLite file.
 1. Confirm CI and the Preview smoke checklist pass for the exact commit being promoted.
 2. Take and retain a Neon restore point according to the account's backup policy.
 3. Retain the original SQLite database and the currently active Vercel deployment.
-4. Apply unapplied migrations to production with `DATABASE_MIGRATION_URL` as an explicit release
-   step.
+4. Run `npm run db:migrate` with production `DATABASE_MIGRATION_URL` as an explicit release step.
 5. Run the SQLite importer in dry-run mode against the retained source and review counts.
 6. Run the importer with `--execute`; retain its verification output in the release record.
 7. Promote the verified commit to Production.

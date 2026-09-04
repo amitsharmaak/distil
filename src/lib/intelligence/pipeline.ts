@@ -93,6 +93,7 @@ function minimalEnrichment(extracted: ExtractedContentResult): EnrichedContent {
  * Never throws — all errors result in a rejected status.
  */
 export async function processContent(raw: RawContent): Promise<ProcessingResult> {
+  let targetItemId = raw.id;
   try {
     // Step 1: Save RawContent to DB (before any AI processing)
     await insertRawContent({
@@ -107,10 +108,12 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     if (raw.url) {
       const existing = await getItemByNormalizedUrl(raw.url);
       if (existing) {
-        return {
-          rawContentId: raw.id,
-          status: "ready",
-        };
+        targetItemId = existing.id;
+        await updateRawContentItemId(raw.id, existing.id);
+        if (existing.processingStatus === "ready") {
+          return { rawContentId: raw.id, itemId: existing.id, status: "ready" };
+        }
+        await updateItemProcessingStatus(existing.id, "processing");
       }
     }
 
@@ -130,18 +133,19 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       processingStatus: "processing",
     };
 
-    const insertedItem = await insertItem(initialItem);
+    const insertedItem = targetItemId === raw.id ? await insertItem(initialItem) : undefined;
 
     // If insertItem returned an existing item (race condition), link and return
-    if (insertedItem.id !== raw.id) {
+    if (insertedItem && insertedItem.id !== raw.id) {
+      targetItemId = insertedItem.id;
       await updateRawContentItemId(raw.id, insertedItem.id);
-      return {
-        rawContentId: raw.id,
-        status: "ready",
-      };
+      if (insertedItem.processingStatus === "ready") {
+        return { rawContentId: raw.id, itemId: insertedItem.id, status: "ready" };
+      }
     }
 
-    await updateRawContentItemId(raw.id, insertedItem.id);
+    if (insertedItem) targetItemId = insertedItem.id;
+    await updateRawContentItemId(raw.id, targetItemId);
 
     // Step 4: Stage 1 — Classify
     let classification: ContentClassification;
@@ -157,7 +161,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     );
 
     if (gateResult.accepted === false) {
-      await updateItemProcessingStatus(raw.id, "rejected", gateResult.reason);
+      await updateItemProcessingStatus(targetItemId, "rejected", gateResult.reason);
       return {
         rawContentId: raw.id,
         status: "rejected",
@@ -204,7 +208,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       : analysis.detectedMedia;
 
     // Step 9: Update item in DB with full data
-    await updateItem(raw.id, {
+    await updateItem(targetItemId, {
       title: extracted.title,
       summary: enriched.summary,
       fullContent: extracted.cleanContent,
@@ -222,22 +226,23 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     });
 
     // Step 10: Update ai_priority_score
-    await updateItemProcessingStatus(raw.id, "ready");
-    await updateItemPriorityScore(raw.id, enriched.priorityScore, enriched.priority);
+    await updateItemProcessingStatus(targetItemId, "ready");
+    await updateItemPriorityScore(targetItemId, enriched.priorityScore, enriched.priority);
 
     // Step 10b: Generate the deep AI summary before reporting durable success — skipped for content types
     // that don't use AI summarization (e.g. tweets), but enabled for X Articles.
     const strategy = detectStrategy(raw.url ?? "");
     if (strategy.generateAISummary || extracted.isXArticle) {
-      await generateSummary(raw.id, { length: "brief" }).catch(() => undefined);
+      await generateSummary(targetItemId, { length: "brief" }).catch(() => undefined);
     }
 
     // Step 10c: Finish embedding work before returning from the pipeline.
-    await embedItem(raw.id, extracted.title, enriched.summary).catch(() => undefined);
+    await embedItem(targetItemId, extracted.title, enriched.summary).catch(() => undefined);
 
     // Step 11: Return ProcessingResult
     return {
       rawContentId: raw.id,
+      itemId: targetItemId,
       status: "ready",
       classification,
       extracted,
@@ -246,7 +251,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await updateItemProcessingStatus(raw.id, "rejected", message);
+    await updateItemProcessingStatus(targetItemId, "rejected", message);
     return {
       rawContentId: raw.id,
       status: "rejected",

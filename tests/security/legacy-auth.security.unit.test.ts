@@ -68,6 +68,7 @@ describe("single-user middleware authentication", () => {
     await expect(
       checkAuth(
         new NextRequest("https://distil.test/api/items", {
+          method: "POST",
           headers: { authorization: "Bearer configured-secret" },
         })
       )
@@ -79,6 +80,36 @@ describe("single-user middleware authentication", () => {
       })
     );
     expect(other?.status).toBe(401);
+  });
+
+  it.each(["GET", "HEAD", "OPTIONS"])(
+    "rejects legacy capture credentials for %s /api/items",
+    async (method) => {
+      const { checkAuth } = loadAuth({ apiToken: "configured-secret", configured: true });
+      const response = await checkAuth(
+        new NextRequest("https://distil.test/api/items", {
+          method,
+          headers: { authorization: "Bearer configured-secret" },
+        })
+      );
+      expect(response?.status).toBe(401);
+    }
+  );
+
+  it("requires an allowed origin for session-authenticated mutations", async () => {
+    const secret = "a-session-secret-with-at-least-32-bytes";
+    const token = await createSessionToken(secret);
+    const { checkAuth } = loadAuth({ configured: true });
+    const response = await checkAuth(
+      new NextRequest("https://distil.test/api/notifications", {
+        method: "POST",
+        headers: { cookie: `${SESSION_COOKIE_NAME}=${token}`, origin: "https://hostile.test" },
+      })
+    );
+    expect(response?.status).toBe(403);
+    await expect(response?.json()).resolves.toMatchObject({
+      error: { code: "ORIGIN_NOT_ALLOWED" },
+    });
   });
 
   it("does not expose the configured legacy secret", async () => {

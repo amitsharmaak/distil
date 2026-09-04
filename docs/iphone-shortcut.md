@@ -26,10 +26,20 @@ In Apple's Shortcuts app, create a shortcut named **Save to Distil**:
    - Request body: JSON
    - `url`: the first URL from step 3
    - `source`: `ios-shortcut`
-6. Inspect the response status:
-   - `200` or `202`: show `Saved to Distil`.
-   - `401` or `403`: show `Distil authorization failed. Replace the Shortcut token.`
-   - Any other result: show `Distil could not save this link. Try again.`
+6. Add **Get Dictionary from Input**, using the result of **Get Contents of URL**.
+7. Add **Get Dictionary Value** for the key `receipt`, then an **If** action checking whether that
+   value exists. In this branch, show `Saved to Distil` and stop the shortcut. Both new (`202`) and
+   duplicate (`200`) saves contain `receipt`.
+8. In the Otherwise branch, add **Get Dictionary Value** for `error`, then another **Get Dictionary
+   Value** for `code` within that error dictionary.
+9. If `code` is `UNAUTHORIZED`, show `Distil authorization failed. Replace the Shortcut token.`
+   Otherwise show `Distil could not save this link. Try again.`
+
+Shortcuts does not expose a stable HTTP-status field for **Get Contents of URL**, so the recipe
+branches on Distil's JSON envelope instead. Disable any option that automatically opens a failed
+response in another app. A transport failure can stop **Get Contents of URL** before a dictionary
+exists; configure the action to continue when possible and use the final fallback notification for
+that path.
 
 The Shortcut should not open Distil on success. A successful response means the capture has been durably queued; extraction may finish moments later.
 

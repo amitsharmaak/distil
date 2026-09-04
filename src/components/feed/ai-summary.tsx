@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { config } from "@/lib/config";
+import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 
 interface AISummaryProps {
   itemId: string;
@@ -54,7 +55,7 @@ function formatRawContent(text: string): string {
       // Convert inline URLs to anchor tags
       const withLinks = p.replace(
         /(https?:\/\/[^\s<,)]+)/g,
-        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>',
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
       );
       return `<p>${withLinks}</p>`;
     })
@@ -72,7 +73,10 @@ function parseSummarySections(content: string): { title: string; body: string; k
     const match = part.match(/^## (.+?)\n\n([\s\S]*)/);
     if (!match) return { title: "", body: part.trim(), key: "other" };
     const [, title, body] = match;
-    const key = title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const key = title
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
     return { title: title.trim(), body: body.trim(), key };
   });
 }
@@ -109,7 +113,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
                 remarkPlugins={[remarkGfm]}
                 components={{
                   ul: ({ children }) => <ul className="list-none space-y-2 my-0">{children}</ul>,
-                    li: ({ children }) => (
+                  li: ({ children }) => (
                     <li className="flex items-start gap-2.5">
                       <span className="mt-[0.52em] shrink-0 size-1.5 rounded-full bg-primary" />
                       <div className="min-w-0 [&>p]:my-0">{children}</div>
@@ -178,12 +182,20 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
   );
 }
 
-export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary, initialDetailedSummary }: AISummaryProps) {
+export function AISummary({
+  itemId,
+  ogSummary,
+  fullContent,
+  initialBriefSummary,
+  initialDetailedSummary,
+}: AISummaryProps) {
   const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
-  const [detailedSummary, setDetailedSummary] = useState<string | null>(initialDetailedSummary ?? null);
+  const [detailedSummary, setDetailedSummary] = useState<string | null>(
+    initialDetailedSummary ?? null
+  );
   const hasInitialSummary = !!(initialBriefSummary || initialDetailedSummary);
   const [summaryLength, setSummaryLength] = useState<SummaryLength>(
-    !initialBriefSummary && initialDetailedSummary ? "detailed" : "brief",
+    !initialBriefSummary && initialDetailedSummary ? "detailed" : "brief"
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,8 +205,8 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
 
   const processedContent = useMemo(() => {
     if (!fullContent) return null;
-    if (isHtmlContent(fullContent)) return fullContent;
-    return formatRawContent(fullContent);
+    if (isHtmlContent(fullContent)) return sanitizeArticleHtml(fullContent);
+    return sanitizeArticleHtml(formatRawContent(fullContent));
   }, [fullContent]);
 
   async function generate(length: SummaryLength, force = false) {
@@ -250,7 +262,7 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
                   "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
                   viewMode === "ai"
                     ? "bg-foreground/65 text-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Zap className="h-3 w-3" />
@@ -262,7 +274,7 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
                   "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
                   viewMode === "original"
                     ? "bg-foreground/65 text-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <FileText className="h-3 w-3" />
@@ -281,7 +293,7 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
                   "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
                   summaryLength === "brief"
                     ? "bg-foreground/65 text-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Minimize2 className="h-3 w-3" />
@@ -294,7 +306,7 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
                   "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
                   summaryLength === "detailed"
                     ? "bg-foreground/65 text-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Maximize2 className="h-3 w-3" />
@@ -315,7 +327,6 @@ export function AISummary({ itemId, ogSummary, fullContent, initialBriefSummary,
             </button>
           )}
         </div>
-
       </div>
 
       {/* Content — reader typography, no card container */}
