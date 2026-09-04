@@ -553,54 +553,101 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       information_density: 0.8,
     };
     const fake = sqlDouble([
-      [{ id: "item-1" }], [richRow],
-      [richRow], [], [richRow],
-      [{ count: 4 }], [richRow],
+      [{ id: "item-1" }],
+      [richRow],
+      [richRow],
+      [],
+      [richRow],
+      [{ count: 4 }],
+      [richRow],
     ]);
     const repos = createPostgresRepositories(fake.sql);
     const richItem = {
-      id: "item-1", title: "Article", summary: "Summary", fullContent: "Full",
-      sourceType: "manual" as const, contentType: "article" as const, topics: ["testing"],
-      author: "Author", publication: "Publication", url: "https://example.com/article",
-      priority: "high" as const, isRead: true, createdAt: "2026-01-01Z", duration: "5 min",
+      id: "item-1",
+      title: "Article",
+      summary: "Summary",
+      fullContent: "Full",
+      sourceType: "manual" as const,
+      contentType: "article" as const,
+      topics: ["testing"],
+      author: "Author",
+      publication: "Publication",
+      url: "https://example.com/article",
+      priority: "high" as const,
+      isRead: true,
+      createdAt: "2026-01-01Z",
+      duration: "5 min",
       thumbnailUrl: "https://example.com/thumb.jpg",
       extractedLinks: [{ text: "Related", url: "https://example.com/related" }],
-      contentExtractedAt: "2026-01-01T01:00:00Z", processingStatus: "rejected" as const,
-      rejectionReason: "reason", contentClassification: { type: "article", confidence: 1 },
+      contentExtractedAt: "2026-01-01T01:00:00Z",
+      processingStatus: "rejected" as const,
+      rejectionReason: "reason",
+      contentClassification: { type: "article", confidence: 1 },
       detectedMedia: [{ type: "image", url: "https://example.com/image.jpg" }],
       informationDensity: 0.8,
     };
     await expect(repos.items.insert(richItem)).resolves.toMatchObject({ fullContent: "Full" });
-    await expect(repos.items.update("item-1", richItem)).resolves.toMatchObject({ author: "Author" });
+    await expect(repos.items.update("item-1", richItem)).resolves.toMatchObject({
+      author: "Author",
+    });
     await expect(repos.items.listRejected(2, 1)).resolves.toMatchObject({ total: 4 });
     await repos.items.updateProcessingStatus("item-1", "ready");
 
     fake.responses.push([{ ...captureRow, title: "Title", notes: "Note" }]);
     await repos.captures.create({
-      id: "capture-1", url: "https://example.com", normalizedUrl: "https://example.com/",
-      title: "Title", notes: "Note", topics: ["testing"], priority: "high", source: "web",
+      id: "capture-1",
+      url: "https://example.com",
+      normalizedUrl: "https://example.com/",
+      title: "Title",
+      notes: "Note",
+      topics: ["testing"],
+      priority: "high",
+      source: "web",
       createdAt: "2026-01-01Z",
     });
     fake.responses.push([{ ...captureRow, status: "failed", item_id: "item-1" }]);
-    await expect(repos.captures.transition("capture-1", ["processing"], {
-      status: "failed", itemId: "item-1", retryable: false, attempts: 5,
-      errorCode: "FAILED", errorMessage: "Failure", updatedAt: "2026-01-02Z",
-    })).resolves.toMatchObject({ itemId: "item-1" });
+    await expect(
+      repos.captures.transition("capture-1", ["processing"], {
+        status: "failed",
+        itemId: "item-1",
+        retryable: false,
+        attempts: 5,
+        errorCode: "FAILED",
+        errorMessage: "Failure",
+        updatedAt: "2026-01-02Z",
+      })
+    ).resolves.toMatchObject({ itemId: "item-1" });
 
     await repos.captureTokens.create({
-      id: "token", name: "Phone", tokenHash: "hash", tokenPrefix: "dst_cap_",
-      createdAt: "2026-01-01Z", lastUsedAt: "2026-01-02Z", revokedAt: "2026-01-03Z",
+      id: "token",
+      name: "Phone",
+      tokenHash: "hash",
+      tokenPrefix: "dst_cap_",
+      createdAt: "2026-01-01Z",
+      lastUsedAt: "2026-01-02Z",
+      revokedAt: "2026-01-03Z",
     });
-    fake.responses.push([{
-      id: "token", name: "Phone", token_prefix: "dst_cap_", created_at: "2026-01-01Z",
-      last_used_at: "2026-01-02Z", revoked_at: "2026-01-03Z",
-    }]);
+    fake.responses.push([
+      {
+        id: "token",
+        name: "Phone",
+        token_prefix: "dst_cap_",
+        created_at: "2026-01-01Z",
+        last_used_at: "2026-01-02Z",
+        revoked_at: "2026-01-03Z",
+      },
+    ]);
     await expect(repos.captureTokens.list()).resolves.toEqual([
       expect.objectContaining({ lastUsedAt: expect.any(String), revokedAt: expect.any(String) }),
     ]);
     await repos.oauthTokens.upsert({
-      provider: "slack", teamId: "team", accessToken: "access", refreshToken: "refresh",
-      expiryDate: 123, email: "person@example.com", updatedAt: "2026-01-01Z",
+      provider: "slack",
+      teamId: "team",
+      accessToken: "access",
+      refreshToken: "refresh",
+      expiryDate: 123,
+      email: "person@example.com",
+      updatedAt: "2026-01-01Z",
     });
   });
 
@@ -608,25 +655,63 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     const fake = sqlDouble();
     const agent = createPostgresRepositories(fake.sql).agent;
     await agent.insertAuditLog({
-      id: "audit", action: "capture", toolName: "fetch", inputHash: "in", outputHash: "out",
-      model: "model", provider: "provider", tokensIn: 10, tokensOut: 20, cost: 0.1,
-      latencyMs: 30, traceId: "trace",
+      id: "audit",
+      action: "capture",
+      toolName: "fetch",
+      inputHash: "in",
+      outputHash: "out",
+      model: "model",
+      provider: "provider",
+      tokensIn: 10,
+      tokensOut: 20,
+      cost: 0.1,
+      latencyMs: 30,
+      traceId: "trace",
     });
-    await agent.insertWorkflow({ id: "workflow", workflowType: "capture", itemId: "item-1", traceId: "trace" });
-    fake.responses.push([{ id: "workflow", status: "pending", current_step: "fetch", steps_json: { fetch: true }, error: "old", completed_at: "old" }]);
+    await agent.insertWorkflow({
+      id: "workflow",
+      workflowType: "capture",
+      itemId: "item-1",
+      traceId: "trace",
+    });
+    fake.responses.push([
+      {
+        id: "workflow",
+        status: "pending",
+        current_step: "fetch",
+        steps_json: { fetch: true },
+        error: "old",
+        completed_at: "old",
+      },
+    ]);
     await agent.updateWorkflow("workflow", {});
     await agent.insertAction({
-      id: "action", workflowId: "workflow", actionType: "capture", toolName: "fetch",
-      input: "in", output: "out", reasoning: "because", status: "failed", traceId: "trace",
+      id: "action",
+      workflowId: "workflow",
+      actionType: "capture",
+      toolName: "fetch",
+      input: "in",
+      output: "out",
+      reasoning: "because",
+      status: "failed",
+      traceId: "trace",
     });
     await agent.insertApproval({
-      id: "approval", workflowId: "workflow", actionType: "publish", description: "Publish",
-      payload: { allowed: true }, traceId: "trace",
+      id: "approval",
+      workflowId: "workflow",
+      actionType: "publish",
+      description: "Publish",
+      payload: { allowed: true },
+      traceId: "trace",
     });
     await agent.insertConversation({ id: "conversation", title: "Capture" });
     await agent.insertMessage({
-      id: "message", conversationId: "conversation", role: "assistant", content: "Done",
-      citations: null, toolCalls: null,
+      id: "message",
+      conversationId: "conversation",
+      role: "assistant",
+      content: "Done",
+      citations: null,
+      toolCalls: null,
     });
   });
 });
