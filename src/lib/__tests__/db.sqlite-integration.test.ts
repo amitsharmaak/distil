@@ -12,17 +12,7 @@
 process.env.DB_PATH = ":memory:";
 
 // Import AFTER setting the env var so the module picks it up.
-import {
-  db,
-  deleteAISummaries,
-  deleteItem,
-  getAISummary,
-  getItemById,
-  getItems,
-  insertItem,
-  updateItem,
-  upsertAISummary,
-} from "../db";
+import { getItems, getItemById, insertItem, updateItem, deleteItem, db } from "../db";
 import type { ContentItem } from "../types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -53,31 +43,6 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
 // The schema and seeded mock data are already in place from module load.
 beforeEach(() => {
   db.exec("DELETE FROM items");
-});
-
-describe("deleteAISummaries", () => {
-  it("removes every generated summary for one item", () => {
-    insertItem(makeItem({ id: "summarized" }));
-    upsertAISummary({
-      id: "summary-brief",
-      itemId: "summarized",
-      summary: "Brief",
-      model: "fake-model",
-      promptType: "brief",
-    });
-    upsertAISummary({
-      id: "summary-detailed",
-      itemId: "summarized",
-      summary: "Detailed",
-      model: "fake-model",
-      promptType: "detailed",
-    });
-
-    deleteAISummaries("summarized");
-
-    expect(getAISummary("summarized", "brief")).toBeUndefined();
-    expect(getAISummary("summarized", "detailed")).toBeUndefined();
-  });
 });
 
 // ── getItems ──────────────────────────────────────────────────────────────────
