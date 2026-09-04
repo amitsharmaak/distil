@@ -1,5 +1,5 @@
 /**
- * Next.js middleware — runs on every matching request.
+ * Next.js proxy — runs on every matching request.
  *
  * Applies: trace IDs, auth, rate limiting, CORS.
  * Only runs on /api/* routes.
@@ -27,7 +27,7 @@ function connectorsDisabled(pathname: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
   const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
