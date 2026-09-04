@@ -227,6 +227,37 @@ export interface RawContentRepository {
   attachItem(rawContentId: string, itemId: string): Promise<void>;
 }
 
+export interface PublisherQueueEntry {
+  publisherId: string;
+  url: string;
+  discoveredAt: string;
+  status: "pending" | "fetched" | "failed";
+  attempts: number;
+  lastError?: string;
+}
+
+export interface PublisherQueueRepository {
+  enqueue(publisherId: string, url: string): Promise<void>;
+  listPending(publisherId: string, limit?: number): Promise<PublisherQueueEntry[]>;
+  markFetched(publisherId: string, url: string): Promise<void>;
+  markFailed(publisherId: string, url: string, error: string, maxAttempts?: number): Promise<void>;
+  getStats(publisherId: string): Promise<{ pending: number; fetched: number; failed: number }>;
+}
+
+export interface JobQueueRepository {
+  enqueue(input: {
+    id: string;
+    jobType: string;
+    payload?: string;
+    priority?: number;
+    maxRetries?: number;
+    runAfter?: string;
+  }): Promise<void>;
+  dequeue(workerId: string): Promise<Record<string, unknown> | undefined>;
+  complete(id: string, error?: string): Promise<void>;
+  getStats(): Promise<{ pending: number; running: number; completed: number; failed: number }>;
+}
+
 export interface AgentRepository {
   insertAuditLog(data: Record<string, unknown> & { id: string; action: string }): Promise<void>;
   listAuditLogs(limit?: number): Promise<Array<Record<string, unknown>>>;
@@ -263,5 +294,7 @@ export interface RepositorySet {
   notifications: NotificationRepository;
   embeddings: EmbeddingRepository;
   rawContent: RawContentRepository;
+  publisherQueue: PublisherQueueRepository;
+  jobs: JobQueueRepository;
   agent: AgentRepository;
 }
