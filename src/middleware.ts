@@ -10,10 +10,34 @@ import { checkAuth } from "@/lib/middleware/auth";
 import { checkRateLimit } from "@/lib/middleware/rate-limit";
 import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 
+const CONNECTOR_API_PREFIXES = [
+  "/api/auth/gmail",
+  "/api/auth/slack",
+  "/api/gmail",
+  "/api/slack",
+  "/api/publishers",
+] as const;
+
+function connectorsDisabled(pathname: string): boolean {
+  return (
+    process.env.FEATURE_CONNECTORS === "false" &&
+    CONNECTOR_API_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    )
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
   const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
+
+  if (connectorsDisabled(pathname)) {
+    return NextResponse.json(
+      { error: { code: "NOT_FOUND", message: "Connector routes are disabled" } },
+      { status: 404 }
+    );
+  }
 
   // Handle CORS preflight
   const preflightResponse = isApi ? handlePreflight(request) : null;
