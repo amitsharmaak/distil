@@ -2,13 +2,22 @@ import Database from "better-sqlite3";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import postgres, { type Sql } from "postgres";
 import {
+  createPostgresImportTarget,
   formatImportResult,
   importSqlite,
   type ImportTarget,
   type ImportTransaction,
 } from "../sqlite-importer";
 import type { ImportRow, PlannedTable } from "../sqlite-plan";
+
+jest.mock("postgres", () => ({
+  __esModule: true,
+  default: jest.fn(),
+}));
+
+const mockedPostgres = postgres as jest.MockedFunction<typeof postgres>;
 
 function createFixture(): { directory: string; path: string } {
   const directory = mkdtempSync(join(tmpdir(), "distil-import-"));
@@ -101,6 +110,8 @@ describe("SQLite importer", () => {
 
   afterEach(() => rmSync(fixture.directory, { recursive: true, force: true }));
 
+  afterAll(() => jest.restoreAllMocks());
+
   it("is a read-only dry run by default and reports exclusions", async () => {
     const before = readFileSync(fixture.path);
     const result = await importSqlite({ sourcePath: fixture.path });
@@ -161,5 +172,102 @@ describe("SQLite importer", () => {
     await expect(
       importSqlite({ sourcePath: fixture.path, execute: true, migrationUrl: "" })
     ).rejects.toThrow("DATABASE_MIGRATION_URL is required");
+  });
+
+  it("rolls back when PostgreSQL verification cannot find every source key", async () => {
+    const close = jest.fn();
+    const target: ImportTarget = {
+      close,
+      transaction: async (operation) =>
+        operation({
+          upsert: jest.fn().mockResolvedValue(undefined),
+          readKeys: jest.fn().mockResolvedValue([]),
+        }),
+    };
+
+    await expect(importSqlite({ sourcePath: fixture.path, execute: true, target })).rejects.toThrow(
+      "PostgreSQL verification failed; transaction rolled back"
+    );
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("formats a failed result without optional exclusion sections", () => {
+    expect(
+      formatImportResult({
+        mode: "executed",
+        sourcePath: fixture.path,
+        tables: [
+          {
+            table: "items",
+            sourceCount: 1,
+            matchedCount: 0,
+            targetCount: 0,
+            missingKeys: ['["item-1"]'],
+            verified: false,
+          },
+        ],
+        excludedTables: [],
+        ignoredTables: [],
+        verified: false,
+      })
+    ).toBe("IMPORT FAILED — verification did not pass.\nitems: source=1, matched=0, target=0");
+  });
+
+  it("accepts null and non-string values in JSON-designated SQLite columns", async () => {
+    const sqlite = new Database(fixture.path);
+    sqlite
+      .prepare("UPDATE items SET topics = ?, extracted_links = ? WHERE id = ?")
+      .run(42, null, "item-1");
+    sqlite.close();
+
+    const result = await importSqlite({ sourcePath: fixture.path });
+    const item = result.tables.find(({ table }) => table === "items");
+    expect(item?.sourceCount).toBe(1);
+  });
+});
+
+describe("PostgreSQL import target", () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it("uses one prepared-statement-free connection and safely builds upserts and key reads", async () => {
+    const unsafe = jest.fn().mockResolvedValue([{ 'key"part': "one" }]);
+    const transactionSql = { unsafe } as unknown as Sql;
+    const begin = jest.fn(async (operation: (sql: Sql) => Promise<unknown>) =>
+      operation(transactionSql)
+    );
+    const end = jest.fn().mockResolvedValue(undefined);
+    mockedPostgres.mockReturnValue({ begin, end } as unknown as ReturnType<typeof postgres>);
+
+    const target = createPostgresImportTarget("postgres://migration.example/distil");
+    const value = await target.transaction(async (transaction) => {
+      await transaction.upsert({
+        table: 'odd"table',
+        keys: ['key"part'],
+        rows: [{}, { 'key"part': "one" }, { 'key"part': "two", 'display"name': "Updated" }],
+      });
+      const keys = await transaction.readKeys('odd"table', ['key"part']);
+      return keys[0]?.['key"part'];
+    });
+    await target.close?.();
+
+    expect(value).toBe("one");
+    expect(mockedPostgres).toHaveBeenCalledWith("postgres://migration.example/distil", {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+    });
+    expect(unsafe).toHaveBeenNthCalledWith(
+      1,
+      'INSERT INTO "odd""table" ("key""part") VALUES ($1) ON CONFLICT ("key""part") DO NOTHING',
+      ["one"]
+    );
+    expect(unsafe).toHaveBeenNthCalledWith(
+      2,
+      'INSERT INTO "odd""table" ("key""part", "display""name") VALUES ($1, $2) ON CONFLICT ("key""part") DO UPDATE SET "display""name" = EXCLUDED."display""name"',
+      ["two", "Updated"]
+    );
+    expect(unsafe).toHaveBeenNthCalledWith(3, 'SELECT "key""part" FROM "odd""table"');
+    expect(begin).toHaveBeenCalledTimes(1);
+    expect(end).toHaveBeenCalledWith({ timeout: 5 });
   });
 });
