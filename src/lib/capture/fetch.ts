@@ -41,18 +41,28 @@ function pinnedFetch(
         signal: init.signal ?? undefined,
       },
       (incoming) => {
-        const headers = new Headers();
-        for (const [name, value] of Object.entries(incoming.headers)) {
-          if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
-          else if (value !== undefined) headers.set(name, value);
+        try {
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
+            else if (value !== undefined) headers.set(name, value);
+          }
+          const status = incoming.statusCode ?? 500;
+          const permitsBody = status !== 204 && status !== 205 && status !== 304;
+          resolve(
+            new Response(
+              permitsBody ? (Readable.toWeb(incoming) as ReadableStream<Uint8Array>) : null,
+              {
+                status,
+                statusText: incoming.statusMessage,
+                headers,
+              }
+            )
+          );
+        } catch (error) {
+          incoming.destroy();
+          reject(error);
         }
-        resolve(
-          new Response(Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
-            status: incoming.statusCode ?? 500,
-            statusText: incoming.statusMessage,
-            headers,
-          })
-        );
       }
     );
     request.once("error", reject);
@@ -127,6 +137,7 @@ export async function fetchArticle(
 
     if (REDIRECTS.has(response.status)) {
       const location = response.headers.get("location");
+      await response.body?.cancel();
       if (!location) {
         throw new CaptureProcessingError(
           "INVALID_REDIRECT",
