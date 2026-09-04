@@ -1,3 +1,6 @@
+// Jest loads TypeScript configuration through ts-node and requires the explicit
+// extension here; the application compiler intentionally disallows it elsewhere.
+// @ts-expect-error -- runtime config import, not application code
 import baseConfig from "./jest.config.ts";
 import type { Config } from "jest";
 
