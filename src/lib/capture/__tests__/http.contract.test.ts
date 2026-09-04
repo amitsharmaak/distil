@@ -5,6 +5,7 @@ import {
   createCaptureResourceHandlers,
   createCaptureRetryHandlers,
 } from "../http";
+import { CaptureProcessingError } from "../errors";
 import { CaptureService } from "../service";
 import { captureRecord, MemoryCaptureRepository, publicDns } from "./fixtures";
 
@@ -110,6 +111,7 @@ describe("capture HTTP contracts", () => {
     expect((await handler(new Request("http://localhost/api/v1/captures?limit=0"))).status).toBe(
       400
     );
+    expect((await handler(new Request("http://localhost/api/v1/captures"))).status).toBe(200);
   });
 
   it("limits capture-token credentials to creating captures", async () => {
@@ -179,5 +181,59 @@ describe("capture HTTP contracts", () => {
       new Request("http://localhost/api/v1/captures")
     );
     expect(response.status).toBe(status);
+  });
+
+  it("rethrows unexpected authentication and service failures", async () => {
+    const authFailure = setup();
+    authFailure.authenticate.mockRejectedValue(new Error("auth backend unavailable"));
+    await expect(
+      createCaptureCollectionHandlers(authFailure).GET(
+        new Request("http://localhost/api/v1/captures")
+      )
+    ).rejects.toThrow("auth backend unavailable");
+
+    const post = setup([]);
+    jest.spyOn(post.service, "create").mockRejectedValue(new Error("unexpected create failure"));
+    await expect(
+      createCaptureCollectionHandlers(post).POST(
+        new Request("http://localhost/api/v1/captures", {
+          method: "POST",
+          body: JSON.stringify({ url: "https://example.com", source: "web" }),
+        })
+      )
+    ).rejects.toThrow("unexpected create failure");
+
+    const resource = setup();
+    jest.spyOn(resource.service, "get").mockRejectedValue(new Error("unexpected get failure"));
+    await expect(
+      createCaptureResourceHandlers(resource).GET(new Request("http://localhost"), {
+        params: Promise.resolve({ id: captureRecord().id }),
+      })
+    ).rejects.toThrow("unexpected get failure");
+
+    const retry = setup([captureRecord({ status: "failed", retryable: true })]);
+    jest.spyOn(retry.service, "retry").mockRejectedValue(new Error("unexpected retry failure"));
+    await expect(
+      createCaptureRetryHandlers(retry).POST(new Request("http://localhost", { method: "POST" }), {
+        params: Promise.resolve({ id: captureRecord().id }),
+      })
+    ).rejects.toThrow("unexpected retry failure");
+  });
+
+  it("maps non-URL processing failures to PROCESSING_FAILED", async () => {
+    const dependencies = setup([]);
+    jest
+      .spyOn(dependencies.service, "create")
+      .mockRejectedValue(new CaptureProcessingError("CONTENT_TOO_LARGE", "too large", "rejected"));
+    const response = await createCaptureCollectionHandlers(dependencies).POST(
+      new Request("http://localhost/api/v1/captures", {
+        method: "POST",
+        body: JSON.stringify({ url: "https://example.com", source: "web" }),
+      })
+    );
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PROCESSING_FAILED" },
+    });
   });
 });

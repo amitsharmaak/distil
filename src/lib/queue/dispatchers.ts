@@ -24,8 +24,8 @@ export class FakeCaptureDispatcher implements CaptureDispatcher {
 export class LocalCaptureDispatcher extends FakeCaptureDispatcher {
   async drain(handler: (message: CaptureQueueMessage) => Promise<void>): Promise<void> {
     while (this.messages.length > 0) {
-      const next = this.messages.shift();
-      if (next) await handler(next.message);
+      const next = this.messages.shift()!;
+      await handler(next.message);
     }
   }
 }

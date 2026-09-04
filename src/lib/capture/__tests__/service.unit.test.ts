@@ -113,5 +113,45 @@ describe("CaptureService", () => {
     await expect(service.get("missing")).rejects.toMatchObject({ name: "CaptureNotFoundError" });
     await service.list(1_000);
     expect(list).toHaveBeenCalledWith(100);
+    await service.list();
+    expect(list).toHaveBeenLastCalledWith(50);
+  });
+
+  it("renders optional item and error receipt fields including the fallback message", async () => {
+    const record = captureRecord({
+      status: "failed",
+      itemId: "item-1",
+      lastErrorCode: "PROCESSING_FAILED",
+      lastErrorMessage: undefined,
+    });
+    const receipt = await new CaptureService({
+      captures: new MemoryCaptureRepository([record]),
+      dispatcher: new FakeCaptureDispatcher(),
+    }).get(record.id);
+    expect(receipt).toMatchObject({
+      itemId: "item-1",
+      error: { code: "PROCESSING_FAILED", message: "Capture processing failed" },
+    });
+  });
+
+  it("rethrows a uniqueness failure when no winning capture exists", async () => {
+    const captures = new MemoryCaptureRepository();
+    captures.failCreate = true;
+    await expect(
+      new CaptureService({
+        captures,
+        dispatcher: new FakeCaptureDispatcher(),
+        resolve: publicDns,
+      }).create(input)
+    ).rejects.toThrow("unique constraint");
+  });
+
+  it("reports missing captures during retry", async () => {
+    await expect(
+      new CaptureService({
+        captures: new MemoryCaptureRepository(),
+        dispatcher: new FakeCaptureDispatcher(),
+      }).retry("missing")
+    ).rejects.toMatchObject({ name: "CaptureNotFoundError" });
   });
 });

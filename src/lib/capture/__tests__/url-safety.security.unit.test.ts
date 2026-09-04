@@ -12,6 +12,7 @@ describe("capture URL safety", () => {
     "172.16.0.1",
     "192.0.0.1",
     "192.0.2.1",
+    "192.88.99.1",
     "192.168.1.1",
     "198.18.0.1",
     "198.51.100.1",
@@ -29,12 +30,13 @@ describe("capture URL safety", () => {
     "fe80::1",
     "ff02::1",
     "2001:db8::1",
+    "2001:100::1",
     "2002:7f00:1::",
   ])("rejects private or reserved address %s", (address) => {
     expect(isUnsafeAddress(address)).toBe(true);
   });
 
-  test.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])(
+  test.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2606:4700:4700:0:0:0:0:1111"])(
     "accepts public address %s",
     (address) => expect(isUnsafeAddress(address)).toBe(false)
   );
@@ -78,5 +80,10 @@ describe("capture URL safety", () => {
     expect(normalizeCaptureUrl(" HTTPS://WWW.Example.com/story/?utm_source=x&b=2&a=1#part ")).toBe(
       "https://example.com/story?a=1&b=2"
     );
+    expect(normalizeCaptureUrl("https://example.com/")).toBe("https://example.com/");
+  });
+
+  it("rejects a zone-qualified link-local IPv6 address", () => {
+    expect(isUnsafeAddress("fe80::1%lo0")).toBe(true);
   });
 });
