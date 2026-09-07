@@ -358,8 +358,8 @@ class PostgresDigests implements DigestRepository {
     }
     const created = await this.sql.begin(async (tx) => {
       const rows = await tx<Row[]>`
-        INSERT INTO digest_runs(id,digest_date,status,created_at,completed_at,dismissed_at)
-        VALUES(${run.id},${run.digestDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null})
+        INSERT INTO digest_runs(id,digest_date,local_date,status,created_at,completed_at,dismissed_at)
+        VALUES(${run.id},${run.digestDate},${run.digestDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null})
         ON CONFLICT (digest_date) DO NOTHING RETURNING id`;
       if (!rows[0]) return false;
       for (const item of items) {

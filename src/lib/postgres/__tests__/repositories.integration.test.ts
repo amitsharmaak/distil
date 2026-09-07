@@ -293,6 +293,10 @@ describe("PostgreSQL repository contracts", () => {
       status: "ready",
       items: [{ itemId: "digest-item", position: 0 }],
     });
+    expect(
+      await harness.sql<{ digest_date: string; local_date: string }[]>`
+        SELECT digest_date::text,local_date::text FROM digest_runs WHERE id='digest'`
+    ).toEqual([{ digest_date: "2026-01-10", local_date: "2026-01-10" }]);
     await repos.digests.dismiss("digest", "2026-01-10T03:00:00Z");
     expect((await repos.digests.list())[0].dismissedAt).toBe("2026-01-10T03:00:00.000Z");
     await harness.sql`DELETE FROM digest_runs WHERE id='digest'`;
