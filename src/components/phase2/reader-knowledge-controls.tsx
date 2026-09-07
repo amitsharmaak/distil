@@ -152,7 +152,11 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
     const previous = new Set(memberIds);
     setMemberIds((ids) => {
       const next = new Set(ids);
-      selected ? next.delete(collectionId) : next.add(collectionId);
+      if (selected) {
+        next.delete(collectionId);
+      } else {
+        next.add(collectionId);
+      }
       return next;
     });
     setSaving("Updating collection…");
