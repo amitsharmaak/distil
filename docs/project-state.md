@@ -919,3 +919,27 @@ personalization, and digests. In the isolated Phase 2 Preview, enable knowledge 
 search first, then hybrid retrieval after its backfill, cited answers, personalization after shadow
 evaluation, and digests last. Roll back with flags or application deployment while retaining
 additive migrations and resumable backfill state; do not use destructive down migrations.
+
+---
+
+## Phase 3 ownership and tenant-isolation foundation
+
+Phase 3 Wave 0 ownership analysis is recorded in `docs/phase-3-ownership.md`, with the complete
+machine-readable inventory in `docs/authorization-matrix.json`. The baseline is documentation-only:
+the current schema and runtime remain single-user and must not be treated as tenant-safe.
+The workstream branch/worktree is `codex/p3-ownership` at `/private/tmp/distil-p3-ownership`, based
+on Phase 2 commit `9ed064f`; its commit is intended for integration by the Phase 3 lead and must not
+be merged from this worktree.
+
+The Phase 3 tenant is one user account. Every personal root row, repository operation, direct SQL
+query, route/page loader, job, connector, search/AI context, audit record, quota and future object
+must carry the same verified user identity. Workspaces remain a later explicit sharing boundary and
+cannot weaken personal ownership. Foreign and missing IDs must both return `404`, and candidate rows
+must be tenant-filtered before ranking, aggregation or AI context assembly.
+
+The matrix covers the 36 current Drizzle tables, 67 API route files and methods, 16 page files, all
+repository families and direct SQL paths, workers/crons, search/AI/agent paths, connectors,
+logs/audit, rate limits/quotas, extension/local storage, and planned object-store seams at baseline
+commit `9ed064f`. Its Phase 2 delta checklist must be rerun when integrating onto any newer Phase 2
+commit. Multi-user exposure remains blocked until ownership is implemented and generated A/B
+cross-tenant tests pass across route, repository, worker, search and AI boundaries.

@@ -1,0 +1,2013 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-07",
+  "baselineCommit": "9ed064f",
+  "status": "required-policy-not-yet-implemented",
+  "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
+  "sourceOfTruth": "docs/phase-3-ownership.md",
+  "testProfiles": {
+    "public": ["anonymous_success", "malformed_input_rejected"],
+    "owner": [
+      "anonymous_401",
+      "owner_success",
+      "other_user_404",
+      "malformed_id_no_disclosure",
+      "deleted_owner_denied",
+      "mutation_origin_or_csrf_rejected"
+    ],
+    "captureCreate": [
+      "anonymous_401",
+      "owner_session_success",
+      "owner_capture_token_success",
+      "revoked_token_401",
+      "token_cannot_list_or_read",
+      "client_owner_field_ignored"
+    ],
+    "service": [
+      "invalid_signature_401",
+      "missing_tenant_envelope_rejected",
+      "owner_resource_success",
+      "foreign_resource_rejected",
+      "replay_idempotent",
+      "retry_preserves_tenant"
+    ],
+    "platformAdmin": ["user_session_403", "admin_success", "reason_and_audit_required"]
+  },
+  "principals": [
+    {
+      "id": "anonymous",
+      "tenantContext": false,
+      "allowed": "Only login, session discovery, health and safe CORS preflight."
+    },
+    {
+      "id": "user_session",
+      "tenantContext": true,
+      "identityFields": ["userId", "sessionId", "actorKind", "traceId"]
+    },
+    {
+      "id": "capture_token",
+      "tenantContext": true,
+      "identityFields": ["userId", "tokenId", "actorKind", "traceId"],
+      "allowed": "Create captures only."
+    },
+    {
+      "id": "oauth_state",
+      "tenantContext": true,
+      "identityFields": ["userId", "provider", "nonce", "pkceVerifierId", "expiresAt"]
+    },
+    {
+      "id": "cron_service",
+      "tenantContext": false,
+      "allowed": "Enumerate eligible users and enqueue one scoped job per user; never read personal content."
+    },
+    {
+      "id": "queue_service",
+      "tenantContext": true,
+      "identityFields": ["userId", "jobId", "actorKind", "traceId"]
+    },
+    {
+      "id": "platform_admin",
+      "tenantContext": false,
+      "allowed": "Explicit audited maintenance only; normal sessions never imply this principal."
+    }
+  ],
+  "plannedIdentityResources": [
+    {
+      "name": "users",
+      "requiredScope": "self-or-platform-admin",
+      "notes": "Account identifiers are server assigned; directory lookup and support search require separate audited policy."
+    },
+    {
+      "name": "sessions",
+      "requiredScope": "direct-user",
+      "notes": "Store user_id, session/device ID, expiry, last use and revocation; hash bearer material."
+    },
+    {
+      "name": "oauth_states",
+      "requiredScope": "direct-user",
+      "notes": "Single-use expiring provider state and PKCE binding; delete on success, expiry or disconnect."
+    }
+  ],
+  "invariants": [
+    "TenantContext is constructed only from verified server-side identity.",
+    "Every personal root row has user_id NOT NULL.",
+    "Every child row proves the same owner through a composite foreign key or defense-in-depth user_id.",
+    "Foreign and missing object identifiers are indistinguishable to a user principal.",
+    "Tenant filtering happens before joins, ranking, aggregation, cache lookup or AI context assembly.",
+    "Queue and cron work is one-tenant-per-job and workers revalidate ownership.",
+    "Global uniqueness for personal data becomes tenant-relative.",
+    "Raw content, prompts, credentials and tool input/output are prohibited from logs.",
+    "Account deletion drains or cancels jobs and removes connector state and future objects before completion."
+  ],
+  "tables": [
+    {
+      "name": "items",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["normalized_url"]
+    },
+    {
+      "name": "item_notes",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "annotations",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "collections",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "workspaceEligibleLater": true
+    },
+    {
+      "name": "collection_items",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "same-owner composite references to collections and items"
+    },
+    {
+      "name": "item_events",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)",
+      "uniqueKeysToScope": ["event_key"]
+    },
+    {
+      "name": "digest_runs",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["digest_date", "local_date"]
+    },
+    {
+      "name": "digest_items",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "same-owner composite references to digest_runs and items"
+    },
+    {
+      "name": "personal_preferences",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "singleton",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["id"]
+    },
+    {
+      "name": "digest_jobs",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["local_date", "idempotency_key"]
+    },
+    {
+      "name": "item_content_versions",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "content_chunks",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "item_content_versions(user_id,id,item_id)"
+    },
+    {
+      "name": "intelligence_artifacts",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "item_content_versions(user_id,id,item_id)",
+      "uniqueKeysToScope": ["current artifact"]
+    },
+    {
+      "name": "intelligence_claims",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "intelligence_artifacts(user_id,artifact_id)"
+    },
+    {
+      "name": "claim_evidence",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "same-owner composite references to intelligence_claims and content_chunks"
+    },
+    {
+      "name": "knowledge_backfill_checkpoints",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-job",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["job_key"]
+    },
+    {
+      "name": "oauth_tokens",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-provider-team",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["provider,team_id"],
+      "sensitive": true
+    },
+    {
+      "name": "ai_summaries",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "feedback",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "research_reports",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; optional item must have same owner"
+    },
+    {
+      "name": "research_suggestions",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; report and every source_item_id must have same owner"
+    },
+    {
+      "name": "user_settings",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-key",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["key"]
+    },
+    {
+      "name": "notifications",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; item must have same owner"
+    },
+    {
+      "name": "item_embeddings",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "items(user_id,item_id)"
+    },
+    {
+      "name": "audit_log",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global",
+      "requiredScope": "direct-user-or-system",
+      "ownerVia": "user_id for user activity; null only for enumerated system events",
+      "sensitive": true
+    },
+    {
+      "name": "workflow_runs",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; optional item must have same owner"
+    },
+    {
+      "name": "agent_actions",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "workflow_runs(user_id,workflow_id)",
+      "sensitive": true
+    },
+    {
+      "name": "approval_queue",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; optional workflow must have same owner",
+      "sensitive": true
+    },
+    {
+      "name": "chat_conversations",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "sensitive": true
+    },
+    {
+      "name": "chat_messages",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "chat_conversations(user_id,conversation_id)",
+      "sensitive": true
+    },
+    {
+      "name": "job_queue",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id required on every executable job",
+      "uniqueKeysToScope": ["idempotency key in payload must become a column"]
+    },
+    {
+      "name": "publisher_queue",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-publisher",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "uniqueKeysToScope": ["publisher_id,url"]
+    },
+    {
+      "name": "raw_content",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; optional item must have same owner",
+      "sensitive": true
+    },
+    {
+      "name": "capture_requests",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-single-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id plus originating token/session actor",
+      "uniqueKeysToScope": ["normalized_url for active/ready deduplication"]
+    },
+    {
+      "name": "capture_tokens",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "sensitive": true
+    },
+    {
+      "name": "rate_limit_windows",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "global-key",
+      "requiredScope": "principal-scoped",
+      "ownerVia": "environment and verified user/token/IP actor encoded as distinct columns or collision-safe key"
+    }
+  ],
+  "repositoryFamilies": [
+    { "name": "ItemRepository", "resources": ["items"] },
+    { "name": "ItemNoteRepository", "resources": ["item_notes", "items"] },
+    { "name": "AnnotationRepository", "resources": ["annotations", "items"] },
+    { "name": "CollectionRepository", "resources": ["collections", "collection_items", "items"] },
+    { "name": "ItemEventRepository", "resources": ["item_events", "items"] },
+    { "name": "DigestRepository", "resources": ["digest_runs", "digest_items", "items"] },
+    { "name": "CaptureRepository", "resources": ["capture_requests"] },
+    { "name": "CaptureTokenRepository", "resources": ["capture_tokens"] },
+    { "name": "RateLimitRepository", "resources": ["rate_limit_windows"] },
+    { "name": "OAuthTokenRepository", "resources": ["oauth_tokens"] },
+    { "name": "SummaryRepository", "resources": ["ai_summaries", "items"] },
+    { "name": "FeedbackRepository", "resources": ["feedback", "items"] },
+    {
+      "name": "ResearchRepository",
+      "resources": ["research_reports", "research_suggestions", "items"]
+    },
+    { "name": "SettingsRepository", "resources": ["user_settings"] },
+    { "name": "NotificationRepository", "resources": ["notifications", "items"] },
+    { "name": "EmbeddingRepository", "resources": ["item_embeddings", "items"] },
+    { "name": "RawContentRepository", "resources": ["raw_content", "items"] },
+    { "name": "ContentVersionRepository", "resources": ["item_content_versions", "items"] },
+    { "name": "ContentChunkRepository", "resources": ["content_chunks", "item_content_versions"] },
+    {
+      "name": "IntelligenceArtifactRepository",
+      "resources": ["intelligence_artifacts", "item_content_versions"]
+    },
+    {
+      "name": "ClaimRepository",
+      "resources": ["intelligence_claims", "claim_evidence", "content_chunks"]
+    },
+    { "name": "KnowledgeBackfillRepository", "resources": ["knowledge_backfill_checkpoints"] },
+    { "name": "PublisherQueueRepository", "resources": ["publisher_queue"] },
+    { "name": "JobQueueRepository", "resources": ["job_queue"] },
+    {
+      "name": "AgentRepository",
+      "resources": [
+        "audit_log",
+        "workflow_runs",
+        "agent_actions",
+        "approval_queue",
+        "chat_conversations",
+        "chat_messages"
+      ]
+    }
+  ],
+  "repositoryContract": {
+    "source": "src/lib/repositories/ports.ts",
+    "currentTenantArgument": false,
+    "requiredTenantArgument": "TenantContext is the first argument to every personal operation; cross-tenant maintenance uses a separate admin interface.",
+    "requiredLookupRule": "Owner predicate and object identifier are evaluated in one database statement."
+  },
+  "apiRoutes": [
+    {
+      "path": "/api/admin/reprocess-tweets",
+      "source": "src/app/api/admin/reprocess-tweets/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "platform_admin",
+      "scope": "platform",
+      "resources": ["items", "ai_summaries"],
+      "testProfile": "platformAdmin"
+    },
+    {
+      "path": "/api/agent/approvals",
+      "source": "src/app/api/agent/approvals/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["approval_queue", "workflow_runs"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/agent/chat",
+      "source": "src/app/api/agent/chat/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["chat_conversations", "chat_messages", "items", "item_embeddings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/agent/status",
+      "source": "src/app/api/agent/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["job_queue", "approval_queue", "audit_log"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/feedback/:itemId",
+      "source": "src/app/api/ai/feedback/[itemId]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["feedback", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/feedback",
+      "source": "src/app/api/ai/feedback/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["feedback", "items", "user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/preferences",
+      "source": "src/app/api/ai/preferences/route.ts",
+      "methods": ["GET", "PUT"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["feedback", "user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/prioritize",
+      "source": "src/app/api/ai/prioritize/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "feedback", "user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/:id",
+      "source": "src/app/api/ai/research/[id]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/:id/stream",
+      "source": "src/app/api/ai/research/[id]/stream/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner",
+      "notes": "Every poll must retain the original TenantContext and stop on session revocation."
+    },
+    {
+      "path": "/api/ai/research/list",
+      "source": "src/app/api/ai/research/list/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/proactive",
+      "source": "src/app/api/ai/research/proactive/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "research_reports", "research_suggestions", "notifications"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research",
+      "source": "src/app/api/ai/research/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports", "items"],
+      "testProfile": "owner",
+      "notes": "Replace process-local fire-and-forget research with a tenant-scoped durable job."
+    },
+    {
+      "path": "/api/ai/research/suggestions/:id",
+      "source": "src/app/api/ai/research/suggestions/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/suggestions/:id/start",
+      "source": "src/app/api/ai/research/suggestions/[id]/start/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions", "research_reports", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/suggestions",
+      "source": "src/app/api/ai/research/suggestions/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/summarize",
+      "source": "src/app/api/ai/summarize/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "ai_summaries", "audit_log"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/summary/:itemId",
+      "source": "src/app/api/ai/summary/[itemId]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["ai_summaries", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/gmail/callback",
+      "source": "src/app/api/auth/gmail/callback/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_without_oauth_state",
+      "requiredPrincipal": "oauth_state",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner",
+      "notes": "Require single-use state, PKCE, expiry, provider and redirect binding before token exchange."
+    },
+    {
+      "path": "/api/auth/gmail",
+      "source": "src/app/api/auth/gmail/route.ts",
+      "methods": ["GET", "DELETE"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/gmail/status",
+      "source": "src/app/api/auth/gmail/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/login",
+      "source": "src/app/api/auth/login/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "single_shared_password",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": ["users", "sessions", "rate_limit_windows"],
+      "testProfile": "public",
+      "notes": "Phase 3 replaces the configured shared password with supported account authentication."
+    },
+    {
+      "path": "/api/auth/logout",
+      "source": "src/app/api/auth/logout/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["sessions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/session",
+      "source": "src/app/api/auth/session/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "optional_single_user_session",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": ["sessions", "users"],
+      "testProfile": "public",
+      "notes": "Response must expose only the caller's own minimal session state."
+    },
+    {
+      "path": "/api/auth/slack/callback",
+      "source": "src/app/api/auth/slack/callback/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_without_oauth_state",
+      "requiredPrincipal": "oauth_state",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner",
+      "notes": "Require single-use state, PKCE where supported, expiry, provider and redirect binding."
+    },
+    {
+      "path": "/api/auth/slack",
+      "source": "src/app/api/auth/slack/route.ts",
+      "methods": ["GET", "DELETE"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/slack/status",
+      "source": "src/app/api/auth/slack/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/cron/digests",
+      "source": "src/app/api/cron/digests/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_cron_secret",
+      "requiredPrincipal": "cron_service",
+      "scope": "service-fanout",
+      "resources": ["personal_preferences", "digest_jobs", "job_queue"],
+      "testProfile": "service",
+      "notes": "Current proxy session requirement conflicts with provider cron. Required route only fans out tenant-scoped jobs."
+    },
+    {
+      "path": "/api/gmail/sync",
+      "source": "src/app/api/gmail/sync/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens", "raw_content", "items", "publisher_queue"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/health",
+      "source": "src/app/api/health/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "public",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public",
+      "notes": "Return no tenant counts, identifiers or dependency secrets."
+    },
+    {
+      "path": "/api/items/:id/extract",
+      "source": "src/app/api/items/[id]/extract/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "raw_content"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/items/:id",
+      "source": "src/app/api/items/[id]/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/items/:id",
+      "source": "src/app/api/items/[id]/route.ts",
+      "methods": ["PATCH", "DELETE"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/items/rejected",
+      "source": "src/app/api/items/rejected/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/items",
+      "source": "src/app/api/items/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/items",
+      "source": "src/app/api/items/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "item_embeddings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/items",
+      "source": "src/app/api/items/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "legacy_token_or_proxy_session",
+      "requiredPrincipal": "capture_token_or_user_session",
+      "scope": "capture-create",
+      "resources": ["capture_requests", "raw_content", "items"],
+      "testProfile": "captureCreate",
+      "notes": "Remove legacy shared token and permissive route CORS; hosted ingestion must remain durable."
+    },
+    {
+      "path": "/api/notifications/:id",
+      "source": "src/app/api/notifications/[id]/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/notifications/:id",
+      "source": "src/app/api/notifications/[id]/route.ts",
+      "methods": ["PATCH"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["notifications"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/notifications/preferences",
+      "source": "src/app/api/notifications/preferences/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/notifications/preferences",
+      "source": "src/app/api/notifications/preferences/route.ts",
+      "methods": ["GET", "PUT"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/notifications",
+      "source": "src/app/api/notifications/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/notifications",
+      "source": "src/app/api/notifications/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["notifications"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/publishers/:id/login",
+      "source": "src/app/api/publishers/[id]/login/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["publisher_session_storage"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/publishers/:id/status",
+      "source": "src/app/api/publishers/[id]/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["publisher_session_storage", "publisher_queue"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/publishers/:id/sync",
+      "source": "src/app/api/publishers/[id]/sync/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["publisher_session_storage", "publisher_queue", "raw_content", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/publishers",
+      "source": "src/app/api/publishers/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["publisher_session_storage", "publisher_queue"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/queue/capture-requests",
+      "source": "src/app/api/queue/capture-requests/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "vercel_queue_signature_without_tenant",
+      "requiredPrincipal": "queue_service",
+      "scope": "service",
+      "resources": ["capture_requests", "items"],
+      "testProfile": "service"
+    },
+    {
+      "path": "/api/settings/email-intelligence",
+      "source": "src/app/api/settings/email-intelligence/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/slack/status",
+      "source": "src/app/api/slack/status/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/slack/status",
+      "source": "src/app/api/slack/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/slack/sync",
+      "source": "src/app/api/slack/sync/route.ts",
+      "methods": ["OPTIONS"],
+      "currentAuth": "public_preflight",
+      "requiredPrincipal": "anonymous",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public"
+    },
+    {
+      "path": "/api/slack/sync",
+      "source": "src/app/api/slack/sync/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["oauth_tokens", "raw_content", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/answers",
+      "source": "src/app/api/v1/answers/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": [
+        "items",
+        "item_content_versions",
+        "content_chunks",
+        "collections",
+        "collection_items",
+        "audit_log"
+      ],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/capture-tokens/:id",
+      "source": "src/app/api/v1/capture-tokens/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/capture-tokens",
+      "source": "src/app/api/v1/capture-tokens/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_tokens"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/captures/:id/retry",
+      "source": "src/app/api/v1/captures/[id]/retry/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_requests", "job_queue"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/captures/:id",
+      "source": "src/app/api/v1/captures/[id]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_requests"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/captures",
+      "source": "src/app/api/v1/captures/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "route_session_or_capture_token",
+      "requiredPrincipal": "capture_token_or_user_session",
+      "scope": "capture-create",
+      "resources": ["capture_requests", "job_queue"],
+      "testProfile": "captureCreate"
+    },
+    {
+      "path": "/api/v1/captures",
+      "source": "src/app/api/v1/captures/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_requests"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/collections/:id/items/:itemId",
+      "source": "src/app/api/v1/collections/[id]/items/[itemId]/route.ts",
+      "methods": ["PUT", "DELETE"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["collections", "collection_items", "items", "item_events"],
+      "testProfile": "owner",
+      "notes": "Collection and item must be proven same-owner atomically."
+    },
+    {
+      "path": "/api/v1/collections/:id",
+      "source": "src/app/api/v1/collections/[id]/route.ts",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["collections", "collection_items", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/collections",
+      "source": "src/app/api/v1/collections/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["collections"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/digests/preferences",
+      "source": "src/app/api/v1/digests/preferences/route.ts",
+      "methods": ["PATCH"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["personal_preferences"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/digests",
+      "source": "src/app/api/v1/digests/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["digest_runs", "digest_items", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/digests/run",
+      "source": "src/app/api/v1/digests/run/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["digest_runs", "digest_items", "digest_jobs", "personal_preferences", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/feed",
+      "source": "src/app/api/v1/feed/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": [
+        "items",
+        "collections",
+        "collection_items",
+        "item_events",
+        "personal_preferences"
+      ],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/items/:id/annotations/:annotationId",
+      "source": "src/app/api/v1/items/[id]/annotations/[annotationId]/route.ts",
+      "methods": ["PATCH", "DELETE"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "annotations"],
+      "testProfile": "owner",
+      "notes": "Both IDs must belong to the same owner and annotation must belong to item."
+    },
+    {
+      "path": "/api/v1/items/:id/annotations",
+      "source": "src/app/api/v1/items/[id]/annotations/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "annotations"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/items/:id/intelligence",
+      "source": "src/app/api/v1/items/[id]/intelligence/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": [
+        "items",
+        "item_content_versions",
+        "intelligence_artifacts",
+        "intelligence_claims",
+        "claim_evidence",
+        "content_chunks"
+      ],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/items/:id/note",
+      "source": "src/app/api/v1/items/[id]/note/route.ts",
+      "methods": ["GET", "PUT", "DELETE"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "item_notes"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/items/:id/state",
+      "source": "src/app/api/v1/items/[id]/state/route.ts",
+      "methods": ["GET", "PATCH"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "item_events"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/items/:id/summaries/regenerate",
+      "source": "src/app/api/v1/items/[id]/summaries/regenerate/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "item_content_versions", "intelligence_artifacts", "job_queue"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/preferences/reset",
+      "source": "src/app/api/v1/preferences/reset/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["personal_preferences", "item_events"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/preferences",
+      "source": "src/app/api/v1/preferences/route.ts",
+      "methods": ["GET", "PUT"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["personal_preferences"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/search",
+      "source": "src/app/api/v1/search/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": [
+        "items",
+        "item_content_versions",
+        "content_chunks",
+        "collections",
+        "collection_items"
+      ],
+      "testProfile": "owner"
+    }
+  ],
+  "pageLoaders": [
+    {
+      "path": "/",
+      "source": "src/app/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "fixture-backed TodayExperience; future tenant API only",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/archive",
+      "source": "src/app/archive/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "client experience; tenant API only",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/ask",
+      "source": "src/app/ask/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "client experience; tenant API only",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/collections",
+      "source": "src/app/collections/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "client experience; tenant API only",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/collections/:id",
+      "source": "src/app/collections/[id]/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "passes route ID to client experience; downstream owner check required",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/digests",
+      "source": "src/app/digests/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "feature flag then client experience; tenant API only",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/feed",
+      "source": "src/app/feed/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/v1/feed and /api/v1/collections",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/feed/:id",
+      "source": "src/app/feed/[id]/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "direct database facade: item, summaries, feedback and all-items navigation",
+      "resources": ["items", "ai_summaries", "feedback"],
+      "testProfile": "owner",
+      "notes": "Direct server loader is an IDOR and cross-tenant navigation hotspot until TenantContext reaches every query."
+    },
+    {
+      "path": "/login",
+      "source": "src/app/login/page.tsx",
+      "currentAuth": "public",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "/api/auth/login",
+      "testProfile": "public"
+    },
+    {
+      "path": "/research",
+      "source": "src/app/research/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/ai/research and suggestions routes",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/research/:id",
+      "source": "src/app/research/[id]/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/ai/research/:id and stream",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/save",
+      "source": "src/app/save/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "capture components and /api/v1/captures",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/search",
+      "source": "src/app/search/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/v1/search",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/settings",
+      "source": "src/app/settings/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "notification/settings/items and capture-token APIs",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/sources",
+      "source": "src/app/sources/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "publisher, OAuth, connector sync and items APIs",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/topics",
+      "source": "src/app/topics/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/items aggregate",
+      "testProfile": "owner"
+    }
+  ],
+  "dataAccessPaths": [
+    {
+      "source": "src/lib/repositories/ports.ts",
+      "kind": "repository-contracts",
+      "currentScope": "no TenantContext",
+      "requiredScope": "all 25 repository families accept TenantContext"
+    },
+    {
+      "source": "src/lib/postgres/repositories.ts",
+      "kind": "postgres-repository-adapter",
+      "currentScope": "unscoped SQL for all repository families",
+      "requiredScope": "tenant predicate in every personal statement and transaction"
+    },
+    {
+      "source": "src/lib/database.ts",
+      "kind": "dual-backend-facade",
+      "currentScope": "unscoped singleton repository/SQLite delegation",
+      "requiredScope": "TenantContext on every personal export; no hosted SQLite fallback"
+    },
+    {
+      "source": "src/lib/db.ts",
+      "kind": "direct-sqlite-runtime",
+      "currentScope": "single local database with unscoped prepared SQL",
+      "requiredScope": "disabled for hosted multi-user runtime; import/maintenance requires explicit target user"
+    },
+    {
+      "source": "src/lib/feed/feed-query.ts",
+      "kind": "direct-postgres-query",
+      "currentScope": "unscoped item/event/collection ranking",
+      "requiredScope": "user predicate in base CTE before every filter, aggregate and rank"
+    },
+    {
+      "source": "src/lib/digests/postgres-store.ts",
+      "kind": "direct-postgres-query",
+      "currentScope": "singleton preferences and globally unique dates",
+      "requiredScope": "user on preferences, candidates, runs, items, jobs and conflict keys"
+    },
+    {
+      "source": "src/lib/knowledge/retrieval.ts",
+      "kind": "direct-postgres-query",
+      "currentScope": "unscoped item/chunk/collection candidate CTEs",
+      "requiredScope": "user predicate before keyword, semantic, recent fallback and collection filters"
+    },
+    {
+      "source": "src/lib/import/sqlite-importer.ts",
+      "kind": "cross-database-import",
+      "currentScope": "imports legacy rows without owner",
+      "requiredScope": "operator supplies verified target user; stamp and verify every imported row and child"
+    },
+    {
+      "source": "src/lib/import/sqlite-plan.ts",
+      "kind": "import-table-plan",
+      "currentScope": "global table/key mapping",
+      "requiredScope": "every personal target includes target user and tenant-relative conflict keys"
+    },
+    {
+      "source": "scripts/import-sqlite.ts",
+      "kind": "admin-cli",
+      "currentScope": "source path plus execute flag",
+      "requiredScope": "explicit immutable target user identifier, dry-run counts and audit receipt"
+    },
+    {
+      "source": "scripts/migrate.ts",
+      "kind": "schema-admin-cli",
+      "currentScope": "database-wide migration",
+      "requiredScope": "platform admin only; no content reads; audited environment target"
+    },
+    {
+      "source": "scripts/retag-items.ts",
+      "kind": "direct-sqlite-admin-cli",
+      "currentScope": "rewrites every item in DB_PATH",
+      "requiredScope": "local single-user maintenance only or explicit target user in PostgreSQL replacement"
+    }
+  ],
+  "workersAndCrons": [
+    {
+      "id": "capture-queue-callback",
+      "source": "src/app/api/queue/capture-requests/route.ts",
+      "currentTenant": "absent",
+      "requiredTenant": "signed queue envelope userId plus captureId; worker revalidates capture owner",
+      "resources": ["capture_requests", "items"]
+    },
+    {
+      "id": "capture-worker",
+      "source": "src/lib/capture/worker.ts",
+      "currentTenant": "absent",
+      "requiredTenant": "TenantContext supplied by verified queue consumer and used for every repository call",
+      "resources": ["capture_requests", "items", "raw_content"]
+    },
+    {
+      "id": "legacy-background-ingest",
+      "source": "src/app/api/items/route.ts",
+      "currentTenant": "process-local promise without owner",
+      "requiredTenant": "remove in hosted mode; use durable user-scoped capture job",
+      "resources": ["raw_content", "items"]
+    },
+    {
+      "id": "deep-research-background",
+      "source": "src/lib/ai/research.ts",
+      "currentTenant": "process-local fire-and-forget without owner",
+      "requiredTenant": "durable user-scoped job; each report update checks owner",
+      "resources": ["research_reports", "items"]
+    },
+    {
+      "id": "job-worker-triage",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "triage",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id and owned item revalidation",
+      "resources": ["job_queue", "items", "workflow_runs", "agent_actions"]
+    },
+    {
+      "id": "job-worker-generate-summary",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "generate_summary",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id and owned item revalidation",
+      "resources": ["job_queue", "items", "ai_summaries", "audit_log"]
+    },
+    {
+      "id": "job-worker-embed-item",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "embed_item",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id and owned item revalidation",
+      "resources": ["job_queue", "items", "item_embeddings"]
+    },
+    {
+      "id": "job-worker-proactive-research",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "proactive_research_scan",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id; lists, suggestions and notifications stay inside user",
+      "resources": [
+        "job_queue",
+        "items",
+        "research_reports",
+        "research_suggestions",
+        "notifications"
+      ]
+    },
+    {
+      "id": "job-worker-cross-source-insight",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "cross_source_insight",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id and owned item/retrieval revalidation",
+      "resources": ["job_queue", "items", "item_embeddings", "notifications"]
+    },
+    {
+      "id": "job-worker-knowledge-backfill",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "knowledge_backfill",
+      "currentTenant": "absent",
+      "requiredTenant": "one checkpoint/job per user; every batch candidate scoped before cursoring",
+      "resources": [
+        "job_queue",
+        "knowledge_backfill_checkpoints",
+        "items",
+        "item_content_versions",
+        "content_chunks",
+        "intelligence_artifacts"
+      ]
+    },
+    {
+      "id": "job-worker-digest",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "digest_run",
+      "currentTenant": "absent",
+      "requiredTenant": "job.user_id; opt-out rechecked for same user",
+      "resources": [
+        "job_queue",
+        "personal_preferences",
+        "digest_jobs",
+        "digest_runs",
+        "digest_items",
+        "items"
+      ]
+    },
+    {
+      "id": "job-worker-custom-handler",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "dynamic",
+      "currentTenant": "unrestricted registration",
+      "requiredTenant": "custom handler contract requires TenantContext and declared resources; deny unscoped handler"
+    },
+    {
+      "id": "digest-cron",
+      "source": "src/app/api/cron/digests/route.ts",
+      "currentTenant": "single global preference/job",
+      "requiredTenant": "service-authenticated fan-out to one job per opted-in user",
+      "resources": ["personal_preferences", "digest_jobs", "job_queue"]
+    },
+    {
+      "id": "local-sync-scheduler-gmail",
+      "source": "src/lib/sync-scheduler.ts",
+      "currentTenant": "global timers/settings/tokens",
+      "requiredTenant": "disabled in hosted mode or durable per-user connector jobs",
+      "resources": ["user_settings", "oauth_tokens", "raw_content", "items"]
+    },
+    {
+      "id": "local-sync-scheduler-slack",
+      "source": "src/lib/sync-scheduler.ts",
+      "currentTenant": "global timers/settings/tokens",
+      "requiredTenant": "disabled in hosted mode or durable per-user connector jobs",
+      "resources": ["user_settings", "oauth_tokens", "raw_content", "items"]
+    },
+    {
+      "id": "local-sync-scheduler-publishers",
+      "source": "src/lib/sync-scheduler.ts",
+      "currentTenant": "global timers/settings/session files",
+      "requiredTenant": "disabled in hosted mode or durable per-user connector jobs",
+      "resources": ["user_settings", "publisher_queue", "publisher_session_storage", "items"]
+    }
+  ],
+  "searchAndAiPaths": [
+    {
+      "id": "legacy-hybrid-search",
+      "source": "src/lib/ai/search.ts",
+      "entryPoints": ["hybridSearch"],
+      "currentScope": "all items and embeddings",
+      "requiredScope": "tenant-scoped keyword and semantic candidates before scoring"
+    },
+    {
+      "id": "passage-retrieval",
+      "source": "src/lib/knowledge/retrieval.ts",
+      "entryPoints": [
+        "PostgresPassageSearchStore.searchKeyword",
+        "PostgresPassageSearchStore.listRecent",
+        "searchPassages"
+      ],
+      "currentScope": "all item/chunk candidates",
+      "requiredScope": "tenant predicate in base CTE; collection IDs owner-checked"
+    },
+    {
+      "id": "grounded-answers",
+      "source": "src/lib/knowledge/service.ts",
+      "entryPoints": ["answerFromKnowledge", "getItemIntelligence", "enqueueSummaryRegeneration"],
+      "currentScope": "caller-authenticated but repository/search context unscoped",
+      "requiredScope": "TenantContext reaches retrieval, artifact read and job envelope; prompt contains only owned excerpts"
+    },
+    {
+      "id": "agent-rag",
+      "source": "src/lib/agent/rag.ts",
+      "entryPoints": ["ragQuery"],
+      "currentScope": "all items/embeddings and global preferences",
+      "requiredScope": "tenant-scoped retrieval and preferences; no foreign canary in prompt/output"
+    },
+    {
+      "id": "agent-orchestrator",
+      "source": "src/lib/agent/orchestrator.ts",
+      "entryPoints": ["runAgent"],
+      "currentScope": "global tool registry and conversation-independent execution",
+      "requiredScope": "TenantContext fixed for full turn and every tool call"
+    },
+    {
+      "id": "agent-tools",
+      "source": "src/lib/agent/register-tools.ts",
+      "entryPoints": [
+        "search_items",
+        "get_item",
+        "get_user_preferences",
+        "get_feedback_history",
+        "list_topics",
+        "get_summary",
+        "mark_read",
+        "set_priority",
+        "add_summary",
+        "send_notification",
+        "create_item",
+        "delete_item",
+        "web_search",
+        "extract_content"
+      ],
+      "currentScope": "handlers use unscoped database facade",
+      "requiredScope": "registry execute requires TenantContext; every personal tool uses it; external tools cannot receive foreign content"
+    },
+    {
+      "id": "agent-tool-registry",
+      "source": "src/lib/agent/tool-registry.ts",
+      "entryPoints": ["ToolRegistry.execute"],
+      "currentScope": "rate limit by tool name and raw input/output persistence",
+      "requiredScope": "rate limit by user plus tool; allowlisted audit metadata only"
+    },
+    {
+      "id": "summary-generation",
+      "source": "src/lib/ai/summarize.ts",
+      "entryPoints": ["generateSummary"],
+      "currentScope": "item ID lookup without tenant",
+      "requiredScope": "owned item/artifact lookup and user-scoped AI budget/audit"
+    },
+    {
+      "id": "prioritization",
+      "source": "src/lib/ai/prioritize.ts",
+      "entryPoints": ["reprioritize"],
+      "currentScope": "all items and global preferences",
+      "requiredScope": "one user's items, feedback and preferences per call/job"
+    },
+    {
+      "id": "embedding",
+      "source": "src/lib/ai/embeddings.ts",
+      "entryPoints": ["generateEmbedding", "findSimilarItems", "embedItem"],
+      "currentScope": "all recent embeddings",
+      "requiredScope": "owned item write and tenant-filtered similarity candidates"
+    },
+    {
+      "id": "deep-research",
+      "source": "src/lib/ai/research.ts",
+      "entryPoints": ["startResearch", "runResearch"],
+      "currentScope": "optional item and report lookup unscoped",
+      "requiredScope": "tenant-scoped durable job, report updates, source item and provider payload"
+    },
+    {
+      "id": "preference-learning",
+      "source": "src/lib/ai/preferences.ts",
+      "entryPoints": [
+        "getPreferences",
+        "updatePreferencesFromFeedback",
+        "getAgentConfig",
+        "saveAgentConfig"
+      ],
+      "currentScope": "global feedback/settings keys",
+      "requiredScope": "per-user feedback and settings"
+    },
+    {
+      "id": "proactive-research",
+      "source": "src/lib/agent/proactive-research.ts",
+      "entryPoints": ["runProactiveScan"],
+      "currentScope": "all recent items/reports",
+      "requiredScope": "one user per scan; suggestion source IDs and notification same-owner"
+    },
+    {
+      "id": "cross-source-insights",
+      "source": "src/lib/agent/insight-detection.ts",
+      "entryPoints": ["detectInsights"],
+      "currentScope": "global similarity candidates",
+      "requiredScope": "owned source item and same-user candidates only"
+    },
+    {
+      "id": "triage-workflow",
+      "source": "src/lib/agent/workflows/triage.ts",
+      "entryPoints": ["runTriageWorkflow"],
+      "currentScope": "item ID without tenant",
+      "requiredScope": "owned item, actions and artifact writes under job tenant"
+    },
+    {
+      "id": "intelligence-pipeline",
+      "source": "src/lib/intelligence/pipeline.ts",
+      "entryPoints": ["processContent", "buildRawContent"],
+      "currentScope": "raw ingestion has no owner",
+      "requiredScope": "TenantContext mandatory from normalized ingestion contract through every stage/write"
+    },
+    {
+      "id": "intelligence-stages",
+      "source": "src/lib/intelligence",
+      "entryPoints": [
+        "extractContent",
+        "classify",
+        "analyzeContent",
+        "enrichContent",
+        "checkRelevance"
+      ],
+      "currentScope": "implicit singleton database/provider context",
+      "requiredScope": "explicit user context on any read/write; provider input limited to current ingestion"
+    },
+    {
+      "id": "knowledge-backfill",
+      "source": "src/lib/knowledge/jobs.ts",
+      "entryPoints": [
+        "enqueueKnowledgeBackfill",
+        "runKnowledgeBackfillBatch",
+        "createKnowledgeBackfillJobHandler"
+      ],
+      "currentScope": "global cursor candidates",
+      "requiredScope": "user-scoped checkpoint, cursor, candidates and artifact writes"
+    },
+    {
+      "id": "ai-provider-router",
+      "source": "src/lib/ai/router.ts",
+      "entryPoints": ["generateText", "generateJSON", "generateTextWithSearch"],
+      "currentScope": "process-global budget and audit",
+      "requiredScope": "user-scoped budget/audit context and centrally redacted metadata"
+    },
+    {
+      "id": "provider-adapters",
+      "source": "src/lib/ai/providers.ts",
+      "entryPoints": ["GeminiProviderImpl", "OpenAIProviderImpl", "AnthropicProviderImpl"],
+      "currentScope": "shared service credentials",
+      "requiredScope": "no tenant state in singleton adapter; requests carry bounded audit context but not credentials"
+    },
+    {
+      "id": "legacy-ai-client",
+      "source": "src/lib/ai/client.ts",
+      "entryPoints": ["generateText", "generateTextWithSearch"],
+      "currentScope": "shared provider client",
+      "requiredScope": "remove or require the same tenant-aware router contract"
+    },
+    {
+      "id": "ai-tagger",
+      "source": "src/lib/ai/tagger.ts",
+      "entryPoints": ["autoTagItem"],
+      "currentScope": "item ID and database writes without tenant",
+      "requiredScope": "owned item read/write under caller or job TenantContext"
+    },
+    {
+      "id": "ai-runtime-controls",
+      "source": "src/lib/ai/ai-config.ts, src/lib/ai/circuit-breaker.ts and src/lib/ai/retry.ts",
+      "entryPoints": ["model assignment", "provider circuit breaker", "transient retry"],
+      "currentScope": "process-global provider controls with no personal data store",
+      "requiredScope": "provider health may remain global; retries retain tenant audit context and user quotas stay separate"
+    },
+    {
+      "id": "knowledge-pure-transforms",
+      "source": "src/lib/knowledge/artifacts.ts, backfill.ts, chunking.ts, content-identity.ts and grounding.ts",
+      "entryPoints": [
+        "artifact state",
+        "checkpoint state",
+        "chunking",
+        "content identity",
+        "claim evidence"
+      ],
+      "currentScope": "pure data transforms; caller may provide unscoped data",
+      "requiredScope": "remain repository-free and operate only on already-authorized DTOs; identity values are tenant-relative at persistence"
+    },
+    {
+      "id": "prompt-assembly",
+      "source": "src/lib/prompts",
+      "entryPoints": ["intelligence", "prioritize", "research", "summarize"],
+      "currentScope": "callers may supply globally retrieved content",
+      "requiredScope": "accept only already-authorized bounded DTOs; no repository access or hidden memory"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "gmail-oauth-and-sync",
+      "source": "src/lib/connectors/gmail.ts",
+      "currentScope": "global provider token and mailbox",
+      "requiredScope": "user-bound OAuth state/token/cursor; every discovered item stamped with user"
+    },
+    {
+      "id": "slack-oauth-and-sync",
+      "source": "src/lib/connectors/slack.ts",
+      "currentScope": "global team tokens and channels",
+      "requiredScope": "user-bound OAuth state and per-user workspace connection; imported URLs stamped with user"
+    },
+    {
+      "id": "publisher-registry",
+      "source": "src/lib/connectors/publishers/registry.ts",
+      "currentScope": "global definitions",
+      "requiredScope": "definitions remain global read-only; connection state is per user"
+    },
+    {
+      "id": "publisher-session",
+      "source": "src/lib/connectors/publishers/session.ts",
+      "currentScope": "memory/file keys by publisher ID",
+      "requiredScope": "encrypted per-user credential store keyed by user and connection; locks/status caches include user"
+    },
+    {
+      "id": "publisher-discovery",
+      "source": "src/lib/connectors/publishers/discovery",
+      "currentScope": "queue and Gmail/session inputs without user",
+      "requiredScope": "TenantContext passed to RSS, Gmail-sender and logged-in-feed discovery and enqueue"
+    },
+    {
+      "id": "publisher-fetch-worker",
+      "source": "src/lib/connectors/publishers/worker.ts",
+      "currentScope": "global publisher queue/session",
+      "requiredScope": "one user connection per job; queue, session, fetch, raw content and item writes retain user"
+    },
+    {
+      "id": "publisher-fetcher",
+      "source": "src/lib/connectors/publishers/fetcher.ts",
+      "currentScope": "publisher definition/session only",
+      "requiredScope": "tenant-bound connection handle; fetched content returned only to same job context"
+    },
+    {
+      "id": "publisher-queue-adapter",
+      "source": "src/lib/connectors/publishers/queue.ts",
+      "currentScope": "publisher ID delegates to unscoped database facade",
+      "requiredScope": "TenantContext plus connection/publisher ID on enqueue, list, transition and stats"
+    },
+    {
+      "id": "publisher-content-strategy",
+      "source": "src/lib/connectors/publishers/strategy.ts and src/lib/connectors/publishers/publishers",
+      "currentScope": "global read-only parsing definitions",
+      "requiredScope": "definitions remain global and stateless; any session or persistence stays in tenant-bound caller"
+    }
+  ],
+  "logsAndAudit": [
+    {
+      "id": "structured-server-log",
+      "source": "src/lib/logger.ts",
+      "currentScope": "process-wide Pino without redaction configuration",
+      "requiredScope": "central allowlist/redaction; opaque userId, actorId and traceId; retention/access controls"
+    },
+    {
+      "id": "ai-audit-log",
+      "source": "src/lib/ai/router.ts",
+      "storage": "audit_log",
+      "currentScope": "global usage rows",
+      "requiredScope": "user-owned audit row or enumerated system event; hashes/metrics only"
+    },
+    {
+      "id": "agent-action-audit",
+      "source": "src/lib/agent/tool-registry.ts",
+      "storage": "agent_actions",
+      "currentScope": "serialized raw tool parameters/results up to 1000 characters",
+      "requiredScope": "tenant-owned allowlisted metadata; prohibit raw content, prompt, result and credentials"
+    },
+    {
+      "id": "api-and-connector-call-sites",
+      "source": "src/app/api and src/lib/connectors",
+      "currentScope": "some errors include raw URL, query prefix or provider error",
+      "requiredScope": "redacted errors and stable codes; never URL query, token, cookie, raw content or provider payload"
+    },
+    {
+      "id": "trace-context",
+      "source": "src/proxy.ts and src/lib/middleware/trace.ts",
+      "currentScope": "trace ID without user context",
+      "requiredScope": "server-attached trace plus actor/tenant context; clients cannot override trusted identity fields"
+    }
+  ],
+  "rateLimitsAndQuotas": [
+    {
+      "id": "proxy-token-bucket",
+      "source": "src/lib/middleware/rate-limit.ts",
+      "currentKey": "IP plus endpoint in process memory",
+      "requiredKey": "environment plus user/anonymous actor plus normalized operation in shared storage"
+    },
+    {
+      "id": "login-window",
+      "source": "src/lib/auth/service.ts",
+      "storage": "rate_limit_windows",
+      "currentKey": "login plus request IP",
+      "requiredKey": "environment plus normalized IP and account/email hash; preserve anti-enumeration"
+    },
+    {
+      "id": "capture-token-window",
+      "source": "src/lib/auth/authenticate.ts",
+      "storage": "rate_limit_windows",
+      "currentKey": "capture token ID",
+      "requiredKey": "environment plus user ID plus token ID plus operation"
+    },
+    {
+      "id": "agent-tool-window",
+      "source": "src/lib/agent/tool-registry.ts",
+      "currentKey": "tool name in process memory",
+      "requiredKey": "user ID plus tool name in shared storage"
+    },
+    {
+      "id": "ai-daily-usage",
+      "source": "src/lib/ai/router.ts",
+      "currentKey": "process-global day",
+      "requiredKey": "user ID plus billing day plus task/provider; separate platform circuit breakers from user quotas"
+    }
+  ],
+  "clientAndLocalStorage": [
+    {
+      "id": "extension-config",
+      "source": "browser-extension/background.js and browser-extension/options.js",
+      "storage": "chrome.storage.local:distilConfig",
+      "currentScope": "one plaintext origin/token",
+      "requiredScope": "bind configuration to stable account/token identity; never render token; clear or migrate queue on account change",
+      "sensitive": true
+    },
+    {
+      "id": "extension-queue",
+      "source": "browser-extension/background.js",
+      "storage": "chrome.storage.local:distilCaptureQueue",
+      "currentScope": "one queue independent of configured token",
+      "requiredScope": "partition entries by account/token binding and refuse cross-binding replay",
+      "sensitive": true
+    },
+    {
+      "id": "extension-state",
+      "source": "browser-extension/background.js",
+      "storage": "chrome.storage.local:distilExtensionState",
+      "currentScope": "one non-secret status",
+      "requiredScope": "partition with active account; no URL/content/token in status"
+    },
+    {
+      "id": "web-theme",
+      "source": "src/components/layout/theme-provider.tsx",
+      "storage": "localStorage:theme",
+      "currentScope": "browser-local non-personal preference",
+      "requiredScope": "may remain device-local and unscoped because it contains no tenant data"
+    },
+    {
+      "id": "sqlite-database",
+      "source": "src/lib/db.ts",
+      "storage": "DB_PATH default data/distil.db",
+      "currentScope": "single-user local file",
+      "requiredScope": "not a hosted multi-user runtime store; import requires explicit target account",
+      "sensitive": true
+    },
+    {
+      "id": "publisher-browser-profile",
+      "source": "src/lib/connectors/publishers/session.ts",
+      "storage": "PUBLISHER_SESSION_DIR/<publisherId> including storage-state.json and status.json",
+      "currentScope": "publisher-global cookies/profile/status",
+      "requiredScope": "encrypted user/connection namespace, strict filesystem permissions, deletion/export lifecycle or replacement credential store",
+      "sensitive": true
+    }
+  ],
+  "futureObjectStoreSeams": [
+    {
+      "id": "user-object-store",
+      "status": "not-implemented",
+      "requiredInterface": "put/get/delete/list accept TenantContext and logical ObjectRef; callers never choose raw bucket keys",
+      "keyShape": "env/users/<userId>/<objectType>/<objectId>/<version>",
+      "metadata": ["userId", "objectType", "objectId", "contentHash", "createdAt"],
+      "controls": [
+        "server-side encryption",
+        "private bucket",
+        "short-lived signed access after owner check",
+        "content-type and size allowlist",
+        "malware scan where relevant",
+        "deletion checkpoint",
+        "audit without raw key"
+      ]
+    },
+    {
+      "id": "publisher-credential-store",
+      "status": "replaces-local-session-files-before-hosted-multi-user",
+      "requiredInterface": "read/write/delete accept TenantContext plus connectionId; envelope encryption with rotated key",
+      "keyShape": "env/users/<userId>/connector-sessions/<connectionId>/<version>",
+      "controls": [
+        "never expose signed URL",
+        "no shared publisher key",
+        "revoke on disconnect/account deletion",
+        "redact cookies from logs"
+      ]
+    },
+    {
+      "id": "large-raw-content-or-export",
+      "status": "reserved",
+      "requiredInterface": "database stores owner-scoped ObjectRef and hash; export jobs use one-time owner-authorized download",
+      "keyShape": "env/users/<userId>/<raw-content-or-exports>/<objectId>/<version>",
+      "controls": [
+        "same-region privacy review",
+        "retention policy",
+        "orphan sweeper constrained by owner",
+        "no public URL"
+      ]
+    }
+  ],
+  "inventoryCoverage": {
+    "expectedDrizzleTableCount": 36,
+    "expectedApiRouteFileCount": 67,
+    "expectedPageFileCount": 16,
+    "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
+    "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
+  }
+}
