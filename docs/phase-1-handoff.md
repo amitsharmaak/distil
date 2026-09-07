@@ -130,24 +130,6 @@ The phases are ordered to validate the riskiest user behavior before adding brea
 describe product maturity, not fixed calendar dates. A later phase should not start broadly until
 the preceding exit gate is met, although research and prototypes may run ahead.
 
-### Phase 0 — Direction, baseline, and quality foundation
-
-**Goal:** Establish what Distil is, measure the existing application, and make changes safely.
-
-**Deliverables:**
-
-- Confirm the primary job: capture and consume relevant knowledge with less effort.
-- Inventory the existing feed, AI pipeline, Gmail/Slack code, extension, research, and local SQLite
-  behavior.
-- Define deterministic unit, component, contract, integration, security, browser/mobile, extension,
-  and coverage suites.
-- Add structured logs, stable fixtures, dependency boundaries, and baseline performance/AI evals.
-- Record privacy, security, cost, and product assumptions explicitly.
-
-**Exit gate:** The current product is characterized by repeatable tests; critical behavior and known
-risks are documented; feature work can be evaluated against user outcomes rather than connector
-count. Most of this foundation has been incorporated into the active Phase 1 branch.
-
 ### Phase 1 — Personal cloud capture and multi-device foundation (active)
 
 **Goal:** Make one user's Distil library securely available in the cloud and make article capture
@@ -155,6 +137,9 @@ reliable from desktop and iPhone.
 
 **Deliverables:**
 
+- Establish the direction, baseline, and quality foundation: characterize the existing feed, AI
+  pipeline, connectors, extension, research, and SQLite behavior; define deterministic test suites;
+  record product, privacy, security, cost, and architectural assumptions.
 - Move the system of record from local SQLite to PostgreSQL with verified migration/import tooling.
 - Protect the web application with a signed single-user session and protect capture clients with
   separate, hashed, revocable tokens.
@@ -166,10 +151,11 @@ reliable from desktop and iPhone.
   complete quality and security gates pass.
 - Keep hosted Gmail, Slack, RSS, native mobile, and multi-user behavior disabled.
 
-**Exit gate:** A real user can sign in from browser/mobile, save from Chrome and other iPhone apps,
-see every accepted capture reach a correct terminal state, revoke either client independently, and
-recover from failures without duplicates or lost work. The Preview deployment, real-device test,
-and production decision are still outstanding; detailed progress begins below.
+**Exit gate:** The application is characterized by repeatable quality and security tests, and a real
+user can sign in from browser/mobile, save from Chrome and other iPhone apps, see every accepted
+capture reach a correct terminal state, revoke either client independently, and recover from
+failures without duplicates or lost work. The Preview deployment, real-device test, and production
+decision are still outstanding; detailed progress begins below.
 
 ### Phase 2 — Daily knowledge experience and intelligence quality
 
@@ -300,6 +286,8 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 ## Roadmap decision rules
 
+- Distil uses Phase numbers **1 through 7**. There is no Phase 0 and no Phase 8 in this roadmap.
+- Baseline analysis and testing architecture are foundation work inside Phase 1.
 - Complete Phase 1 Preview and real-device validation before starting broad Phase 2 feature work.
 - Do not add full Gmail or Slack hosting merely because code already exists; validate the source's
   user value and scope first in Phase 5.
