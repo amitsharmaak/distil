@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "updatedAt": "2026-09-07",
-  "baselineCommit": "9ed064f",
+  "baselineCommit": "f208c551d56ae12c4ab0446d074230224e077915",
   "status": "required-policy-not-yet-implemented",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
   "sourceOfTruth": "docs/phase-3-ownership.md",
@@ -399,7 +399,9 @@
     { "name": "ContentChunkRepository", "resources": ["content_chunks", "item_content_versions"] },
     {
       "name": "IntelligenceArtifactRepository",
-      "resources": ["intelligence_artifacts", "item_content_versions"]
+      "resources": ["intelligence_artifacts", "item_content_versions"],
+      "newMethodsSince9ed064f": ["updatePending", "complete"],
+      "requiredMethodRule": "Every lookup, staged update and atomic current-artifact promotion is tenant-scoped; completing an artifact cannot supersede another user's current artifact."
     },
     {
       "name": "ClaimRepository",
@@ -981,6 +983,7 @@
         "collection_items",
         "audit_log"
       ],
+      "currentFeatureGate": "DISTIL_PHASE2_ANSWERS",
       "testProfile": "owner"
     },
     {
@@ -1156,6 +1159,7 @@
         "claim_evidence",
         "content_chunks"
       ],
+      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
       "testProfile": "owner"
     },
     {
@@ -1186,6 +1190,7 @@
       "requiredPrincipal": "user_session",
       "scope": "owner",
       "resources": ["items", "item_content_versions", "intelligence_artifacts", "job_queue"],
+      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
       "testProfile": "owner"
     },
     {
@@ -1222,6 +1227,7 @@
         "collections",
         "collection_items"
       ],
+      "currentFeatureGate": "DISTIL_PHASE2_SEARCH",
       "testProfile": "owner"
     }
   ],
@@ -1239,6 +1245,7 @@
       "source": "src/app/archive/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
+      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
       "dataPath": "client experience; tenant API only",
       "testProfile": "owner"
     },
@@ -1247,6 +1254,7 @@
       "source": "src/app/ask/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
+      "currentFeatureGate": "DISTIL_PHASE2_ANSWERS",
       "dataPath": "client experience; tenant API only",
       "testProfile": "owner"
     },
@@ -1255,6 +1263,7 @@
       "source": "src/app/collections/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
+      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
       "dataPath": "client experience; tenant API only",
       "testProfile": "owner"
     },
@@ -1263,6 +1272,7 @@
       "source": "src/app/collections/[id]/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
+      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
       "dataPath": "passes route ID to client experience; downstream owner check required",
       "testProfile": "owner"
     },
@@ -1329,6 +1339,7 @@
       "source": "src/app/search/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
+      "currentFeatureGate": "DISTIL_PHASE2_SEARCH",
       "dataPath": "/api/v1/search",
       "testProfile": "owner"
     },
@@ -1537,6 +1548,23 @@
       ]
     },
     {
+      "id": "job-worker-regenerate-intelligence-summary",
+      "source": "src/lib/agent/job-worker.ts",
+      "jobType": "regenerate_intelligence_summary",
+      "currentTenant": "absent; payload carries item, content-version and artifact IDs but no user identity",
+      "requiredTenant": "job.user_id plus same-owner validation for job, item, content version, artifact, chunks, claims, evidence, AI budget and audit",
+      "resources": [
+        "job_queue",
+        "items",
+        "item_content_versions",
+        "content_chunks",
+        "intelligence_artifacts",
+        "intelligence_claims",
+        "claim_evidence",
+        "audit_log"
+      ]
+    },
+    {
       "id": "job-worker-custom-handler",
       "source": "src/lib/agent/job-worker.ts",
       "jobType": "dynamic",
@@ -1597,6 +1625,17 @@
       "entryPoints": ["answerFromKnowledge", "getItemIntelligence", "enqueueSummaryRegeneration"],
       "currentScope": "caller-authenticated but repository/search context unscoped",
       "requiredScope": "TenantContext reaches retrieval, artifact read and job envelope; prompt contains only owned excerpts"
+    },
+    {
+      "id": "grounded-intelligence-summary-runtime",
+      "source": "src/lib/knowledge/intelligence-runtime.ts",
+      "entryPoints": [
+        "runIntelligenceSummaryJob",
+        "createIntelligenceSummaryJobHandler",
+        "createRouterStructuredSummaryGenerator"
+      ],
+      "currentScope": "queue payload and repository set are global; artifact promotion, item/content/chunk reads, claim/evidence writes, budget lookup and audit deltas have no owner",
+      "requiredScope": "TenantContext comes from the versioned job envelope; independently revalidate the entire same-owner graph before prompt assembly or writes; budget and audit deltas are per user"
     },
     {
       "id": "agent-rag",

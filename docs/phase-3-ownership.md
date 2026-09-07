@@ -4,7 +4,7 @@ Status: design and inventory baseline, not implemented
 
 Inventory authority: [`docs/authorization-matrix.json`](authorization-matrix.json)
 
-Baseline reviewed: `9ed064f` on 2026-09-07
+Baseline reviewed: `f208c551d56ae12c4ab0446d074230224e077915` on 2026-09-07
 
 This document defines the authorization boundary for moving Distil from one protected user to real
 accounts. It does not claim that the current schema or runtime is tenant-safe. The checked-in matrix
@@ -132,6 +132,10 @@ within a user, not globally.
   profiles are global by provider/team or publisher ID.
 - Full-text, semantic, agent RAG, recency fallback, preferences, conversations, research and AI audit
   paths are unscoped. Some in-memory maps are global across users.
+- Phase 2 now has a durable `regenerate_intelligence_summary` worker and grounded-summary runtime.
+  Its queue payload has resource and trace IDs but no `userId`; prompt assembly, budget reads, artifact
+  promotion, claims/evidence writes and audit deltas all use the global repository set. This entire
+  graph must be revalidated under one tenant transaction before any content reaches the AI provider.
 - Structured logger configuration has no redaction policy. Some calls log raw URLs or query prefixes;
   agent action persistence stores serialized parameters and results.
 - The browser extension stores one plaintext token plus a shared queue in `chrome.storage.local`.
@@ -163,8 +167,10 @@ SQL adapter requires updating the matrix in the same change.
 
 ### Phase 2 delta checklist
 
-This inventory is pinned to Phase 2 commit `9ed064f`; Phase 3 planning must not wait for a later
-Phase 2 freeze. When this work is integrated onto a newer Phase 2 commit, the integration owner must:
+This inventory has been refreshed from its original `9ed064f` baseline through Phase 2 commit
+`f208c551d56ae12c4ab0446d074230224e077915`. It includes the grounded intelligence-summary runtime,
+its durable worker, the new artifact repository completion methods, and the feature-gated Phase 2
+routes and pages. When this work is integrated onto a newer Phase 2 commit, the integration owner must:
 
 - diff `src/lib/postgres/schema.ts` and all migrations for added/renamed tables, relationships and
   uniqueness constraints;
