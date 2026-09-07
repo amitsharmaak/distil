@@ -28,6 +28,7 @@ export const nextServerCommand = "npm exec -- tsx tests/support/browser/server.t
 function startServer(): void {
   const workingDirectory = mkdtempSync(join(tmpdir(), "distil-e2e-"));
   let stopping = false;
+  const production = process.env.DISTIL_E2E_PRODUCTION === "1";
 
   const cleanUp = () => {
     rmSync(workingDirectory, { recursive: true, force: true });
@@ -37,7 +38,7 @@ function startServer(): void {
     "npm",
     [
       "run",
-      "dev",
+      production ? "start" : "dev",
       "--",
       "--hostname",
       e2eHost,
@@ -45,7 +46,7 @@ function startServer(): void {
       String(e2ePort),
       // Webpack tolerates the shared node_modules symlink used by isolated
       // agent worktrees; Turbopack intentionally rejects paths outside root.
-      "--webpack",
+      ...(production ? [] : ["--webpack"]),
     ],
     {
       cwd: process.cwd(),

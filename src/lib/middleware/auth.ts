@@ -61,6 +61,10 @@ export async function checkAuth(request: NextRequest): Promise<NextResponse | nu
   const pathname = request.nextUrl.pathname;
   if (pathname === "/login" || hasSpecializedAuth(pathname)) return null;
 
+  // Production-mode E2E exercises the built application without provisioning
+  // user credentials. This flag is set only by the isolated test workflow.
+  if (process.env.DISTIL_TEST_MODE === "1") return null;
+
   const environment = readAuthEnvironment();
   if (!isAuthEnabled()) {
     if (process.env.NODE_ENV !== "production") return null;
