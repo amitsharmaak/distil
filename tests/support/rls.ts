@@ -7,6 +7,10 @@ export interface TenantRlsPoolHarnessOptions {
 
 interface TenantSettingRow {
   user_id: string | null;
+  actor_id: string | null;
+  actor_kind: string | null;
+  request_id: string | null;
+  environment: string | null;
 }
 
 /**
@@ -32,11 +36,27 @@ export class TenantRlsPoolHarness {
     }
     let result!: T;
     await this.sql.begin(async (transaction) => {
-      await transaction`SELECT set_config(${this.settingName}, ${context.userId}, true)`;
+      await transaction`SELECT
+        set_config(${this.settingName}, ${context.userId}, true),
+        set_config('app.actor_id', ${context.actorId}, true),
+        set_config('app.actor_kind', ${context.actorKind}, true),
+        set_config('app.request_id', ${context.requestId}, true),
+        set_config('app.environment', 'test', true),
+        set_config('search_path', 'tenant_api, pg_catalog', true)`;
       const [setting] = await transaction<TenantSettingRow[]>`
-        SELECT nullif(current_setting(${this.settingName}, true), '') AS user_id
+        SELECT nullif(current_setting(${this.settingName}, true), '') AS user_id,
+               nullif(current_setting('app.actor_id', true), '') AS actor_id,
+               nullif(current_setting('app.actor_kind', true), '') AS actor_kind,
+               nullif(current_setting('app.request_id', true), '') AS request_id,
+               nullif(current_setting('app.environment', true), '') AS environment
       `;
-      if (setting?.user_id !== context.userId) {
+      if (
+        setting?.user_id !== context.userId ||
+        setting.actor_id !== context.actorId ||
+        setting.actor_kind !== context.actorKind ||
+        setting.request_id !== context.requestId ||
+        setting.environment !== "test"
+      ) {
         throw new Error(`Failed to establish transaction-local ${this.settingName}`);
       }
       result = await operation(transaction);

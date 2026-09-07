@@ -83,6 +83,11 @@ CREATE UNIQUE INDEX item_content_versions_owner_id_idx
 CREATE UNIQUE INDEX item_content_versions_user_id_id_item_idx
   ON item_content_versions(user_id, id, item_id);
 CREATE UNIQUE INDEX content_chunks_user_id_id_idx ON content_chunks(user_id, id);
+CREATE UNIQUE INDEX digest_items_user_run_position_idx
+  ON digest_items(user_id, digest_run_id, position);
+CREATE UNIQUE INDEX capture_tokens_user_hash_idx ON capture_tokens(user_id, token_hash);
+CREATE UNIQUE INDEX rate_limit_windows_user_window_idx
+  ON rate_limit_windows(user_id, key, window_start, window_seconds);
 CREATE UNIQUE INDEX intelligence_artifacts_user_id_id_idx
   ON intelligence_artifacts(user_id, id);
 CREATE UNIQUE INDEX intelligence_claims_user_id_id_idx ON intelligence_claims(user_id, id);
@@ -119,6 +124,8 @@ ALTER TABLE item_content_versions ADD CONSTRAINT item_content_versions_user_item
 ALTER TABLE content_chunks ADD CONSTRAINT content_chunks_user_version_item_fk
   FOREIGN KEY (user_id, content_version_id, item_id)
   REFERENCES item_content_versions(user_id, id, item_id) ON DELETE CASCADE;
+ALTER TABLE content_chunks ADD CONSTRAINT content_chunks_user_item_fk
+  FOREIGN KEY (user_id, item_id) REFERENCES items(user_id, id) ON DELETE CASCADE;
 ALTER TABLE intelligence_artifacts ADD CONSTRAINT intelligence_artifacts_user_version_item_fk
   FOREIGN KEY (user_id, content_version_id, item_id)
   REFERENCES item_content_versions(user_id, id, item_id) ON DELETE CASCADE;
@@ -174,6 +181,7 @@ CREATE UNIQUE INDEX item_events_user_event_key_idx ON item_events(user_id, event
 
 ALTER TABLE digest_runs DROP CONSTRAINT IF EXISTS digest_runs_digest_date_key;
 ALTER TABLE digest_runs DROP CONSTRAINT IF EXISTS digest_runs_local_date_key;
+DROP INDEX IF EXISTS digest_runs_local_date_idx;
 CREATE UNIQUE INDEX digest_runs_user_digest_date_idx ON digest_runs(user_id, digest_date);
 CREATE UNIQUE INDEX digest_runs_user_local_date_idx ON digest_runs(user_id, local_date);
 

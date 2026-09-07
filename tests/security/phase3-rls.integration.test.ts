@@ -75,8 +75,7 @@ describeWithTenantMigration(
 
       await owner.sql.unsafe(`
         CREATE ROLE ${runtimeRole} LOGIN PASSWORD 'distil_rls_test_password' NOSUPERUSER NOBYPASSRLS;
-        GRANT USAGE ON SCHEMA public TO ${runtimeRole};
-        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtimeRole};
+        GRANT distil_runtime TO ${runtimeRole};
         CREATE TABLE __distil_rls_pool_probe (
           id text NOT NULL,
           user_id uuid NOT NULL,
@@ -175,12 +174,12 @@ describeWithTenantMigration(
     });
 
     it("fails closed with no tenant context and enforces all CRUD operations through the runtime role", async () => {
-      await expect(applicationSql`SELECT value FROM __distil_rls_pool_probe`).resolves.toHaveLength(
-        0
-      );
+      await expect(
+        applicationSql`SELECT value FROM public.__distil_rls_pool_probe`
+      ).resolves.toHaveLength(0);
       await expect(
         applicationSql`
-          INSERT INTO __distil_rls_pool_probe (id, user_id, value)
+          INSERT INTO public.__distil_rls_pool_probe (id, user_id, value)
           VALUES ('missing-context', ${fixture.alpha.user.id}::uuid, 'must-fail')
         `
       ).rejects.toThrow();
@@ -188,34 +187,38 @@ describeWithTenantMigration(
       await pool.asTenant(fixture.alpha.auth.session, async (transaction) => {
         await expect(
           transaction<{ value: string }[]>`
-            SELECT value FROM __distil_rls_pool_probe ORDER BY value
+            SELECT value FROM public.__distil_rls_pool_probe ORDER BY value
           `
         ).resolves.toEqual([{ value: "alpha-only" }]);
         await expect(
           transaction`
-            UPDATE __distil_rls_pool_probe SET value = 'forged'
+            UPDATE public.__distil_rls_pool_probe SET value = 'forged'
             WHERE user_id = ${fixture.beta.user.id}::uuid AND id = 'shared-id'
           `
         ).resolves.toHaveLength(0);
         await expect(
           transaction`
-            DELETE FROM __distil_rls_pool_probe
+            DELETE FROM public.__distil_rls_pool_probe
             WHERE user_id = ${fixture.beta.user.id}::uuid AND id = 'shared-id'
           `
         ).resolves.toHaveLength(0);
         await expect(
           transaction`
-            INSERT INTO __distil_rls_pool_probe (id, user_id, value)
+            INSERT INTO public.__distil_rls_pool_probe (id, user_id, value)
             VALUES ('alpha-insert', ${fixture.alpha.user.id}::uuid, 'allowed')
+            RETURNING id
           `
         ).resolves.toHaveLength(1);
-        await expect(
-          transaction`
-            INSERT INTO __distil_rls_pool_probe (id, user_id, value)
-            VALUES ('forged-insert', ${fixture.beta.user.id}::uuid, 'must-fail')
-          `
-        ).rejects.toThrow();
       });
+      await expect(
+        pool.asTenant(
+          fixture.alpha.auth.session,
+          (transaction) => transaction`
+          INSERT INTO public.__distil_rls_pool_probe (id, user_id, value)
+          VALUES ('forged-insert', ${fixture.beta.user.id}::uuid, 'must-fail')
+        `
+        )
+      ).rejects.toThrow();
     });
 
     it("allows concurrent tenants to use the same URL, digest date, and singleton key", async () => {
@@ -245,6 +248,7 @@ describeWithTenantMigration(
             await transaction`
               INSERT INTO personal_preferences (id, user_id, updated_at)
               VALUES ('default', ${userId}::uuid, now())
+              ON CONFLICT (user_id, id) DO UPDATE SET updated_at = excluded.updated_at
             `;
           }
         );
@@ -292,7 +296,8 @@ describeWithTenantMigration(
         [fixture.alpha.auth.session, fixture.beta.auth.session, fixture.alpha.auth.captureToken],
         async (transaction) => {
           const rows = await transaction<{ value: string }[]>`
-            SELECT value FROM __distil_rls_pool_probe WHERE id = 'shared-id' ORDER BY value
+            SELECT value FROM public.__distil_rls_pool_probe
+            WHERE id = 'shared-id' ORDER BY value
           `;
           return rows.map(({ value }) => value);
         }
@@ -308,7 +313,7 @@ describeWithTenantMigration(
     it("clears transaction-local tenant state after rollback", async () => {
       await expect(
         pool.asTenant(fixture.beta.auth.session, async (transaction) => {
-          await transaction`SELECT value FROM __distil_rls_pool_probe`;
+          await transaction`SELECT value FROM public.__distil_rls_pool_probe`;
           throw new Error("deliberate rollback");
         })
       ).rejects.toThrow("deliberate rollback");
