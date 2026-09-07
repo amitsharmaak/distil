@@ -93,9 +93,18 @@ describe("knowledge backfill jobs", () => {
       expect.objectContaining({
         jobType: KNOWLEDGE_BACKFILL_QUEUE_JOB,
         maxRetries: 5,
-        payload: expect.stringContaining('"kind":"content_versions"'),
+        payload: expect.stringContaining('"expectedCursor":null'),
       })
     );
+  });
+
+  it("does not enqueue an already completed checkpoint", async () => {
+    const deps = dependencies(checkpoint({ status: "completed" }));
+    jest
+      .mocked(deps.knowledgeBackfills.create)
+      .mockResolvedValue(checkpoint({ status: "completed" }));
+    await enqueueKnowledgeBackfill({ repositories: deps, kind: "content_versions", now });
+    expect(deps.jobs.enqueue).not.toHaveBeenCalled();
   });
 
   it("uses full content, falls back to summary, and persists a continuation", async () => {
@@ -124,6 +133,11 @@ describe("knowledge backfill jobs", () => {
       expect.objectContaining({ itemId: "b", source: "summary", content: "Summary B." })
     );
     expect(deps.jobs.enqueue).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(String(jest.mocked(deps.jobs.enqueue).mock.calls[0][0].payload))
+    ).toMatchObject({
+      expectedCursor: "b",
+    });
     expect(deps.knowledgeBackfills.advance).toHaveBeenCalledWith(
       "kbf_job",
       expect.objectContaining({ cursor: "b", processedDelta: 2, completed: false })
@@ -259,5 +273,65 @@ describe("knowledge backfill jobs", () => {
       )
     ).rejects.toThrow("between 1 and 100");
     expect(deps.knowledgeBackfills.find).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale queue redelivery whose expected cursor was already advanced", async () => {
+    const current = checkpoint({ status: "running", cursor: "cursor-new", processedCount: 2 });
+    const deps = dependencies(current);
+    await expect(
+      runKnowledgeBackfillBatch(
+        {
+          jobKey: "kbf_job",
+          kind: "content_versions",
+          batchSize: 1,
+          expectedCursor: "cursor-old",
+        },
+        deps
+      )
+    ).resolves.toEqual(current);
+    expect(deps.knowledgeBackfills.start).not.toHaveBeenCalled();
+    expect(deps.contentVersions.listReadyCandidates).not.toHaveBeenCalled();
+    expect(deps.knowledgeBackfills.advance).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing checkpoints and mismatched checkpoint types", async () => {
+    const missing = dependencies();
+    jest.mocked(missing.knowledgeBackfills.find).mockResolvedValue(undefined);
+    await expect(
+      runKnowledgeBackfillBatch(
+        { jobKey: "missing", kind: "content_versions", batchSize: 1 },
+        missing
+      )
+    ).rejects.toThrow("does not exist");
+
+    const mismatched = dependencies(checkpoint({ jobType: "chunks" }));
+    await expect(
+      runKnowledgeBackfillBatch(
+        { jobKey: "kbf_job", kind: "content_versions", batchSize: 1 },
+        mismatched
+      )
+    ).rejects.toThrow("wrong type");
+  });
+
+  it("returns completed or concurrently unavailable checkpoints without running a batch", async () => {
+    const completed = checkpoint({ status: "completed" });
+    const completedDeps = dependencies(completed);
+    await expect(
+      runKnowledgeBackfillBatch(
+        { jobKey: "kbf_job", kind: "content_versions", batchSize: 1 },
+        completedDeps
+      )
+    ).resolves.toEqual(completed);
+    expect(completedDeps.knowledgeBackfills.start).not.toHaveBeenCalled();
+
+    const unavailableDeps = dependencies();
+    jest.mocked(unavailableDeps.knowledgeBackfills.start).mockResolvedValue(undefined);
+    await expect(
+      runKnowledgeBackfillBatch(
+        { jobKey: "kbf_job", kind: "content_versions", batchSize: 1 },
+        unavailableDeps
+      )
+    ).resolves.toEqual(expect.objectContaining({ status: "pending" }));
+    expect(unavailableDeps.contentVersions.listReadyCandidates).not.toHaveBeenCalled();
   });
 });

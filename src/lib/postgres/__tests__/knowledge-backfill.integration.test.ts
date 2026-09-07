@@ -21,6 +21,7 @@ afterAll(async () => harness.stop());
 
 describe("Phase 2 migration and durable intelligence backfill", () => {
   it("resumes bounded queued batches from legacy rows through degraded artifacts", async () => {
+    await harness.reset();
     const repositories = createPostgresRepositories(harness.sql);
     const base: Omit<ContentItem, "id" | "title" | "url" | "summary"> = {
       sourceType: "manual",

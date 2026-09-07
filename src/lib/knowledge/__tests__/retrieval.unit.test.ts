@@ -45,6 +45,18 @@ describe("retrieval contracts", () => {
     expect(() => validateEmbeddingSpace({ ...space, model: "" }, [0.1, 0.2, 0.3])).toThrow(
       /must pin/
     );
+    expect(() => validateEmbeddingSpace({ ...space, provider: " " }, [0.1, 0.2, 0.3])).toThrow(
+      /must pin/
+    );
+    expect(() => validateEmbeddingSpace({ ...space, dimensions: 1.5 }, [0.1])).toThrow(/must pin/);
+    expect(() => validateEmbeddingSpace(space, [0.1, Number.NaN, 0.3])).toThrow(/pinned vector/);
+  });
+
+  it("does not query PostgreSQL for a blank keyword query", async () => {
+    const fake = sqlDouble([]);
+    const store = new PostgresPassageSearchStore(fake.sql);
+    await expect(store.searchKeyword({ query: "   " })).resolves.toEqual([]);
+    expect(fake.queries).toEqual([]);
   });
 
   it("normalizes keyword queries and reports semantic degradation", async () => {
@@ -99,5 +111,20 @@ describe("retrieval contracts", () => {
     expect(queries).toContain("collection_items");
     expect(queries).toContain("ORDER BY score DESC");
     expect(queries).toContain("i.is_read=false");
+  });
+
+  it("applies default archive exclusion, clamps limits, and reports both keyword reasons", async () => {
+    const fake = sqlDouble([
+      [{ ...row, chunk_match: true, metadata_match: true }],
+      [{ ...row, is_read: false, score: 1 }],
+    ]);
+    const store = new PostgresPassageSearchStore(fake.sql);
+    await expect(store.searchKeyword({ query: "durable", limit: 500 })).resolves.toEqual([
+      expect.objectContaining({ reasons: ["keyword:chunk_text", "keyword:item_metadata"] }),
+    ]);
+    await expect(store.listRecent({ limit: 0 })).resolves.toEqual([
+      expect.objectContaining({ reasons: ["recent:unread"] }),
+    ]);
+    expect(fake.queries.join("\n")).toContain("i.archived_at IS NULL");
   });
 });

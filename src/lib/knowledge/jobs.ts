@@ -32,6 +32,8 @@ export interface KnowledgeBackfillJobPayload {
   kind: KnowledgeBackfillKind;
   batchSize: number;
   extractorVersion?: string;
+  /** Cursor observed when this delivery was queued, used to reject stale redelivery. */
+  expectedCursor?: string | null;
 }
 
 export interface KnowledgeBackfillDependencies {
@@ -85,6 +87,10 @@ function parsePayload(payload: unknown): KnowledgeBackfillJobPayload {
     batchSize: boundedBatchSize(input.batchSize),
     extractorVersion:
       typeof input.extractorVersion === "string" ? input.extractorVersion : undefined,
+    expectedCursor:
+      input.expectedCursor === null || typeof input.expectedCursor === "string"
+        ? input.expectedCursor
+        : undefined,
   };
 }
 
@@ -97,7 +103,7 @@ async function enqueuePayload(
   await jobs.enqueue({
     id: queueJobId(payload.jobKey, cursor, attempt),
     jobType: KNOWLEDGE_BACKFILL_QUEUE_JOB,
-    payload: JSON.stringify(payload),
+    payload: JSON.stringify({ ...payload, expectedCursor: cursor ?? null }),
     priority: 2,
     maxRetries: 5,
   });
@@ -307,6 +313,12 @@ export async function runKnowledgeBackfillBatch(
     throw new Error(`Knowledge backfill ${payload.jobKey} has the wrong type`);
   }
   if (checkpoint.status === "completed") return checkpoint;
+  if (
+    payload.expectedCursor !== undefined &&
+    (checkpoint.cursor ?? null) !== payload.expectedCursor
+  ) {
+    return checkpoint;
+  }
   const running = await dependencies.knowledgeBackfills.start(payload.jobKey, now);
   if (!running || running.status === "completed") return running ?? checkpoint;
 

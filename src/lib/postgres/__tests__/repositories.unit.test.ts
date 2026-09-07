@@ -1,4 +1,5 @@
 import type { Sql } from "postgres";
+import { sha256 } from "@/lib/knowledge/content-identity";
 import { createPostgresRepositories } from "../repositories";
 
 type Row = Record<string, unknown>;
@@ -723,5 +724,419 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       citations: null,
       toolCalls: null,
     });
+  });
+
+  test("covers content-version and chunk repository result and idempotency branches", async () => {
+    const version = {
+      id: "version-1",
+      item_id: "item-1",
+      version: 1,
+      content_hash: `sha256:${"1".repeat(64)}`,
+      extractor_version: "extractor-v1",
+      source: "full_content",
+      content: "Durable content.",
+      character_count: 16,
+      token_count: 4,
+      created_at: "2026-01-01Z",
+    };
+    const chunk = {
+      id: "chunk-1",
+      content_version_id: "version-1",
+      item_id: "item-1",
+      ordinal: 0,
+      content: "Durable content.",
+      content_hash: `sha256:${"2".repeat(64)}`,
+      start_offset: 0,
+      end_offset: 16,
+      token_count: 4,
+      embedding_model: null,
+      embedding_dimensions: null,
+      embedding_status: "unconfigured",
+      embedding_error: null,
+      embedding_updated_at: null,
+      embedded_at: null,
+      created_at: "2026-01-01Z",
+    };
+    const fake = sqlDouble([
+      [version],
+      [],
+      [version],
+      [version],
+      [{ item_id: "item-1", title: "Item", full_content: null, summary: "Summary" }],
+      [],
+      [version],
+      [],
+      [],
+      [{ version: 2 }],
+      [{ ...version, id: "version-2", version: 2 }],
+      [chunk],
+      [],
+      [chunk],
+      [chunk],
+      [],
+      [chunk],
+      [version],
+    ]);
+    const repositories = createPostgresRepositories(fake.sql);
+    await expect(repositories.contentVersions.findById("version-1")).resolves.toMatchObject({
+      id: "version-1",
+      source: "full_content",
+    });
+    await expect(repositories.contentVersions.findById("missing")).resolves.toBeUndefined();
+    await expect(repositories.contentVersions.findLatestForItem("item-1")).resolves.toBeDefined();
+    await expect(repositories.contentVersions.listForItem("item-1")).resolves.toHaveLength(1);
+    await expect(repositories.contentVersions.listReadyCandidates({ limit: 2 })).resolves.toEqual([
+      expect.objectContaining({ itemId: "item-1", fullContent: undefined, summary: "Summary" }),
+    ]);
+    const record = {
+      id: "version-1",
+      itemId: "item-1",
+      contentHash: version.content_hash,
+      extractorVersion: "extractor-v1",
+      source: "full_content" as const,
+      content: "Durable content.",
+      characterCount: 16,
+      tokenCount: 4,
+      createdAt: "2026-01-01Z",
+    };
+    await expect(repositories.contentVersions.create(record)).resolves.toMatchObject({
+      created: false,
+    });
+    await expect(
+      repositories.contentVersions.create({ ...record, id: "version-2" })
+    ).resolves.toMatchObject({ created: true, record: { version: 2 } });
+
+    await expect(repositories.contentChunks.findById("chunk-1")).resolves.toMatchObject({
+      embeddingModel: undefined,
+      embeddedAt: undefined,
+    });
+    await expect(repositories.contentChunks.findById("missing")).resolves.toBeUndefined();
+    await expect(
+      repositories.contentChunks.listForContentVersion("version-1")
+    ).resolves.toHaveLength(1);
+    await expect(repositories.contentChunks.insertMany([])).resolves.toEqual({
+      records: [],
+      insertedCount: 0,
+    });
+    const chunkRecord = {
+      id: "chunk-1",
+      contentVersionId: "version-1",
+      itemId: "item-1",
+      ordinal: 0,
+      content: "Durable content.",
+      contentHash: chunk.content_hash,
+      startOffset: 0,
+      endOffset: 16,
+      tokenCount: 4,
+      embeddingStatus: "unconfigured" as const,
+      createdAt: "2026-01-01Z",
+    };
+    await expect(repositories.contentChunks.insertMany([chunkRecord])).resolves.toMatchObject({
+      insertedCount: 1,
+    });
+    await expect(repositories.contentChunks.insertMany([chunkRecord])).resolves.toMatchObject({
+      insertedCount: 0,
+    });
+    await expect(
+      repositories.contentChunks.listUnchunkedVersions({ limit: 2 })
+    ).resolves.toHaveLength(1);
+  });
+
+  test("covers artifact lifecycle and knowledge candidate mapping branches", async () => {
+    const pending = {
+      id: "artifact-new",
+      item_id: "item-1",
+      content_version_id: "version-1",
+      artifact_type: "brief_summary",
+      version: 2,
+      status: "pending",
+      content: null,
+      content_hash: null,
+      provenance: "generated",
+      prompt_version: null,
+      provider: null,
+      model: null,
+      is_current: false,
+      supersedes_artifact_id: null,
+      metadata: {},
+      error_code: null,
+      error_message: null,
+      created_at: "2026-01-01Z",
+      updated_at: "2026-01-01Z",
+      completed_at: null,
+    };
+    const ready = {
+      ...pending,
+      id: "artifact-old",
+      version: 1,
+      status: "ready",
+      content: "Existing",
+      is_current: true,
+      prompt_version: "v1",
+    };
+    const fake = sqlDouble([
+      [pending],
+      [],
+      [ready],
+      [ready, pending],
+      [
+        {
+          summary_id: "summary-1",
+          item_id: "item-1",
+          content_version_id: "version-1",
+          prompt_type: "brief",
+          summary: "Legacy",
+          model: "old",
+          created_at: "2026-01-01Z",
+        },
+      ],
+      [
+        {
+          item_id: "item-1",
+          title: "Item",
+          content_version_id: "version-1",
+          content: "Content",
+        },
+      ],
+      [],
+      [ready],
+      [],
+      [],
+      [ready],
+      [{ version: 2 }],
+      [],
+      [{ ...pending, status: "ready", content: "Replacement", is_current: true }],
+      [{ ...pending, content: "Staged" }],
+      [],
+      [pending],
+      [],
+      [ready],
+      [pending],
+      [],
+      [{ ...pending, status: "failed", error_code: "provider_error" }],
+    ]);
+    const artifacts = createPostgresRepositories(fake.sql).intelligenceArtifacts;
+    await expect(artifacts.findById("artifact-new")).resolves.toMatchObject({
+      content: undefined,
+      completedAt: undefined,
+    });
+    await expect(artifacts.findById("missing")).resolves.toBeUndefined();
+    await expect(artifacts.findCurrent("item-1", "brief_summary")).resolves.toMatchObject({
+      isCurrent: true,
+    });
+    await expect(artifacts.listForItem("item-1")).resolves.toHaveLength(2);
+    await expect(artifacts.listLegacySummaryCandidates({ limit: 2 })).resolves.toEqual([
+      expect.objectContaining({ summaryId: "summary-1", summary: "Legacy" }),
+    ]);
+    await expect(artifacts.listDegradedSummaryCandidates({ limit: 2 })).resolves.toEqual([
+      expect.objectContaining({ itemId: "item-1", content: "Content" }),
+    ]);
+    const record = {
+      id: "artifact-new",
+      itemId: "item-1",
+      contentVersionId: "version-1",
+      artifactType: "brief_summary" as const,
+      status: "ready" as const,
+      content: "Replacement",
+      contentHash: sha256("Replacement"),
+      provenance: "generated" as const,
+      makeCurrent: true,
+      metadata: {},
+      createdAt: "2026-01-01Z",
+      updatedAt: "2026-01-01Z",
+    };
+    await expect(artifacts.publish(record)).resolves.toMatchObject({ created: false });
+    await expect(artifacts.publish(record)).resolves.toMatchObject({
+      created: true,
+      record: { isCurrent: true, content: "Replacement" },
+    });
+    await expect(
+      artifacts.updatePending("artifact-new", {
+        content: "Staged",
+        contentHash: sha256("Staged"),
+        promptVersion: "v2",
+        provider: "provider",
+        model: "model",
+        metadata: { attempt: 1 },
+        updatedAt: "2026-01-02Z",
+      })
+    ).resolves.toMatchObject({ content: "Staged" });
+    await expect(
+      artifacts.updatePending("artifact-new", {
+        metadata: {},
+        updatedAt: "2026-01-02Z",
+      })
+    ).resolves.toMatchObject({ id: "artifact-new" });
+    await expect(
+      artifacts.complete("missing", {
+        status: "failed",
+        metadata: {},
+        updatedAt: "2026-01-02Z",
+        makeCurrent: false,
+      })
+    ).resolves.toBeUndefined();
+    await expect(
+      artifacts.complete("artifact-old", {
+        status: "ready",
+        metadata: {},
+        updatedAt: "2026-01-02Z",
+        makeCurrent: true,
+      })
+    ).resolves.toMatchObject({ id: "artifact-old", status: "ready" });
+    await expect(
+      artifacts.complete("artifact-new", {
+        status: "failed",
+        metadata: {},
+        errorCode: "provider_error",
+        updatedAt: "2026-01-02Z",
+        makeCurrent: true,
+      })
+    ).resolves.toMatchObject({ status: "failed", isCurrent: false });
+  });
+
+  test("validates grounded claims and maps durable backfill checkpoint lifecycle", async () => {
+    const claim = {
+      id: "claim-1",
+      artifact_id: "artifact-1",
+      ordinal: 0,
+      claim: "Durable content",
+      claim_hash: sha256("Durable content"),
+      confidence: null,
+    };
+    const evidence = {
+      claim_id: "claim-1",
+      chunk_id: "chunk-1",
+      start_offset: 0,
+      end_offset: 7,
+      exact_excerpt: "Durable",
+      evidence_hash: sha256("Durable"),
+    };
+    const listing = sqlDouble([[claim], [evidence]]);
+    await expect(
+      createPostgresRepositories(listing.sql).claims.listForArtifact("artifact-1")
+    ).resolves.toEqual([
+      expect.objectContaining({
+        confidence: undefined,
+        evidence: [expect.objectContaining({ chunkId: "chunk-1", exactExcerpt: "Durable" })],
+      }),
+    ]);
+
+    const claims = createPostgresRepositories(sqlDouble().sql).claims;
+    await expect(claims.insertWithEvidence([])).resolves.toEqual([]);
+    await expect(
+      claims.insertWithEvidence([
+        {
+          id: "claim-1",
+          artifactId: "artifact-1",
+          ordinal: 0,
+          claim: "Durable content",
+          claimHash: claim.claim_hash,
+          evidence: [],
+        },
+        {
+          id: "claim-2",
+          artifactId: "artifact-2",
+          ordinal: 1,
+          claim: "Durable content",
+          claimHash: claim.claim_hash,
+          evidence: [],
+        },
+      ])
+    ).rejects.toThrow("share an artifact");
+    await expect(
+      claims.insertWithEvidence([
+        {
+          id: "claim-bad",
+          artifactId: "artifact-1",
+          ordinal: 0,
+          claim: "Text",
+          claimHash: "wrong",
+          evidence: [],
+        },
+      ])
+    ).rejects.toThrow("Claim hash does not match");
+
+    const validSql = sqlDouble([[], [{ content: "Durable content" }], [], [claim], [evidence]]);
+    await expect(
+      createPostgresRepositories(validSql.sql).claims.insertWithEvidence([
+        {
+          id: "claim-1",
+          artifactId: "artifact-1",
+          ordinal: 0,
+          claim: "Durable content",
+          claimHash: sha256("Durable content"),
+          evidence: [
+            {
+              claimId: "claim-1",
+              chunkId: "chunk-1",
+              startOffset: 0,
+              endOffset: 7,
+              exactExcerpt: "Durable",
+              evidenceHash: sha256("Durable"),
+            },
+          ],
+        },
+      ])
+    ).resolves.toHaveLength(1);
+
+    const checkpoint = {
+      job_key: "job-1",
+      job_type: "chunks",
+      status: "pending",
+      cursor: null,
+      checkpoint: '{"scope":"all"}',
+      processed_count: 0,
+      failed_count: 0,
+      attempt: 0,
+      last_error: null,
+      started_at: null,
+      completed_at: null,
+      updated_at: "2026-01-01Z",
+    };
+    const checkpointSql = sqlDouble([
+      [checkpoint],
+      [checkpoint],
+      [],
+      [checkpoint],
+      [{ ...checkpoint, status: "running", attempt: 1, started_at: "2026-01-01Z" }],
+      [{ ...checkpoint, status: "completed", cursor: "version-1", processed_count: 1 }],
+      [{ ...checkpoint, status: "failed", failed_count: 1, last_error: "failure" }],
+      [checkpoint],
+    ]);
+    const backfills = createPostgresRepositories(checkpointSql.sql).knowledgeBackfills;
+    await expect(backfills.find("job-1")).resolves.toMatchObject({
+      checkpoint: { scope: "all" },
+      cursor: undefined,
+    });
+    const checkpointRecord = {
+      jobKey: "job-1",
+      jobType: "chunks" as const,
+      status: "pending" as const,
+      checkpoint: { scope: "all" },
+      processedCount: 0,
+      failedCount: 0,
+      attempt: 0,
+      updatedAt: "2026-01-01Z",
+    };
+    await expect(backfills.create(checkpointRecord)).resolves.toMatchObject({ jobKey: "job-1" });
+    await expect(backfills.create(checkpointRecord)).resolves.toMatchObject({ jobKey: "job-1" });
+    await expect(backfills.start("job-1", "2026-01-01Z")).resolves.toMatchObject({
+      status: "running",
+      attempt: 1,
+    });
+    await expect(
+      backfills.advance("job-1", {
+        cursor: "version-1",
+        checkpoint: { scope: "all" },
+        processedDelta: 1,
+        completed: true,
+        at: "2026-01-01Z",
+      })
+    ).resolves.toMatchObject({ status: "completed", processedCount: 1 });
+    await expect(backfills.fail("job-1", "failure", "2026-01-01Z")).resolves.toMatchObject({
+      status: "failed",
+      failedCount: 1,
+    });
+    await expect(backfills.listByType("chunks", 2)).resolves.toHaveLength(1);
   });
 });

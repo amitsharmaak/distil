@@ -2,6 +2,7 @@ import type { RepositorySet } from "@/lib/repositories/ports";
 import type { PassageSearchResult, PassageSearchStore } from "../retrieval";
 import {
   answerFromKnowledge,
+  assertDateRange,
   classifyAnswerIntent,
   enqueueSummaryRegeneration,
   getItemIntelligence,
@@ -31,6 +32,12 @@ const store = (results: PassageSearchResult[] = []): PassageSearchStore => ({
 });
 
 describe("grounded answer service", () => {
+  it("validates chronological filter ranges", () => {
+    expect(() => assertDateRange({ dateFrom: "2026-01-01", dateTo: "2026-01-02" })).not.toThrow();
+    expect(() => assertDateRange({ dateFrom: "2026-01-03", dateTo: "2026-01-02" })).toThrow(
+      "dateFrom must not be after dateTo"
+    );
+  });
   it("classifies only explicit briefing requests as general", () => {
     expect(classifyAnswerIntent("Brief me on my unread items")).toBe("general");
     expect(classifyAnswerIntent("How does the durable queue work?")).toBe("specific");
@@ -90,6 +97,23 @@ describe("grounded answer service", () => {
     ]);
   });
 
+  it("deduplicates validated citations and rejects excerpts outside the supplied passage", () => {
+    const exact = "persists accepted work";
+    expect(
+      validateGeneratedCitations(
+        {
+          answer: "Grounded",
+          citations: [
+            { itemId: "item-1", chunkId: "chunk-1", exactExcerpt: exact },
+            { itemId: "item-1", chunkId: "chunk-1", exactExcerpt: exact },
+            { itemId: "item-1", chunkId: "chunk-1", exactExcerpt: "not in source" },
+          ],
+        },
+        [passage()]
+      )
+    ).toHaveLength(1);
+  });
+
   it("passes at most six messages and falls back when generated citations are invalid", async () => {
     const generator = jest.fn().mockResolvedValue({
       answer: "Unsupported answer",
@@ -107,6 +131,58 @@ describe("grounded answer service", () => {
     expect(generator.mock.calls[0][0].messages).toHaveLength(6);
     expect(result).toMatchObject({ status: "degraded", citations: [expect.any(Object)] });
     expect(result.answer).not.toContain("Unsupported answer");
+  });
+
+  it("returns a generated answer only when its structure and citations are grounded", async () => {
+    const generator = jest.fn().mockResolvedValue({
+      answer: "The queue persists work.",
+      citations: [{ itemId: "item-1", chunkId: "chunk-1", exactExcerpt: "persists accepted work" }],
+    });
+    await expect(
+      answerFromKnowledge({
+        request: { query: "How does the queue work?", messages: [], intent: "specific" },
+        store: store([passage()]),
+        generator,
+      })
+    ).resolves.toMatchObject({
+      status: "ready",
+      answer: "The queue persists work.",
+      passagesUsed: 1,
+      citations: [expect.objectContaining({ id: "citation-1" })],
+    });
+  });
+
+  it("falls back deterministically for malformed or failed generation", async () => {
+    const repository = store([passage()]);
+    await expect(
+      answerFromKnowledge({
+        request: { query: "How does the queue work?", messages: [] },
+        store: repository,
+        generator: jest.fn().mockResolvedValue({ answer: "missing citations" }),
+      })
+    ).resolves.toMatchObject({ status: "degraded" });
+    await expect(
+      answerFromKnowledge({
+        request: { query: "How does the queue work?", messages: [] },
+        store: repository,
+        generator: jest.fn().mockRejectedValue(new Error("provider unavailable")),
+      })
+    ).resolves.toMatchObject({ status: "degraded" });
+  });
+
+  it("rejects low-score specific evidence and abstains when general fallback is empty", async () => {
+    await expect(
+      answerFromKnowledge({
+        request: { query: "Exact fact?", messages: [] },
+        store: store([passage({ score: 0.001 })]),
+      })
+    ).resolves.toMatchObject({ status: "abstained", intent: "specific" });
+    await expect(
+      answerFromKnowledge({
+        request: { query: "Brief my library", messages: [] },
+        store: store([]),
+      })
+    ).resolves.toMatchObject({ status: "abstained", intent: "general" });
   });
 });
 
@@ -139,6 +215,29 @@ describe("summary regeneration", () => {
         payload: expect.stringContaining('"contentVersionId":"version-1"'),
       })
     );
+  });
+
+  it("rejects missing items and items without versioned content", async () => {
+    const missing = {
+      items: { findById: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as RepositorySet;
+    await expect(
+      enqueueSummaryRegeneration(missing, "missing", {
+        length: "brief",
+        idempotencyKey: "key",
+      })
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
+
+    const unversioned = {
+      items: { findById: jest.fn().mockResolvedValue({ id: "item-1" }) },
+      contentVersions: { findLatestForItem: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as RepositorySet;
+    await expect(
+      enqueueSummaryRegeneration(unversioned, "item-1", {
+        length: "brief",
+        idempotencyKey: "key",
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_READY", status: 409 });
   });
 });
 
@@ -192,5 +291,39 @@ describe("item intelligence", () => {
       claims: [{ id: "claim-1" }],
     });
     expect(intelligence.contentVersion).not.toHaveProperty("content");
+  });
+
+  it("returns an empty intelligence envelope when content has not been versioned", async () => {
+    const repositories = {
+      items: {
+        findById: jest.fn().mockResolvedValue({
+          id: "item-1",
+          title: "Item",
+          url: "https://example.com/item",
+        }),
+      },
+      contentVersions: { findLatestForItem: jest.fn().mockResolvedValue(undefined) },
+      contentChunks: { listForContentVersion: jest.fn() },
+      intelligenceArtifacts: { listForItem: jest.fn().mockResolvedValue([]) },
+      claims: { listForArtifact: jest.fn() },
+    } as unknown as RepositorySet;
+    await expect(getItemIntelligence(repositories, "item-1")).resolves.toMatchObject({
+      contentVersion: null,
+      chunks: [],
+      artifacts: [],
+      claims: [],
+    });
+    expect(repositories.contentChunks.listForContentVersion).not.toHaveBeenCalled();
+    expect(repositories.claims.listForArtifact).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing item", async () => {
+    const repositories = {
+      items: { findById: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as RepositorySet;
+    await expect(getItemIntelligence(repositories, "missing")).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
+      status: 404,
+    });
   });
 });
