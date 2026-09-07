@@ -335,7 +335,7 @@ export class PostgresFeedQuery {
               )
           ), 0)`
         : this.sql`0`;
-    const score = this.sql`CASE
+    const unroundedScore = this.sql`CASE
       WHEN i.manual_priority='high' THEN 300 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='medium' THEN 200 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='low' THEN -100 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
@@ -343,6 +343,10 @@ export class PostgresFeedQuery {
         + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
         + ${affinity}
     END`;
+    // Keyset cursors cross the PostgreSQL/JSON boundary. Quantize once in SQL
+    // so ordering, equality checks, and the serialized cursor use the same
+    // stable value instead of comparing a binary float after a JS round-trip.
+    const score = this.sql`ROUND((${unroundedScore})::numeric, 6)`;
 
     if (cursor) {
       if (sort === "recent") {
