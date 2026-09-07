@@ -4,7 +4,7 @@
 
 **Scope:** `codex/phase-1-personal-capture`, Preview release gate
 
-**Status:** Ready for CI verification; production dependency audit is clean
+**Status:** Complete; production dependency audit and GitHub quality gate are clean
 
 This document reconciles the original 2026-03-11 pre-sharing review with the current Phase 1
 architecture. It records no passwords, tokens, connection strings, session secrets, or provider
@@ -78,9 +78,9 @@ it does not change the zero-vulnerability production result above.
 - The browser extension stores its own revocable token and uses the versioned capture API; the
   iPhone Shortcut will receive a different token in Task 5.
 
-## Verification required for completion
+## Completion evidence
 
-The release commit must pass formatting/lint, TypeScript, deterministic tests, PostgreSQL
-integration, changed-line coverage, security tests, desktop/mobile E2E, extension E2E, production
-build, and the aggregate GitHub Actions quality gate. Record the accepted commit and Actions run in
-`docs/project-state.md`.
+Accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c` passed formatting/lint, TypeScript,
+deterministic tests, PostgreSQL integration, changed-line coverage, security tests, desktop/mobile
+E2E, extension E2E, production build, and the aggregate quality gate in
+`https://github.com/amitsharmaak/distil/actions/runs/34126389699`.

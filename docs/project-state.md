@@ -357,6 +357,7 @@ of scope.
 - Phase 1 implementation baseline commit: `c0807b1`
 - Initial handoff-document commit: `42fc454`
 - Current deployed implementation commit: `a8420a1`
+- Current accepted Task 2 release commit: `6714a1c6cd84a3cae925860b84409ed56de3824c`
 - Git remote: `git@github.com:amitsharmaak/distil.git`
 - The Phase 1 branch is published to GitHub and tracks `origin/codex/phase-1-personal-capture`.
 - The original checkout at `/Users/amitsharma/Projects/distil` remains on `main` and has user-owned
@@ -533,9 +534,12 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 - [x] Upgrade Next.js and its paired lint package together, then resolve remaining production
       advisories through explicit reviewed changes. Do not use `npm audit fix --force`.
 - [x] Run security tests, deterministic tests, E2E, extension E2E, production build, and the audit.
-- [ ] Push the fixes and record an all-green Actions run. Require zero Critical or High production
+- [x] Push the fixes and record an all-green Actions run. Require zero Critical or High production
       advisories; document any accepted Moderate finding and rationale.
-- [ ] **Task 2 complete:** append the final audit counts, commit, and Actions URL here.
+- [x] **Task 2 complete:** accepted commit
+      `6714a1c6cd84a3cae925860b84409ed56de3824c`; final production audit: 0 Critical,
+      0 High, 0 Moderate, 0 Low; all eight prerequisite jobs and the aggregate quality gate passed in
+      `https://github.com/amitsharmaak/distil/actions/runs/34126389699`.
 
 #### Task 3 — Make Vercel Preview deployment repeatable from GitHub
 
@@ -608,8 +612,9 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 - The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
   to Vercel CI/CD.
-- Task 1's GitHub quality gate is green at run `34123377510`. The Task 2 release candidate still
-  requires its own pushed all-green Actions run before Task 2 can be marked complete.
+- Tasks 1 and 2 are complete. Task 2's accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c`
+  passed all eight prerequisite jobs and the aggregate quality gate in run `34126389699`. Resume at
+  Task 3: connect the existing Vercel project to GitHub without deploying Production.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
