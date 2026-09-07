@@ -717,6 +717,24 @@ Run three streams in parallel after the Wave 0 contract gate:
    summaries/claims and evidence, full-text search, vector search after model pinning, reciprocal
    rank fusion, and durable AI jobs.
 
+Wave 1 foundation evidence:
+
+- Reader/organization APIs integrated at `3641f2c`: strict authenticated item-state, note,
+  annotation, collection, and membership routes backed by the Wave 0 repositories.
+- Feed/ranking integrated at `053187d`: authenticated PostgreSQL feed endpoint, SQL filters, opaque
+  keyset cursors, stable ranking explanations, and resurfacing policy. Integration review at
+  `fc1b936` corrected manual-low demotion, chronological explanation scoring, and membership event
+  idempotency.
+- Intelligence foundation integrated at `6b09fda`: additive `0003_phase2_intelligence.sql`, immutable
+  content versions, full-text chunks, grounded artifacts/claims/evidence, backfill checkpoints, and
+  deterministic degraded summaries. Vector storage intentionally remains unconfigured.
+- Integrated verification passes: TypeScript, formatting/lint with only the seven known baseline
+  warnings, 51 unit suites with 385 tests, 7 contract suites with 53 tests, and the 2 Phase 2
+  component suites with 5 tests.
+- PostgreSQL integration execution remains pending on Docker-enabled CI. UI wiring, repository
+  adapters for the intelligence tables, vector/provider work, learned personalization, and digests
+  remain incomplete Wave 1/2 work.
+
 #### Wave 2 — Trust, briefing, and integrated quality
 
 1. Upgrade chat and answers to passage-level retrieval, six-message conversation context, validated
