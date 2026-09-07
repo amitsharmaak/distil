@@ -494,27 +494,143 @@ Do not create public/client-side variables for a database URL, capture token, se
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
 should not be used by the new clients.
 
-### Exact next execution sequence
+### Remaining Phase 1 execution queue
 
-1. Select one AI provider and add only its Preview-scoped secret, then test extraction and summary
-   quality on several real articles within the Hobby 60-second worker limit.
-2. Run `npm run test:ci`, including the PostgreSQL Testcontainers suite, on a Docker-capable host.
-3. Review and resolve the production dependency audit before promotion. The current production-only
-   audit reports 10 advisories (8 high, 2 moderate), including a direct Next.js update to `16.3.4`.
-4. Connect `codex/phase-1-personal-capture` to the existing Vercel project for repeatable CI/CD
-   without deploying `main`.
-5. Configure separate capture tokens for the iPhone Shortcut and browser extension.
-6. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
-7. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
+Work through these tasks in ID order. Pick up one unchecked ID at a time. When completing an ID,
+change `[ ]` to `[x]` and append the commit, command or hosted evidence that proves it. Do not start
+the Production section without a separate, explicit go decision.
+
+#### Gate 1 — Make the branch quality gate green
+
+The first GitHub Actions run for commit `1c3d83a` failed. Production build, deterministic tests,
+security tests, and extension E2E passed. Static checks, PostgreSQL integration, coverage, and web/
+mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
+`https://github.com/amitsharmaak/distil/actions/runs/34116738471`.
+
+- [ ] **P1-01 — Restore static checks.** Format `docs/ARCHITECTURE.md`, run `npm run lint` and
+      `npm run typecheck`, and confirm both pass in GitHub Actions. The existing eight ESLint warnings do
+      not currently fail the job; remove them only when the fixes are behavior-neutral.
+- [ ] **P1-02 — Fix PostgreSQL integration CI.** Reproduce the GitHub runner `write EPIPE` failure in
+      the Testcontainers harness, fix container startup/lifecycle cleanup, then make
+      `npm run test:integration` pass on GitHub's Ubuntu runner. Do not point tests at Neon or any shared
+      database.
+- [ ] **P1-03 — Fix coverage execution.** Make `npm run test:coverage` handle PostgreSQL integration
+      tests consistently—either start the isolated harness correctly or exclude those suites from this
+      job while retaining them in `postgres-integration`. Preserve the changed-lines coverage gate.
+- [ ] **P1-04 — Fix web/mobile E2E CI.** Diagnose the missing `Read article` result in
+      `tests/e2e/save.spec.ts`, using the uploaded trace/screenshot. Make all 24 tests pass for desktop
+      Chromium, mobile Chromium, and mobile WebKit without weakening the receipt assertion.
+- [ ] **P1-05 — Close Gate 1.** Push the fixes and record one GitHub Actions URL where all eight
+      prerequisite jobs and the aggregate `quality-gate` pass for the same commit.
+
+#### Gate 2 — Close dependency and security release findings
+
+- [ ] **P1-06 — Refresh the audit baseline.** Run `npm audit --omit=dev`, save only package names,
+      severities, dependency paths, and recommended versions in this document, and reconcile the older
+      `docs/security-audit.md` findings against the current Phase 1 implementation so already-fixed
+      findings are not treated as open.
+- [ ] **P1-07 — Apply reviewed dependency upgrades.** Upgrade Next.js and its paired lint package
+      together, then resolve the remaining production advisories with explicit package changes. Do not
+      use `npm audit fix --force` or accept a major upgrade without reviewing behavior and deployment
+      impact.
+- [ ] **P1-08 — Verify the security gate.** Run `npm run test:security`, the full deterministic suite,
+      E2E, extension E2E, production build, and `npm audit --omit=dev`. Close this task when no Critical
+      or High production advisory remains; document any accepted Moderate item with rationale.
+- [ ] **P1-09 — Close Gate 2.** Push the security/dependency commit and record the all-green GitHub
+      Actions run plus the final audit counts here.
+
+#### Gate 3 — Make Preview deployment repeatable
+
+- [ ] **P1-10 — Connect GitHub to Vercel.** Link `amitsharmaak/distil` to the existing
+      `pv-1850/project-evgf1` project. Keep Production undeployed and keep the existing Preview-only Neon
+      environment isolation.
+- [ ] **P1-11 — Verify branch-driven Preview deploys.** Confirm a commit on
+      `codex/phase-1-personal-capture` produces a Vercel Preview for that exact SHA, uses `sin1`, exposes
+      the queue consumer with a 60-second limit, and leaves the stable Preview alias pointing at the
+      reviewed deployment.
+- [ ] **P1-12 — Close Gate 3.** Record the Git SHA, Vercel deployment ID/inspector URL, and successful
+      unauthenticated `GET /api/health` response. Confirm Vercel Authentication remains off while
+      Distil's own authentication remains on.
+
+#### Gate 4 — Enable and accept one AI provider
+
+- [ ] **P1-13 — Make the provider decision.** Choose Gemini, OpenAI, or Anthropic; record the choice,
+      expected models, budget ceiling, and rationale. If Anthropic is chosen, also decide how embeddings
+      will work because the current code requires Gemini or OpenAI for embeddings.
+- [ ] **P1-14 — Configure the Preview secret.** Add only the chosen provider's Preview-scoped key
+      (`GEMINI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`) in Vercel. Never paste the value into
+      Git, logs, this document, or chat. Redeploy the exact reviewed commit.
+- [ ] **P1-15 — Run live AI quality cases.** Capture at least five representative public articles:
+      a short news report, long analysis, technical article, paywall/partial-content page, and malformed
+      or extraction-hostile page. Record receipt terminal state, processing time, provider/model, and
+      whether the summary is faithful and useful.
+- [ ] **P1-16 — Verify AI failure behavior.** Confirm a provider timeout/rate-limit produces a safe,
+      retryable state without duplicate items, leaked provider details, or a queue delivery loop. Confirm
+      normal captures complete inside the Hobby 60-second worker budget.
+- [ ] **P1-17 — Close Gate 4.** Run the deterministic eval suite and any approved live eval command,
+      record results/cost, inspect Vercel logs for secrets, and document the accepted quality threshold.
+
+#### Gate 5 — Provision and accept independent clients
+
+- [ ] **P1-18 — Issue the browser-extension token.** In **Settings → Capture**, create a token named
+      `Browser Extension`, store it only in the extension's local configuration, and record its masked
+      identifier—not the token—in this document.
+- [ ] **P1-19 — Accept the browser extension.** Point it at
+      `https://distil-preview-pv-1850.vercel.app`, then test a new capture, duplicate capture, temporary
+      network failure/offline replay, restart recovery, and revocation. Confirm no accepted capture is
+      lost and no duplicate item is created.
+- [ ] **P1-20 — Issue the iPhone token.** Create a different token named `iPhone Shortcut`, store it
+      only in the Shortcut, and record its masked identifier. Never reuse the extension token.
+- [ ] **P1-21 — Build the iPhone Shortcut.** Follow `docs/iphone-shortcut.md` exactly, using the stable
+      Preview capture endpoint. Confirm success does not open Distil and failures never claim an item was
+      saved.
+- [ ] **P1-22 — Run the iPhone content matrix.** On the iPhone 14 Pro Max, complete Chrome, Safari,
+      Apple News, plain-text URL, no-URL, and Airplane Mode cases; record pass/fail for every row in the
+      runbook.
+- [ ] **P1-23 — Verify independent revocation.** Revoke the iPhone token and confirm only the Shortcut
+      fails; replace it and recover. Then revoke the extension token and confirm only the extension
+      fails. Confirm the signed web session remains usable throughout.
+- [ ] **P1-24 — Accept the installed web experience.** Add `/save` to the iPhone Home Screen and
+      verify icon, standalone display, status bar, keyboard, safe areas, login persistence, and that
+      private feed responses are not cached offline.
+
+#### Gate 6 — Close Preview and decide on Production
+
+- [ ] **P1-25 — Run the complete Preview smoke checklist.** Execute every item in
+      `docs/vercel-deployment.md`, including authentication failure, durable `202`, queued-to-ready,
+      deduplication, controlled retry, token revocation, queue health, connector shutdown, and secret-free
+      logs. Record timestamped evidence against one Git SHA and deployment ID.
+- [ ] **P1-26 — Close the Phase 1 Preview exit gate.** Confirm GitHub CI, dependency/security audit,
+      AI acceptance, extension acceptance, iPhone acceptance, and rollback evidence are all complete.
+      Update this document with final metrics and unresolved non-blocking limitations.
+- [ ] **P1-27 — Make an explicit Production go/no-go decision.** A no-go leaves the accepted Preview
+      running and Phase 1 in Preview-only operation. A go authorizes only the production tasks below.
+
+#### Production tasks — blocked until P1-27 is an explicit go
+
+- [ ] **P1-28 — Provision isolated Production resources.** Create separate Production Neon data,
+      pooled/unpooled URLs, web password hash, session secret, allowed origin, and AI secret. Retain a
+      restore point and the source SQLite database; never reuse Preview secrets or database URLs.
+- [ ] **P1-29 — Migrate and import Production.** Run the ledger-aware migration, dry-run the SQLite
+      importer, review counts/exclusions, then execute and retain verification output.
+- [ ] **P1-30 — Deploy and smoke Production.** Promote only the P1-26 accepted SHA, issue new
+      Production-specific client tokens, run the complete smoke checklist, and verify rollback to the
+      previously active deployment.
+- [ ] **P1-31 — Close Phase 1.** Record the Production deployment/database identifiers, client-test
+      evidence, security/audit result, rollback position, and the Phase 2 starting point without storing
+      any secret values.
 
 ### Known blockers and decisions
 
 - The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
   to Vercel CI/CD.
+- GitHub Actions run `34116738471` is red: static formatting, PostgreSQL Testcontainers, coverage,
+  and web/mobile E2E require fixes before other release work proceeds.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
-- Docker-backed PostgreSQL integration tests still need a clean run.
+- Docker-backed PostgreSQL integration tests fail with `write EPIPE` on the GitHub Ubuntu runner and
+  cannot run locally because Docker is not installed.
 - The production dependency audit reports 8 high and 2 moderate advisories; no automatic audit fix
   has been applied.
 - No production migration, production import, or production deployment has occurred.
