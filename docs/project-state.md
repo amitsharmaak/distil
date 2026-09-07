@@ -169,8 +169,9 @@ reliable from desktop and iPhone.
 **Exit gate:** The application is characterized by repeatable quality and security tests, and a real
 user can sign in from browser/mobile, save from Chrome and other iPhone apps, see every accepted
 capture reach a correct terminal state, revoke either client independently, and recover from
-failures without duplicates or lost work. The Preview deployment, real-device test, and production
-decision are still outstanding; detailed progress begins below.
+failures without duplicates or lost work. The Preview deployment and API-level capture acceptance
+are complete; real-device testing, the remaining release gates, and the production decision are
+still outstanding. Detailed progress begins below.
 
 ### Phase 2 — Daily knowledge experience and intelligence quality
 
@@ -353,6 +354,7 @@ of scope.
 - Integration worktree: `/private/tmp/distil-phase1-root`
 - Phase 1 implementation baseline commit: `c0807b1`
 - Initial handoff-document commit: `42fc454`
+- Current deployed implementation commit: `a8420a1`
 - Git remote: `git@github.com:amitsharmaak/distil.git`
 - The Phase 1 branch is local and has not yet been pushed to GitHub.
 - The original checkout at `/Users/amitsharma/Projects/distil` remains on `main` and has user-owned
@@ -386,13 +388,15 @@ The branch contains the Phase 1 application and infrastructure work, including:
   and the deployment/rollback runbook in `docs/vercel-deployment.md`.
 - Adversarial security, failure-path, database, queue, capture, and coverage tests.
 
-The latest corrective commit makes capture clients handle non-JSON server failures safely.
+The latest deployment corrections move test-only state out of the Next.js route module, make every
+function duration Hobby-compatible, strip legacy NUL bytes during SQLite import, pin a
+Vercel-compatible article parser, and lazy-load the local-only Playwright publisher runtime.
 
 ### Test and review status
 
 The most recently completed local verification reported:
 
-- Deterministic Jest suite: 542 passing tests.
+- Deterministic Jest suite: 544 passing tests.
 - Security suite: 108 passing tests.
 - Browser/mobile E2E: 24 passing tests.
 - Browser extension E2E: 10 passing tests.
@@ -409,9 +413,9 @@ environment. Do not reinterpret the stored counts as a substitute for a fresh re
 
 ### Local application status
 
-The Phase 1 application was successfully built and exercised locally. It was most recently served at
-`http://127.0.0.1:3100`. A local process may still exist, but process state is not durable; verify the
-port before relying on it. Start it again from the integration worktree when needed:
+The Phase 1 application was successfully built and exercised locally. The previous process on
+`http://127.0.0.1:3100` was stopped for the release build. Start it again from the integration
+worktree when needed:
 
 ```bash
 cd /private/tmp/distil-phase1-root
@@ -425,16 +429,17 @@ npm run dev -- --hostname 127.0.0.1 --port 3100
 - Plan: Hobby (free; personal/non-commercial use)
 - Vercel project: `project-evgf1`
 - Project dashboard: `https://vercel.com/pv-1850/project-evgf1`
-- Project state: empty project connected to Neon; no Preview or Production deployment has been made.
+- Project state: CLI-linked to the Phase 1 worktree with a ready Preview deployment. The Git
+  repository is still not connected and Production has not been deployed.
+- Stable protected Preview URL: `https://distil-preview-pv-1850.vercel.app`
+- Current immutable deployment: `dpl_4XZdkSDZBaEnarsz5HdbJkDk2pEi`
+- Deployment inspector: `https://vercel.com/pv-1850/project-evgf1/4XZdkSDZBaEnarsz5HdbJkDk2pEi`
 - Intended application region: Singapore (`sin1`).
 - Git repository has not yet been connected to the Vercel project.
 
-Vercel Queues is currently available on Hobby, but Hobby functions can be configured for at most 60
-seconds. The committed `vercel.json` still requests 300 seconds for the capture consumer, which is a
-Pro-plan limit. Before the first Hobby preview deployment, change the preview-compatible value to 60
-seconds or adopt an environment/configuration strategy that keeps the reviewed 300-second production
-target without making the Hobby build invalid. Real captures must be tested to determine whether the
-60-second worker budget is adequate.
+Vercel Queues is available on Hobby. The capture consumer and dormant local-only publisher login
+route are capped at 60 seconds. A real Preview capture completed through the queue in one attempt
+within that budget.
 
 ### Neon database
 
@@ -452,10 +457,14 @@ The integration created masked connection variables including:
 - `DATABASE_URL_UNPOOLED`: direct/unpooled connection for migrations and imports.
 - Additional Neon/Postgres compatibility variables managed by the integration.
 
-The application expects the unpooled release URL under `DATABASE_MIGRATION_URL`, so the next setup
-must securely map/copy `DATABASE_URL_UNPOOLED` to `DATABASE_MIGRATION_URL` for Preview. Never commit
-either value. Keep runtime requests on pooled `DATABASE_URL` and migrations/imports on the unpooled
-URL.
+The application expects the unpooled release URL under `DATABASE_MIGRATION_URL`; that Preview secret
+is now mapped from `DATABASE_URL_UNPOOLED`. Runtime requests remain on pooled `DATABASE_URL`, while
+migrations and imports use the unpooled URL.
+
+Migration `0001_phase1.sql` has been applied. The retained SQLite source was imported and verified:
+4 items, 2 AI summaries, 4 audit rows, and 4 raw-content rows. Sensitive/transient OAuth and queue
+tables were excluded. The source SQLite file was not modified. One additional `example.org` item was
+created by the hosted queue smoke test.
 
 The Neon setup UI reported `Auth: True`. Distil does not use Neon Auth; it uses the Phase 1 signed
 session and capture-token implementation. Neon Auth credentials must not be wired into application
@@ -463,8 +472,9 @@ code, and the optional Neon Auth feature can be disabled later if the provider U
 
 ### Required Preview environment variables
 
-The Neon integration supplies the database values. The remaining application values must be added
-to the Vercel Preview environment before deploying:
+The Neon integration supplies the database values. All required non-AI Preview variables below are
+configured. The generated web password is stored in macOS Keychain under service
+`Distil Preview Web Password`; it is not stored in Git or this document.
 
 | Variable                          | Preview requirement                                                        |
 | --------------------------------- | -------------------------------------------------------------------------- |
@@ -476,7 +486,7 @@ to the Vercel Preview environment before deploying:
 | `FEATURE_CONNECTORS`              | `false`                                                                    |
 | `SYNC_INTERVAL_HOURS`             | `0`                                                                        |
 | `NEXT_PUBLIC_SYNC_INTERVAL_HOURS` | `0`                                                                        |
-| Selected AI provider secret(s)    | Preview-scoped; configure only the selected provider                       |
+| Selected AI provider secret(s)    | Not configured; select and add before AI-quality acceptance                |
 
 Do not create public/client-side variables for a database URL, capture token, session secret,
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
@@ -484,55 +494,40 @@ should not be used by the new clients.
 
 ### Exact next execution sequence
 
-1. Resolve the Hobby duration mismatch in `vercel.json` and run the affected contract/build tests.
-2. Commit this handoff and any duration adjustment on `codex/phase-1-personal-capture`.
-3. Decide how to deploy the local-only branch:
-   - Preferred for ongoing CI/CD: push the Phase 1 branch and connect the GitHub repository to the
-     existing Vercel project without deploying `main`.
-   - Alternative for the first isolated test: link the existing Vercel project with the Vercel CLI
-     from the integration worktree and create a Preview deployment directly.
-4. Add the Preview-only environment variables. Generate secrets locally and transmit them only to
-   Vercel; do not place them in this file, Git, screenshots, chat, test artifacts, or shell history.
-5. Pull/use the Preview environment securely and set `DATABASE_MIGRATION_URL` from the unpooled Neon
-   value for the release process.
-6. Apply migrations explicitly with `npm run db:migrate`. Migrations must never run during build,
-   module import, application startup, or request handling.
-7. Run the SQLite importer in dry-run mode and inspect counts/exclusions:
-
-   ```bash
-   npm run db:import:sqlite -- data/distil.db
-   ```
-
-8. Only after the dry run is correct, import with `--execute` and retain the verification output.
-9. Deploy the exact reviewed commit to Vercel Preview; do not promote it to Production.
-10. Set `DISTIL_ALLOWED_ORIGINS` to the exact assigned Preview URL and redeploy if necessary.
-11. Verify `/api/health`, authentication, capture creation, queue processing, duplicate capture,
-    retry behavior, token revocation, secret-free logs, and disabled connectors.
-12. Test several real articles within the Hobby 60-second worker limit.
-13. Configure separate tokens for the iPhone Shortcut and browser extension only after the Preview
-    backend is verified.
-14. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
-15. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
+1. Decide whether to disable Vercel Deployment Protection for Preview or intentionally distribute a
+   protection-bypass credential. The current protection prevents the iPhone Shortcut and extension
+   from reaching Distil even though application authentication is working.
+2. Select one AI provider and add only its Preview-scoped secret, then test extraction and summary
+   quality on several real articles within the Hobby 60-second worker limit.
+3. Run `npm run test:ci`, including the PostgreSQL Testcontainers suite, on a Docker-capable host.
+4. Review and resolve the production dependency audit before promotion. The current production-only
+   audit reports 10 advisories (8 high, 2 moderate), including a direct Next.js update to `16.3.4`.
+5. Push `codex/phase-1-personal-capture` and connect that branch to the existing Vercel project for
+   repeatable CI/CD without deploying `main`.
+6. Configure separate capture tokens for the iPhone Shortcut and browser extension.
+7. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
+8. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
 
 ### Known blockers and decisions
 
-- The Phase 1 branch must be pushed or deployed through the Vercel CLI; Vercel currently has no code.
-- The Preview database is empty until migrations and the optional SQLite import are run.
-- `DATABASE_MIGRATION_URL` still needs a secure mapping from `DATABASE_URL_UNPOOLED`.
-- Preview application secrets, password hash, allowed origin, and AI provider selection are not set.
-- The 300-second committed queue worker duration is incompatible with Hobby's 60-second maximum.
+- The Phase 1 branch is deployed through the CLI but remains local and is not connected to GitHub or
+  Vercel CI/CD.
+- Vercel Deployment Protection currently blocks unauthenticated device clients before Distil's own
+  session or capture-token authentication can run.
+- The AI provider selection and Preview AI secret are not set.
 - Docker-backed PostgreSQL integration tests still need a clean run.
-- No Vercel Preview deployment, production migration, production import, or production deployment has
-  occurred.
+- The production dependency audit reports 8 high and 2 moderate advisories; no automatic audit fix
+  has been applied.
+- No production migration, production import, or production deployment has occurred.
 - Real iPhone Share Sheet behavior remains a manual device test.
 
 ### Safety and rollback position
 
-The production environment has not been touched. The Neon resource is connected only to Preview,
-and no application schema or user data has been written yet. The source SQLite database must remain
-unchanged. Rollback after a future deployment should promote the previous Vercel deployment while
-leaving additive PostgreSQL migrations/imported rows intact unless a separate, explicit database
-recovery plan is approved.
+The production environment has not been touched. The Neon resource is connected only to Preview;
+its schema and imported user data are now populated. The source SQLite database remains unchanged.
+Rollback should repoint the stable Preview alias to the previous verified deployment while leaving
+additive PostgreSQL migrations/imported rows intact unless a separate, explicit database recovery
+plan is approved.
 
 For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/vercel-deployment.md`,
 `docs/sqlite-import.md`, `docs/iphone-shortcut.md`, and `docs/security-audit.md`.
