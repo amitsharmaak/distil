@@ -11,8 +11,15 @@ it("exports every legacy and Phase 1 PostgreSQL table", () => {
       "captureTokens",
       "chatConversations",
       "chatMessages",
+      "collectionItems",
+      "collections",
+      "annotations",
+      "digestItems",
+      "digestRuns",
       "feedback",
       "itemEmbeddings",
+      "itemEvents",
+      "itemNotes",
       "items",
       "jobQueue",
       "notifications",
@@ -34,4 +41,11 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.captureTokens.tokenHash).toBeDefined();
   expect(schema.rateLimitWindows.windowStart).toBeDefined();
   expect(schema.rawContent.itemId).toBeDefined();
+  expect(schema.items.readingProgress).toBeDefined();
+  expect(schema.itemNotes.itemId).toBeDefined();
+  expect(schema.annotations.contentVersion).toBeDefined();
+  expect(schema.annotations.contentHash).toBeDefined();
+  expect(schema.collectionItems.collectionId).toBeDefined();
+  expect(schema.itemEvents.eventKey).toBeDefined();
+  expect(schema.digestRuns.digestDate).toBeDefined();
 });

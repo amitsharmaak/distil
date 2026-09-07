@@ -4,10 +4,23 @@ import type {
   CaptureRepository,
   CaptureTokenRepository,
   CaptureTransition,
+  AnnotationRecord,
+  AnnotationRepository,
+  CollectionItemRecord,
+  CollectionRecord,
+  CollectionRepository,
+  DigestItemRecord,
+  DigestRepository,
+  DigestRunRecord,
+  DigestRunWithItems,
   EmbeddingRepository,
   FeedbackRecord,
   FeedbackRepository,
   ItemFilters,
+  ItemEventRecord,
+  ItemEventRepository,
+  ItemNoteRecord,
+  ItemNoteRepository,
   ItemRepository,
   JobQueueRepository,
   NewCaptureRecord,
@@ -90,8 +103,8 @@ class PostgresItems implements ItemRepository {
   async insert(item: ContentItem): Promise<ContentItem> {
     const rows = await this.sql<
       Row[]
-    >`INSERT INTO items (id,title,summary,full_content,source_type,content_type,topics,author,publication,url,normalized_url,priority,is_read,created_at,duration,thumbnail_url,extracted_links,content_extracted_at,processing_status,rejection_reason,content_classification,detected_media,information_density)
-      VALUES (${item.id},${item.title},${item.summary},${item.fullContent ?? null},${item.sourceType},${item.contentType},${this.sql.json(item.topics)},${item.author ?? null},${item.publication ?? null},${item.url},${normalizeUrl(item.url)},${item.priority},${item.isRead},${item.createdAt},${item.duration ?? null},${item.thumbnailUrl ?? null},${item.extractedLinks ? this.sql.json(item.extractedLinks as never) : null},${item.contentExtractedAt ?? null},${item.processingStatus ?? "ready"},${item.rejectionReason ?? null},${item.contentClassification ? this.sql.json(item.contentClassification as never) : null},${item.detectedMedia ? this.sql.json(item.detectedMedia as never) : null},${item.informationDensity ?? null})
+    >`INSERT INTO items (id,title,summary,full_content,source_type,content_type,topics,author,publication,url,normalized_url,priority,is_read,archived_at,read_at,last_opened_at,reading_progress,manual_priority,created_at,duration,thumbnail_url,extracted_links,content_extracted_at,processing_status,rejection_reason,content_classification,detected_media,information_density)
+      VALUES (${item.id},${item.title},${item.summary},${item.fullContent ?? null},${item.sourceType},${item.contentType},${this.sql.json(item.topics)},${item.author ?? null},${item.publication ?? null},${item.url},${normalizeUrl(item.url)},${item.priority},${item.isRead},${item.archivedAt ?? null},${item.readAt ?? null},${item.lastOpenedAt ?? null},${item.readingProgress ?? 0},${item.manualPriority ?? null},${item.createdAt},${item.duration ?? null},${item.thumbnailUrl ?? null},${item.extractedLinks ? this.sql.json(item.extractedLinks as never) : null},${item.contentExtractedAt ?? null},${item.processingStatus ?? "ready"},${item.rejectionReason ?? null},${item.contentClassification ? this.sql.json(item.contentClassification as never) : null},${item.detectedMedia ? this.sql.json(item.detectedMedia as never) : null},${item.informationDensity ?? null})
       ON CONFLICT (normalized_url) DO UPDATE SET normalized_url=EXCLUDED.normalized_url RETURNING id`;
     return (await this.findById(String(rows[0].id)))!;
   }
@@ -100,7 +113,7 @@ class PostgresItems implements ItemRepository {
     if (!old) return undefined;
     const v = { ...old, ...patch };
     await this
-      .sql`UPDATE items SET title=${v.title},summary=${v.summary},full_content=${v.fullContent ?? null},source_type=${v.sourceType},content_type=${v.contentType},topics=${this.sql.json(v.topics)},author=${v.author ?? null},publication=${v.publication ?? null},url=${v.url},normalized_url=${normalizeUrl(v.url)},priority=${v.priority},is_read=${v.isRead},created_at=${v.createdAt},duration=${v.duration ?? null},thumbnail_url=${v.thumbnailUrl ?? null},extracted_links=${v.extractedLinks ? this.sql.json(v.extractedLinks as never) : null},content_extracted_at=${v.contentExtractedAt ?? null},processing_status=${v.processingStatus ?? "ready"},rejection_reason=${v.rejectionReason ?? null},content_classification=${v.contentClassification ? this.sql.json(v.contentClassification as never) : null},detected_media=${v.detectedMedia ? this.sql.json(v.detectedMedia as never) : null},information_density=${v.informationDensity ?? null} WHERE id=${id}`;
+      .sql`UPDATE items SET title=${v.title},summary=${v.summary},full_content=${v.fullContent ?? null},source_type=${v.sourceType},content_type=${v.contentType},topics=${this.sql.json(v.topics)},author=${v.author ?? null},publication=${v.publication ?? null},url=${v.url},normalized_url=${normalizeUrl(v.url)},priority=${v.priority},is_read=${v.isRead},archived_at=${v.archivedAt ?? null},read_at=${v.readAt ?? null},last_opened_at=${v.lastOpenedAt ?? null},reading_progress=${v.readingProgress ?? 0},manual_priority=${v.manualPriority ?? null},created_at=${v.createdAt},duration=${v.duration ?? null},thumbnail_url=${v.thumbnailUrl ?? null},extracted_links=${v.extractedLinks ? this.sql.json(v.extractedLinks as never) : null},content_extracted_at=${v.contentExtractedAt ?? null},processing_status=${v.processingStatus ?? "ready"},rejection_reason=${v.rejectionReason ?? null},content_classification=${v.contentClassification ? this.sql.json(v.contentClassification as never) : null},detected_media=${v.detectedMedia ? this.sql.json(v.detectedMedia as never) : null},information_density=${v.informationDensity ?? null} WHERE id=${id}`;
     return this.findById(id);
   }
   async delete(id: string) {
@@ -116,6 +129,258 @@ class PostgresItems implements ItemRepository {
   }
   async updatePriorityScore(id: string, score: number, priority: Priority) {
     await this.sql`UPDATE items SET ai_priority_score=${score},priority=${priority} WHERE id=${id}`;
+  }
+}
+
+class PostgresItemNotes implements ItemNoteRepository {
+  constructor(private readonly sql: Sql) {}
+  private map(row: Row): ItemNoteRecord {
+    return {
+      itemId: String(row.item_id),
+      body: String(row.body),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    };
+  }
+  async find(itemId: string) {
+    const rows = await this.sql<Row[]>`SELECT * FROM item_notes WHERE item_id=${itemId}`;
+    return rows[0] ? this.map(rows[0]) : undefined;
+  }
+  async upsert(record: ItemNoteRecord) {
+    const rows = await this.sql<Row[]>`
+      INSERT INTO item_notes(item_id,body,created_at,updated_at)
+      VALUES(${record.itemId},${record.body},${record.createdAt},${record.updatedAt})
+      ON CONFLICT (item_id) DO UPDATE SET body=EXCLUDED.body,updated_at=EXCLUDED.updated_at
+      RETURNING *`;
+    return this.map(rows[0]);
+  }
+  async delete(itemId: string) {
+    return (
+      (await this.sql`DELETE FROM item_notes WHERE item_id=${itemId} RETURNING item_id`).length > 0
+    );
+  }
+}
+
+class PostgresAnnotations implements AnnotationRepository {
+  constructor(private readonly sql: Sql) {}
+  private map(row: Row): AnnotationRecord {
+    return {
+      id: String(row.id),
+      itemId: String(row.item_id),
+      selectedQuote: String(row.selected_quote),
+      prefix: String(row.prefix),
+      suffix: String(row.suffix),
+      startOffset: row.start_offset == null ? undefined : Number(row.start_offset),
+      endOffset: row.end_offset == null ? undefined : Number(row.end_offset),
+      contentHash: String(row.content_hash),
+      contentVersion: String(row.content_version),
+      comment: row.comment == null ? undefined : String(row.comment),
+      status: row.status as AnnotationRecord["status"],
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    };
+  }
+  async listForItem(itemId: string) {
+    return (
+      await this.sql<
+        Row[]
+      >`SELECT * FROM annotations WHERE item_id=${itemId} ORDER BY created_at ASC`
+    ).map((row) => this.map(row));
+  }
+  async create(record: AnnotationRecord) {
+    const rows = await this.sql<Row[]>`
+      INSERT INTO annotations(id,item_id,selected_quote,prefix,suffix,start_offset,end_offset,content_hash,content_version,comment,status,created_at,updated_at)
+      VALUES(${record.id},${record.itemId},${record.selectedQuote},${record.prefix},${record.suffix},${record.startOffset ?? null},${record.endOffset ?? null},${record.contentHash},${record.contentVersion},${record.comment ?? null},${record.status},${record.createdAt},${record.updatedAt}) RETURNING *`;
+    return this.map(rows[0]);
+  }
+  async update(id: string, patch: Parameters<AnnotationRepository["update"]>[1]) {
+    const current = first(await this.sql<Row[]>`SELECT * FROM annotations WHERE id=${id}`);
+    if (!current) return undefined;
+    const value = { ...this.map(current), ...patch };
+    const rows = await this.sql<Row[]>`
+      UPDATE annotations SET selected_quote=${value.selectedQuote},prefix=${value.prefix},suffix=${value.suffix},start_offset=${value.startOffset ?? null},end_offset=${value.endOffset ?? null},content_hash=${value.contentHash},content_version=${value.contentVersion},comment=${value.comment ?? null},status=${value.status},updated_at=${value.updatedAt}
+      WHERE id=${id} RETURNING *`;
+    return rows[0] ? this.map(rows[0]) : undefined;
+  }
+  async delete(id: string) {
+    return (await this.sql`DELETE FROM annotations WHERE id=${id} RETURNING id`).length > 0;
+  }
+}
+
+class PostgresCollections implements CollectionRepository {
+  constructor(private readonly sql: Sql) {}
+  private map(row: Row): CollectionRecord {
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      description: row.description == null ? undefined : String(row.description),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    };
+  }
+  private mapItem(row: Row): CollectionItemRecord {
+    return {
+      collectionId: String(row.collection_id),
+      itemId: String(row.item_id),
+      position: Number(row.position),
+      addedAt: iso(row.added_at),
+    };
+  }
+  async list() {
+    return (await this.sql<Row[]>`SELECT * FROM collections ORDER BY created_at ASC`).map((row) =>
+      this.map(row)
+    );
+  }
+  async find(id: string) {
+    const rows = await this.sql<Row[]>`SELECT * FROM collections WHERE id=${id}`;
+    return rows[0] ? this.map(rows[0]) : undefined;
+  }
+  async create(record: CollectionRecord) {
+    const rows = await this.sql<Row[]>`
+      INSERT INTO collections(id,name,description,created_at,updated_at)
+      VALUES(${record.id},${record.name},${record.description ?? null},${record.createdAt},${record.updatedAt}) RETURNING *`;
+    return this.map(rows[0]);
+  }
+  async update(id: string, patch: Parameters<CollectionRepository["update"]>[1]) {
+    const current = await this.find(id);
+    if (!current) return undefined;
+    const value = { ...current, ...patch };
+    const rows = await this.sql<Row[]>`
+      UPDATE collections SET name=${value.name},description=${value.description ?? null},updated_at=${value.updatedAt}
+      WHERE id=${id} RETURNING *`;
+    return rows[0] ? this.map(rows[0]) : undefined;
+  }
+  async delete(id: string) {
+    return (await this.sql`DELETE FROM collections WHERE id=${id} RETURNING id`).length > 0;
+  }
+  async addItem(record: CollectionItemRecord) {
+    const rows = await this.sql<Row[]>`
+      INSERT INTO collection_items(collection_id,item_id,position,added_at)
+      VALUES(${record.collectionId},${record.itemId},${record.position},${record.addedAt})
+      ON CONFLICT (collection_id,item_id) DO UPDATE SET position=EXCLUDED.position
+      RETURNING *`;
+    return this.mapItem(rows[0]);
+  }
+  async removeItem(collectionId: string, itemId: string) {
+    return (
+      (
+        await this
+          .sql`DELETE FROM collection_items WHERE collection_id=${collectionId} AND item_id=${itemId} RETURNING item_id`
+      ).length > 0
+    );
+  }
+  async listItems(collectionId: string) {
+    return (
+      await this.sql<Row[]>`
+        SELECT * FROM collection_items WHERE collection_id=${collectionId}
+        ORDER BY position ASC,added_at ASC,item_id ASC`
+    ).map((row) => this.mapItem(row));
+  }
+}
+
+class PostgresItemEvents implements ItemEventRepository {
+  constructor(private readonly sql: Sql) {}
+  private map(row: Row): ItemEventRecord {
+    return {
+      id: String(row.id),
+      eventKey: String(row.event_key),
+      itemId: String(row.item_id),
+      eventType: row.event_type as ItemEventRecord["eventType"],
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      occurredAt: iso(row.occurred_at),
+    };
+  }
+  async append(record: ItemEventRecord) {
+    const inserted = await this.sql<Row[]>`
+      INSERT INTO item_events(id,event_key,item_id,event_type,metadata,occurred_at)
+      VALUES(${record.id},${record.eventKey},${record.itemId},${record.eventType},${this.sql.json(record.metadata as never)},${record.occurredAt})
+      ON CONFLICT (event_key) DO NOTHING RETURNING *`;
+    if (inserted[0]) return this.map(inserted[0]);
+    const existing = first(
+      await this.sql<Row[]>`SELECT * FROM item_events WHERE event_key=${record.eventKey}`
+    );
+    if (!existing) throw new Error(`Unable to persist item event ${record.eventKey}`);
+    return this.map(existing);
+  }
+  async listForItem(itemId: string, limit = 100) {
+    return (
+      await this.sql<Row[]>`
+        SELECT * FROM item_events WHERE item_id=${itemId}
+        ORDER BY occurred_at DESC,id DESC LIMIT ${limit}`
+    ).map((row) => this.map(row));
+  }
+}
+
+class PostgresDigests implements DigestRepository {
+  constructor(private readonly sql: Sql) {}
+  private mapRun(row: Row): DigestRunRecord {
+    return {
+      id: String(row.id),
+      digestDate: String(row.digest_date),
+      status: row.status as DigestRunRecord["status"],
+      createdAt: iso(row.created_at),
+      completedAt: row.completed_at == null ? undefined : iso(row.completed_at),
+      dismissedAt: row.dismissed_at == null ? undefined : iso(row.dismissed_at),
+    };
+  }
+  private mapItem(row: Row): DigestItemRecord {
+    return {
+      digestRunId: String(row.digest_run_id),
+      itemId: String(row.item_id),
+      category: row.category as DigestItemRecord["category"],
+      position: Number(row.position),
+      reason: String(row.reason),
+    };
+  }
+  private async hydrate(run: DigestRunRecord): Promise<DigestRunWithItems> {
+    const rows = await this.sql<Row[]>`
+      SELECT * FROM digest_items WHERE digest_run_id=${run.id} ORDER BY position ASC`;
+    return { ...run, items: rows.map((row) => this.mapItem(row)) };
+  }
+  async create(run: DigestRunRecord, items: DigestItemRecord[] = []) {
+    if (items.some((item) => item.digestRunId !== run.id)) {
+      throw new Error("Digest item belongs to another run");
+    }
+    const created = await this.sql.begin(async (tx) => {
+      const rows = await tx<Row[]>`
+        INSERT INTO digest_runs(id,digest_date,status,created_at,completed_at,dismissed_at)
+        VALUES(${run.id},${run.digestDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null})
+        ON CONFLICT (digest_date) DO NOTHING RETURNING id`;
+      if (!rows[0]) return false;
+      for (const item of items) {
+        await tx`
+          INSERT INTO digest_items(digest_run_id,item_id,category,position,reason)
+          VALUES(${item.digestRunId},${item.itemId},${item.category},${item.position},${item.reason})`;
+      }
+      return true;
+    });
+    if (!created) {
+      const existing = await this.findByDate(run.digestDate);
+      if (!existing) throw new Error(`Unable to persist digest for ${run.digestDate}`);
+      return existing;
+    }
+    return { ...run, items: [...items].sort((a, b) => a.position - b.position) };
+  }
+  async findByDate(digestDate: string) {
+    const row = first(
+      await this.sql<Row[]>`SELECT * FROM digest_runs WHERE digest_date=${digestDate}`
+    );
+    return row ? this.hydrate(this.mapRun(row)) : undefined;
+  }
+  async list(limit = 30) {
+    const rows = await this.sql<Row[]>`
+      SELECT * FROM digest_runs ORDER BY digest_date DESC LIMIT ${limit}`;
+    return Promise.all(rows.map((row) => this.hydrate(this.mapRun(row))));
+  }
+  async updateStatus(id: string, status: DigestRunRecord["status"], at: string) {
+    const rows = await this.sql<Row[]>`
+      UPDATE digest_runs SET status=${status},completed_at=${at} WHERE id=${id} RETURNING *`;
+    return rows[0] ? this.hydrate(this.mapRun(rows[0])) : undefined;
+  }
+  async dismiss(id: string, at: string) {
+    const rows = await this.sql<Row[]>`
+      UPDATE digest_runs SET dismissed_at=${at} WHERE id=${id} RETURNING *`;
+    return rows[0] ? this.hydrate(this.mapRun(rows[0])) : undefined;
   }
 }
 
@@ -751,6 +1016,11 @@ class PostgresAgent implements AgentRepository {
 export function createPostgresRepositories(sql: Sql): RepositorySet {
   return {
     items: new PostgresItems(sql),
+    itemNotes: new PostgresItemNotes(sql),
+    annotations: new PostgresAnnotations(sql),
+    collections: new PostgresCollections(sql),
+    itemEvents: new PostgresItemEvents(sql),
+    digests: new PostgresDigests(sql),
     captures: new PostgresCaptures(sql),
     captureTokens: new PostgresCaptureTokens(sql),
     rateLimits: new PostgresRateLimits(sql),

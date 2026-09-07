@@ -15,6 +15,11 @@ describe("PostgreSQL row mappers", () => {
       url: "https://example.com/postgres",
       priority: "high",
       is_read: false,
+      archived_at: "2026-01-03T00:00:00Z",
+      read_at: "2026-01-02T00:00:00Z",
+      last_opened_at: "2026-01-04T00:00:00Z",
+      reading_progress: 0.5,
+      manual_priority: "low",
       created_at: new Date("2026-01-01T00:00:00Z"),
       duration: null,
       thumbnail_url: null,
@@ -33,8 +38,11 @@ describe("PostgreSQL row mappers", () => {
       isRead: false,
       aiSummary: "AI summary",
       informationDensity: 0.8,
+      readingProgress: 0.5,
+      manualPriority: "low",
     });
     expect(item.createdAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(item.archivedAt).toBe("2026-01-03T00:00:00.000Z");
   });
 
   it("maps capture errors and token lifecycle dates", () => {

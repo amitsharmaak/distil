@@ -35,6 +35,13 @@ describe("PostgreSQL repository contracts", () => {
     expect(rows.map((r) => r.tablename)).toEqual(
       expect.arrayContaining([
         "items",
+        "item_notes",
+        "annotations",
+        "collections",
+        "collection_items",
+        "item_events",
+        "digest_runs",
+        "digest_items",
         "oauth_tokens",
         "ai_summaries",
         "feedback",
@@ -161,5 +168,136 @@ describe("PostgreSQL repository contracts", () => {
       raw_body: "replayed body",
       metadata: { attempt: 2 },
     });
+  });
+
+  it("persists lifecycle, one note, anchored annotations, collections, and immutable events", async () => {
+    const repos = createPostgresRepositories(harness.sql);
+    await repos.items.insert(item("knowledge", "https://example.com/knowledge"));
+    await repos.items.update("knowledge", {
+      archivedAt: "2026-01-03T00:00:00Z",
+      readAt: "2026-01-02T00:00:00Z",
+      lastOpenedAt: "2026-01-04T00:00:00Z",
+      readingProgress: 0.5,
+      manualPriority: "high",
+    });
+    expect(await repos.items.findById("knowledge")).toMatchObject({
+      archivedAt: "2026-01-03T00:00:00.000Z",
+      readingProgress: 0.5,
+      manualPriority: "high",
+    });
+
+    const note = {
+      itemId: "knowledge",
+      body: "first",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    await repos.itemNotes.upsert(note);
+    await repos.itemNotes.upsert({
+      ...note,
+      body: "updated",
+      createdAt: "2026-01-09T00:00:00Z",
+      updatedAt: "2026-01-02T00:00:00Z",
+    });
+    expect(await repos.itemNotes.find("knowledge")).toEqual({
+      ...note,
+      body: "updated",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+
+    const annotation = await repos.annotations.create({
+      id: "annotation",
+      itemId: "knowledge",
+      selectedQuote: "grounded quote",
+      prefix: "before",
+      suffix: "after",
+      startOffset: 10,
+      endOffset: 24,
+      contentHash: "sha256:content",
+      contentVersion: "sha256:v1",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(annotation.startOffset).toBe(10);
+    expect(
+      await repos.annotations.update("annotation", {
+        status: "orphaned",
+        startOffset: undefined,
+        endOffset: undefined,
+        updatedAt: "2026-01-02T00:00:00Z",
+      })
+    ).toMatchObject({ status: "orphaned", startOffset: undefined });
+
+    await repos.collections.create({
+      id: "collection",
+      name: "Read later",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    await repos.collections.addItem({
+      collectionId: "collection",
+      itemId: "knowledge",
+      position: 4,
+      addedAt: "2026-01-01T00:00:00Z",
+    });
+    await repos.collections.addItem({
+      collectionId: "collection",
+      itemId: "knowledge",
+      position: 1,
+      addedAt: "2026-01-02T00:00:00Z",
+    });
+    expect(await repos.collections.listItems("collection")).toEqual([
+      expect.objectContaining({ itemId: "knowledge", position: 1 }),
+    ]);
+
+    const event = {
+      id: "event",
+      eventKey: "client-action-1",
+      itemId: "knowledge",
+      eventType: "opened" as const,
+      metadata: { surface: "reader" },
+      occurredAt: "2026-01-01T00:00:00Z",
+    };
+    await repos.itemEvents.append(event);
+    expect(await repos.itemEvents.append({ ...event, id: "retry" })).toMatchObject({ id: "event" });
+    await expect(
+      harness.sql`UPDATE item_events SET event_type='completed' WHERE id='event'`
+    ).rejects.toThrow(/immutable/);
+  });
+
+  it("stores a stable ordered digest snapshot and cascades it with its run", async () => {
+    const repos = createPostgresRepositories(harness.sql);
+    await repos.items.insert(item("digest-item", "https://example.com/digest"));
+    await repos.digests.create(
+      {
+        id: "digest",
+        digestDate: "2026-01-10",
+        status: "ready",
+        createdAt: "2026-01-10T02:00:00Z",
+        completedAt: "2026-01-10T02:00:01Z",
+      },
+      [
+        {
+          digestRunId: "digest",
+          itemId: "digest-item",
+          category: "priority",
+          position: 0,
+          reason: "Unread and high priority",
+        },
+      ]
+    );
+    expect(await repos.digests.findByDate("2026-01-10")).toMatchObject({
+      id: "digest",
+      status: "ready",
+      items: [{ itemId: "digest-item", position: 0 }],
+    });
+    await repos.digests.dismiss("digest", "2026-01-10T03:00:00Z");
+    expect((await repos.digests.list())[0].dismissedAt).toBe("2026-01-10T03:00:00.000Z");
+    await harness.sql`DELETE FROM digest_runs WHERE id='digest'`;
+    expect(
+      await harness.sql<{ count: number }[]>`SELECT count(*)::int count FROM digest_items`
+    ).toEqual([{ count: 0 }]);
   });
 });

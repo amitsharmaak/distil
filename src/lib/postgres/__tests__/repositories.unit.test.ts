@@ -57,6 +57,11 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     const repos = createPostgresRepositories(fake.sql);
     expect(Object.keys(repos)).toEqual([
       "items",
+      "itemNotes",
+      "annotations",
+      "collections",
+      "itemEvents",
+      "digests",
       "captures",
       "captureTokens",
       "rateLimits",

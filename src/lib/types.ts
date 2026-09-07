@@ -1,9 +1,4 @@
-export type SourceType =
-  | "slack"
-  | "gmail"
-  | "manual"
-  | "browser-extension"
-  | "publisher";
+export type SourceType = "slack" | "gmail" | "manual" | "browser-extension" | "publisher";
 
 export type ContentType = "article" | "video" | "podcast";
 
@@ -27,6 +22,16 @@ export interface ContentItem {
   url: string;
   priority: Priority;
   isRead: boolean;
+  /** When the item was archived; archived items are excluded from default consumption views. */
+  archivedAt?: string;
+  /** Timestamp associated with the current read state. */
+  readAt?: string;
+  /** Most recent reader open timestamp. */
+  lastOpenedAt?: string;
+  /** Persisted reader progress in the inclusive range 0..1. */
+  readingProgress?: number;
+  /** User-controlled priority override, independent of learned ranking. */
+  manualPriority?: Priority;
   createdAt: string;
   duration?: string;
   thumbnailUrl?: string;

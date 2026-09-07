@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -34,6 +35,11 @@ export const items = pgTable(
     normalizedUrl: text("normalized_url"),
     priority: text().notNull().default("medium"),
     isRead: boolean("is_read").notNull().default(false),
+    archivedAt: time("archived_at"),
+    readAt: time("read_at"),
+    lastOpenedAt: time("last_opened_at"),
+    readingProgress: doublePrecision("reading_progress").notNull().default(0),
+    manualPriority: text("manual_priority"),
     createdAt: time("created_at").notNull(),
     duration: text(),
     thumbnailUrl: text("thumbnail_url"),
@@ -55,6 +61,8 @@ export const items = pgTable(
     index("items_priority_idx").on(t.priority),
     index("items_source_idx").on(t.sourceType),
     index("items_is_read_idx").on(t.isRead),
+    index("items_archived_idx").on(t.archivedAt),
+    index("items_last_opened_idx").on(t.lastOpenedAt.desc()),
     index("items_search_idx").using("gin", t.searchVector),
     check("items_priority_check", sql`${t.priority} in ('high', 'medium', 'low')`),
     check(
@@ -62,6 +70,149 @@ export const items = pgTable(
       sql`${t.processingStatus} in ('processing', 'ready', 'rejected')`
     ),
     check("items_topics_array_check", sql`jsonb_typeof(${t.topics}) = 'array'`),
+    check(
+      "items_reading_progress_check",
+      sql`${t.readingProgress} >= 0 and ${t.readingProgress} <= 1`
+    ),
+    check(
+      "items_manual_priority_check",
+      sql`${t.manualPriority} is null or ${t.manualPriority} in ('high', 'medium', 'low')`
+    ),
+  ]
+);
+
+export const itemNotes = pgTable("item_notes", {
+  itemId: text("item_id")
+    .primaryKey()
+    .references(() => items.id, { onDelete: "cascade" }),
+  body: text().notNull(),
+  createdAt: time("created_at").notNull(),
+  updatedAt: time("updated_at").notNull(),
+});
+
+export const annotations = pgTable(
+  "annotations",
+  {
+    id: text().primaryKey(),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    selectedQuote: text("selected_quote").notNull(),
+    prefix: text().notNull().default(""),
+    suffix: text().notNull().default(""),
+    startOffset: integer("start_offset"),
+    endOffset: integer("end_offset"),
+    contentHash: text("content_hash").notNull(),
+    contentVersion: text("content_version").notNull(),
+    comment: text(),
+    status: text().notNull().default("active"),
+    createdAt: time("created_at").notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (t) => [
+    index("annotations_item_idx").on(t.itemId, t.createdAt),
+    index("annotations_status_idx").on(t.itemId, t.status),
+    check("annotations_quote_check", sql`length(${t.selectedQuote}) > 0`),
+    check("annotations_status_check", sql`${t.status} in ('active', 'orphaned')`),
+    check(
+      "annotations_offsets_check",
+      sql`(${t.startOffset} is null and ${t.endOffset} is null) or (${t.startOffset} is not null and ${t.endOffset} is not null and ${t.startOffset} >= 0 and ${t.endOffset} > ${t.startOffset})`
+    ),
+  ]
+);
+
+export const collections = pgTable(
+  "collections",
+  {
+    id: text().primaryKey(),
+    name: text().notNull(),
+    description: text(),
+    createdAt: time("created_at").notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (t) => [check("collections_name_check", sql`length(trim(${t.name})) > 0`)]
+);
+
+export const collectionItems = pgTable(
+  "collection_items",
+  {
+    collectionId: text("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    position: integer().notNull().default(0),
+    addedAt: time("added_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.collectionId, t.itemId] }),
+    index("collection_items_item_idx").on(t.itemId),
+    index("collection_items_order_idx").on(t.collectionId, t.position, t.addedAt),
+    check("collection_items_position_check", sql`${t.position} >= 0`),
+  ]
+);
+
+export const itemEvents = pgTable(
+  "item_events",
+  {
+    id: text().primaryKey(),
+    eventKey: text("event_key").notNull().unique(),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    occurredAt: time("occurred_at").notNull(),
+  },
+  (t) => [
+    index("item_events_item_idx").on(t.itemId, t.occurredAt.desc()),
+    index("item_events_type_idx").on(t.eventType, t.occurredAt.desc()),
+    check(
+      "item_events_type_check",
+      sql`${t.eventType} in ('opened','marked_read','marked_unread','completed','archived','restored','collection_added','collection_removed','feedback_recorded','citation_clicked','resurfaced','resurfacing_dismissed')`
+    ),
+    check("item_events_metadata_check", sql`jsonb_typeof(${t.metadata}) = 'object'`),
+  ]
+);
+
+export const digestRuns = pgTable(
+  "digest_runs",
+  {
+    id: text().primaryKey(),
+    digestDate: date("digest_date", { mode: "string" }).notNull().unique(),
+    status: text().notNull().default("pending"),
+    createdAt: time("created_at").notNull(),
+    completedAt: time("completed_at"),
+    dismissedAt: time("dismissed_at"),
+  },
+  (t) => [
+    check(
+      "digest_runs_status_check",
+      sql`${t.status} in ('pending', 'ready', 'degraded', 'failed')`
+    ),
+  ]
+);
+
+export const digestItems = pgTable(
+  "digest_items",
+  {
+    digestRunId: text("digest_run_id")
+      .notNull()
+      .references(() => digestRuns.id, { onDelete: "cascade" }),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    category: text().notNull(),
+    position: integer().notNull(),
+    reason: text().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.digestRunId, t.itemId] }),
+    uniqueIndex("digest_items_run_position_idx").on(t.digestRunId, t.position),
+    index("digest_items_item_idx").on(t.itemId),
+    check("digest_items_category_check", sql`${t.category} in ('priority', 'resurfaced')`),
+    check("digest_items_position_check", sql`${t.position} >= 0`),
   ]
 );
 

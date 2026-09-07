@@ -29,6 +29,156 @@ export interface ItemRepository {
   updatePriorityScore(id: string, score: number, priority: Priority): Promise<void>;
 }
 
+export interface ItemNoteRecord {
+  itemId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ItemNoteRepository {
+  find(itemId: string): Promise<ItemNoteRecord | undefined>;
+  upsert(record: ItemNoteRecord): Promise<ItemNoteRecord>;
+  delete(itemId: string): Promise<boolean>;
+}
+
+export type AnnotationStatus = "active" | "orphaned";
+
+export interface AnnotationRecord {
+  id: string;
+  itemId: string;
+  selectedQuote: string;
+  prefix: string;
+  suffix: string;
+  startOffset?: number;
+  endOffset?: number;
+  contentHash: string;
+  contentVersion: string;
+  comment?: string;
+  status: AnnotationStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnnotationRepository {
+  listForItem(itemId: string): Promise<AnnotationRecord[]>;
+  create(record: AnnotationRecord): Promise<AnnotationRecord>;
+  update(
+    id: string,
+    patch: Partial<
+      Pick<
+        AnnotationRecord,
+        | "selectedQuote"
+        | "prefix"
+        | "suffix"
+        | "startOffset"
+        | "endOffset"
+        | "contentHash"
+        | "contentVersion"
+        | "comment"
+        | "status"
+        | "updatedAt"
+      >
+    >
+  ): Promise<AnnotationRecord | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
+export interface CollectionRecord {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionItemRecord {
+  collectionId: string;
+  itemId: string;
+  position: number;
+  addedAt: string;
+}
+
+export interface CollectionRepository {
+  list(): Promise<CollectionRecord[]>;
+  find(id: string): Promise<CollectionRecord | undefined>;
+  create(record: CollectionRecord): Promise<CollectionRecord>;
+  update(
+    id: string,
+    patch: Partial<Pick<CollectionRecord, "name" | "description" | "updatedAt">>
+  ): Promise<CollectionRecord | undefined>;
+  delete(id: string): Promise<boolean>;
+  addItem(record: CollectionItemRecord): Promise<CollectionItemRecord>;
+  removeItem(collectionId: string, itemId: string): Promise<boolean>;
+  listItems(collectionId: string): Promise<CollectionItemRecord[]>;
+}
+
+export type ItemEventType =
+  | "opened"
+  | "marked_read"
+  | "marked_unread"
+  | "completed"
+  | "archived"
+  | "restored"
+  | "collection_added"
+  | "collection_removed"
+  | "feedback_recorded"
+  | "citation_clicked"
+  | "resurfaced"
+  | "resurfacing_dismissed";
+
+export interface ItemEventRecord {
+  id: string;
+  eventKey: string;
+  itemId: string;
+  eventType: ItemEventType;
+  metadata: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface ItemEventRepository {
+  /** Append once by eventKey; retries return the original immutable event. */
+  append(record: ItemEventRecord): Promise<ItemEventRecord>;
+  listForItem(itemId: string, limit?: number): Promise<ItemEventRecord[]>;
+}
+
+export type DigestRunStatus = "pending" | "ready" | "degraded" | "failed";
+export type DigestItemCategory = "priority" | "resurfaced";
+
+export interface DigestItemRecord {
+  digestRunId: string;
+  itemId: string;
+  category: DigestItemCategory;
+  position: number;
+  reason: string;
+}
+
+export interface DigestRunRecord {
+  id: string;
+  /** Single-user local calendar date in YYYY-MM-DD form. */
+  digestDate: string;
+  status: DigestRunStatus;
+  createdAt: string;
+  completedAt?: string;
+  dismissedAt?: string;
+}
+
+export interface DigestRunWithItems extends DigestRunRecord {
+  items: DigestItemRecord[];
+}
+
+export interface DigestRepository {
+  create(run: DigestRunRecord, items?: DigestItemRecord[]): Promise<DigestRunWithItems>;
+  findByDate(digestDate: string): Promise<DigestRunWithItems | undefined>;
+  list(limit?: number): Promise<DigestRunWithItems[]>;
+  updateStatus(
+    id: string,
+    status: DigestRunStatus,
+    at: string
+  ): Promise<DigestRunWithItems | undefined>;
+  dismiss(id: string, at: string): Promise<DigestRunWithItems | undefined>;
+}
+
 export interface CaptureRecord extends CaptureReceipt {
   url: string;
   title?: string;
@@ -283,6 +433,11 @@ export interface AgentRepository {
 
 export interface RepositorySet {
   items: ItemRepository;
+  itemNotes: ItemNoteRepository;
+  annotations: AnnotationRepository;
+  collections: CollectionRepository;
+  itemEvents: ItemEventRepository;
+  digests: DigestRepository;
   captures: CaptureRepository;
   captureTokens: CaptureTokenRepository;
   rateLimits: RateLimitRepository;
