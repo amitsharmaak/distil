@@ -175,6 +175,36 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ).resolves.toBeUndefined();
   });
 
+  test("writes both digest dates for complete and pending legacy snapshots", async () => {
+    const fake = sqlDouble([[{ id: "digest-complete" }], [{ id: "digest-pending" }]]);
+    const digests = createPostgresRepositories(fake.sql).digests;
+
+    await expect(
+      digests.create({
+        id: "digest-complete",
+        digestDate: "2026-01-10",
+        status: "ready",
+        createdAt: "2026-01-10T02:00:00Z",
+        completedAt: "2026-01-10T02:00:01Z",
+        dismissedAt: "2026-01-10T03:00:00Z",
+      })
+    ).resolves.toMatchObject({ id: "digest-complete", items: [] });
+    await expect(
+      digests.create({
+        id: "digest-pending",
+        digestDate: "2026-01-11",
+        status: "pending",
+        createdAt: "2026-01-11T02:00:00Z",
+      })
+    ).resolves.toMatchObject({ id: "digest-pending", items: [] });
+
+    expect(
+      fake.queries.filter((query) =>
+        query.includes("INSERT INTO digest_runs(id,digest_date,local_date")
+      )
+    ).toHaveLength(2);
+  });
+
   test("covers token lifecycle and deterministic rate-limit windows", async () => {
     const tokenRow = {
       id: "token-1",
