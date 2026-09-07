@@ -41,7 +41,13 @@ for (const test of tests) {
   console.log(`\nRunning PostgreSQL integration suite: ${displayPath}`);
   const result = spawnSync(
     process.execPath,
-    [resolve(root, "node_modules/jest/bin/jest.js"), "--runInBand", "--runTestsByPath", test],
+    [
+      resolve(root, "node_modules/jest/bin/jest.js"),
+      "--runInBand",
+      "--testPathIgnorePatterns=\\.sqlite-integration\\.test\\.",
+      "--runTestsByPath",
+      test,
+    ],
     { cwd: root, env: process.env, stdio: "inherit" }
   );
   if (result.error) throw result.error;
