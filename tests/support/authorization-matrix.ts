@@ -202,7 +202,9 @@ const publicRouteSurfaces = new Set([
   "GET /api/auth/gmail/callback",
   "GET /api/auth/slack",
   "GET /api/auth/slack/callback",
+  "GET /api/auth/:path+",
   "POST /api/auth/login",
+  "POST /api/auth/:path+",
 ]);
 
 const systemRouteSurfaces = new Set(["GET /api/cron/digests"]);
