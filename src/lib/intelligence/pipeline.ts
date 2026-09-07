@@ -21,14 +21,21 @@ import {
   updateRawContentItemId,
 } from "../database";
 import type { ContentItem, SourceType } from "../types";
-import { generateSummary } from "../ai/summarize";
+import { generateCaptureSummary } from "../ai/summarize";
 import { embedItem } from "../ai/embeddings";
 import { detectStrategy } from "../content-strategies";
+import { aiLogger } from "../logger";
+import { getTraceId } from "../middleware/trace";
 import { classify } from "./classifier";
 import { checkRelevance } from "./relevance";
 import { extractContent } from "./extractor";
 import { analyzeContent } from "./analyzer";
 import { enrichContent } from "./enricher";
+import {
+  createExtractiveSummary,
+  isUsableArticleText,
+  normalizePlaintext,
+} from "./content-quality";
 import type {
   RawContent,
   RawContentMetadata,
@@ -38,6 +45,52 @@ import type {
   EnrichedContent,
   ProcessingResult,
 } from "./types";
+
+const UNREADABLE_CONTENT_REASON = "The page did not contain readable article content";
+
+function safeFailureField(error: object, field: string): string | undefined {
+  if (!(field in error)) return undefined;
+  const value = String((error as Record<string, unknown>)[field]);
+  return /^[a-zA-Z0-9._:-]{1,80}$/.test(value) ? value : undefined;
+}
+
+function summaryFailureContext(error: unknown): {
+  category: string;
+  provider?: string;
+  model?: string;
+  attempt?: number;
+  latencyMs?: number;
+} {
+  if (!error || typeof error !== "object") return { category: "unknown" };
+  const rawCategory = safeFailureField(error, "category") ?? "unknown";
+  const category = [
+    "quota",
+    "timeout",
+    "server",
+    "authentication",
+    "invalid_request",
+    "invalid_output",
+    "budget",
+    "unknown",
+  ].includes(rawCategory)
+    ? rawCategory
+    : "unknown";
+  const attemptValue = "attempt" in error ? Number(error.attempt) : NaN;
+  const latencyValue = "latencyMs" in error ? Number(error.latencyMs) : NaN;
+  return {
+    category,
+    provider: safeFailureField(error, "provider"),
+    model: safeFailureField(error, "model"),
+    attempt:
+      Number.isInteger(attemptValue) && attemptValue > 0 && attemptValue < 10
+        ? attemptValue
+        : undefined,
+    latencyMs:
+      Number.isFinite(latencyValue) && latencyValue >= 0 && latencyValue < 60_000
+        ? latencyValue
+        : undefined,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default fallbacks for stage failures
@@ -182,6 +235,31 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       extracted = minimalExtraction(raw);
     }
 
+    const strategy = detectStrategy(raw.url ?? "");
+    const shouldGenerateAISummary = strategy.generateAISummary || extracted.isXArticle;
+    const normalizedText = normalizePlaintext(extracted.cleanTextContent ?? "");
+
+    if (shouldGenerateAISummary && !isUsableArticleText(normalizedText)) {
+      aiLogger.warn(
+        {
+          event: "content_rejected_unreadable",
+          traceId: getTraceId(),
+          captureId: raw.id,
+          itemId: targetItemId,
+        },
+        "content_rejected_unreadable"
+      );
+      await updateItemProcessingStatus(targetItemId, "rejected", UNREADABLE_CONTENT_REASON);
+      return {
+        rawContentId: raw.id,
+        status: "rejected",
+        rejectionReason: UNREADABLE_CONTENT_REASON,
+        classification,
+        extracted,
+      };
+    }
+    extracted = { ...extracted, cleanTextContent: normalizedText };
+
     // Step 7: Stage 4 — Analyze
     let analysis: ContentAnalysis;
     try {
@@ -196,6 +274,70 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       enriched = await enrichContent(raw, extracted, analysis, classification);
     } catch {
       enriched = minimalEnrichment(extracted);
+    }
+
+    if (shouldGenerateAISummary) {
+      try {
+        const captureSummary = await generateCaptureSummary({
+          ...initialItem,
+          id: targetItemId,
+          title: extracted.title,
+          summary: "",
+          fullContent: normalizedText,
+          author: extracted.author,
+          publication: extracted.publication,
+          topics: enriched.topics,
+          priority: enriched.priority,
+          contentType: classification.contentType,
+        });
+        enriched = { ...enriched, summary: captureSummary.output.overview };
+      } catch (error) {
+        const failure = summaryFailureContext(error);
+        aiLogger.warn(
+          {
+            event: "summary_generation_failed",
+            traceId: getTraceId(),
+            captureId: raw.id,
+            itemId: targetItemId,
+            task: "summarize",
+            ...failure,
+          },
+          "summary_generation_failed"
+        );
+        const fallback = createExtractiveSummary(normalizedText);
+        if (!fallback) {
+          aiLogger.warn(
+            {
+              event: "content_rejected_unreadable",
+              traceId: getTraceId(),
+              captureId: raw.id,
+              itemId: targetItemId,
+            },
+            "content_rejected_unreadable"
+          );
+          await updateItemProcessingStatus(targetItemId, "rejected", UNREADABLE_CONTENT_REASON);
+          return {
+            rawContentId: raw.id,
+            status: "rejected",
+            rejectionReason: UNREADABLE_CONTENT_REASON,
+            classification,
+            extracted,
+            analysis,
+          };
+        }
+        enriched = { ...enriched, summary: fallback };
+        aiLogger.warn(
+          {
+            event: "summary_extract_fallback_used",
+            traceId: getTraceId(),
+            captureId: raw.id,
+            itemId: targetItemId,
+            task: "summarize",
+            ...failure,
+          },
+          "summary_extract_fallback_used"
+        );
+      }
     }
 
     // If the extractor found a tweet video URL, inject it into detectedMedia
@@ -219,7 +361,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       priority: enriched.priority,
       contentType: classification.contentType,
       extractedLinks: analysis.relevantLinks,
-      processingStatus: "ready",
+      processingStatus: "processing",
       contentClassification: classification,
       detectedMedia,
       informationDensity: analysis.informationDensityScore,
@@ -229,15 +371,18 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     await updateItemProcessingStatus(targetItemId, "ready");
     await updateItemPriorityScore(targetItemId, enriched.priorityScore, enriched.priority);
 
-    // Step 10b: Generate the deep AI summary before reporting durable success — skipped for content types
-    // that don't use AI summarization (e.g. tweets), but enabled for X Articles.
-    const strategy = detectStrategy(raw.url ?? "");
-    if (strategy.generateAISummary || extracted.isXArticle) {
-      await generateSummary(targetItemId, { length: "brief" }).catch(() => undefined);
-    }
-
-    // Step 10c: Finish embedding work before returning from the pipeline.
-    await embedItem(targetItemId, extracted.title, enriched.summary).catch(() => undefined);
+    // Step 10b: Finish embedding work before returning from the pipeline.
+    await embedItem(targetItemId, extracted.title, enriched.summary).catch(() => {
+      aiLogger.warn(
+        {
+          event: "embedding_failed",
+          traceId: getTraceId(),
+          captureId: raw.id,
+          itemId: targetItemId,
+        },
+        "embedding_failed"
+      );
+    });
 
     // Step 11: Return ProcessingResult
     return {

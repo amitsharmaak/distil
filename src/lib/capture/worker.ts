@@ -132,7 +132,6 @@ export function createDefaultCaptureProcessor(
       id: capture.id,
       sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
       rawBody: article.body,
-      rawTextContent: article.body,
       url: article.url,
       metadata: {
         pageTitle: capture.title,

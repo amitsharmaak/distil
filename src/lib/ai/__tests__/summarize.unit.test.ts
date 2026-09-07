@@ -23,7 +23,7 @@ jest.mock("@/lib/database", () => ({
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
-import { generateSummary } from "../summarize";
+import { generateCaptureSummary, generateSummary } from "../summarize";
 import { generateJSON } from "../router";
 import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
@@ -50,6 +50,8 @@ const techCrunchItem: ContentItem = {
   createdAt: new Date().toISOString(),
   author: "Kyle Wiggers",
   publication: "TechCrunch",
+  fullContent:
+    'Anthropic released voice mode for Claude Code for hands-free coding. It is available across supported systems. "We want Claude Code to be the most accessible coding assistant on the market." — Anthropic spokesperson',
 };
 
 // Structured JSON output that renders to the expected markdown (short content uses summarize).
@@ -67,7 +69,7 @@ const mockBriefOutput = {
 
 const mockDetailedOutput = {
   overview:
-    "Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free, lowering the barrier for accessibility and repetitive tasks.",
+    "Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free. The feature lowers the barrier for accessibility and repetitive tasks.",
   keyPoints: [
     "Voice input integrates directly into the Claude Code CLI",
     "ASR optimised for programming terms and code identifiers",
@@ -99,7 +101,7 @@ Anthropic has launched voice mode for Claude Code, enabling hands-free coding vi
 
 const mockDetailedSummary = `## TL;DR
 
-Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free, lowering the barrier for accessibility and repetitive tasks.
+Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free. The feature lowers the barrier for accessibility and repetitive tasks.
 
 ## Key Points
 
@@ -265,6 +267,21 @@ describe("generateSummary — generation", () => {
     const promptArg = mockGenerateJSON.mock.calls[0][0] as string;
     expect(promptArg).toContain("3-5");
     expect(promptArg).toContain("keyPoints");
+  });
+
+  it("uses one bounded head-and-tail structured call for capture summaries", async () => {
+    const longItem = {
+      ...techCrunchItem,
+      fullContent: `${"opening ".repeat(5_000)}${"middle ".repeat(3_000)}${"conclusion ".repeat(2_000)}`,
+    };
+
+    await generateCaptureSummary(longItem);
+
+    expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
+    const prompt = mockGenerateJSON.mock.calls[0][0] as string;
+    expect(prompt).toContain("opening");
+    expect(prompt).toContain("conclusion");
+    expect(prompt.length).toBeLessThan(50_000);
   });
 });
 

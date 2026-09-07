@@ -59,4 +59,45 @@ describe("durable capture extraction", () => {
     expect(result.title).toBe("Pinned article");
     expect(result.cleanContent).toBe("<p>Safe content</p>");
   });
+
+  it("does not expose fetched page HTML as plaintext when extraction fails", async () => {
+    extractContentFromHtml.mockReturnValueOnce(null);
+    extractOGFromHtml.mockReturnValueOnce({
+      title: "Blocked",
+      description: null,
+      image: null,
+      author: null,
+      siteName: null,
+    });
+    const raw = {
+      id: "capture-2",
+      sourceType: "manual",
+      url: "https://public.example.test/login",
+      rawBody: "<html><body><form>Sign in to continue</form></body></html>",
+      metadata: {},
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies RawContent;
+
+    const result = await extractContent(raw, {} as ContentClassification);
+
+    expect(result.cleanTextContent).toBe("");
+    expect(result.cleanContent).toBe("");
+  });
+
+  it("derives email plaintext from the DOM while removing executable and form chrome", async () => {
+    const raw = {
+      id: "capture-3",
+      sourceType: "gmail",
+      rawBody:
+        "<html><body><script>steal()</script><nav>Menu</nav><p>Useful email prose.</p><form>Sign in</form></body></html>",
+      metadata: { subject: "Newsletter" },
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies RawContent;
+
+    const result = await extractContent(raw, {} as ContentClassification);
+
+    expect(result.cleanTextContent.trim()).toBe("Useful email prose.");
+    expect(result.cleanTextContent).not.toContain("steal");
+    expect(result.cleanTextContent).not.toContain("Sign in");
+  });
 });

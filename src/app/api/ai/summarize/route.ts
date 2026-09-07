@@ -3,9 +3,11 @@ import { apiLogger } from "@/lib/logger";
 import { generateSummary } from "@/lib/ai/summarize";
 import { getItemById } from "@/lib/database";
 import { isTwitterUrl } from "@/lib/utils";
+import { getTraceId } from "@/lib/middleware/trace";
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
 export async function POST(req: NextRequest) {
+  let itemIdForLog: string | undefined;
   try {
     const body = await req.json();
     const { itemId, length, force } = body as {
@@ -22,6 +24,7 @@ export async function POST(req: NextRequest) {
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
+    itemIdForLog = item.id;
 
     if (isTwitterUrl(item.url)) {
       return NextResponse.json(
@@ -37,8 +40,15 @@ export async function POST(req: NextRequest) {
       cached: result.cached,
       itemId,
     });
-  } catch (error) {
-    apiLogger.error({ err: error }, "Summarize error");
+  } catch {
+    apiLogger.error(
+      {
+        event: "summary_generation_failed",
+        traceId: getTraceId(),
+        itemId: itemIdForLog,
+      },
+      "summary_generation_failed"
+    );
     return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 });
   }
 }

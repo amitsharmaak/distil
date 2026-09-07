@@ -5,14 +5,13 @@
  *   Stage 1 — src/lib/intelligence/classifier.ts   (classifyContentPrompt)
  *   Stage 3 — src/lib/intelligence/extractor.ts    (extractContentPrompt)
  *   Stage 4 — src/lib/intelligence/analyzer.ts     (analyzeContentPrompt)
- *   Stage 5 — src/lib/intelligence/enricher.ts     (enrichSummaryPrompt, enrichTopicsPrompt)
+ *   Stage 5 — src/lib/intelligence/enricher.ts     (enrichTopicsPrompt)
  */
 
 const TRUNCATE_LEN = {
   rawBody: 3000,
   readabilityOutput: 6000,
   cleanContent: 5000,
-  enrichSummary: 3000,
   enrichTopics: 2000,
 } as const;
 
@@ -110,7 +109,7 @@ export function analyzeContentPrompt(input: {
   const linksSection = linksSlice
     .map(
       (l) =>
-        `- URL: ${l.url} | anchor: "${l.anchorText ?? ""}" | context: "${(l.surroundingContext ?? "").slice(0, 100)}"`,
+        `- URL: ${l.url} | anchor: "${l.anchorText ?? ""}" | context: "${(l.surroundingContext ?? "").slice(0, 100)}"`
     )
     .join("\n");
 
@@ -145,19 +144,10 @@ Output ONLY valid JSON.`;
 
 // ── Stage 5: Enrichment ───────────────────────────────────────────────────────
 
-export function enrichSummaryPrompt(title: string, content: string): string {
-  return `Summarize the following content in 2-3 sentences, focusing on the key information:
-
-Title: ${title}
-Content: ${content.slice(0, TRUNCATE_LEN.enrichSummary)}
-
-Respond with just the summary text, no preamble.`;
-}
-
 export function enrichTopicsPrompt(
   title: string,
   content: string,
-  taxonomySection: string,
+  taxonomySection: string
 ): string {
   return `Assign 2-3 topic tags to the following content. You MUST pick from the canonical taxonomy below.
 

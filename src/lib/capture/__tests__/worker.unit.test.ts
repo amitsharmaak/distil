@@ -190,6 +190,7 @@ describe("default capture processor", () => {
     expect(pipeline).toHaveBeenCalledWith(
       expect.objectContaining({ id: captureRecord().id, rawBody: expect.any(String) })
     );
+    expect(pipeline.mock.calls[0][0]).not.toHaveProperty("rawTextContent");
   });
 
   it("never reports success without a durable item", async () => {

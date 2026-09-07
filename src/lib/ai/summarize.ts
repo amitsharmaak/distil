@@ -10,7 +10,7 @@
  */
 
 import crypto from "crypto";
-import { generateJSON, getEffectiveModel } from "./router";
+import * as aiRouter from "./router";
 import {
   summarizePrompt,
   chunkSummarizePrompt,
@@ -18,8 +18,43 @@ import {
 } from "@/lib/prompts/summarize";
 import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
 import type { SummaryOutput } from "./types";
+import type { ContentItem } from "@/lib/types";
+import type { AITask, ProviderName } from "./ai-config";
+import {
+  prepareCaptureSummaryInput,
+  validateSummaryOutput,
+} from "@/lib/intelligence/content-quality";
+import { aiLogger } from "@/lib/logger";
+import { getTraceId } from "@/lib/middleware/trace";
 
 export type { SummaryOutput };
+
+export interface RoutedGeneration<T> {
+  value: T;
+  provider: ProviderName;
+  model: string;
+}
+
+/**
+ * Temporary integration seam for the routing workstream. Once the router's
+ * metadata API is present this calls it directly; the fallback keeps this
+ * isolated branch buildable without duplicating model-fallback behavior.
+ */
+async function generateJSONWithObservedModel<T>(
+  prompt: string,
+  task: AITask
+): Promise<RoutedGeneration<T>> {
+  const metadataRouter = aiRouter as typeof aiRouter & {
+    generateJSONWithMetadata?: <V>(prompt: string, task: AITask) => Promise<RoutedGeneration<V>>;
+  };
+  if (metadataRouter.generateJSONWithMetadata) {
+    return metadataRouter.generateJSONWithMetadata<T>(prompt, task);
+  }
+
+  const value = await aiRouter.generateJSON<T>(prompt, task);
+  const { provider, model } = aiRouter.getEffectiveModel(task);
+  return { value, provider, model };
+}
 
 /** Estimate token count as ~4 chars per token. */
 function estimateTokens(text: string): number {
@@ -83,6 +118,55 @@ function getSummarizableContent(item: { fullContent?: string; summary: string })
   return item.fullContent ?? item.summary ?? "";
 }
 
+async function persistSummary(
+  itemId: string,
+  summary: string,
+  model: string,
+  promptType: "brief" | "detailed"
+): Promise<void> {
+  await upsertAISummary({
+    id: crypto.randomUUID(),
+    itemId,
+    summary,
+    model,
+    promptType,
+  });
+}
+
+export interface CaptureSummaryResult {
+  output: SummaryOutput;
+  summary: string;
+  model: string;
+  provider: ProviderName;
+}
+
+/** Generate and cache the single structured summary used by capture-time processing. */
+export async function generateCaptureSummary(item: ContentItem): Promise<CaptureSummaryResult> {
+  const source = prepareCaptureSummaryInput(getSummarizableContent(item));
+  const prompt = summarizePrompt({ ...item, fullContent: source }, "brief");
+  const generated = await generateJSONWithObservedModel<SummaryOutput>(prompt, "summarize");
+  const output = validateSummaryOutput(generated.value, source, "brief");
+  const summary = renderSummaryMarkdown(output);
+
+  try {
+    await persistSummary(item.id, summary, generated.model, "brief");
+  } catch {
+    aiLogger.warn(
+      {
+        event: "summary_cache_failed",
+        traceId: getTraceId(),
+        itemId: item.id,
+        task: "summarize",
+        provider: generated.provider,
+        model: generated.model,
+      },
+      "summary_cache_failed"
+    );
+    throw new Error("Summary cache persistence failed");
+  }
+  return { output, summary, model: generated.model, provider: generated.provider };
+}
+
 /**
  * Generate an AI summary for a content item.
  *
@@ -114,7 +198,13 @@ export async function generateSummary(
   const content = getSummarizableContent(item);
   const estimatedTokens = estimateTokens(content);
 
+  if (length === "brief") {
+    const generated = await generateCaptureSummary(item);
+    return { summary: generated.summary, cached: false };
+  }
+
   let output: SummaryOutput;
+  let generatedModel: string;
 
   if (estimatedTokens > 8000) {
     // Map-reduce: chunk → summarize each → synthesize
@@ -124,39 +214,40 @@ export async function generateSummary(
     const chunkOutputs: SummaryOutput[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const prompt = chunkSummarizePrompt(chunks[i], i, chunks.length);
-      const chunkOutput = await generateJSON<SummaryOutput>(prompt, "summarize");
-      chunkOutputs.push(chunkOutput);
+      const chunkGenerated = await generateJSONWithObservedModel<SummaryOutput>(
+        prompt,
+        "summarize"
+      );
+      chunkOutputs.push(validateSummaryOutput(chunkGenerated.value, chunks[i], "brief"));
     }
 
     const chunkSummaries = chunkOutputs.map((o) => JSON.stringify(o, null, 2));
     const synthesizePrompt = synthesizeChunkSummariesPrompt(chunkSummaries, item);
-    output = await generateJSON<SummaryOutput>(synthesizePrompt, "summarize-complex");
+    const generated = await generateJSONWithObservedModel<SummaryOutput>(
+      synthesizePrompt,
+      "summarize-complex"
+    );
+    output = validateSummaryOutput(generated.value, content, "detailed");
+    generatedModel = generated.model;
   } else if (estimatedTokens >= 2000) {
     // Medium: single summarize-complex call
     const prompt = summarizePrompt(item, length);
-    output = await generateJSON<SummaryOutput>(prompt, "summarize-complex");
+    const generated = await generateJSONWithObservedModel<SummaryOutput>(
+      prompt,
+      "summarize-complex"
+    );
+    output = validateSummaryOutput(generated.value, content, "detailed");
+    generatedModel = generated.model;
   } else {
     // Short: single summarize call
     const prompt = summarizePrompt(item, length);
-    output = await generateJSON<SummaryOutput>(prompt, "summarize");
+    const generated = await generateJSONWithObservedModel<SummaryOutput>(prompt, "summarize");
+    output = validateSummaryOutput(generated.value, content, "detailed");
+    generatedModel = generated.model;
   }
 
   const summary = renderSummaryMarkdown(output);
-  const task =
-    estimatedTokens > 8000
-      ? "summarize-complex"
-      : estimatedTokens >= 2000
-        ? "summarize-complex"
-        : "summarize";
-  const { model } = getEffectiveModel(task);
-
-  await upsertAISummary({
-    id: crypto.randomUUID(),
-    itemId,
-    summary,
-    model,
-    promptType: length,
-  });
+  await persistSummary(itemId, summary, generatedModel, length);
 
   return { summary, cached: false };
 }

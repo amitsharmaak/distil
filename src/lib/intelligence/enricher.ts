@@ -7,7 +7,7 @@
  */
 
 import { generateText } from "@/lib/ai/router";
-import { enrichSummaryPrompt, enrichTopicsPrompt } from "@/lib/prompts/intelligence";
+import { enrichTopicsPrompt } from "@/lib/prompts/intelligence";
 import { buildTaxonomyPromptSection, normalizeTags } from "@/lib/ai/taxonomy";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { Priority } from "@/lib/types";
@@ -19,7 +19,6 @@ import type {
   RawContent,
 } from "./types";
 
-
 /**
  * Enriches content with AI summary, topics, and priority score.
  */
@@ -27,7 +26,7 @@ export async function enrichContent(
   raw: RawContent,
   extracted: ExtractedContentResult,
   analysis: ContentAnalysis,
-  classification: ContentClassification,
+  classification: ContentClassification
 ): Promise<EnrichedContent> {
   const cleanText = extracted.cleanTextContent ?? "";
   const title = extracted.title ?? "Untitled";
@@ -37,7 +36,7 @@ export async function enrichContent(
   // even though their URL matches the tweet pattern.
   const shouldGenerateAISummary = strategy.generateAISummary || extracted.isXArticle;
 
-  let summary: string;
+  let summary = "";
   let topics: string[] = [];
 
   if (!shouldGenerateAISummary) {
@@ -45,29 +44,22 @@ export async function enrichContent(
     // use the extracted text directly so items.summary holds the real content.
     // summaryMaxChars is a display-only limit — do not truncate storage here.
     summary = cleanText || title;
-  } else {
-    try {
-      summary = (await generateText(enrichSummaryPrompt(title, cleanText), "summarize")).trim();
-      if (!summary) throw new Error("Empty summary");
-    } catch {
-      summary = cleanText.slice(0, 200) + (cleanText.length > 200 ? "..." : "");
-    }
   }
 
   try {
-    const topicsResponse = (await generateText(enrichTopicsPrompt(title, cleanText, buildTaxonomyPromptSection()), "auto-tag")).trim();
+    const topicsResponse = (
+      await generateText(
+        enrichTopicsPrompt(title, cleanText, buildTaxonomyPromptSection()),
+        "auto-tag"
+      )
+    ).trim();
     const parsed = parseTopicsJson(topicsResponse);
     topics = Array.isArray(parsed) ? normalizeTags(parsed) : [];
   } catch {
     topics = [];
   }
 
-  const priorityScore = computePriorityScore(
-    raw,
-    extracted,
-    analysis,
-    classification,
-  );
+  const priorityScore = computePriorityScore(raw, extracted, analysis, classification);
   const priority = scoreToPriority(priorityScore);
 
   return {
@@ -82,16 +74,13 @@ function computePriorityScore(
   raw: RawContent,
   _extracted: ExtractedContentResult,
   analysis: ContentAnalysis,
-  classification: ContentClassification,
+  classification: ContentClassification
 ): number {
   let score = 50;
 
   if (analysis.informationDensityScore > 0.7) score += 15;
   if (analysis.wordCount > 500) score += 10;
-  if (
-    classification.emailCategory === "newsletter" ||
-    classification.emailCategory === "digest"
-  ) {
+  if (classification.emailCategory === "newsletter" || classification.emailCategory === "digest") {
     score += 10;
   }
   if (classification.contentType === "article") score += 5;

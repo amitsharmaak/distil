@@ -15,6 +15,7 @@ import {
 import { findByUrl as findPublisherByUrl } from "@/lib/connectors/publishers/registry";
 import { PublisherAuthRequired } from "@/lib/connectors/publishers/types";
 import { extractOGFromHtml, fetchOG } from "@/lib/og";
+import { JSDOM } from "jsdom";
 import type {
   ContentClassification,
   ExtractedContentResult,
@@ -114,7 +115,7 @@ async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> 
 
 function extractFromEmail(raw: RawContent): ExtractedContentResult {
   const html = raw.rawBody ?? "";
-  const text = raw.rawTextContent ?? raw.rawBody ?? "";
+  const text = raw.rawTextContent ?? plainTextFromHtml(html);
 
   // Extract links from HTML
   const linkMatches = [...html.matchAll(HREF_REGEX)];
@@ -148,7 +149,9 @@ function extractFromEmail(raw: RawContent): ExtractedContentResult {
 }
 
 function minimalResult(raw: RawContent): ExtractedContentResult {
-  const text = raw.rawTextContent ?? raw.rawBody ?? "";
+  // A fetched URL body is HTML and must never masquerade as plain text when
+  // Readability fails. Non-URL connector bodies (for example Slack) are text.
+  const text = raw.rawTextContent ?? (raw.url ? "" : (raw.rawBody ?? ""));
   return {
     cleanContent: text,
     cleanTextContent: text,
@@ -157,4 +160,13 @@ function minimalResult(raw: RawContent): ExtractedContentResult {
     publication: raw.metadata.senderDomain ?? undefined,
     allLinks: [],
   };
+}
+
+function plainTextFromHtml(html: string): string {
+  if (!html.trim()) return "";
+  const dom = new JSDOM(html);
+  dom.window.document
+    .querySelectorAll("script, style, nav, header, footer, form, noscript, svg")
+    .forEach((element) => element.remove());
+  return dom.window.document.body?.textContent ?? "";
 }
