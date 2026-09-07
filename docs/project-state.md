@@ -431,7 +431,7 @@ npm run dev -- --hostname 127.0.0.1 --port 3100
 - Project dashboard: `https://vercel.com/pv-1850/project-evgf1`
 - Project state: CLI-linked to the Phase 1 worktree with a ready Preview deployment. The Git
   repository is still not connected and Production has not been deployed.
-- Stable protected Preview URL: `https://distil-preview-pv-1850.vercel.app`
+- Stable Preview URL: `https://distil-preview-pv-1850.vercel.app`
 - Current immutable deployment: `dpl_4XZdkSDZBaEnarsz5HdbJkDk2pEi`
 - Deployment inspector: `https://vercel.com/pv-1850/project-evgf1/4XZdkSDZBaEnarsz5HdbJkDk2pEi`
 - Intended application region: Singapore (`sin1`).
@@ -494,26 +494,23 @@ should not be used by the new clients.
 
 ### Exact next execution sequence
 
-1. Decide whether to disable Vercel Deployment Protection for Preview or intentionally distribute a
-   protection-bypass credential. The current protection prevents the iPhone Shortcut and extension
-   from reaching Distil even though application authentication is working.
-2. Select one AI provider and add only its Preview-scoped secret, then test extraction and summary
+1. Select one AI provider and add only its Preview-scoped secret, then test extraction and summary
    quality on several real articles within the Hobby 60-second worker limit.
-3. Run `npm run test:ci`, including the PostgreSQL Testcontainers suite, on a Docker-capable host.
-4. Review and resolve the production dependency audit before promotion. The current production-only
+2. Run `npm run test:ci`, including the PostgreSQL Testcontainers suite, on a Docker-capable host.
+3. Review and resolve the production dependency audit before promotion. The current production-only
    audit reports 10 advisories (8 high, 2 moderate), including a direct Next.js update to `16.3.4`.
-5. Push `codex/phase-1-personal-capture` and connect that branch to the existing Vercel project for
+4. Push `codex/phase-1-personal-capture` and connect that branch to the existing Vercel project for
    repeatable CI/CD without deploying `main`.
-6. Configure separate capture tokens for the iPhone Shortcut and browser extension.
-7. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
-8. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
+5. Configure separate capture tokens for the iPhone Shortcut and browser extension.
+6. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
+7. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
 
 ### Known blockers and decisions
 
 - The Phase 1 branch is deployed through the CLI but remains local and is not connected to GitHub or
   Vercel CI/CD.
-- Vercel Deployment Protection currently blocks unauthenticated device clients before Distil's own
-  session or capture-token authentication can run.
+- Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
+  own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
 - Docker-backed PostgreSQL integration tests still need a clean run.
 - The production dependency audit reports 8 high and 2 moderate advisories; no automatic audit fix
