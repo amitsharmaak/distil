@@ -123,7 +123,7 @@ function priorityScore(priority: Priority): number {
 
 function manualPriorityScore(priority: Priority): number {
   // A manual setting is deliberately outside the learned/baseline score range.
-  return priority === "high" ? 300 : priority === "medium" ? 200 : 100;
+  return priority === "high" ? 300 : priority === "medium" ? 200 : -100;
 }
 
 function clampPageSize(value: number | undefined): number {
@@ -227,22 +227,22 @@ export class PostgresFeedQuery {
     if (query.archive === "only") conditions.push(this.sql`i.archived_at IS NOT NULL`);
     else if (query.archive !== "include") conditions.push(this.sql`i.archived_at IS NULL`);
     if (query.topics?.length)
-      conditions.push(this.sql`i.topics ?| ${this.sql.array(query.topics, "text")}`);
+      conditions.push(this.sql`i.topics ?| ${this.sql.array(query.topics)}`);
     if (query.sources?.length)
-      conditions.push(this.sql`i.source_type = ANY(${this.sql.array(query.sources, "text")})`);
+      conditions.push(this.sql`i.source_type = ANY(${this.sql.array(query.sources)})`);
     if (query.contentTypes?.length)
       conditions.push(
-        this.sql`i.content_type = ANY(${this.sql.array(query.contentTypes, "text")})`
+        this.sql`i.content_type = ANY(${this.sql.array(query.contentTypes)})`
       );
     if (query.priorities?.length)
       conditions.push(
         this
-          .sql`COALESCE(i.manual_priority, i.priority) = ANY(${this.sql.array(query.priorities, "text")})`
+          .sql`COALESCE(i.manual_priority, i.priority) = ANY(${this.sql.array(query.priorities)})`
       );
     if (query.collectionIds?.length)
       conditions.push(this.sql`EXISTS (
         SELECT 1 FROM collection_items ci
-        WHERE ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(query.collectionIds, "text")})
+        WHERE ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(query.collectionIds)})
       )`);
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
@@ -256,7 +256,7 @@ export class PostgresFeedQuery {
     const score = this.sql`CASE
       WHEN i.manual_priority='high' THEN 300 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='medium' THEN 200 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
-      WHEN i.manual_priority='low' THEN 100 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
+      WHEN i.manual_priority='low' THEN -100 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       ELSE ${baseline}
         + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
     END`;
@@ -299,7 +299,8 @@ export class PostgresFeedQuery {
         new Date(now)
       );
       // PostgreSQL's value is retained verbatim for an exact keyset cursor.
-      rank.score = Number(row.feed_rank_score);
+      // Recent order is keyed by createdAt, so its explanation keeps the timestamp score.
+      if (sort !== "recent") rank.score = Number(row.feed_rank_score);
       return {
         ...item,
         rank,

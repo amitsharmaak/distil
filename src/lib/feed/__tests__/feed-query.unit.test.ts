@@ -12,14 +12,13 @@ const base = {
 };
 
 describe("feed ranking contracts", () => {
-  it("makes a manual priority an absolute ordering tier with stable reasons", () => {
-    const manual = explainFeedRank({ ...base, manualPriority: "low" }, "for_you", now);
+  it("makes manual high and low priorities absolute ordering tiers with stable reasons", () => {
+    const high = explainFeedRank({ ...base, manualPriority: "high" }, "for_you", now);
+    const low = explainFeedRank({ ...base, manualPriority: "low" }, "for_you", now);
     const learned = explainFeedRank({ ...base, aiPriorityScore: 99 }, "for_you", now);
-    expect(manual.score).toBeGreaterThan(learned.score);
-    expect(manual.reasons).toEqual([
-      "Manual priority: low",
-      "Recent items receive a small tie-break",
-    ]);
+    expect(high.score).toBeGreaterThan(learned.score);
+    expect(low.score).toBeLessThan(learned.score);
+    expect(low.reasons).toEqual(["Manual priority: low", "Recent items receive a small tie-break"]);
   });
 
   it("uses chronological order without an implicit personalization score", () => {
