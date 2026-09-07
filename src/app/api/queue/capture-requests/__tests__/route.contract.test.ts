@@ -10,12 +10,12 @@ import { createCaptureQueueMessageHandler, maxDuration, preferredRegion, runtime
 const captureId = "a1b2c3d4-e5f6-4789-a123-456789abcdef";
 
 describe("capture-requests queue callback", () => {
-  it("uses the Node runtime and a five-minute callback lease in Singapore", () => {
+  it("uses the Node runtime and a Hobby-compatible callback lease in Singapore", () => {
     expect(runtime).toBe("nodejs");
-    expect(maxDuration).toBe(300);
+    expect(maxDuration).toBe(60);
     expect(preferredRegion).toBe("sin1");
     expect(handleCallback).toHaveBeenCalledWith(expect.any(Function), {
-      visibilityTimeoutSeconds: 300,
+      visibilityTimeoutSeconds: 60,
     });
   });
 
@@ -30,7 +30,7 @@ describe("capture-requests queue callback", () => {
     expect(vercel.regions).toEqual(["sin1"]);
     expect(vercel.functions).toEqual({
       "src/app/api/queue/capture-requests/route.ts": {
-        maxDuration: 300,
+        maxDuration: 60,
         experimentalTriggers: [
           {
             type: "queue/v2beta",

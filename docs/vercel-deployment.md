@@ -8,7 +8,7 @@ provides PostgreSQL. Hosted connectors and the legacy interval scheduler stay di
 | Component           | Region                                                     | Connection / trigger                             |
 | ------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
 | Next.js application | Vercel `sin1`                                              | `DATABASE_URL` (pooled)                          |
-| Capture worker      | Vercel `sin1`, maximum 300 seconds                         | Vercel Queue topic `capture-requests`            |
+| Capture worker      | Vercel `sin1`, maximum 60 seconds on Hobby Preview         | Vercel Queue topic `capture-requests`            |
 | PostgreSQL          | Neon Singapore region, where the selected plan supports it | Pooled URL at runtime; unpooled URL for releases |
 
 The PostgreSQL client uses at most four connections per function instance and sets
@@ -105,7 +105,7 @@ not modify the source SQLite file.
 - A controlled transient upstream failure can be retried and does not create a second item.
 - Revoking a dedicated test token causes subsequent Shortcut/extension requests to return
   unauthorized while existing session login remains valid.
-- The queue consumer appears for topic `capture-requests`, has a 300-second duration, and shows no
+- The queue consumer appears for topic `capture-requests`, has a 60-second Hobby Preview duration, and shows no
   continuously failing deliveries.
 - Application, queue, and test logs contain no plaintext capture tokens, database URLs, passwords,
   session secrets, OAuth credentials, or AI keys.

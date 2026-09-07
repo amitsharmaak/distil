@@ -90,7 +90,8 @@ import { db, insertItem } from "@/lib/db";
 import type { ContentItem } from "@/lib/types";
 
 // Import the route handlers under test.
-import { GET, POST, OPTIONS, pendingIngestions } from "../route";
+import { GET, POST, OPTIONS } from "../route";
+import { pendingIngestions } from "@/lib/intelligence/pending-ingestions";
 
 import { getItemByNormalizedUrl, getItems } from "@/lib/db";
 

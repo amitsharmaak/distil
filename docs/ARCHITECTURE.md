@@ -10,7 +10,7 @@ When `POST /api/items` receives a URL, it returns `202 Accepted` immediately and
 
 This matters because the pipeline can take 3–10 seconds per item (network fetch + multiple AI calls). A synchronous response would time out browser extension requests and block Gmail syncs.
 
-The exported `pendingIngestions` set in `src/app/api/items/route.ts` exists solely for tests — they can `await` all in-flight work before asserting database state.
+The `pendingIngestions` set in `src/lib/intelligence/pending-ingestions.ts` exists solely for legacy compatibility tests — they can `await` all in-flight work before asserting database state without adding an unsupported export to a Next.js route module.
 
 ---
 

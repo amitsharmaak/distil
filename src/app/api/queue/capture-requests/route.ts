@@ -7,7 +7,7 @@ import { getRepositorySet } from "@/lib/database";
 import { createCaptureQueueConsumer } from "@/lib/queue/consumer";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 export const preferredRegion = "sin1";
 
 export type CaptureMessageConsumer = (message: CaptureQueueMessage) => Promise<void>;

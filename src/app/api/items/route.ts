@@ -26,12 +26,9 @@ import { createCaptureSchema } from "@/lib/capture/schema";
 import { config } from "@/lib/config";
 import { hybridSearch } from "@/lib/ai/search";
 import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
+import { pendingIngestions } from "@/lib/intelligence/pending-ingestions";
 import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
-
-// Tracks pending background ingestions. Tests can await `pendingIngestions`
-// to wait for fire-and-forget work to settle before asserting DB state.
-export const pendingIngestions = new Set<Promise<void>>();
 
 /**
  * Fetches the URL and runs the full intelligence pipeline.
