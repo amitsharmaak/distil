@@ -26,6 +26,7 @@ data/publisher-sessions/
 /playwright-report
 /test-results
 /blob-report
+/artifacts/tenant-migration/
 
 # next.js
 /.next/

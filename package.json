@@ -36,6 +36,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:import:sqlite": "tsx scripts/import-sqlite.ts",
+    "db:tenant:verify": "tsx scripts/verify-tenant-migration.ts",
     "db:check": "drizzle-kit check"
   },
   "dependencies": {
