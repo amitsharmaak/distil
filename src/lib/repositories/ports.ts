@@ -1,4 +1,14 @@
 import type { CaptureReceipt, CaptureSource, CaptureStatus } from "@/lib/contracts/capture";
+import type { IntelligenceArtifact } from "@/lib/knowledge/artifacts";
+import type {
+  ClaimEvidence,
+  ContentChunkRecord,
+  ContentVersionSource,
+  GroundedClaim,
+  ItemContentVersion,
+  KnowledgeBackfillCheckpoint,
+  KnowledgeBackfillType,
+} from "@/lib/knowledge/types";
 import type { ContentItem, Notification, Priority } from "@/lib/types";
 
 export interface ItemFilters {
@@ -377,6 +387,131 @@ export interface RawContentRepository {
   attachItem(rawContentId: string, itemId: string): Promise<void>;
 }
 
+export interface ContentVersionCandidate {
+  itemId: string;
+  title: string;
+  fullContent?: string;
+  summary: string;
+}
+
+export interface NewItemContentVersion {
+  id: string;
+  itemId: string;
+  contentHash: string;
+  extractorVersion: string;
+  source: ContentVersionSource;
+  content: string;
+  characterCount: number;
+  tokenCount: number;
+  createdAt: string;
+}
+
+export interface ContentVersionRepository {
+  findById(id: string): Promise<ItemContentVersion | undefined>;
+  findLatestForItem(itemId: string): Promise<ItemContentVersion | undefined>;
+  listForItem(itemId: string): Promise<ItemContentVersion[]>;
+  /** Inserts one immutable identity or returns the matching row from an earlier attempt. */
+  create(record: NewItemContentVersion): Promise<{ record: ItemContentVersion; created: boolean }>;
+  listReadyCandidates(input: {
+    afterItemId?: string;
+    limit: number;
+  }): Promise<ContentVersionCandidate[]>;
+}
+
+export interface ContentChunkRepository {
+  findById(id: string): Promise<ContentChunkRecord | undefined>;
+  listForContentVersion(contentVersionId: string): Promise<ContentChunkRecord[]>;
+  /** Inserts a complete chunk set in one transaction; existing deterministic chunks are retained. */
+  insertMany(
+    records: ContentChunkRecord[]
+  ): Promise<{ records: ContentChunkRecord[]; insertedCount: number }>;
+  listUnchunkedVersions(input: {
+    afterContentVersionId?: string;
+    limit: number;
+  }): Promise<ItemContentVersion[]>;
+}
+
+export interface LegacySummaryCandidate {
+  summaryId: string;
+  itemId: string;
+  contentVersionId: string;
+  promptType: string;
+  summary: string;
+  model: string;
+  createdAt: string;
+}
+
+export interface DegradedSummaryCandidate {
+  itemId: string;
+  title: string;
+  contentVersionId: string;
+  content: string;
+}
+
+export interface NewIntelligenceArtifact extends Omit<
+  IntelligenceArtifact,
+  "version" | "isCurrent" | "supersedesArtifactId"
+> {
+  makeCurrent: boolean;
+  /** Publishes as current only when no valid current artifact exists, without skipping history. */
+  makeCurrentIfNone?: boolean;
+}
+
+export interface IntelligenceArtifactRepository {
+  findById(id: string): Promise<IntelligenceArtifact | undefined>;
+  findCurrent(
+    itemId: string,
+    artifactType: IntelligenceArtifact["artifactType"]
+  ): Promise<IntelligenceArtifact | undefined>;
+  listForItem(itemId: string): Promise<IntelligenceArtifact[]>;
+  /** Publishes a new version and stales the previous current version atomically. */
+  publish(
+    record: NewIntelligenceArtifact
+  ): Promise<{ record: IntelligenceArtifact; created: boolean }>;
+  listLegacySummaryCandidates(input: {
+    afterSummaryId?: string;
+    limit: number;
+  }): Promise<LegacySummaryCandidate[]>;
+  listDegradedSummaryCandidates(input: {
+    afterItemId?: string;
+    limit: number;
+  }): Promise<DegradedSummaryCandidate[]>;
+}
+
+export interface ClaimRepository {
+  listForArtifact(artifactId: string): Promise<GroundedClaim[]>;
+  /** Validates and inserts claims plus exact evidence spans in one transaction. */
+  insertWithEvidence(
+    claims: Array<Omit<GroundedClaim, "evidence"> & { evidence: ClaimEvidence[] }>
+  ): Promise<GroundedClaim[]>;
+}
+
+export interface BackfillAdvance {
+  expectedCursor?: string;
+  cursor?: string;
+  checkpoint: Record<string, unknown>;
+  processedDelta: number;
+  completed: boolean;
+  at: string;
+}
+
+export interface KnowledgeBackfillRepository {
+  find(jobKey: string): Promise<KnowledgeBackfillCheckpoint | undefined>;
+  create(checkpoint: KnowledgeBackfillCheckpoint): Promise<KnowledgeBackfillCheckpoint>;
+  /** Starts a pending/failed attempt. Calling start on a running checkpoint is idempotent. */
+  start(jobKey: string, at: string): Promise<KnowledgeBackfillCheckpoint | undefined>;
+  /** Compare-and-set cursor advancement prevents duplicate workers from double-counting a batch. */
+  advance(
+    jobKey: string,
+    advance: BackfillAdvance
+  ): Promise<KnowledgeBackfillCheckpoint | undefined>;
+  fail(jobKey: string, error: string, at: string): Promise<KnowledgeBackfillCheckpoint | undefined>;
+  listByType(
+    jobType: KnowledgeBackfillType,
+    limit?: number
+  ): Promise<KnowledgeBackfillCheckpoint[]>;
+}
+
 export interface PublisherQueueEntry {
   publisherId: string;
   url: string;
@@ -449,6 +584,11 @@ export interface RepositorySet {
   notifications: NotificationRepository;
   embeddings: EmbeddingRepository;
   rawContent: RawContentRepository;
+  contentVersions: ContentVersionRepository;
+  contentChunks: ContentChunkRepository;
+  intelligenceArtifacts: IntelligenceArtifactRepository;
+  claims: ClaimRepository;
+  knowledgeBackfills: KnowledgeBackfillRepository;
   publisherQueue: PublisherQueueRepository;
   jobs: JobQueueRepository;
   agent: AgentRepository;

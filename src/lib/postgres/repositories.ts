@@ -4,8 +4,11 @@ import type {
   CaptureRepository,
   CaptureTokenRepository,
   CaptureTransition,
+  ClaimRepository,
   AnnotationRecord,
   AnnotationRepository,
+  ContentChunkRepository,
+  ContentVersionRepository,
   CollectionItemRecord,
   CollectionRecord,
   CollectionRepository,
@@ -22,7 +25,9 @@ import type {
   ItemNoteRecord,
   ItemNoteRepository,
   ItemRepository,
+  IntelligenceArtifactRepository,
   JobQueueRepository,
+  KnowledgeBackfillRepository,
   NewCaptureRecord,
   NotificationRepository,
   OAuthTokenRecord,
@@ -38,6 +43,14 @@ import type {
   SummaryRecord,
   SummaryRepository,
 } from "@/lib/repositories/ports";
+import { sha256 } from "@/lib/knowledge/content-identity";
+import type { IntelligenceArtifact } from "@/lib/knowledge/artifacts";
+import type {
+  ContentChunkRecord,
+  GroundedClaim,
+  ItemContentVersion,
+  KnowledgeBackfillCheckpoint,
+} from "@/lib/knowledge/types";
 import type { ContentItem, Notification, Priority } from "@/lib/types";
 import { normalizeUrl } from "@/lib/utils";
 import { mapCapture, mapCaptureToken, mapItem } from "./mappers";
@@ -771,6 +784,547 @@ class PostgresRawContent implements RawContentRepository {
   }
 }
 
+const mapContentVersion = (row: Row): ItemContentVersion => ({
+  id: String(row.id),
+  itemId: String(row.item_id),
+  version: Number(row.version),
+  contentHash: String(row.content_hash),
+  extractorVersion: String(row.extractor_version),
+  source: row.source as ItemContentVersion["source"],
+  content: String(row.content),
+  characterCount: Number(row.character_count),
+  tokenCount: Number(row.token_count),
+  createdAt: iso(row.created_at),
+});
+
+class PostgresContentVersions implements ContentVersionRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async findById(id: string) {
+    const row = first(await this.sql<Row[]>`SELECT * FROM item_content_versions WHERE id=${id}`);
+    return row ? mapContentVersion(row) : undefined;
+  }
+
+  async findLatestForItem(itemId: string) {
+    const row = first(
+      await this.sql<
+        Row[]
+      >`SELECT * FROM item_content_versions WHERE item_id=${itemId} ORDER BY version DESC LIMIT 1`
+    );
+    return row ? mapContentVersion(row) : undefined;
+  }
+
+  async listForItem(itemId: string) {
+    return (
+      await this.sql<
+        Row[]
+      >`SELECT * FROM item_content_versions WHERE item_id=${itemId} ORDER BY version ASC`
+    ).map(mapContentVersion);
+  }
+
+  async create(record: Parameters<ContentVersionRepository["create"]>[0]) {
+    return this.sql.begin(async (tx) => {
+      await tx`SELECT id FROM items WHERE id=${record.itemId} FOR UPDATE`;
+      const existing = first(
+        await tx<Row[]>`
+          SELECT * FROM item_content_versions
+          WHERE item_id=${record.itemId}
+            AND content_hash=${record.contentHash}
+            AND extractor_version=${record.extractorVersion}
+        `
+      );
+      if (existing) return { record: mapContentVersion(existing), created: false };
+
+      const versions = await tx<{ version: number }[]>`
+        SELECT COALESCE(MAX(version), 0)::int + 1 AS version
+        FROM item_content_versions
+        WHERE item_id=${record.itemId}
+      `;
+      const version = versions[0].version;
+      const rows = await tx<Row[]>`
+        INSERT INTO item_content_versions
+          (id,item_id,version,content_hash,extractor_version,source,content,
+           character_count,token_count,created_at)
+        VALUES
+          (${record.id},${record.itemId},${version},${record.contentHash},
+           ${record.extractorVersion},${record.source},${record.content},
+           ${record.characterCount},${record.tokenCount},${record.createdAt})
+        RETURNING *
+      `;
+      return { record: mapContentVersion(rows[0]), created: true };
+    });
+  }
+
+  async listReadyCandidates(input: Parameters<ContentVersionRepository["listReadyCandidates"]>[0]) {
+    const after = input.afterItemId ?? null;
+    return (
+      await this.sql<Row[]>`
+        SELECT id AS item_id,title,full_content,summary
+        FROM items
+        WHERE processing_status='ready'
+          AND (${after}::text IS NULL OR id > ${after})
+          AND length(trim(COALESCE(NULLIF(trim(full_content), ''), summary))) > 0
+        ORDER BY id ASC
+        LIMIT ${input.limit}
+      `
+    ).map((row) => ({
+      itemId: String(row.item_id),
+      title: String(row.title),
+      fullContent: row.full_content == null ? undefined : String(row.full_content),
+      summary: String(row.summary),
+    }));
+  }
+}
+
+const mapContentChunk = (row: Row): ContentChunkRecord => ({
+  id: String(row.id),
+  contentVersionId: String(row.content_version_id),
+  itemId: String(row.item_id),
+  ordinal: Number(row.ordinal),
+  content: String(row.content),
+  contentHash: String(row.content_hash),
+  startOffset: Number(row.start_offset),
+  endOffset: Number(row.end_offset),
+  tokenCount: Number(row.token_count),
+  embeddingModel: row.embedding_model == null ? undefined : String(row.embedding_model),
+  embeddingDimensions:
+    row.embedding_dimensions == null ? undefined : Number(row.embedding_dimensions),
+  embeddingStatus: row.embedding_status as ContentChunkRecord["embeddingStatus"],
+  embeddingError: row.embedding_error == null ? undefined : String(row.embedding_error),
+  embeddingUpdatedAt: row.embedding_updated_at == null ? undefined : iso(row.embedding_updated_at),
+  embeddedAt: row.embedded_at == null ? undefined : iso(row.embedded_at),
+  createdAt: iso(row.created_at),
+});
+
+class PostgresContentChunks implements ContentChunkRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async findById(id: string) {
+    const row = first(await this.sql<Row[]>`SELECT * FROM content_chunks WHERE id=${id}`);
+    return row ? mapContentChunk(row) : undefined;
+  }
+
+  async listForContentVersion(contentVersionId: string) {
+    return (
+      await this.sql<
+        Row[]
+      >`SELECT * FROM content_chunks WHERE content_version_id=${contentVersionId} ORDER BY ordinal ASC`
+    ).map(mapContentChunk);
+  }
+
+  async insertMany(records: ContentChunkRecord[]) {
+    if (records.length === 0) return { records: [], insertedCount: 0 };
+    return this.sql.begin(async (tx) => {
+      let insertedCount = 0;
+      const stored: ContentChunkRecord[] = [];
+      for (const record of records) {
+        const inserted = await tx<Row[]>`
+          INSERT INTO content_chunks
+            (id,content_version_id,item_id,ordinal,content,content_hash,start_offset,end_offset,
+             token_count,embedding_model,embedding_dimensions,embedding_status,embedding_error,
+             embedding_updated_at,embedded_at,created_at)
+          VALUES
+            (${record.id},${record.contentVersionId},${record.itemId},${record.ordinal},
+             ${record.content},${record.contentHash},${record.startOffset},${record.endOffset},
+             ${record.tokenCount},${record.embeddingModel ?? null},
+             ${record.embeddingDimensions ?? null},${record.embeddingStatus},
+             ${record.embeddingError ?? null},${record.embeddingUpdatedAt ?? null},
+             ${record.embeddedAt ?? null},${record.createdAt})
+          ON CONFLICT DO NOTHING
+          RETURNING *
+        `;
+        if (inserted[0]) {
+          insertedCount += 1;
+          stored.push(mapContentChunk(inserted[0]));
+          continue;
+        }
+        const existing = first(await tx<Row[]>`SELECT * FROM content_chunks WHERE id=${record.id}`);
+        if (!existing) {
+          throw new Error(`Chunk identity conflict for ${record.id}`);
+        }
+        stored.push(mapContentChunk(existing));
+      }
+      return { records: stored, insertedCount };
+    });
+  }
+
+  async listUnchunkedVersions(
+    input: Parameters<ContentChunkRepository["listUnchunkedVersions"]>[0]
+  ) {
+    const after = input.afterContentVersionId ?? null;
+    return (
+      await this.sql<Row[]>`
+        SELECT versions.*
+        FROM item_content_versions versions
+        WHERE (${after}::text IS NULL OR versions.id > ${after})
+          AND NOT EXISTS (
+            SELECT 1 FROM content_chunks chunks
+            WHERE chunks.content_version_id=versions.id
+          )
+        ORDER BY versions.id ASC
+        LIMIT ${input.limit}
+      `
+    ).map(mapContentVersion);
+  }
+}
+
+const mapArtifact = (row: Row): IntelligenceArtifact => ({
+  id: String(row.id),
+  itemId: String(row.item_id),
+  contentVersionId: String(row.content_version_id),
+  artifactType: row.artifact_type as IntelligenceArtifact["artifactType"],
+  version: Number(row.version),
+  status: row.status as IntelligenceArtifact["status"],
+  content: row.content == null ? undefined : String(row.content),
+  contentHash: row.content_hash == null ? undefined : String(row.content_hash),
+  provenance: row.provenance as IntelligenceArtifact["provenance"],
+  promptVersion: row.prompt_version == null ? undefined : String(row.prompt_version),
+  provider: row.provider == null ? undefined : String(row.provider),
+  model: row.model == null ? undefined : String(row.model),
+  isCurrent: Boolean(row.is_current),
+  supersedesArtifactId:
+    row.supersedes_artifact_id == null ? undefined : String(row.supersedes_artifact_id),
+  metadata: row.metadata as Record<string, unknown>,
+  errorCode:
+    row.error_code == null
+      ? undefined
+      : (String(row.error_code) as IntelligenceArtifact["errorCode"]),
+  errorMessage: row.error_message == null ? undefined : String(row.error_message),
+  createdAt: iso(row.created_at),
+  updatedAt: iso(row.updated_at),
+  completedAt: row.completed_at == null ? undefined : iso(row.completed_at),
+});
+
+class PostgresIntelligenceArtifacts implements IntelligenceArtifactRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async findById(id: string) {
+    const row = first(await this.sql<Row[]>`SELECT * FROM intelligence_artifacts WHERE id=${id}`);
+    return row ? mapArtifact(row) : undefined;
+  }
+
+  async findCurrent(itemId: string, artifactType: IntelligenceArtifact["artifactType"]) {
+    const row = first(
+      await this.sql<Row[]>`
+        SELECT * FROM intelligence_artifacts
+        WHERE item_id=${itemId} AND artifact_type=${artifactType} AND is_current=true
+      `
+    );
+    return row ? mapArtifact(row) : undefined;
+  }
+
+  async listForItem(itemId: string) {
+    return (
+      await this.sql<Row[]>`
+        SELECT * FROM intelligence_artifacts
+        WHERE item_id=${itemId}
+        ORDER BY artifact_type ASC,version ASC
+      `
+    ).map(mapArtifact);
+  }
+
+  async publish(record: Parameters<IntelligenceArtifactRepository["publish"]>[0]) {
+    return this.sql.begin(async (tx) => {
+      await tx`SELECT id FROM items WHERE id=${record.itemId} FOR UPDATE`;
+      const existing = first(
+        await tx<Row[]>`SELECT * FROM intelligence_artifacts WHERE id=${record.id}`
+      );
+      if (existing) return { record: mapArtifact(existing), created: false };
+
+      const current = first(
+        await tx<Row[]>`
+          SELECT * FROM intelligence_artifacts
+          WHERE item_id=${record.itemId}
+            AND artifact_type=${record.artifactType}
+            AND is_current=true
+          FOR UPDATE
+        `
+      );
+      const makeCurrent = record.makeCurrent || (record.makeCurrentIfNone === true && !current);
+
+      const versions = await tx<{ version: number }[]>`
+        SELECT COALESCE(MAX(version), 0)::int + 1 AS version
+        FROM intelligence_artifacts
+        WHERE item_id=${record.itemId} AND artifact_type=${record.artifactType}
+      `;
+      const version = versions[0].version;
+      if (makeCurrent && current) {
+        await tx`
+          UPDATE intelligence_artifacts
+          SET status='stale',is_current=false,updated_at=${record.updatedAt}
+          WHERE id=${String(current.id)}
+        `;
+      }
+      const rows = await tx<Row[]>`
+        INSERT INTO intelligence_artifacts
+          (id,item_id,content_version_id,artifact_type,version,status,content,content_hash,
+           provenance,prompt_version,provider,model,is_current,supersedes_artifact_id,metadata,
+           error_code,error_message,created_at,updated_at,completed_at)
+        VALUES
+          (${record.id},${record.itemId},${record.contentVersionId},${record.artifactType},
+           ${version},${record.status},${record.content ?? null},${record.contentHash ?? null},
+           ${record.provenance},${record.promptVersion ?? null},${record.provider ?? null},
+           ${record.model ?? null},${makeCurrent},
+           ${makeCurrent && current ? String(current.id) : null},
+           ${tx.json(record.metadata as never)},${record.errorCode ?? null},
+           ${record.errorMessage ?? null},${record.createdAt},${record.updatedAt},
+           ${record.completedAt ?? null})
+        RETURNING *
+      `;
+      return { record: mapArtifact(rows[0]), created: true };
+    });
+  }
+
+  async listLegacySummaryCandidates(
+    input: Parameters<IntelligenceArtifactRepository["listLegacySummaryCandidates"]>[0]
+  ) {
+    const after = input.afterSummaryId ?? null;
+    return (
+      await this.sql<Row[]>`
+        SELECT summaries.id AS summary_id,summaries.item_id,versions.id AS content_version_id,
+               summaries.prompt_type,summaries.summary,summaries.model,summaries.created_at
+        FROM ai_summaries summaries
+        JOIN LATERAL (
+          SELECT id FROM item_content_versions
+          WHERE item_id=summaries.item_id
+          ORDER BY version DESC
+          LIMIT 1
+        ) versions ON true
+        WHERE (${after}::text IS NULL OR summaries.id > ${after})
+        ORDER BY summaries.id ASC
+        LIMIT ${input.limit}
+      `
+    ).map((row) => ({
+      summaryId: String(row.summary_id),
+      itemId: String(row.item_id),
+      contentVersionId: String(row.content_version_id),
+      promptType: String(row.prompt_type),
+      summary: String(row.summary),
+      model: String(row.model),
+      createdAt: iso(row.created_at),
+    }));
+  }
+
+  async listDegradedSummaryCandidates(
+    input: Parameters<IntelligenceArtifactRepository["listDegradedSummaryCandidates"]>[0]
+  ) {
+    const after = input.afterItemId ?? null;
+    return (
+      await this.sql<Row[]>`
+        SELECT items.id AS item_id,items.title,versions.id AS content_version_id,versions.content
+        FROM items
+        JOIN LATERAL (
+          SELECT id,content FROM item_content_versions
+          WHERE item_id=items.id
+          ORDER BY version DESC
+          LIMIT 1
+        ) versions ON true
+        WHERE items.processing_status='ready'
+          AND (${after}::text IS NULL OR items.id > ${after})
+          AND NOT EXISTS (
+            SELECT 1 FROM intelligence_artifacts artifacts
+            WHERE artifacts.item_id=items.id
+              AND artifacts.artifact_type='brief_summary'
+              AND artifacts.is_current=true
+          )
+        ORDER BY items.id ASC
+        LIMIT ${input.limit}
+      `
+    ).map((row) => ({
+      itemId: String(row.item_id),
+      title: String(row.title),
+      contentVersionId: String(row.content_version_id),
+      content: String(row.content),
+    }));
+  }
+}
+
+class PostgresClaims implements ClaimRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async listForArtifact(artifactId: string) {
+    const claimRows = await this.sql<
+      Row[]
+    >`SELECT * FROM intelligence_claims WHERE artifact_id=${artifactId} ORDER BY ordinal ASC`;
+    const claims: GroundedClaim[] = [];
+    for (const row of claimRows) {
+      const evidenceRows = await this.sql<Row[]>`
+        SELECT * FROM claim_evidence
+        WHERE claim_id=${String(row.id)}
+        ORDER BY chunk_id ASC,start_offset ASC,end_offset ASC
+      `;
+      claims.push({
+        id: String(row.id),
+        artifactId: String(row.artifact_id),
+        ordinal: Number(row.ordinal),
+        claim: String(row.claim),
+        claimHash: String(row.claim_hash),
+        confidence: row.confidence == null ? undefined : Number(row.confidence),
+        evidence: evidenceRows.map((evidence) => ({
+          claimId: String(evidence.claim_id),
+          chunkId: String(evidence.chunk_id),
+          startOffset: Number(evidence.start_offset),
+          endOffset: Number(evidence.end_offset),
+          exactExcerpt: String(evidence.exact_excerpt),
+          evidenceHash: String(evidence.evidence_hash),
+        })),
+      });
+    }
+    return claims;
+  }
+
+  async insertWithEvidence(claims: Parameters<ClaimRepository["insertWithEvidence"]>[0]) {
+    if (claims.length === 0) return [];
+    const artifactIds = new Set(claims.map((claim) => claim.artifactId));
+    if (artifactIds.size !== 1) throw new Error("Claims in one batch must share an artifact");
+
+    await this.sql.begin(async (tx) => {
+      for (const claim of claims) {
+        if (claim.claimHash !== sha256(claim.claim)) {
+          throw new Error(`Claim hash does not match claim text for ${claim.id}`);
+        }
+        await tx`
+          INSERT INTO intelligence_claims
+            (id,artifact_id,ordinal,claim,claim_hash,confidence)
+          VALUES
+            (${claim.id},${claim.artifactId},${claim.ordinal},${claim.claim},
+             ${claim.claimHash},${claim.confidence ?? null})
+          ON CONFLICT (id) DO NOTHING
+        `;
+        for (const evidence of claim.evidence) {
+          if (evidence.claimId !== claim.id) {
+            throw new Error(`Evidence ${evidence.chunkId} belongs to a different claim`);
+          }
+          const chunk = first(
+            await tx<Row[]>`SELECT content FROM content_chunks WHERE id=${evidence.chunkId}`
+          );
+          if (!chunk) throw new Error(`Evidence chunk ${evidence.chunkId} does not exist`);
+          const excerpt = String(chunk.content).slice(evidence.startOffset, evidence.endOffset);
+          if (excerpt !== evidence.exactExcerpt || sha256(excerpt) !== evidence.evidenceHash) {
+            throw new Error(`Evidence does not match chunk ${evidence.chunkId}`);
+          }
+          await tx`
+            INSERT INTO claim_evidence
+              (claim_id,chunk_id,start_offset,end_offset,exact_excerpt,evidence_hash)
+            VALUES
+              (${evidence.claimId},${evidence.chunkId},${evidence.startOffset},
+               ${evidence.endOffset},${evidence.exactExcerpt},${evidence.evidenceHash})
+            ON CONFLICT DO NOTHING
+          `;
+        }
+      }
+    });
+    return this.listForArtifact(claims[0].artifactId);
+  }
+}
+
+const mapBackfillCheckpoint = (row: Row): KnowledgeBackfillCheckpoint => ({
+  jobKey: String(row.job_key),
+  jobType: row.job_type as KnowledgeBackfillCheckpoint["jobType"],
+  status: row.status as KnowledgeBackfillCheckpoint["status"],
+  cursor: row.cursor == null ? undefined : String(row.cursor),
+  checkpoint:
+    typeof row.checkpoint === "string"
+      ? (JSON.parse(row.checkpoint) as Record<string, unknown>)
+      : (row.checkpoint as Record<string, unknown>),
+  processedCount: Number(row.processed_count),
+  failedCount: Number(row.failed_count),
+  attempt: Number(row.attempt),
+  lastError: row.last_error == null ? undefined : String(row.last_error),
+  startedAt: row.started_at == null ? undefined : iso(row.started_at),
+  completedAt: row.completed_at == null ? undefined : iso(row.completed_at),
+  updatedAt: iso(row.updated_at),
+});
+
+class PostgresKnowledgeBackfills implements KnowledgeBackfillRepository {
+  constructor(private readonly sql: Sql) {}
+
+  async find(jobKey: string) {
+    const row = first(
+      await this.sql<Row[]>`SELECT * FROM knowledge_backfill_checkpoints WHERE job_key=${jobKey}`
+    );
+    return row ? mapBackfillCheckpoint(row) : undefined;
+  }
+
+  async create(checkpoint: KnowledgeBackfillCheckpoint) {
+    const rows = await this.sql<Row[]>`
+      INSERT INTO knowledge_backfill_checkpoints
+        (job_key,job_type,status,cursor,checkpoint,processed_count,failed_count,attempt,
+         last_error,started_at,completed_at,updated_at)
+      VALUES
+        (${checkpoint.jobKey},${checkpoint.jobType},${checkpoint.status},
+         ${checkpoint.cursor ?? null},${this.sql.json(checkpoint.checkpoint as never)},
+         ${checkpoint.processedCount},${checkpoint.failedCount},${checkpoint.attempt},
+         ${checkpoint.lastError ?? null},${checkpoint.startedAt ?? null},
+         ${checkpoint.completedAt ?? null},${checkpoint.updatedAt})
+      ON CONFLICT (job_key) DO NOTHING
+      RETURNING *
+    `;
+    if (rows[0]) return mapBackfillCheckpoint(rows[0]);
+    return (await this.find(checkpoint.jobKey))!;
+  }
+
+  async start(jobKey: string, at: string) {
+    const row = first(
+      await this.sql<Row[]>`
+        UPDATE knowledge_backfill_checkpoints
+        SET status='running',
+            attempt=attempt + CASE WHEN status IN ('pending','failed') THEN 1 ELSE 0 END,
+            last_error=NULL,
+            started_at=COALESCE(started_at,${at}),
+            completed_at=NULL,
+            updated_at=${at}
+        WHERE job_key=${jobKey} AND status IN ('pending','failed','running')
+        RETURNING *
+      `
+    );
+    return row ? mapBackfillCheckpoint(row) : this.find(jobKey);
+  }
+
+  async advance(jobKey: string, advance: Parameters<KnowledgeBackfillRepository["advance"]>[1]) {
+    const expectedCursor = advance.expectedCursor ?? null;
+    const row = first(
+      await this.sql<Row[]>`
+        UPDATE knowledge_backfill_checkpoints
+        SET status=${advance.completed ? "completed" : "running"},
+            cursor=${advance.cursor ?? null},
+            checkpoint=${this.sql.json(advance.checkpoint as never)},
+            processed_count=processed_count + ${advance.processedDelta},
+            completed_at=${advance.completed ? advance.at : null},
+            updated_at=${advance.at}
+        WHERE job_key=${jobKey}
+          AND status='running'
+          AND cursor IS NOT DISTINCT FROM ${expectedCursor}
+        RETURNING *
+      `
+    );
+    return row ? mapBackfillCheckpoint(row) : undefined;
+  }
+
+  async fail(jobKey: string, error: string, at: string) {
+    const row = first(
+      await this.sql<Row[]>`
+        UPDATE knowledge_backfill_checkpoints
+        SET status='failed',failed_count=failed_count+1,last_error=${error},updated_at=${at}
+        WHERE job_key=${jobKey} AND status='running'
+        RETURNING *
+      `
+    );
+    return row ? mapBackfillCheckpoint(row) : undefined;
+  }
+
+  async listByType(jobType: KnowledgeBackfillCheckpoint["jobType"], limit = 100) {
+    return (
+      await this.sql<Row[]>`
+        SELECT * FROM knowledge_backfill_checkpoints
+        WHERE job_type=${jobType}
+        ORDER BY updated_at DESC
+        LIMIT ${limit}
+      `
+    ).map(mapBackfillCheckpoint);
+  }
+}
+
 class PostgresPublisherQueue implements PublisherQueueRepository {
   constructor(private readonly sql: Sql) {}
 
@@ -849,6 +1403,7 @@ class PostgresJobs implements JobQueueRepository {
         (${input.id}, ${input.jobType}, ${this.sql.json(payload as never)},
          ${input.priority ?? 0}, ${input.maxRetries ?? 3}, ${input.runAfter ?? null},
          'pending', now(), now())
+      ON CONFLICT (id) DO NOTHING
     `;
   }
 
@@ -1032,6 +1587,11 @@ export function createPostgresRepositories(sql: Sql): RepositorySet {
     notifications: new PostgresNotifications(sql),
     embeddings: new PostgresEmbeddings(sql),
     rawContent: new PostgresRawContent(sql),
+    contentVersions: new PostgresContentVersions(sql),
+    contentChunks: new PostgresContentChunks(sql),
+    intelligenceArtifacts: new PostgresIntelligenceArtifacts(sql),
+    claims: new PostgresClaims(sql),
+    knowledgeBackfills: new PostgresKnowledgeBackfills(sql),
     publisherQueue: new PostgresPublisherQueue(sql),
     jobs: new PostgresJobs(sql),
     agent: new PostgresAgent(sql),
