@@ -1,8 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-
-import { apiLogger } from "@/lib/logger";
-import { handleCallback } from "@/lib/connectors/gmail";
-import { config } from "@/lib/config";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /**
  * GET /api/auth/gmail/callback
@@ -14,25 +11,10 @@ import { config } from "@/lib/config";
  * Success: redirects to /sources?connected=gmail
  * Failure: redirects to /sources?error=gmail_denied | gmail_failed
  */
-export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get("code");
-  const error = request.nextUrl.searchParams.get("error");
-
-  if (error || !code) {
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=gmail_denied`,
-    );
-  }
-
+export async function GET(request: Request) {
   try {
-    await handleCallback(code);
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?connected=gmail`,
-    );
-  } catch (err) {
-    apiLogger.error({ err }, "Gmail callback token exchange failed");
-    return NextResponse.redirect(
-      `${config.apiBaseUrl}/sources?error=gmail_failed`,
-    );
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }

@@ -6,8 +6,7 @@
 
 import { NextResponse } from "next/server";
 
-import { apiLogger } from "@/lib/logger";
-import { markNotificationRead } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -19,16 +18,18 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await markNotificationRead(id);
+    const { repositories } = await requireTenantRoute(request);
+    // RLS scopes this lookup. A foreign identifier is intentionally identical
+    // to an absent identifier rather than revealing that another user has it.
+    if (!(await repositories.notifications.find(id))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404, headers: CORS_HEADERS });
+    }
+    await repositories.notifications.markRead(id);
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
-    apiLogger.error({ err: error }, "PATCH /api/notifications/[id] failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return tenantRouteFailureResponse(error);
   }
 }

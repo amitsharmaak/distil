@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
-
-import { apiLogger } from "@/lib/logger";
-import { syncNewsletters } from "@/lib/connectors/gmail";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /**
  * POST /api/gmail/sync
@@ -11,18 +9,10 @@ import { syncNewsletters } from "@/lib/connectors/gmail";
  *
  * Returns: { count: number, items: ProcessingResult[] }
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const { count, items } = await syncNewsletters();
-    return NextResponse.json({ count, items });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Sync failed";
-
-    if (message === "Gmail not connected") {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-
-    apiLogger.error({ err }, "POST /api/gmail/sync unexpected error");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }

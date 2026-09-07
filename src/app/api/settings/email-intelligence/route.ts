@@ -7,20 +7,19 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { apiLogger } from "@/lib/logger";
-import { getUserSetting, setUserSetting } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const DEFAULT_EMAIL_CATEGORIES = ["newsletter", "digest", "announcement"];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const raw = await getUserSetting("email_intelligence_categories");
+    const { repositories } = await requireTenantRoute(request);
+    const raw = await repositories.settings.get("email_intelligence_categories");
     const allowedCategories =
       raw === undefined ? DEFAULT_EMAIL_CATEGORIES : (JSON.parse(raw) as string[]);
     return NextResponse.json({ allowedCategories });
   } catch (error) {
-    apiLogger.error({ err: error }, "GET /api/settings/email-intelligence failed");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return tenantRouteFailureResponse(error);
   }
 }
 
@@ -36,12 +35,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    await setUserSetting("email_intelligence_categories", JSON.stringify(body.allowedCategories));
+    const { repositories } = await requireTenantRoute(request);
+    await repositories.settings.set(
+      "email_intelligence_categories",
+      JSON.stringify(body.allowedCategories)
+    );
     return NextResponse.json({
       allowedCategories: body.allowedCategories,
     });
   } catch (error) {
-    apiLogger.error({ err: error }, "POST /api/settings/email-intelligence failed");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return tenantRouteFailureResponse(error);
   }
 }

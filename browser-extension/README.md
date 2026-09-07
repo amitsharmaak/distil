@@ -10,7 +10,7 @@ A Chrome Manifest V3 extension that sends pages to Distil's durable capture API.
 4. Enter the Distil origin (for local development, `http://localhost:3000`) and a dedicated capture token from Distil Settings.
 5. Approve access to that origin.
 
-The token is kept only in `chrome.storage.local`, is never rendered after it is saved, and is sent solely in the `Authorization` header to the configured origin.
+The token is kept only in `chrome.storage.local`, is never rendered after it is saved, and is sent solely in the `Authorization` header to the configured origin. Pending captures are stored under an opaque SHA-256 namespace derived from the origin and capture token. Switching tokens never replays the previous account's queue; restore that original token to replay it, or explicitly discard it in Settings.
 
 ## Capture and replay behavior
 

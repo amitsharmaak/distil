@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-
-import { getAuthUrl, disconnectGmail } from "@/lib/connectors/gmail";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /**
  * GET /api/auth/gmail
@@ -9,9 +8,12 @@ import { getAuthUrl, disconnectGmail } from "@/lib/connectors/gmail";
  * consent screen. After the user grants access, Google redirects them
  * to /api/auth/gmail/callback.
  */
-export function GET() {
-  const url = getAuthUrl();
-  return NextResponse.redirect(url);
+export async function GET(request: Request) {
+  try {
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
 }
 
 /**
@@ -20,15 +22,10 @@ export function GET() {
  * Disconnects Gmail by revoking the OAuth token with Google and
  * removing it from the local database.
  */
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
-    await disconnectGmail();
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("Failed to disconnect Gmail:", err);
-    return NextResponse.json(
-      { error: "Failed to disconnect Gmail" },
-      { status: 500 },
-    );
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }

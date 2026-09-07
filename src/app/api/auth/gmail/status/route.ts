@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
-
-import { getConnectedEmail } from "@/lib/connectors/gmail";
-import { getOAuthToken } from "@/lib/database";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 export interface GmailStatusResponse {
   connected: boolean;
@@ -15,14 +13,10 @@ export interface GmailStatusResponse {
  * Returns the current Gmail connection status. Used by the Sources page
  * to decide whether to show the "Connect" or "Sync Now" button.
  */
-export async function GET(): Promise<NextResponse> {
-  const [email, token] = await Promise.all([getConnectedEmail(), getOAuthToken("gmail")]);
-
-  const response: GmailStatusResponse = {
-    connected: email !== null,
-    email,
-    lastSync: token?.updated_at ?? null,
-  };
-
-  return NextResponse.json(response);
+export async function GET(request: Request): Promise<Response> {
+  try {
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
 }

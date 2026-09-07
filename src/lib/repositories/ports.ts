@@ -363,6 +363,7 @@ export interface SettingsRepository {
 
 export interface NotificationRepository {
   insert(input: Pick<Notification, "id" | "itemId" | "title" | "message">): Promise<void>;
+  find(id: string): Promise<Notification | undefined>;
   list(limit?: number): Promise<Notification[]>;
   unreadCount(): Promise<number>;
   markRead(id: string): Promise<void>;

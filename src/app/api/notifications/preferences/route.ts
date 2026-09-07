@@ -7,8 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { apiLogger } from "@/lib/logger";
-import { getUserSetting, setUserSetting } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -20,17 +19,14 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const raw = await getUserSetting("notification_high_priority");
+    const { repositories } = await requireTenantRoute(request);
+    const raw = await repositories.settings.get("notification_high_priority");
     const highPriorityItems = raw === undefined ? true : raw === "true";
     return NextResponse.json({ highPriorityItems }, { headers: CORS_HEADERS });
   } catch (error) {
-    apiLogger.error({ err: error }, "GET /api/notifications/preferences failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return tenantRouteFailureResponse(error);
   }
 }
 
@@ -43,16 +39,13 @@ export async function PUT(request: NextRequest) {
         { status: 400, headers: CORS_HEADERS }
       );
     }
-    await setUserSetting("notification_high_priority", String(body.highPriorityItems));
+    const { repositories } = await requireTenantRoute(request);
+    await repositories.settings.set("notification_high_priority", String(body.highPriorityItems));
     return NextResponse.json(
       { highPriorityItems: body.highPriorityItems },
       { headers: CORS_HEADERS }
     );
   } catch (error) {
-    apiLogger.error({ err: error }, "PUT /api/notifications/preferences failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return tenantRouteFailureResponse(error);
   }
 }

@@ -2,7 +2,7 @@
 
 const STORAGE = Object.freeze({
   config: "distilConfig",
-  queue: "distilCaptureQueue",
+  queues: "distilCaptureQueues",
   state: "distilExtensionState",
 });
 const ALARM_NAME = "distil-replay-captures";
@@ -94,16 +94,19 @@ function serializedQueueOperation(operation) {
 
 async function enqueueCapture(payload) {
   return serializedQueueOperation(async () => {
+    const config = await getConfiguration();
+    if (!config) throw new Error("Configure a Distil origin and capture token before saving.");
     const normalizedUrl = normalizeCaptureUrl(payload.url);
-    const stored = await storageGet({ [STORAGE.queue]: [] });
-    const queue = stored[STORAGE.queue];
+    const queues = await getQueues();
+    const queue = queues[config.accountKey] || [];
     const existing = queue.find((entry) => entry.normalizedUrl === normalizedUrl);
 
     if (existing) {
       existing.title = payload.title || existing.title;
       existing.notes = payload.notes || payload.selectedText || existing.notes;
       existing.topics = Array.isArray(payload.topics) ? payload.topics : existing.topics;
-      await storageSet({ [STORAGE.queue]: queue });
+      queues[config.accountKey] = queue;
+      await storageSet({ [STORAGE.queues]: queues });
       return existing;
     }
 
@@ -118,37 +121,46 @@ async function enqueueCapture(payload) {
       attempts: 0,
     };
     queue.push(entry);
-    await storageSet({ [STORAGE.queue]: queue });
+    queues[config.accountKey] = queue;
+    await storageSet({ [STORAGE.queues]: queues });
     return entry;
   });
 }
 
-async function removeQueueEntry(id) {
+async function removeQueueEntry(id, accountKey) {
   return serializedQueueOperation(async () => {
-    const stored = await storageGet({ [STORAGE.queue]: [] });
-    const queue = stored[STORAGE.queue].filter((entry) => entry.id !== id);
-    await storageSet({ [STORAGE.queue]: queue });
+    const queues = await getQueues();
+    const queue = (queues[accountKey] || []).filter((entry) => entry.id !== id);
+    queues[accountKey] = queue;
+    await storageSet({ [STORAGE.queues]: queues });
     return queue;
   });
 }
 
-async function recordAttempt(id) {
+async function recordAttempt(id, accountKey) {
   return serializedQueueOperation(async () => {
-    const stored = await storageGet({ [STORAGE.queue]: [] });
-    const queue = stored[STORAGE.queue];
+    const queues = await getQueues();
+    const queue = queues[accountKey] || [];
     const entry = queue.find((candidate) => candidate.id === id);
     if (entry) entry.attempts = (entry.attempts || 0) + 1;
-    await storageSet({ [STORAGE.queue]: queue });
+    queues[accountKey] = queue;
+    await storageSet({ [STORAGE.queues]: queues });
   });
+}
+
+async function getQueues() {
+  const stored = await storageGet({ [STORAGE.queues]: {} });
+  return stored[STORAGE.queues] || {};
 }
 
 async function getConfiguration() {
   const stored = await storageGet({ [STORAGE.config]: null });
   const config = stored[STORAGE.config];
-  if (!config?.origin || !config?.token) return null;
+  if (!config?.origin || !config?.token || !config?.accountKey) return null;
   return {
     origin: normalizeOrigin(config.origin),
     token: config.token,
+    accountKey: config.accountKey,
     authPaused: Boolean(config.authPaused),
   };
 }
@@ -162,7 +174,7 @@ async function pauseForAuthentication(config) {
 }
 
 async function deliverCapture(entry, config) {
-  await recordAttempt(entry.id);
+  await recordAttempt(entry.id, config.accountKey);
   try {
     const response = await fetch(`${config.origin}${CAPTURE_PATH}`, {
       method: "POST",
@@ -195,15 +207,14 @@ async function replayQueue() {
 
   replayPromise = (async () => {
     const config = await getConfiguration();
-    const queueResult = await storageGet({ [STORAGE.queue]: [] });
-    const queued = queueResult[STORAGE.queue];
-
-    if (queued.length === 0) return setState("idle", "Ready to save.", { queued: 0 });
     if (!config) {
       return setState("unconfigured", "Configure your Distil origin and capture token.", {
-        queued: queued.length,
+        queued: 0,
       });
     }
+    const queues = await getQueues();
+    const queued = queues[config.accountKey] || [];
+    if (queued.length === 0) return setState("idle", "Ready to save.", { queued: 0 });
     if (!(await hasOriginPermission(config.origin))) {
       return setState("permission-required", "Allow access to your Distil origin in Settings.", {
         queued: queued.length,
@@ -222,12 +233,12 @@ async function replayQueue() {
     for (const entry of queued) {
       const outcome = await deliverCapture(entry, config);
       if (outcome.kind === "saved") {
-        await removeQueueEntry(entry.id);
+        await removeQueueEntry(entry.id, config.accountKey);
         saved += 1;
         continue;
       }
       if (outcome.kind === "terminal") {
-        await removeQueueEntry(entry.id);
+        await removeQueueEntry(entry.id, config.accountKey);
         rejected += 1;
         await setState("rejected", "Distil rejected this page.", {
           queued: Math.max(queued.length - saved - rejected, 0),
@@ -285,14 +296,20 @@ async function saveCapture(payload) {
 
 async function getState() {
   const stored = await storageGet({
-    [STORAGE.queue]: [],
+    [STORAGE.queues]: {},
     [STORAGE.config]: null,
     [STORAGE.state]: publicState("idle", "Ready to save."),
   });
+  const accountKey = stored[STORAGE.config]?.accountKey;
+  const queue = accountKey ? stored[STORAGE.queues][accountKey] || [] : [];
+  const pausedQueues = Object.entries(stored[STORAGE.queues]).filter(
+    ([key, entries]) => key !== accountKey && Array.isArray(entries) && entries.length > 0
+  ).length;
   return {
     ...stored[STORAGE.state],
     configured: Boolean(stored[STORAGE.config]?.origin && stored[STORAGE.config]?.token),
-    queued: stored[STORAGE.queue].length,
+    queued: queue.length,
+    pausedQueues,
   };
 }
 
@@ -305,6 +322,14 @@ function handleMessage(message) {
     case "distil-get-state":
       return getState();
     case "distil-config-updated":
+      if (message.discardAccountKey) {
+        return serializedQueueOperation(async () => {
+          const queues = await getQueues();
+          delete queues[message.discardAccountKey];
+          await storageSet({ [STORAGE.queues]: queues });
+          return replayQueue();
+        });
+      }
       return replayQueue();
     default:
       return null;

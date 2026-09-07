@@ -62,6 +62,20 @@ async function sendWorkerMessage(
   );
 }
 
+async function activeQueue(serviceWorker: import("@playwright/test").Worker) {
+  return serviceWorker.evaluate(async () => {
+    const stored = (await chrome.storage.local.get({
+      distilConfig: null,
+      distilCaptureQueues: {},
+    })) as {
+      distilConfig: { accountKey?: string } | null;
+      distilCaptureQueues: Record<string, unknown[]>;
+    };
+    const { distilConfig, distilCaptureQueues } = stored;
+    return distilConfig?.accountKey ? distilCaptureQueues[distilConfig.accountKey] || [] : [];
+  });
+}
+
 test("launches and inspects the unpacked MV3 extension", async ({
   context,
   extensionId,
@@ -195,9 +209,7 @@ test("posts the v1 capture contract and removes successful captures", async ({
     },
   ]);
 
-  const queue = await serviceWorker.evaluate(
-    async () => (await chrome.storage.local.get("distilCaptureQueue")).distilCaptureQueue
-  );
+  const queue = await activeQueue(serviceWorker);
   expect(queue).toEqual([]);
 });
 
@@ -223,9 +235,7 @@ test("deduplicates normalized offline captures and replays them from persistent 
   expect(first.kind).toBe("queued");
   expect(second.kind).toBe("queued");
 
-  const queued = await serviceWorker.evaluate(
-    async () => (await chrome.storage.local.get("distilCaptureQueue")).distilCaptureQueue
-  );
+  const queued = await activeQueue(serviceWorker);
   expect(queued).toMatchObject([
     { normalizedUrl: "https://example.com/offline?a=1&b=2", title: "Updated", attempts: 2 },
   ]);
@@ -237,6 +247,46 @@ test("deduplicates normalized offline captures and replays them from persistent 
   const replay = await sendWorkerMessage(serviceWorker, { type: "distil-replay" });
   expect(replay.kind).toBe("saved");
   expect(replay.queued).toBe(0);
+});
+
+test("namespaces offline work by capture token and never replays it after an account switch", async ({
+  context,
+  extensionId,
+  serviceWorker,
+}) => {
+  await context.route(CAPTURE_ENDPOINT, (route) => route.abort("failed"));
+  await configureExtension(context, extensionId, "dst_cap_account_alpha");
+  await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/alpha-only" },
+  });
+  const before = await serviceWorker.evaluate(async () => {
+    const stored = await chrome.storage.local.get({ distilConfig: null, distilCaptureQueues: {} });
+    return stored as {
+      distilConfig: { accountKey: string };
+      distilCaptureQueues: Record<string, unknown[]>;
+    };
+  });
+  const alphaKey = before.distilConfig.accountKey;
+
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await options.getByLabel("Capture token").fill("dst_cap_account_beta");
+  await options.getByRole("button", { name: "Save connection" }).click();
+  await expect(options.getByRole("status")).toContainText("original account remain paused");
+
+  const after = await serviceWorker.evaluate(async () => {
+    const stored = await chrome.storage.local.get({ distilConfig: null, distilCaptureQueues: {} });
+    return stored as {
+      distilConfig: { accountKey: string };
+      distilCaptureQueues: Record<string, unknown[]>;
+    };
+  });
+  expect(after.distilConfig.accountKey).not.toBe(alphaKey);
+  expect(after.distilCaptureQueues[alphaKey]).toHaveLength(1);
+  const state = await sendWorkerMessage(serviceWorker, { type: "distil-get-state" });
+  expect(state).toMatchObject({ queued: 0, pausedQueues: 1 });
+  await options.close();
 });
 
 test("continues replaying later captures after a retryable failure", async ({
@@ -262,9 +312,7 @@ test("continues replaying later captures after a retryable failure", async ({
     payload: { url: "https://example.com/succeeds" },
   });
 
-  const queue = await serviceWorker.evaluate(
-    async () => (await chrome.storage.local.get("distilCaptureQueue")).distilCaptureQueue
-  );
+  const queue = await activeQueue(serviceWorker);
   expect(queue).toMatchObject([{ normalizedUrl: "https://example.com/blocked" }]);
 });
 

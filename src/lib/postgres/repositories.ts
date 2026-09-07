@@ -719,6 +719,19 @@ class PostgresNotifications implements NotificationRepository {
     await this
       .sql`INSERT INTO notifications(id,item_id,title,message,created_at) VALUES(${v.id},${v.itemId},${v.title},${v.message},now())`;
   }
+  async find(id: string) {
+    const row = first(await this.sql<Row[]>`SELECT * FROM notifications WHERE id=${id}`);
+    return row
+      ? {
+          id: String(row.id),
+          itemId: String(row.item_id),
+          title: String(row.title),
+          message: String(row.message),
+          isRead: Boolean(row.is_read),
+          createdAt: iso(row.created_at),
+        }
+      : undefined;
+  }
   async list(limit = 20) {
     return (
       await this.sql<Row[]>`SELECT * FROM notifications ORDER BY created_at DESC LIMIT ${limit}`

@@ -1,23 +1,15 @@
-import { NextResponse } from "next/server";
-
-import { getAllSlackStatuses, type SlackWorkspaceStatus } from "@/lib/connectors/slack";
-import { config } from "@/lib/config";
-
-export interface SlackStatusResponse {
-  workspaces: SlackWorkspaceStatus[];
-  syncChannels: string[];
-}
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /**
  * GET /api/auth/slack/status
  *
  * Returns status for all connected Slack workspaces.
  */
-export async function GET(): Promise<NextResponse> {
-  const workspaces = await getAllSlackStatuses();
-  const response: SlackStatusResponse = {
-    workspaces,
-    syncChannels: config.slackChannels,
-  };
-  return NextResponse.json(response);
+export async function GET(request: Request): Promise<Response> {
+  try {
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
 }

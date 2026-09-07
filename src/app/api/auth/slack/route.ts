@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-
-import { getAuthUrl, disconnectSlack } from "@/lib/connectors/slack";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /**
  * GET /api/auth/slack
@@ -8,16 +7,11 @@ import { getAuthUrl, disconnectSlack } from "@/lib/connectors/slack";
  * Initiates the Slack User OAuth flow by redirecting to Slack's consent screen.
  * After the user grants access, Slack redirects back to /api/auth/slack/callback.
  */
-export function GET() {
+export async function GET(request: Request) {
   try {
-    const url = getAuthUrl();
-    return NextResponse.redirect(url);
-  } catch (err) {
-    console.error("Failed to build Slack auth URL:", err);
-    return NextResponse.json(
-      { error: "Slack OAuth not configured" },
-      { status: 500 },
-    );
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }
 
@@ -26,17 +20,10 @@ export function GET() {
  *
  * Disconnects a Slack workspace. Expects JSON body { teamId: string }.
  */
-export async function DELETE(req: Request) {
+export async function DELETE(request: Request) {
   try {
-    const body = await req.json().catch(() => ({})) as { teamId?: string };
-    const teamId = body.teamId ?? "";
-    await disconnectSlack(teamId);
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("Failed to disconnect Slack:", err);
-    return NextResponse.json(
-      { error: "Failed to disconnect Slack" },
-      { status: 500 },
-    );
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }

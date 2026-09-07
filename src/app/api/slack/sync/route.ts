@@ -1,8 +1,8 @@
 /** POST /api/slack/sync — syncs messages from configured Slack channels */
 
 import { NextResponse } from "next/server";
-import { apiLogger } from "@/lib/logger";
-import { syncSlackMessages, isSlackConfigured } from "@/lib/connectors/slack";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -14,25 +14,10 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    if (!(await isSlackConfigured())) {
-      return NextResponse.json(
-        { error: "Slack not connected" },
-        { status: 400, headers: CORS_HEADERS }
-      );
-    }
-
-    const result = await syncSlackMessages();
-    return NextResponse.json(
-      { count: result.count, items: result.items, stats: result.stats },
-      { headers: CORS_HEADERS }
-    );
-  } catch (err) {
-    apiLogger.error({ err }, "POST /api/slack/sync failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return await requireDormantConnectorRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
   }
 }

@@ -7,12 +7,7 @@
 
 import { NextResponse } from "next/server";
 
-import { apiLogger } from "@/lib/logger";
-import {
-  getNotifications,
-  getUnreadNotificationCount,
-  markAllNotificationsRead,
-} from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,31 +19,25 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const [notifications, unreadCount] = await Promise.all([
-      getNotifications(),
-      getUnreadNotificationCount(),
+      repositories.notifications.list(),
+      repositories.notifications.unreadCount(),
     ]);
     return NextResponse.json({ notifications, unreadCount }, { headers: CORS_HEADERS });
   } catch (error) {
-    apiLogger.error({ err: error }, "GET /api/notifications failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return tenantRouteFailureResponse(error);
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    await markAllNotificationsRead();
+    const { repositories } = await requireTenantRoute(request);
+    await repositories.notifications.markAllRead();
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
-    apiLogger.error({ err: error }, "POST /api/notifications failed");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return tenantRouteFailureResponse(error);
   }
 }
