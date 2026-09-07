@@ -9,7 +9,7 @@ async function dispatch(
 ): Promise<Response> {
   try {
     return dispatchGatedNeonAuth(request, context, {
-      allowedOrigins: readAuthEnvironment().allowedOrigins,
+      loadAllowedOrigins: () => readAuthEnvironment().allowedOrigins,
       loadHandler(method) {
         const handlers = getNeonAuthServer().handler();
         return handlers[method as keyof typeof handlers] as NeonAuthHandler | undefined;

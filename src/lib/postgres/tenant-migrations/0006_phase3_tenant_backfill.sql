@@ -84,4 +84,3 @@ BEGIN
     SET user_id = EXCLUDED.user_id, item_id = EXCLUDED.item_id;
 END
 $phase3_backfill$;
-

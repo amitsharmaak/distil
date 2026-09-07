@@ -1,3 +1,5 @@
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+
 export const NEON_AUTH_ROUTE_METHODS = {
   "get-session": ["GET"],
   "magic-link/verify": ["GET"],
@@ -31,7 +33,7 @@ export async function dispatchGatedNeonAuth(
   request: Request,
   context: { params: Promise<{ path: string[] }> },
   dependencies: {
-    allowedOrigins: ReadonlySet<string>;
+    loadAllowedOrigins(): ReadonlySet<string>;
     loadHandler(method: string): NeonAuthHandler | undefined;
   }
 ): Promise<Response> {
@@ -42,9 +44,8 @@ export async function dispatchGatedNeonAuth(
       { status: 404 }
     );
   }
-  if (request.method === "POST") requireAllowedOrigin(request, dependencies.allowedOrigins);
+  if (request.method === "POST") requireAllowedOrigin(request, dependencies.loadAllowedOrigins());
   const handler = dependencies.loadHandler(request.method);
   if (!handler) return new Response(null, { status: 405 });
   return handler(request, { params: Promise.resolve({ path }) });
 }
-import { requireAllowedOrigin } from "@/lib/auth/origin";

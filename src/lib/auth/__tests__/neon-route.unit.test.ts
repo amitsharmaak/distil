@@ -26,12 +26,14 @@ describe("Neon Auth route gate", () => {
 
   it("rejects blocked paths before constructing the SDK adapter", async () => {
     const loadHandler = jest.fn();
+    const loadAllowedOrigins = jest.fn(() => new Set(["https://distil.example"]));
     const response = await dispatchGatedNeonAuth(
       new Request("https://distil.example/api/auth/sign-up/email", { method: "POST" }),
       { params: Promise.resolve({ path: ["sign-up", "email"] }) },
-      { allowedOrigins: new Set(["https://distil.example"]), loadHandler }
+      { loadAllowedOrigins, loadHandler }
     );
     expect(response.status).toBe(404);
+    expect(loadAllowedOrigins).not.toHaveBeenCalled();
     expect(loadHandler).not.toHaveBeenCalled();
   });
 
@@ -45,7 +47,7 @@ describe("Neon Auth route gate", () => {
         dispatchGatedNeonAuth(
           new Request("https://distil.example/api/auth/sign-out", { method: "POST", headers }),
           { params: Promise.resolve({ path: ["sign-out"] }) },
-          { allowedOrigins: new Set(["https://distil.example"]), loadHandler }
+          { loadAllowedOrigins: () => new Set(["https://distil.example"]), loadHandler }
         )
       ).rejects.toEqual(expect.objectContaining({ code: "ORIGIN_NOT_ALLOWED" }));
     }
@@ -57,7 +59,7 @@ describe("Neon Auth route gate", () => {
         headers: { origin: "https://distil.example" },
       }),
       { params: Promise.resolve({ path: ["sign-out"] }) },
-      { allowedOrigins: new Set(["https://distil.example"]), loadHandler }
+      { loadAllowedOrigins: () => new Set(["https://distil.example"]), loadHandler }
     );
     expect(allowed.status).toBe(200);
     expect(provider).toHaveBeenCalledTimes(1);
