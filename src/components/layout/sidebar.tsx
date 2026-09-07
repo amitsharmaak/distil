@@ -39,11 +39,15 @@ const navItems = [
 ];
 
 export function Sidebar({
+  showAnswers = true,
   showDigests = true,
   showKnowledgeUi = true,
+  showSearch = true,
 }: {
+  showAnswers?: boolean;
   showDigests?: boolean;
   showKnowledgeUi?: boolean;
+  showSearch?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -77,6 +81,8 @@ export function Sidebar({
         {navItems
           .filter((item) => {
             if (item.href === "/digests") return showDigests;
+            if (item.href === "/search") return showSearch;
+            if (item.href === "/ask") return showAnswers;
             if (item.href === "/collections" || item.href === "/archive") return showKnowledgeUi;
             return true;
           })

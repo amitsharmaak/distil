@@ -18,9 +18,11 @@ describe("MobileNav", () => {
     );
   });
 
-  it("removes the digest destination when digests are disabled server-side", () => {
-    render(<MobileNav showDigests={false} />);
+  it("removes disabled Phase 2 destinations supplied by the server", () => {
+    render(<MobileNav showAnswers={false} showDigests={false} showSearch={false} />);
+    expect(screen.queryByRole("link", { name: "Ask" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Feed" })).toBeInTheDocument();
   });
 });

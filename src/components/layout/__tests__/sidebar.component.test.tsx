@@ -77,11 +77,15 @@ describe("Sidebar", () => {
   });
 
   it("removes disabled Phase 2 destinations from navigation", () => {
-    render(<Sidebar showDigests={false} showKnowledgeUi={false} />);
+    render(
+      <Sidebar showAnswers={false} showDigests={false} showKnowledgeUi={false} showSearch={false} />
+    );
 
+    expect(screen.queryByRole("link", { name: "Ask" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Archive" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
   });
 

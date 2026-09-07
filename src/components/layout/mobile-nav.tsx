@@ -16,13 +16,26 @@ const tabs = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function MobileNav({ showDigests = true }: { showDigests?: boolean }) {
+export function MobileNav({
+  showAnswers = true,
+  showDigests = true,
+  showSearch = true,
+}: {
+  showAnswers?: boolean;
+  showDigests?: boolean;
+  showSearch?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom,0px))] items-stretch border-t border-border bg-background pb-safe md:hidden">
       {tabs
-        .filter((tab) => tab.href !== "/digests" || showDigests)
+        .filter((tab) => {
+          if (tab.href === "/digests") return showDigests;
+          if (tab.href === "/search") return showSearch;
+          if (tab.href === "/ask") return showAnswers;
+          return true;
+        })
         .map((tab) => {
           const isActive = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (
