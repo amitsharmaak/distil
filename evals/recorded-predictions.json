@@ -1,0 +1,44 @@
+{
+  "eval-001": {
+    "priority": "high",
+    "topics": ["AI", "machine-learning"],
+    "summary": "OpenAI released GPT-5 with improved multimodal reasoning and code generation.",
+    "category": "tech",
+    "dedup": null
+  },
+  "eval-002": {
+    "priority": "high",
+    "topics": ["AI", "enterprise", "LLMs"],
+    "summary": "Claude 4 adds a 200K context window for long-document analysis and improves instruction following.",
+    "category": "tech",
+    "dedup": null
+  },
+  "eval-003": {
+    "priority": "medium",
+    "topics": ["AI", "developer-tools"],
+    "summary": "A practical RAG guide covers chunking, embeddings, reranking, and context-window pitfalls.",
+    "category": "tech",
+    "dedup": null
+  },
+  "eval-009": {
+    "priority": "medium",
+    "topics": ["security", "chrome"],
+    "summary": "Chrome users should install an emergency update for an actively exploited vulnerability.",
+    "category": "tech",
+    "dedup": null
+  },
+  "eval-016": {
+    "priority": "medium",
+    "topics": ["fed", "interest-rates", "monetary-policy"],
+    "summary": "The Federal Reserve raised rates by 25 basis points and signaled a possible pause.",
+    "category": "business",
+    "dedup": null
+  },
+  "eval-046": {
+    "priority": "high",
+    "topics": ["AI", "OpenAI", "GPT-5"],
+    "summary": "A second report covers OpenAI's GPT-5 multimodal reasoning release.",
+    "category": "tech",
+    "dedup": "eval-001"
+  }
+}

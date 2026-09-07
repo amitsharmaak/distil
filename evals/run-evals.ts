@@ -67,6 +67,14 @@ interface EvalResults {
   }>;
 }
 
+interface RecordedPrediction {
+  priority: string;
+  topics: string[];
+  summary: string;
+  category: string;
+  dedup: string | null;
+}
+
 // ── ROUGE-L (Longest Common Subsequence) ──────────────────────────────────────
 
 function lcs(a: string[], b: string[]): number {
@@ -186,7 +194,6 @@ function computeDedupMetrics(
     if (pred) fp++; // false positive: predicted as duplicate when it isn't
   }
 
-  const fn = duplicates.length - tp;
   const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
   const recall = duplicates.length > 0 ? tp / duplicates.length : 0;
 
@@ -324,15 +331,25 @@ Output ONLY the JSON object.`;
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const isLive = process.argv.includes("--live");
   const goldenPath = path.join(__dirname, "golden-set.json");
   const goldenSet: GoldenItem[] = JSON.parse(
     fs.readFileSync(goldenPath, "utf-8"),
   );
+  const recordedPath = path.join(__dirname, "recorded-predictions.json");
+  const recorded: Record<string, RecordedPrediction> = JSON.parse(
+    fs.readFileSync(recordedPath, "utf-8"),
+  );
+  // Dry mode evaluates a small, versioned prediction recording. It must never
+  // copy expected labels into predictions: that made the old dry run score a
+  // misleading 100% without exercising any evaluator behavior.
+  const evaluationSet = isLive ? goldenSet : goldenSet.filter((item) => recorded[item.id]);
 
   console.log(`\nRunning evaluations in ${isLive ? "LIVE" : "DRY"} mode`);
-  console.log(`Golden set: ${goldenSet.length} items\n`);
+  console.log(
+    `${isLive ? "Golden set" : "Recorded prediction fixture"}: ${evaluationSet.length} items\n`,
+  );
 
   let priorityPred: Map<string, string>;
   let topicsPred: Map<string, string[]>;
@@ -342,38 +359,36 @@ async function main(): Promise<void> {
 
   if (isLive) {
     console.log("Calling AI models (this may take a few minutes)...\n");
-    const live = await getLivePredictions(goldenSet);
+    const live = await getLivePredictions(evaluationSet);
     priorityPred = live.priority;
     topicsPred = live.topics;
     summaryPred = live.summary;
     categoryPred = live.category;
     dedupPred = live.dedup;
   } else {
-    priorityPred = new Map(goldenSet.map((i) => [i.id, i.expectedPriority]));
-    topicsPred = new Map(goldenSet.map((i) => [i.id, i.expectedTopics]));
-    summaryPred = new Map(goldenSet.map((i) => [i.id, i.expectedSummary]));
-    categoryPred = new Map(goldenSet.map((i) => [i.id, i.expectedCategory]));
-    dedupPred = new Map(
-      goldenSet.map((i) => [i.id, i.duplicateOf ?? null]),
-    );
+    priorityPred = new Map(evaluationSet.map((i) => [i.id, recorded[i.id].priority]));
+    topicsPred = new Map(evaluationSet.map((i) => [i.id, recorded[i.id].topics]));
+    summaryPred = new Map(evaluationSet.map((i) => [i.id, recorded[i.id].summary]));
+    categoryPred = new Map(evaluationSet.map((i) => [i.id, recorded[i.id].category]));
+    dedupPred = new Map(evaluationSet.map((i) => [i.id, recorded[i.id].dedup]));
   }
 
-  const topicMetrics = computeTopicMetrics(goldenSet, topicsPred);
-  const dedupMetrics = computeDedupMetrics(goldenSet, dedupPred);
+  const topicMetrics = computeTopicMetrics(evaluationSet, topicsPred);
+  const dedupMetrics = computeDedupMetrics(evaluationSet, dedupPred);
 
   const results: EvalResults = {
     timestamp: new Date().toISOString(),
     mode: isLive ? "live" : "dry",
     metrics: {
-      priorityAccuracy: computePriorityAccuracy(goldenSet, priorityPred),
+      priorityAccuracy: computePriorityAccuracy(evaluationSet, priorityPred),
       topicPrecision: topicMetrics.precision,
       topicRecall: topicMetrics.recall,
-      summaryRougeL: computeSummaryRougeL(goldenSet, summaryPred),
-      categoryAccuracy: computeCategoryAccuracy(goldenSet, categoryPred),
+      summaryRougeL: computeSummaryRougeL(evaluationSet, summaryPred),
+      categoryAccuracy: computeCategoryAccuracy(evaluationSet, categoryPred),
       dedupPrecision: dedupMetrics.precision,
       dedupRecall: dedupMetrics.recall,
     },
-    perItem: goldenSet.map((item) => ({
+    perItem: evaluationSet.map((item) => ({
       id: item.id,
       title: item.title.slice(0, 50) + (item.title.length > 50 ? "…" : ""),
       metrics: {
@@ -424,7 +439,9 @@ async function main(): Promise<void> {
   console.log(`\nResults saved to ${outPath}\n`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (path.basename(process.argv[1] ?? "") === "run-evals.ts") {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
