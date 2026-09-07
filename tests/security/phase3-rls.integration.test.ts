@@ -140,23 +140,20 @@ describeWithTenantMigration(
     });
 
     it("checks every Phase 2 and Wave 0 tenant table for ownership, composite FKs, FORCE RLS, CRUD policies, and scoped keys", async () => {
-      await assertTenantMigrationInvariants(
-        owner.sql,
-        [
-          ...tenantManifestInvariantSpecs(tenantMigrationManifest),
-          ...tenantProtectedTables
-            .filter(
-              ({ table }) =>
-                !tenantMigrationManifest.tables.some((classified) => classified.table === table)
-            )
-            .map(({ table, ownerColumn }) => ({
-              tableName: table,
-              ownerColumn,
-              ...(table === "users" ? {} : { tenantReferences: { tableName: "users" } }),
-              policySetting: "app.user_id",
-            })),
-        ]
-      );
+      await assertTenantMigrationInvariants(owner.sql, [
+        ...tenantManifestInvariantSpecs(tenantMigrationManifest),
+        ...tenantProtectedTables
+          .filter(
+            ({ table }) =>
+              !tenantMigrationManifest.tables.some((classified) => classified.table === table)
+          )
+          .map(({ table, ownerColumn }) => ({
+            tableName: table,
+            ownerColumn,
+            ...(table === "users" ? {} : { tenantReferences: { tableName: "users" } }),
+            policySetting: "app.user_id",
+          })),
+      ]);
     });
 
     it("uses a restricted, non-owner runtime role", async () => {

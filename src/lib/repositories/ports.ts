@@ -11,6 +11,7 @@ import type {
 } from "@/lib/knowledge/types";
 import type { ContentItem, Notification, Priority } from "@/lib/types";
 import type { UserId } from "@/lib/contracts/tenant-context";
+import type { AuthRepositoryPort } from "@/lib/auth/ports";
 
 export interface ItemFilters {
   sourceType?: string;
@@ -594,6 +595,7 @@ export interface AgentRepository {
 }
 
 export interface RepositorySet {
+  auth: AuthRepositoryPort;
   items: ItemRepository;
   itemNotes: ItemNoteRepository;
   annotations: AnnotationRepository;
@@ -632,5 +634,6 @@ export interface ControlPlaneAccountRepository {
 }
 
 export interface ControlPlaneRepositorySet {
+  auth: AuthRepositoryPort;
   accounts: ControlPlaneAccountRepository;
 }

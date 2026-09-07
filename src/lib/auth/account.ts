@@ -4,7 +4,7 @@ export const ACCOUNT_STATUSES = [
   "migration_pending",
   "active",
   "suspended",
-  "deleting",
+  "deletion_pending",
   "deleted",
 ] as const;
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];

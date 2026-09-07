@@ -11,6 +11,8 @@ BEGIN
 END
 $phase3_roles$;
 
+GRANT distil_migration TO CURRENT_USER;
+
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO distil_runtime;
 GRANT USAGE, CREATE ON SCHEMA public TO distil_migration;

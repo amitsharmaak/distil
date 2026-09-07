@@ -90,6 +90,13 @@ CREATE UNIQUE INDEX research_reports_owner_id_idx ON research_reports(user_id, i
 CREATE UNIQUE INDEX research_suggestions_owner_id_idx ON research_suggestions(user_id, id);
 CREATE UNIQUE INDEX workflow_runs_owner_id_idx ON workflow_runs(user_id, id);
 CREATE UNIQUE INDEX chat_conversations_user_id_id_idx ON chat_conversations(user_id, id);
+CREATE UNIQUE INDEX item_notes_user_item_idx ON item_notes(user_id, item_id);
+CREATE UNIQUE INDEX collection_items_user_membership_idx
+  ON collection_items(user_id, collection_id, item_id);
+CREATE UNIQUE INDEX claim_evidence_user_identity_idx
+  ON claim_evidence(user_id, claim_id, chunk_id, start_offset, end_offset);
+CREATE UNIQUE INDEX raw_content_user_id_idx ON raw_content(user_id, id);
+CREATE UNIQUE INDEX job_queue_user_id_idx ON job_queue(user_id, id);
 
 -- Same-owner graph constraints. Existing single-column foreign keys remain for
 -- compatibility; these additional keys reject mixed-tenant graphs.
@@ -236,7 +243,7 @@ ALTER TABLE rate_limit_windows
   ALTER COLUMN operation SET NOT NULL;
 ALTER TABLE rate_limit_windows ADD CONSTRAINT rate_limit_windows_pkey
   PRIMARY KEY (user_id, environment, principal_kind, principal_id, operation,
-    window_start, window_seconds);
+    key, window_start, window_seconds);
 
 ALTER TABLE research_suggestion_sources
   DROP CONSTRAINT IF EXISTS research_suggestion_sources_pkey;
@@ -249,6 +256,27 @@ CREATE UNIQUE INDEX job_queue_user_idempotency_idx
 ALTER TABLE capture_requests
   ALTER COLUMN origin_actor_kind SET NOT NULL,
   ALTER COLUMN origin_actor_id SET NOT NULL;
+ALTER TABLE capture_requests
+  ALTER COLUMN origin_actor_kind SET DEFAULT current_setting('app.actor_kind'),
+  ALTER COLUMN origin_actor_id SET DEFAULT nullif(current_setting('app.actor_id'), '')::uuid;
+ALTER TABLE rate_limit_windows
+  ALTER COLUMN environment SET DEFAULT current_setting('app.environment'),
+  ALTER COLUMN principal_kind SET DEFAULT current_setting('app.actor_kind'),
+  ALTER COLUMN principal_id SET DEFAULT current_setting('app.actor_id'),
+  ALTER COLUMN operation SET DEFAULT 'rate-limit';
+
+CREATE OR REPLACE FUNCTION distil_default_job_idempotency_key()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $phase3_job_idempotency$
+BEGIN
+  NEW.idempotency_key := coalesce(NEW.idempotency_key, NEW.id);
+  RETURN NEW;
+END
+$phase3_job_idempotency$;
+CREATE TRIGGER job_queue_default_idempotency_key
+  BEFORE INSERT ON job_queue
+  FOR EACH ROW EXECUTE FUNCTION distil_default_job_idempotency_key();
 
 -- Normalized links become the only contractual source graph. The legacy JSON
 -- column remains as an empty compatibility field for older readers during the
@@ -260,6 +288,11 @@ ALTER TABLE research_suggestions ADD CONSTRAINT research_suggestions_legacy_sour
 -- Pre-context authentication functions are exact-key lookups, not browsing
 -- APIs. They execute as the migration role because no app.user_id exists until
 -- provider identity or invitation acceptance resolves an account.
+-- Role setup precedes expand migrations, so refresh the migration role's
+-- privileges after all Phase 3 tables have been created.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO distil_migration;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO distil_migration;
+
 CREATE OR REPLACE FUNCTION distil_resolve_auth_identity(
   requested_provider text,
   requested_subject text
@@ -332,7 +365,8 @@ DECLARE
   account_id uuid;
   account_status text;
 BEGIN
-  IF requested_session_id IS NULL OR length(requested_session_id) = 0 THEN
+  IF requested_provider <> 'neon'
+    OR requested_session_id IS NULL OR length(requested_session_id) = 0 THEN
     RETURN;
   END IF;
   SELECT candidate.* INTO invitation
@@ -400,12 +434,49 @@ REVOKE ALL ON FUNCTION distil_find_invitation(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION
   distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) FROM PUBLIC;
 
+-- The tenant repository uses these security-barrier, check-option views as an
+-- application-level ownership predicate independent of base-table RLS.
+CREATE SCHEMA tenant_api AUTHORIZATION distil_migration;
+REVOKE ALL ON SCHEMA tenant_api FROM PUBLIC;
+GRANT USAGE ON SCHEMA tenant_api TO distil_runtime;
+DO $phase3_tenant_views$
+DECLARE
+  table_name text;
+  owner_column text;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'items','item_notes','annotations','collections','collection_items','item_events',
+    'digest_runs','digest_items','personal_preferences','digest_jobs',
+    'item_content_versions','content_chunks','intelligence_artifacts','intelligence_claims',
+    'claim_evidence','knowledge_backfill_checkpoints','oauth_tokens','ai_summaries','feedback',
+    'research_reports','research_suggestions','user_settings','notifications','item_embeddings',
+    'audit_log','workflow_runs','agent_actions','approval_queue','chat_conversations',
+    'chat_messages','job_queue','publisher_queue','raw_content','capture_requests',
+    'capture_tokens','rate_limit_windows','auth_identities','session_metadata','account_exports',
+    'account_deletions','usage_counters','user_entitlements','research_suggestion_sources'
+  ] LOOP
+    EXECUTE format(
+      'CREATE VIEW tenant_api.%I WITH (security_barrier=true) AS SELECT * FROM public.%I WHERE user_id = nullif(current_setting(''app.user_id'', true), '''')::uuid WITH CASCADED CHECK OPTION',
+      table_name, table_name);
+    EXECUTE format('ALTER VIEW tenant_api.%I OWNER TO distil_migration', table_name);
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_api.%I TO distil_runtime', table_name);
+  END LOOP;
+  owner_column := 'id';
+  EXECUTE format(
+    'CREATE VIEW tenant_api.users WITH (security_barrier=true) AS SELECT * FROM public.users WHERE %I = nullif(current_setting(''app.user_id'', true), '''')::uuid WITH CASCADED CHECK OPTION',
+    owner_column);
+  ALTER VIEW tenant_api.users OWNER TO distil_migration;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_api.users TO distil_runtime;
+END
+$phase3_tenant_views$;
+
 GRANT EXECUTE ON FUNCTION distil_current_user_id() TO distil_runtime;
 GRANT EXECUTE ON FUNCTION distil_resolve_auth_identity(text, text) TO distil_runtime;
 GRANT EXECUTE ON FUNCTION distil_find_invitation(uuid) TO distil_runtime;
 GRANT EXECUTE ON FUNCTION
   distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) TO distil_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO distil_runtime;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM distil_runtime;
 REVOKE ALL ON invitations, auth_identities, distil_tenant_migrations FROM distil_runtime;
 DO $phase3_optional_ledger$
 BEGIN

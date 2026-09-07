@@ -43,17 +43,26 @@ const testQueue = adapters?.queue ? it : it.skip;
 const testCoexistence = adapters?.coexistence ? it : it.skip;
 
 describe("Phase 3 boundary adapter gates", () => {
-  testRoutes("P3-ROUTE-001: cross-user resource lookup is the same 404 as an unknown id", async () => {
-    await assertCrossTenantNotFound(adapters!.routes!, fixture);
-  });
+  testRoutes(
+    "P3-ROUTE-001: cross-user resource lookup is the same 404 as an unknown id",
+    async () => {
+      await assertCrossTenantNotFound(adapters!.routes!, fixture);
+    }
+  );
 
-  testRepositories("P3-REPO-001: tenant repository methods conceal and preserve cross-user data", async () => {
-    await assertRepositoryIsolation(adapters!.repositories!, fixture);
-  });
+  testRepositories(
+    "P3-REPO-001: tenant repository methods conceal and preserve cross-user data",
+    async () => {
+      await assertRepositoryIsolation(adapters!.repositories!, fixture);
+    }
+  );
 
-  testQueue("P3-QUEUE-001/P3-QUEUE-002: forged capture and job envelopes have no effects", async () => {
-    await assertForgedQueueEnvelopesRejected(adapters!.queue!, fixture);
-  });
+  testQueue(
+    "P3-QUEUE-001/P3-QUEUE-002: forged capture and job envelopes have no effects",
+    async () => {
+      await assertForgedQueueEnvelopesRejected(adapters!.queue!, fixture);
+    }
+  );
 
   testCoexistence("P3-DB-003: same URL, date, and key coexist for separate users", async () => {
     await assertTenantScopedCoexistence(adapters!.coexistence!, fixture);

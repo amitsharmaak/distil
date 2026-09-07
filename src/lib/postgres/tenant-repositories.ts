@@ -14,12 +14,19 @@ import type {
 } from "@/lib/repositories/ports";
 
 import { createPostgresRepositories } from "./repositories";
+import { PostgresAuthRepository } from "./auth-repository";
 
 interface TenantSettingRow {
   user_id: string | null;
   actor_id: string | null;
+  actor_kind: string | null;
   request_id: string | null;
+  environment: string | null;
+  search_path: string | null;
 }
+
+const RUNTIME_ENVIRONMENT = "runtime";
+const TENANT_SEARCH_PATH = "tenant_api, pg_catalog";
 
 type RepositoryMethod = (...args: unknown[]) => unknown;
 
@@ -50,16 +57,25 @@ export async function withTenantTransaction<T>(
     await transaction`SELECT
       set_config('app.user_id', ${trusted.userId}, true),
       set_config('app.actor_id', ${trusted.actorId}, true),
-      set_config('app.request_id', ${trusted.requestId}, true)`;
+      set_config('app.actor_kind', ${trusted.actorKind}, true),
+      set_config('app.request_id', ${trusted.requestId}, true),
+      set_config('app.environment', ${RUNTIME_ENVIRONMENT}, true),
+      set_config('search_path', ${TENANT_SEARCH_PATH}, true)`;
     const [setting] = await transaction<TenantSettingRow[]>`
       SELECT nullif(current_setting('app.user_id', true), '') AS user_id,
              nullif(current_setting('app.actor_id', true), '') AS actor_id,
-             nullif(current_setting('app.request_id', true), '') AS request_id
+             nullif(current_setting('app.actor_kind', true), '') AS actor_kind,
+             nullif(current_setting('app.request_id', true), '') AS request_id,
+             nullif(current_setting('app.environment', true), '') AS environment,
+             current_setting('search_path', true) AS search_path
     `;
     if (
       setting?.user_id !== trusted.userId ||
       setting.actor_id !== trusted.actorId ||
-      setting.request_id !== trusted.requestId
+      setting.actor_kind !== trusted.actorKind ||
+      setting.request_id !== trusted.requestId ||
+      setting.environment !== RUNTIME_ENVIRONMENT ||
+      setting.search_path !== TENANT_SEARCH_PATH
     ) {
       throw new Error("Failed to establish transaction-local tenant context");
     }
@@ -102,7 +118,11 @@ function bindRepositorySet(sql: Sql, context: AuthContext): RepositorySet {
               string,
               RepositoryMethod
             >;
-            return transactionRepository[property as string].apply(transactionRepository, args);
+            return Reflect.apply(
+              transactionRepository[property as string],
+              transactionRepository,
+              args
+            );
           });
       },
     });
@@ -176,7 +196,10 @@ export function createPostgresRepositoryAccess(
       if (!controlPlaneSql) {
         throw new Error("A distinct control-plane PostgreSQL client is required");
       }
-      return { accounts: new PostgresControlPlaneAccounts(controlPlaneSql, trusted) };
+      return {
+        auth: new PostgresAuthRepository(controlPlaneSql),
+        accounts: new PostgresControlPlaneAccounts(controlPlaneSql, trusted),
+      };
     },
   };
 }

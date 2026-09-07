@@ -57,6 +57,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     const fake = sqlDouble([[itemRow], [itemRow], [itemRow], [itemRow], [], [{ count: 0 }], []]);
     const repos = createPostgresRepositories(fake.sql);
     expect(Object.keys(repos)).toEqual([
+      "auth",
       "items",
       "itemNotes",
       "annotations",

@@ -114,9 +114,9 @@ The mapping is created only after a verified email and successful invite consump
 idempotent on `(provider, provider_subject)`. An existing mapping can authenticate only while its
 user is active; an uninvited identity has no mapping to an active user and is denied. Email changes
 require a verified provider email and an explicit conflict policy; they never merge two internal
-users automatically. This personal-account model has no workspace, membership, or workspace
-model includes no workspace, membership, or workspace ownership tables or predicates. The required tables and concrete repository adapters are intentionally left to
-the Phase 3 migration workstream.
+users automatically. This personal-account model has no collaboration layer: there are no
+workspace, membership, or workspace ownership tables or predicates. The concrete repository
+adapters are part of the Phase 3 migration workstream.
 
 ## Session and device contract
 

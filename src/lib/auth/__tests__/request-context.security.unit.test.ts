@@ -48,7 +48,7 @@ describe("request AuthContext resolution", () => {
     expect(result.freshAuth.isFresh).toBe(true);
   });
 
-  it.each([undefined, "migration_pending", "suspended", "deleting", "deleted"] as const)(
+  it.each([undefined, "migration_pending", "suspended", "deletion_pending", "deleted"] as const)(
     "denies an unmapped or inactive account (%s)",
     async (status) => {
       const linked = status ? { userId, primaryEmail: "amit@example.com", status } : undefined;

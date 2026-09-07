@@ -54,6 +54,7 @@ import type {
 import type { ContentItem, Notification, Priority } from "@/lib/types";
 import { normalizeUrl } from "@/lib/utils";
 import { mapCapture, mapCaptureToken, mapItem } from "./mappers";
+import { PostgresAuthRepository } from "./auth-repository";
 
 type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
@@ -1643,6 +1644,7 @@ class PostgresAgent implements AgentRepository {
 
 export function createPostgresRepositories(sql: Sql): RepositorySet {
   return {
+    auth: new PostgresAuthRepository(sql),
     items: new PostgresItems(sql),
     itemNotes: new PostgresItemNotes(sql),
     annotations: new PostgresAnnotations(sql),

@@ -36,7 +36,8 @@ describe("Phase 3 reusable isolation assertions", () => {
         }
         return {
           status: 404,
-          body: itemId === fixture.alpha.resources.itemId ? { error: "other user" } : { error: "none" },
+          body:
+            itemId === fixture.alpha.resources.itemId ? { error: "other user" } : { error: "none" },
         };
       },
     };
@@ -58,10 +59,14 @@ describe("Phase 3 reusable isolation assertions", () => {
           : null;
       },
       async updateItem(context, itemId) {
-        return context.userId === fixture.alpha.user.id && itemId === fixture.alpha.resources.itemId;
+        return (
+          context.userId === fixture.alpha.user.id && itemId === fixture.alpha.resources.itemId
+        );
       },
       async deleteItem(context, itemId) {
-        return context.userId === fixture.alpha.user.id && itemId === fixture.alpha.resources.itemId;
+        return (
+          context.userId === fixture.alpha.user.id && itemId === fixture.alpha.resources.itemId
+        );
       },
     };
 

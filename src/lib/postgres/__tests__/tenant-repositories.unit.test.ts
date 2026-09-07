@@ -19,7 +19,14 @@ function sqlDouble() {
     queries.push(query);
     if (query.includes("current_setting('app.user_id'")) {
       return [
-        { user_id: context.userId, actor_id: context.actorId, request_id: context.requestId },
+        {
+          user_id: context.userId,
+          actor_id: context.actorId,
+          actor_kind: context.actorKind,
+          request_id: context.requestId,
+          environment: "runtime",
+          search_path: "tenant_api, pg_catalog",
+        },
       ];
     }
     return [];
@@ -38,7 +45,10 @@ describe("tenant-bound PostgreSQL repository access", () => {
     await expect(withTenantTransaction(fake.sql, context, async () => "ok")).resolves.toBe("ok");
     expect(fake.queries[0]).toContain("set_config('app.user_id'");
     expect(fake.queries[0]).toContain("set_config('app.actor_id'");
+    expect(fake.queries[0]).toContain("set_config('app.actor_kind'");
     expect(fake.queries[0]).toContain("set_config('app.request_id'");
+    expect(fake.queries[0]).toContain("set_config('app.environment'");
+    expect(fake.queries[0]).toContain("set_config('search_path'");
     expect(fake.queries[1]).toContain("current_setting('app.user_id'");
   });
 
