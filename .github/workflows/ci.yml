@@ -53,6 +53,10 @@ jobs:
   postgres-integration:
     name: PostgreSQL integration tests
     runs-on: ubuntu-latest
+    env:
+      # Every suite stops its own container, and GitHub discards the runner VM.
+      # Avoid the flaky Ryuk sidecar socket that can fail startup with write EPIPE.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
