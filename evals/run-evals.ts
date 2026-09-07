@@ -118,10 +118,7 @@ function rougeL(reference: string, hypothesis: string): number {
 
 // ── Metric Computation ───────────────────────────────────────────────────────
 
-function computePriorityAccuracy(
-  items: GoldenItem[],
-  predictions: Map<string, string>,
-): number {
+function computePriorityAccuracy(items: GoldenItem[], predictions: Map<string, string>): number {
   let correct = 0;
   for (const item of items) {
     const pred = predictions.get(item.id);
@@ -132,7 +129,7 @@ function computePriorityAccuracy(
 
 function computeTopicMetrics(
   items: GoldenItem[],
-  predictions: Map<string, string[]>,
+  predictions: Map<string, string[]>
 ): { precision: number; recall: number } {
   let totalPrecision = 0;
   let totalRecall = 0;
@@ -151,10 +148,7 @@ function computeTopicMetrics(
   };
 }
 
-function computeSummaryRougeL(
-  items: GoldenItem[],
-  predictions: Map<string, string>,
-): number {
+function computeSummaryRougeL(items: GoldenItem[], predictions: Map<string, string>): number {
   let sum = 0;
   for (const item of items) {
     const pred = predictions.get(item.id) ?? "";
@@ -163,10 +157,7 @@ function computeSummaryRougeL(
   return items.length > 0 ? sum / items.length : 0;
 }
 
-function computeCategoryAccuracy(
-  items: GoldenItem[],
-  predictions: Map<string, string>,
-): number {
+function computeCategoryAccuracy(items: GoldenItem[], predictions: Map<string, string>): number {
   let correct = 0;
   for (const item of items) {
     const pred = predictions.get(item.id) ?? "";
@@ -177,7 +168,7 @@ function computeCategoryAccuracy(
 
 function computeDedupMetrics(
   items: GoldenItem[],
-  predictions: Map<string, string | null>,
+  predictions: Map<string, string | null>
 ): { precision: number; recall: number } {
   const duplicates = items.filter((i) => i.duplicateOf);
   const nonDuplicates = items.filter((i) => !i.duplicateOf);
@@ -202,9 +193,7 @@ function computeDedupMetrics(
 
 // ── Live Mode: AI Predictions ──────────────────────────────────────────────────
 
-async function getLivePredictions(
-  items: GoldenItem[],
-): Promise<{
+async function getLivePredictions(items: GoldenItem[]): Promise<{
   priority: Map<string, string>;
   topics: Map<string, string[]>;
   summary: Map<string, string>;
@@ -213,9 +202,7 @@ async function getLivePredictions(
 }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY not set. Add to .env.local or environment for live mode.",
-    );
+    throw new Error("GEMINI_API_KEY not set. Add to .env.local or environment for live mode.");
   }
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
@@ -298,7 +285,12 @@ Output ONLY the single category word.`;
     try {
       const cr = await model.generateContent(categoryPrompt);
       const cat = cr.response.text().trim().toLowerCase();
-      category.set(item.id, ["tech", "business", "science", "health", "culture", "politics"].includes(cat) ? cat : "tech");
+      category.set(
+        item.id,
+        ["tech", "business", "science", "health", "culture", "politics"].includes(cat)
+          ? cat
+          : "tech"
+      );
     } catch {
       category.set(item.id, item.expectedCategory);
     }
@@ -334,12 +326,10 @@ Output ONLY the JSON object.`;
 export async function main(): Promise<void> {
   const isLive = process.argv.includes("--live");
   const goldenPath = path.join(__dirname, "golden-set.json");
-  const goldenSet: GoldenItem[] = JSON.parse(
-    fs.readFileSync(goldenPath, "utf-8"),
-  );
+  const goldenSet: GoldenItem[] = JSON.parse(fs.readFileSync(goldenPath, "utf-8"));
   const recordedPath = path.join(__dirname, "recorded-predictions.json");
   const recorded: Record<string, RecordedPrediction> = JSON.parse(
-    fs.readFileSync(recordedPath, "utf-8"),
+    fs.readFileSync(recordedPath, "utf-8")
   );
   // Dry mode evaluates a small, versioned prediction recording. It must never
   // copy expected labels into predictions: that made the old dry run score a
@@ -348,7 +338,7 @@ export async function main(): Promise<void> {
 
   console.log(`\nRunning evaluations in ${isLive ? "LIVE" : "DRY"} mode`);
   console.log(
-    `${isLive ? "Golden set" : "Recorded prediction fixture"}: ${evaluationSet.length} items\n`,
+    `${isLive ? "Golden set" : "Recorded prediction fixture"}: ${evaluationSet.length} items\n`
   );
 
   let priorityPred: Map<string, string>;
@@ -408,7 +398,10 @@ export async function main(): Promise<void> {
           return expected.size > 0 ? tp / expected.size : 0;
         })(),
         rougeL: rougeL(item.expectedSummary, summaryPred.get(item.id) ?? ""),
-        categoryCorrect: (categoryPred.get(item.id)?.toLowerCase() === item.expectedCategory.toLowerCase() ? 1 : 0) as number,
+        categoryCorrect: (categoryPred.get(item.id)?.toLowerCase() ===
+        item.expectedCategory.toLowerCase()
+          ? 1
+          : 0) as number,
         dedupCorrect: (dedupPred.get(item.id) === (item.duplicateOf ?? null) ? 1 : 0) as number,
       },
     })),
@@ -419,11 +412,15 @@ export async function main(): Promise<void> {
   console.log("┌─────────────────────────┬──────────┐");
   console.log("│ Metric                  │ Score    │");
   console.log("├─────────────────────────┼──────────┤");
-  console.log(`│ Priority Accuracy       │ ${(m.priorityAccuracy * 100).toFixed(1).padStart(5)}%  │`);
+  console.log(
+    `│ Priority Accuracy       │ ${(m.priorityAccuracy * 100).toFixed(1).padStart(5)}%  │`
+  );
   console.log(`│ Topic Precision         │ ${(m.topicPrecision * 100).toFixed(1).padStart(5)}%  │`);
   console.log(`│ Topic Recall            │ ${(m.topicRecall * 100).toFixed(1).padStart(5)}%  │`);
   console.log(`│ Summary ROUGE-L (F1)    │ ${(m.summaryRougeL * 100).toFixed(1).padStart(5)}%  │`);
-  console.log(`│ Category Accuracy       │ ${(m.categoryAccuracy * 100).toFixed(1).padStart(5)}%  │`);
+  console.log(
+    `│ Category Accuracy       │ ${(m.categoryAccuracy * 100).toFixed(1).padStart(5)}%  │`
+  );
   console.log(`│ Dedup Precision         │ ${(m.dedupPrecision * 100).toFixed(1).padStart(5)}%  │`);
   console.log(`│ Dedup Recall            │ ${(m.dedupRecall * 100).toFixed(1).padStart(5)}%  │`);
   console.log("└─────────────────────────┴──────────┘");
