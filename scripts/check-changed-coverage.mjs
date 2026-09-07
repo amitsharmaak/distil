@@ -8,9 +8,13 @@ import { fileURLToPath } from "node:url";
 const COVERAGE_PATH = path.resolve("coverage/coverage-final.json");
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const TYPE_ONLY_FILES = new Set([
+  "src/components/phase2/types.ts",
   "src/lib/contracts/capture.ts",
+  "src/lib/digests/types.ts",
   "src/lib/intelligence/types.ts",
+  "src/lib/knowledge/types.ts",
   "src/lib/repositories/ports.ts",
+  "src/lib/types.ts",
 ]);
 
 export function selectBaseRef(git, configuredBase) {
