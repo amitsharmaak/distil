@@ -43,6 +43,22 @@ export interface ExtractedContent {
   extractedLinks: ExtractedLink[];
 }
 
+/** Convert article HTML to text without merging words across element boundaries. */
+export function extractPlaintextFromHtml(html: string, url = "https://example.invalid/"): string {
+  if (!html.trim()) return "";
+  const dom = new JSDOM(html, { url });
+  const document = dom.window.document;
+  document
+    .querySelectorAll("script, style, nav, header, footer, form, noscript, svg")
+    .forEach((element) => element.remove());
+  document
+    .querySelectorAll(
+      "br, p, div, section, article, main, aside, li, h1, h2, h3, h4, h5, h6, blockquote, td, th"
+    )
+    .forEach((element) => element.append(document.createTextNode("\n")));
+  return document.body?.textContent ?? "";
+}
+
 /** Parses an already-fetched response without performing another network request. */
 export function extractContentFromHtml(html: string, url: string): ExtractedContent | null {
   if (isUnextractable(url)) return null;
@@ -67,7 +83,7 @@ export function extractContentFromHtml(html: string, url: string): ExtractedCont
     title: article.title ?? null,
     byline: article.byline ?? null,
     content,
-    textContent: article.textContent ?? "",
+    textContent: content ? extractPlaintextFromHtml(content, url) : (article.textContent ?? ""),
     extractedLinks,
   };
 }

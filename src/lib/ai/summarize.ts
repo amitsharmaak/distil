@@ -11,7 +11,6 @@
 
 import crypto from "crypto";
 import { SchemaType, type ResponseSchema } from "@google/generative-ai";
-import { JSDOM } from "jsdom";
 import { generateJSONWithMetadata } from "./router";
 import {
   summarizePrompt,
@@ -29,6 +28,7 @@ import {
 } from "@/lib/intelligence/content-quality";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
+import { extractPlaintextFromHtml } from "@/lib/content-extractor";
 
 export type { SummaryOutput };
 
@@ -126,7 +126,7 @@ export function renderSummaryMarkdown(output: SummaryOutput): string {
 function getSummarizableContent(item: { fullContent?: string; summary: string }): string {
   const content = item.fullContent ?? item.summary ?? "";
   if (!containsMeaningfulHtml(content)) return content;
-  return new JSDOM(content).window.document.body.textContent ?? "";
+  return extractPlaintextFromHtml(content);
 }
 
 async function persistSummary(

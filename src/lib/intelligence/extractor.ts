@@ -10,12 +10,12 @@
 import {
   extractContent as extractPageContent,
   extractContentFromHtml,
+  extractPlaintextFromHtml,
   type ExtractedLink as ContentExtractorLink,
 } from "@/lib/content-extractor";
 import { findByUrl as findPublisherByUrl } from "@/lib/connectors/publishers/registry";
 import { PublisherAuthRequired } from "@/lib/connectors/publishers/types";
 import { extractOGFromHtml, fetchOG } from "@/lib/og";
-import { JSDOM } from "jsdom";
 import type {
   ContentClassification,
   ExtractedContentResult,
@@ -115,7 +115,7 @@ async function extractFromUrl(raw: RawContent): Promise<ExtractedContentResult> 
 
 function extractFromEmail(raw: RawContent): ExtractedContentResult {
   const html = raw.rawBody ?? "";
-  const text = raw.rawTextContent ?? plainTextFromHtml(html);
+  const text = raw.rawTextContent ?? extractPlaintextFromHtml(html);
 
   // Extract links from HTML
   const linkMatches = [...html.matchAll(HREF_REGEX)];
@@ -160,13 +160,4 @@ function minimalResult(raw: RawContent): ExtractedContentResult {
     publication: raw.metadata.senderDomain ?? undefined,
     allLinks: [],
   };
-}
-
-function plainTextFromHtml(html: string): string {
-  if (!html.trim()) return "";
-  const dom = new JSDOM(html);
-  dom.window.document
-    .querySelectorAll("script, style, nav, header, footer, form, noscript, svg")
-    .forEach((element) => element.remove());
-  return dom.window.document.body?.textContent ?? "";
 }

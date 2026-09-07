@@ -2,24 +2,6 @@ jest.mock("@mozilla/readability", () => ({ Readability: jest.fn() }));
 jest.mock("@/lib/content-sanitizer", () => ({
   sanitizeArticleHtml: (html: string) => html.replace(/<script>[\s\S]*?<\/script>/g, ""),
 }));
-jest.mock("jsdom", () => ({
-  JSDOM: class JSDOM {
-    window: {
-      document: {
-        querySelectorAll: () => Array<{ textContent: string; getAttribute: () => string }>;
-      };
-    };
-
-    constructor(html: string) {
-      const anchors = [...html.matchAll(/<a href="([^"]+)">([^<]*)<\/a>/g)].map((match) => ({
-        textContent: match[2],
-        getAttribute: () => match[1],
-      }));
-      this.window = { document: { querySelectorAll: () => anchors } };
-    }
-  },
-}));
-
 import { Readability } from "@mozilla/readability";
 import { extractContent, extractContentFromHtml } from "../content-extractor";
 
@@ -69,7 +51,8 @@ it("sanitizes content and keeps unique, labelled HTTP links capped at fifty", ()
 
   const result = extractContentFromHtml("<html></html>", "https://example.com/story");
 
-  expect(result).toMatchObject({ title: null, byline: null, textContent: "" });
+  expect(result).toMatchObject({ title: null, byline: null });
+  expect(result?.textContent).toContain("Link 0");
   expect(result?.content).not.toContain("script");
   expect(result?.extractedLinks).toHaveLength(50);
   expect(result?.extractedLinks[0]).toEqual({ text: "Link 0", url: "https://example.com/0" });
@@ -82,7 +65,7 @@ it("handles missing article HTML content", () => {
     content: undefined,
     textContent: "Text",
   });
-  expect(extractContentFromHtml("<html></html>", "not a valid URL")).toEqual({
+  expect(extractContentFromHtml("<html></html>", "https://example.com/missing-content")).toEqual({
     title: "Title",
     byline: "Writer",
     content: "",

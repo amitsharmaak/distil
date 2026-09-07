@@ -18,6 +18,7 @@ jest.mock("@/lib/content-extractor", () => ({
     throw new Error("network extraction must not run");
   }),
   extractContentFromHtml,
+  extractPlaintextFromHtml: jest.fn(() => "Useful email prose."),
 }));
 jest.mock("@/lib/og", () => ({
   fetchOG: jest.fn(() => {
