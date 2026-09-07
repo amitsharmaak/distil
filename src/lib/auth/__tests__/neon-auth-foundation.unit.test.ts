@@ -9,6 +9,17 @@ describe("readNeonAuthFoundation", () => {
     });
   });
 
+  it.each([" true", "true ", "TRUE", "1"])(
+    "remains disabled unless FEATURE_NEON_AUTH is exactly true (%s)",
+    (value) => {
+      expect(readNeonAuthFoundation({ FEATURE_NEON_AUTH: value })).toEqual({
+        enabled: false,
+        status: "disabled",
+        missing: [],
+      });
+    }
+  );
+
   it("reports the enablement contract without exposing its values", () => {
     const foundation = readNeonAuthFoundation({
       FEATURE_NEON_AUTH: "true",

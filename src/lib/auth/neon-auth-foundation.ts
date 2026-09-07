@@ -16,7 +16,7 @@ export interface NeonAuthFoundation {
 const REQUIRED_VARIABLES = ["NEON_AUTH_BASE_URL", "NEON_AUTH_COOKIE_SECRET"] as const;
 
 function enabled(value: string | undefined): boolean {
-  return value?.trim().toLowerCase() === "true";
+  return value === "true";
 }
 
 /**

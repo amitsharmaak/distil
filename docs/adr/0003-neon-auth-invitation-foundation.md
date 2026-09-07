@@ -68,13 +68,14 @@ Sources: [Neon Auth v0.2 migration guide](https://neon.com/docs/auth/migrate/fro
    callback URL from the exact application origin allowlist and keeps the intended destination in
    server state, not a user-controlled redirect parameter.
 4. On a verified Neon Auth session, an idempotent server transaction consumes the matching active
-   invite and creates or reactivates the internal `users` account with active status. It must
-   compare the verified email with the invite email using the product's canonical normalization
-   rule.
-5. Authorization resolves `auth_user_id -> users.id` and verifies active account status on every
-   protected request. All product queries are scoped to that `users.id` as `user_id`. A pending,
-   expired, revoked, wrong-email, or already-consumed invite cannot provide application access.
-   Returning a generic "unable to continue" response avoids invite/account enumeration.
+   invite, creates or reactivates the internal `users` account with active status, and creates the
+   identity mapping. It must compare the verified email with the invite email using the product's
+   canonical normalization rule.
+5. Authorization resolves `provider` plus `provider_subject` through `auth_identities` to
+   `users.id` and verifies active account status on every protected request. All product queries
+   are scoped to that `users.id` as `user_id`. A verified identity with no mapped active user is
+   denied exactly like a pending, expired, revoked, wrong-email, or already-consumed invite.
+   Return a generic "unable to continue" response to avoid invite/account enumeration.
 6. Neon Auth organizations and invitations are not used for Phase 3 product authorization or
    tenancy. They may be evaluated only when Phase 6 collaboration is explicitly in scope; until
    then, Distil's operator-issued invitation and active-account records remain independently
@@ -90,16 +91,21 @@ ensure the generic endpoint is not publicly usable. This is an enablement gate, 
 
 ## Internal identity mapping
 
-Phase 3 will add an application-owned `users` row with a generated internal UUID. It will have a
-unique, immutable `neon_auth_user_id` external identifier plus a normalized email snapshot for
-display and invite matching. Personal-data foreign keys, `user_id` scoping, audit records, and
-capture ownership reference the internal UUID only. Do not assume the provider identifier is a
-UUID, reuse it as a primary key, or put business attributes in `neon_auth` tables.
+Phase 3 will add an application-owned `users` row with a generated internal UUID and a normalized
+email snapshot for display and invite matching. `users` must not store a Neon subject, provider
+subject, or other external identity as a direct ownership key. The mapping is an application-owned
+`auth_identities(provider, provider_subject, user_id)` table: `(provider, provider_subject)` is
+unique and `user_id` references `users.id`. Personal-data foreign keys, `user_id` scoping, audit
+records, and capture ownership reference the internal UUID only. Do not assume a provider subject
+is a UUID, reuse it as a primary key, or put business attributes in provider tables.
 
-The mapping is created only after a verified session and is idempotent on the external identifier.
-Email changes require a verified provider email and an explicit conflict policy; they never merge
-two internal users automatically. The required tables and repository ports are intentionally left
-to the Phase 3 migration workstream.
+The mapping is created only after a verified email and successful invite consumption, and is
+idempotent on `(provider, provider_subject)`. An existing mapping can authenticate only while its
+user is active; an uninvited identity has no mapping to an active user and is denied. Email changes
+require a verified provider email and an explicit conflict policy; they never merge two internal
+users automatically. This personal-account model has no workspace, membership, or workspace
+ownership tables or predicates. The required tables and repository ports are intentionally left to
+the Phase 3 migration workstream.
 
 ## Session and device contract
 
@@ -180,8 +186,8 @@ Before moving `FEATURE_NEON_AUTH` to true, complete all of these:
 2. Prove magic-link-only configuration and resolve the self-registration limitation above in a
    disposable Preview branch with no real user data.
 3. Add unit tests for disabled/misconfigured flags, invite hashing/expiry/atomic consumption,
-   email normalization, external-to-internal UUID mapping, active-account checks, generic errors, and redirect
-   validation.
+   email normalization, `auth_identities(provider, provider_subject, user_id)` mapping,
+   active-account checks, generic errors, and redirect validation.
 4. Add route/proxy contract tests for unauthenticated, pending-invite, active-account, disabled,
    and capture-token requests; assert legacy session behavior during the migration.
 5. Add browser tests covering request link, valid invite acceptance, wrong account, expired/reused
