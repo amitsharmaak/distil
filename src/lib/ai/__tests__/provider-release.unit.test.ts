@@ -19,8 +19,14 @@ jest.mock("@/lib/database", () => ({
   upsertItemEmbedding: jest.fn(),
 }));
 
-import { DEFAULT_MODEL_CONFIG, GEMINI_SEARCH_MODEL, PROVIDER_FALLBACK_MODELS } from "../ai-config";
+import {
+  DEFAULT_MODEL_CONFIG,
+  GEMINI_SEARCH_MODEL,
+  PROVIDER_FALLBACK_MODELS,
+  TASK_MODEL_CANDIDATES,
+} from "../ai-config";
 import { GeminiProviderImpl, createProviders } from "../providers";
+import type { ResponseSchema } from "@google/generative-ai";
 import { cosineSimilarity, embedItem, generateEmbedding } from "../embeddings";
 import { upsertItemEmbedding } from "@/lib/database";
 
@@ -38,14 +44,27 @@ describe("Gemini Preview release configuration", () => {
     expect([...configured, ...fallbacks, GEMINI_SEARCH_MODEL]).toEqual(
       expect.arrayContaining(["gemini-3.5-flash", "gemini-3.5-flash-lite"])
     );
+    expect(TASK_MODEL_CANDIDATES.summarize?.gemini).toEqual([
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+    ]);
     expect([...configured, ...fallbacks, GEMINI_SEARCH_MODEL]).not.toEqual(
       expect.arrayContaining([expect.stringContaining("preview")])
     );
   });
 
-  it("bounds generation calls and retries one rate limit without leaking it", async () => {
+  it("does not retry quota failures within the same model", async () => {
+    generateContent.mockRejectedValue(new Error("429 rate limit from provider"));
+
+    await expect(
+      new GeminiProviderImpl("test-key").generateText("prompt", "gemini-3.5-flash-lite")
+    ).rejects.toMatchObject({ category: "quota", message: "AI provider quota exhausted" });
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds generation calls and retries one transient server failure", async () => {
     generateContent
-      .mockRejectedValueOnce(new Error("429 rate limit from provider"))
+      .mockRejectedValueOnce(new Error("503 unavailable"))
       .mockResolvedValue({ response: { text: () => "accepted" } });
 
     await expect(
@@ -61,9 +80,23 @@ describe("Gemini Preview release configuration", () => {
       .mockResolvedValueOnce({ response: { text: () => "grounded" } });
     const provider = new GeminiProviderImpl("test-key");
 
+    const responseSchema = {
+      type: "object",
+      properties: { ok: { type: "boolean" } },
+      required: ["ok"],
+    } as unknown as ResponseSchema;
     await expect(
-      provider.generateJSON<{ ok: boolean }>("prompt", "gemini-3.5-flash")
+      provider.generateJSON<{ ok: boolean }>("prompt", "gemini-3.5-flash", { responseSchema })
     ).resolves.toEqual({ ok: true });
+    expect(getGenerativeModel).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({
+          responseMimeType: "application/json",
+          responseSchema,
+        }),
+      })
+    );
     await expect(provider.generateTextWithSearch("question")).resolves.toBe("grounded");
     expect(getGenerativeModel).toHaveBeenLastCalledWith(
       expect.objectContaining({ model: "gemini-3.5-flash" })

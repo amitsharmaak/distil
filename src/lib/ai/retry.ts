@@ -4,6 +4,7 @@
  */
 
 import { aiLogger } from "@/lib/logger";
+import { classifyProviderFailure, isRetryableProviderFailure } from "./errors";
 
 interface RetryOptions {
   maxAttempts: number;
@@ -16,24 +17,7 @@ const DEFAULT_OPTIONS: RetryOptions = {
   maxAttempts: 3,
   baseDelay: 1000,
   maxDelay: 8000,
-  shouldRetry: (error) => {
-    if (error instanceof Error) {
-      const msg = error.message.toLowerCase();
-      // Retry on rate limits, timeouts, and server errors
-      return (
-        msg.includes("rate limit") ||
-        msg.includes("429") ||
-        msg.includes("timeout") ||
-        msg.includes("aborted") ||
-        msg.includes("503") ||
-        msg.includes("500") ||
-        msg.includes("econnreset") ||
-        msg.includes("econnrefused") ||
-        msg.includes("network")
-      );
-    }
-    return false;
-  },
+  shouldRetry: isRetryableProviderFailure,
 };
 
 function sleep(ms: number): Promise<void> {
@@ -64,7 +48,12 @@ export async function withRetry<T>(
       const jitter = delay * 0.1 * Math.random();
 
       aiLogger.warn(
-        { attempt: attempt + 1, maxAttempts: opts.maxAttempts, delayMs: delay },
+        {
+          attempt: attempt + 1,
+          maxAttempts: opts.maxAttempts,
+          delayMs: delay,
+          category: classifyProviderFailure(error),
+        },
         "Retrying AI call after transient failure"
       );
 

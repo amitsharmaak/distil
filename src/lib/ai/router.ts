@@ -9,7 +9,13 @@ import type { AIProvider, GenerateOptions } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider } from "./providers";
 import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
-import { DEFAULT_MODEL_CONFIG, PROVIDER_FALLBACK_MODELS, MODEL_COSTS } from "./ai-config";
+import {
+  DEFAULT_MODEL_CONFIG,
+  PROVIDER_FALLBACK_MODELS,
+  MODEL_COSTS,
+  TASK_MODEL_CANDIDATES,
+} from "./ai-config";
+import { AIProviderError, toAIProviderError } from "./errors";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { insertAuditLog } from "@/lib/database";
@@ -23,6 +29,13 @@ export interface UsageMetrics {
   model: string;
   provider: ProviderName;
   task: AITask;
+}
+
+/** A generated value plus the provider/model that actually produced it. */
+export interface RoutedGeneration<T> {
+  value: T;
+  provider: ProviderName;
+  model: string;
 }
 
 function estimateTokens(text: string): number {
@@ -82,11 +95,11 @@ function getUsageTrackerInstance(): AIUsageTracker {
   return globalForRouter.__distilAIUsageTracker;
 }
 
-class AIRouter {
+export class AIRouter {
   private readonly providers: Map<ProviderName, AIProvider>;
 
-  constructor() {
-    this.providers = createProviders();
+  constructor(providers: Map<ProviderName, AIProvider> = createProviders()) {
+    this.providers = providers;
   }
 
   getAvailableProviders(): ProviderName[] {
@@ -150,9 +163,7 @@ class AIRouter {
     const tracker = getUsageTrackerInstance();
     const dailyTotal = tracker.getDailyTotal();
     if (dailyTotal >= budget) {
-      throw new Error(
-        `Daily AI budget exceeded ($${dailyTotal.toFixed(2)} >= $${budget.toFixed(2)}). Set DISTIL_DAILY_AI_BUDGET to increase or disable.`
-      );
+      throw new AIProviderError("budget");
     }
     if (dailyTotal >= budget * BUDGET_WARN_THRESHOLD) {
       aiLogger.warn(
@@ -162,97 +173,116 @@ class AIRouter {
     }
   }
 
-  async generateText(prompt: string, task: AITask, options?: GenerateOptions): Promise<string> {
-    const { provider, model } = this.getEffectiveModel(task);
+  private getModelCandidates(task: AITask, assignment: ModelAssignment): string[] {
+    const configured = TASK_MODEL_CANDIDATES[task]?.[assignment.provider];
+    if (!configured?.includes(assignment.model)) return [assignment.model];
+    return [assignment.model, ...configured.filter((model) => model !== assignment.model)];
+  }
+
+  private async runRoutedGeneration<T>(
+    prompt: string,
+    task: AITask,
+    operation: (provider: AIProvider, model: string) => Promise<T>,
+    serialize: (value: T) => string
+  ): Promise<RoutedGeneration<T>> {
+    const assignment = this.getEffectiveModel(task);
+    const provider = this.getProvider(assignment.provider);
+    const candidates = this.getModelCandidates(task, assignment);
     const traceId = getTraceId();
     const tokensIn = estimateTokens(prompt);
-    const start = Date.now();
 
     this.checkBudget();
 
-    const p = this.getProvider(provider);
-    const result = await p.generateText(prompt, model, options);
+    for (let index = 0; index < candidates.length; index++) {
+      const model = candidates[index];
+      const start = Date.now();
+      try {
+        const value = await operation(provider, model);
+        const latencyMs = Date.now() - start;
+        const tokensOut = estimateTokens(serialize(value));
+        const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
-    const latencyMs = Date.now() - start;
-    const tokensOut = estimateTokens(result);
-    const costEstimate = estimateCost(model, tokensIn, tokensOut);
+        await this.persistUsage(
+          {
+            task,
+            provider: assignment.provider,
+            model,
+            tokens_in: tokensIn,
+            tokens_out: tokensOut,
+            latency_ms: latencyMs,
+            cost_estimate: costEstimate,
+          },
+          `ai:${task}`,
+          traceId
+        );
 
-    await this.persistUsage(
-      {
-        task,
-        provider,
-        model,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_estimate: costEstimate,
-      },
-      `ai:${task}`,
-      traceId
+        aiLogger.info(
+          {
+            traceId,
+            task,
+            provider: assignment.provider,
+            model,
+            tokensIn,
+            tokensOut,
+            latencyMs,
+            costEstimate: costEstimate.toFixed(6),
+          },
+          "AI call completed"
+        );
+
+        return { value, provider: assignment.provider, model };
+      } catch (error) {
+        const normalized = toAIProviderError(error, assignment.provider, model);
+        const fallbackModel = candidates[index + 1];
+        if (normalized.category === "quota" && fallbackModel) {
+          aiLogger.warn(
+            {
+              traceId,
+              task,
+              provider: assignment.provider,
+              model,
+              category: normalized.category,
+              attempt: index + 1,
+              fallbackModel,
+            },
+            "summary_model_fallback"
+          );
+          continue;
+        }
+        throw normalized;
+      }
+    }
+
+    // The loop always returns or throws, but retain a typed defensive failure.
+    throw new AIProviderError("unknown", assignment.provider);
+  }
+
+  async generateText(prompt: string, task: AITask, options?: GenerateOptions): Promise<string> {
+    const result = await this.runRoutedGeneration(
+      prompt,
+      task,
+      (provider, model) => provider.generateText(prompt, model, options),
+      (value) => value
     );
-
-    aiLogger.info(
-      {
-        traceId,
-        task,
-        provider,
-        model,
-        tokensIn,
-        tokensOut,
-        latencyMs,
-        costEstimate: costEstimate.toFixed(6),
-      },
-      "AI call completed"
-    );
-
-    return result;
+    return result.value;
   }
 
   async generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions): Promise<T> {
-    const { provider, model } = this.getEffectiveModel(task);
-    const traceId = getTraceId();
-    const tokensIn = estimateTokens(prompt);
-    const start = Date.now();
+    const result = await this.generateJSONWithMetadata<T>(prompt, task, options);
+    return result.value;
+  }
 
-    this.checkBudget();
-
-    const p = this.getProvider(provider);
-    const result = await p.generateJSON<T>(prompt, model, options);
-
-    const latencyMs = Date.now() - start;
-    const resultStr = JSON.stringify(result);
-    const tokensOut = estimateTokens(resultStr);
-    const costEstimate = estimateCost(model, tokensIn, tokensOut);
-
-    await this.persistUsage(
-      {
-        task,
-        provider,
-        model,
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        latency_ms: latencyMs,
-        cost_estimate: costEstimate,
-      },
-      `ai:${task}`,
-      traceId
+  async generateJSONWithMetadata<T>(
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions
+  ): Promise<RoutedGeneration<T>> {
+    return this.runRoutedGeneration(
+      prompt,
+      task,
+      (provider, model) => provider.generateJSON<T>(prompt, model, options),
+      (value) => JSON.stringify(value)
     );
-
-    aiLogger.info(
-      {
-        traceId,
-        task,
-        provider,
-        model,
-        tokensIn,
-        tokensOut,
-        latencyMs,
-        costEstimate: costEstimate.toFixed(6),
-      },
-      "AI call completed"
-    );
-
-    return result;
   }
 
   async generateTextWithSearch(prompt: string): Promise<string> {
@@ -330,6 +360,15 @@ export async function generateJSON<T>(
   options?: GenerateOptions
 ): Promise<T> {
   return _getRouter().generateJSON<T>(prompt, task, options);
+}
+
+/** Generate structured JSON and report the provider/model that actually succeeded. */
+export async function generateJSONWithMetadata<T>(
+  prompt: string,
+  task: AITask,
+  options?: GenerateOptions
+): Promise<RoutedGeneration<T>> {
+  return _getRouter().generateJSONWithMetadata<T>(prompt, task, options);
 }
 
 /**

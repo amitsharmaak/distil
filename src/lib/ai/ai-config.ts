@@ -27,7 +27,7 @@ export interface ModelAssignment {
 
 /** Optimal model for each task when all providers are available. */
 export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
-  summarize: { provider: "gemini", model: "gemini-3.5-flash" },
+  summarize: { provider: "gemini", model: "gemini-3.5-flash-lite" },
   "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-6" },
   prioritize: { provider: "openai", model: "gpt-4o-mini" },
   "research-plan": { provider: "anthropic", model: "claude-sonnet-4-6" },
@@ -46,6 +46,7 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "gemini-3.5-flash": { input: 1.5, output: 9.0 },
   "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4o": { input: 2.5, output: 10.0 },
   "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
@@ -63,8 +64,8 @@ export const GEMINI_SEARCH_MODEL = "gemini-3.5-flash";
 /** Best model for each task when only ONE provider is available. */
 export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, string>> = {
   gemini: {
-    summarize: "gemini-3.5-flash",
-    "summarize-complex": "gemini-3.5-flash",
+    summarize: "gemini-3.5-flash-lite",
+    "summarize-complex": "gemini-3.5-flash-lite",
     prioritize: "gemini-3.5-flash-lite",
     "research-plan": "gemini-3.5-flash",
     "research-search": "gemini-3.5-flash",
@@ -97,5 +98,21 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
     "preference-analysis": "claude-haiku-4-5",
     "auto-tag": "claude-haiku-4-5",
     "dedup-check": "claude-haiku-4-5",
+  },
+};
+
+/**
+ * Ordered, task-scoped candidates used only after the effective provider has
+ * been selected. Keeping this separate prevents quota fallback from leaking
+ * into classification, tagging, prioritization, research, or embeddings.
+ */
+export const TASK_MODEL_CANDIDATES: Partial<
+  Record<AITask, Partial<Record<ProviderName, readonly string[]>>>
+> = {
+  summarize: {
+    gemini: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+  },
+  "summarize-complex": {
+    gemini: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
   },
 };
