@@ -353,6 +353,23 @@ AS $phase3_find_invitation$
   LIMIT 1
 $phase3_find_invitation$;
 
+-- Capture credentials predate tenant context, so resolve only the exact
+-- credential hash needed to open the owning tenant transaction. This is not a
+-- token browsing surface and intentionally returns no secret or user profile.
+CREATE OR REPLACE FUNCTION distil_resolve_capture_token(requested_token_hash text)
+RETURNS TABLE (token_id text, user_id uuid, revoked_at timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_resolve_capture_token$
+  SELECT token.id, token.user_id, token.revoked_at
+  FROM public.capture_tokens AS token
+  WHERE token.token_hash = requested_token_hash
+    AND token.revoked_at IS NULL
+  LIMIT 1
+$phase3_resolve_capture_token$;
+
 CREATE OR REPLACE FUNCTION distil_consume_invitation(
   requested_id uuid,
   requested_token_hash text,
@@ -434,11 +451,13 @@ $phase3_consume_invitation$;
 
 ALTER FUNCTION distil_resolve_auth_identity(text, text) OWNER TO distil_migration;
 ALTER FUNCTION distil_find_invitation(uuid) OWNER TO distil_migration;
+ALTER FUNCTION distil_resolve_capture_token(text) OWNER TO distil_migration;
 ALTER FUNCTION distil_consume_invitation(uuid, text, text, text, text, text, timestamptz)
   OWNER TO distil_migration;
 
 REVOKE ALL ON FUNCTION distil_resolve_auth_identity(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION distil_find_invitation(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION distil_resolve_capture_token(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION
   distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) FROM PUBLIC;
 
@@ -482,6 +501,7 @@ $phase3_tenant_views$;
 GRANT EXECUTE ON FUNCTION distil_current_user_id() TO distil_runtime;
 GRANT EXECUTE ON FUNCTION distil_resolve_auth_identity(text, text) TO distil_runtime;
 GRANT EXECUTE ON FUNCTION distil_find_invitation(uuid) TO distil_runtime;
+GRANT EXECUTE ON FUNCTION distil_resolve_capture_token(text) TO distil_runtime;
 GRANT EXECUTE ON FUNCTION
   distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) TO distil_runtime;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM distil_runtime;

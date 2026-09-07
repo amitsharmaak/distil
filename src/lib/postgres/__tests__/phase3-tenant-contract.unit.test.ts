@@ -27,4 +27,18 @@ describe("Phase 3 tenant contract", () => {
     expect(grant).toBeLessThan(authFunction);
     expect(authFunction).toBeLessThan(tenantSchema);
   });
+
+  it("resolves existing opaque capture tokens through a narrow exact-hash function", () => {
+    expect(contract).toContain(
+      "CREATE OR REPLACE FUNCTION distil_resolve_capture_token(requested_token_hash text)"
+    );
+    expect(contract).toContain("WHERE token.token_hash = requested_token_hash");
+    expect(contract).toContain("AND token.revoked_at IS NULL");
+    expect(contract).toContain(
+      "REVOKE ALL ON FUNCTION distil_resolve_capture_token(text) FROM PUBLIC"
+    );
+    expect(contract).toContain(
+      "GRANT EXECUTE ON FUNCTION distil_resolve_capture_token(text) TO distil_runtime"
+    );
+  });
 });
