@@ -11,7 +11,9 @@ import type { ProviderName } from "./ai-config";
 import { GEMINI_SEARCH_MODEL } from "./ai-config";
 import { withRetry } from "./retry";
 
-const GEMINI_REQUEST_TIMEOUT_MS = 5_000;
+// Complex Flash summaries routinely take 5-8 seconds. Keep enough headroom for
+// a useful answer while retaining a hard per-attempt bound for the 60s worker.
+const GEMINI_REQUEST_TIMEOUT_MS = 8_000;
 const GEMINI_RETRY_OPTIONS = { maxAttempts: 2, baseDelay: 250, maxDelay: 250 } as const;
 
 export interface GenerateOptions {

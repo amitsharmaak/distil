@@ -52,7 +52,7 @@ describe("Gemini Preview release configuration", () => {
       new GeminiProviderImpl("test-key").generateText("prompt", "gemini-3.5-flash")
     ).resolves.toBe("accepted");
     expect(generateContent).toHaveBeenCalledTimes(2);
-    expect(generateContent).toHaveBeenCalledWith("prompt", { timeout: 5_000 });
+    expect(generateContent).toHaveBeenCalledWith("prompt", { timeout: 8_000 });
   });
 
   it("parses JSON and uses the stable search model", async () => {
