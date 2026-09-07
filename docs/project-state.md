@@ -619,6 +619,10 @@ Task 4 progress (2026-09-07, not yet accepted):
   technical articles fell back to truthful but truncated source openings, and the paywall case stored
   HTML boilerplate. Cached deep summaries were absent. Therefore Task 4 remains incomplete even though
   provider connectivity, durability, deduplication, retry bounds, and terminal timing passed.
+- **Only remaining Task 4 bug:** the `gemini-3.5-flash` summary and deep-summary path does not produce
+  a usable stored summary. The failure still needs to be isolated between request timeout and invalid
+  structured output. All other Task 4 functionality has passed; closing this bug and rerunning the
+  acceptance matrix are the only remaining implementation and verification work.
 - **Exact restart:** reproduce the Flash summary/deep-summary failure with one captured item;
   distinguish timeout from malformed structured output; fix the summary path without weakening the
   60-second worker bound; rerun the same five cases sequentially; require useful, source-grounded
