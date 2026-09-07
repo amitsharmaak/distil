@@ -109,6 +109,21 @@ function parseJson(table: string, column: string, value: unknown): unknown {
   }
 }
 
+/** PostgreSQL text and jsonb reject U+0000; strip legacy NUL bytes recursively. */
+function stripNullBytes(value: unknown): unknown {
+  if (typeof value === "string") return value.replaceAll("\0", "");
+  if (Array.isArray(value)) return value.map(stripNullBytes);
+  if (value !== null && typeof value === "object" && !Buffer.isBuffer(value)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        stripNullBytes(nested),
+      ])
+    );
+  }
+  return value;
+}
+
 function mapRow(spec: TableSpec, input: Record<string, unknown>): ImportRow {
   const output: ImportRow = {};
   for (const [sourceColumn, originalValue] of Object.entries(input)) {
@@ -120,7 +135,7 @@ function mapRow(spec: TableSpec, input: Record<string, unknown>): ImportRow {
     if (spec.boolean?.includes(sourceColumn) || spec.boolean?.includes(targetColumn)) {
       value = Boolean(value);
     }
-    output[targetColumn] = value as ImportRow[string];
+    output[targetColumn] = stripNullBytes(value) as ImportRow[string];
   }
   return output;
 }

@@ -224,6 +224,22 @@ describe("SQLite importer", () => {
     const item = result.tables.find(({ table }) => table === "items");
     expect(item?.sourceCount).toBe(1);
   });
+
+  it("strips legacy NUL bytes from text and nested JSON before PostgreSQL import", async () => {
+    const sqlite = new Database(fixture.path);
+    sqlite
+      .prepare("UPDATE items SET title = ?, topics = ? WHERE id = ?")
+      .run("An\0 article", JSON.stringify(["A\0I"]), "item-1");
+    sqlite.close();
+    const target = new MemoryTarget();
+
+    await importSqlite({ sourcePath: fixture.path, execute: true, target });
+
+    expect(target.row("items", "item-1")).toMatchObject({
+      title: "An article",
+      topics: ["AI"],
+    });
+  });
 });
 
 describe("PostgreSQL import target", () => {
