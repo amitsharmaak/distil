@@ -1,30 +1,32 @@
 import { z } from "zod";
 
 /** Stable identifiers crossing a trust boundary are UUIDs, not display names. */
-export const tenantIdSchema = z.string().uuid().brand<"TenantId">();
 export const userIdSchema = z.string().uuid().brand<"UserId">();
 export const actorIdSchema = z.string().uuid().brand<"ActorId">();
+export const sessionIdSchema = z.string().uuid().brand<"SessionId">();
 export const requestIdSchema = z.string().uuid().brand<"RequestId">();
+export const traceIdSchema = z.string().uuid().brand<"TraceId">();
 
-export type TenantId = z.infer<typeof tenantIdSchema>;
 export type UserId = z.infer<typeof userIdSchema>;
 export type ActorId = z.infer<typeof actorIdSchema>;
+export type SessionId = z.infer<typeof sessionIdSchema>;
 export type RequestId = z.infer<typeof requestIdSchema>;
+export type TraceId = z.infer<typeof traceIdSchema>;
 
 export const AUTH_ACTOR_KINDS = ["user", "capture-token", "system"] as const;
 
 export type AuthActorKind = (typeof AUTH_ACTOR_KINDS)[number];
 
 /**
- * Tenant-scoped authorization propagated from an authenticated boundary.
- * A system actor here is acting on behalf of the named tenant and user.
+ * User-scoped authorization propagated from an authenticated boundary.
+ * The userId is the tenant identity in the personal-user model.
  */
 export const authContextSchema = z
   .object({
-    tenantId: tenantIdSchema,
     userId: userIdSchema,
     actorKind: z.enum(AUTH_ACTOR_KINDS),
     actorId: actorIdSchema,
+    sessionId: sessionIdSchema.optional(),
     requestId: requestIdSchema,
   })
   .strict()

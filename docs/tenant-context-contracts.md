@@ -1,32 +1,28 @@
 # Tenant context contracts
 
 These production-neutral contracts establish Phase 3 trust-boundary shapes without changing any
-route, repository, database, or queue behavior.
+route, repository, database, or queue behavior. In the personal-user model, `userId` is the tenant
+identity; there is no separate tenant field.
 
-## Interfaces
+## Locked interfaces
 
-- `AuthContext` is tenant-scoped and always contains UUID `tenantId`, `userId`, `actorId`, and
-  `requestId` values. `actorKind` is `user`, `capture-token`, or `system`. A `user` actor must have
-  `actorId === userId`; a system actor in this shape is explicitly acting on behalf of that tenant
-  and user.
-- `SystemContext` contains only `actorKind: "system"`, `actorId`, and `requestId`. It is for
-  control-plane work and cannot be passed where tenant authorization is required.
-- `CaptureQueueMessageV2` adds a validated `AuthContext` to a UUID capture identifier. It is
-  additive: the existing v1 queue contract and consumers are unchanged.
-- `TenantJobEnvelopeV1<TPayload>` carries a UUID job identifier, a bounded lowercase job type,
-  tenant-scoped authorization, and a job-specific payload.
+- `AuthContext`: `{ userId, actorKind, actorId, sessionId?, requestId }`, where `actorKind` is
+  `user`, `capture-token`, or `system`. All IDs are UUIDs; a user actor must have
+  `actorId === userId`.
+- `SystemContext`: `{ actorKind: "system", actorId, requestId }`. This user-free shape is for
+  control-plane work and cannot authorize user data access.
+- `CaptureQueueMessageV2`: `{ version: 2, userId, captureId, traceId }`.
+- `TenantJobEnvelopeV1`: `{ version: 1, userId, jobId, jobType, traceId }`.
+
+The queue contracts deliberately do not embed `AuthContext`. The base job envelope deliberately
+does not include a payload; a future job-specific extension must preserve these top-level fields
+and validate its own payload separately.
 
 ## Integration rules
 
-Parse untrusted values at every HTTP, queue, scheduler, and worker boundary. Use `createAuthContext`
-at the authenticated edge, then pass that validated context to `createCaptureQueueMessageV2` or
-`createTenantJobEnvelopeV1`. Never reconstruct tenant identity from payload data.
+Parse untrusted values at every HTTP, queue, scheduler, and worker boundary. Use the exported
+constructors so `userId` cannot be omitted. Never reconstruct user identity from payload data.
 
-`tenantJobEnvelopeV1Schema(payloadSchema)` and its parse/create helpers require the owning job's
-payload schema. Object payload schemas should use `.strict().readonly()` so unknown fields are
-rejected and the validated payload is frozen. All contract-owned objects are strict and frozen;
-missing fields, extra fields, malformed UUIDs, and mismatched user actors fail parsing.
-
-`SystemContext` is intentionally not convertible to `AuthContext`. A control-plane operation that
-needs tenant data must separately resolve and validate the target tenant and user, then create a
-new tenant-scoped `AuthContext`.
+All public schemas are strict and readonly: missing fields, unknown fields, malformed UUIDs,
+invalid job types, and mismatched user actors fail parsing. A control-plane operation that needs
+user data must separately resolve that user and create a new `AuthContext`.

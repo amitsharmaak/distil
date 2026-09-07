@@ -1,147 +1,204 @@
-import { z } from "zod";
-
-import { createAuthContext, createSystemContext } from "@/lib/contracts/tenant-context";
 import {
   createCaptureQueueMessageV2,
   createTenantJobEnvelopeV1,
   parseCaptureQueueMessageV2,
   parseTenantJobEnvelopeV1,
+  type CaptureQueueMessageV2,
+  type CreateCaptureQueueMessageV2Input,
+  type CreateTenantJobEnvelopeV1Input,
+  type TenantJobEnvelopeV1,
 } from "@/lib/contracts/tenant-jobs";
 
-const TENANT_ID = "10000000-0000-4000-8000-000000000001";
 const USER_ID = "20000000-0000-4000-8000-000000000002";
-const REQUEST_ID = "50000000-0000-4000-8000-000000000005";
 const CAPTURE_ID = "60000000-0000-4000-8000-000000000006";
 const JOB_ID = "70000000-0000-4000-8000-000000000007";
+const TRACE_ID = "90000000-0000-4000-8000-000000000009";
 
-const authContext = createAuthContext({
-  tenantId: TENANT_ID,
-  userId: USER_ID,
-  actorKind: "user",
-  actorId: USER_ID,
-  requestId: REQUEST_ID,
-});
+type Expect<T extends true> = T;
+type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
+type IsRequired<T, TKey extends keyof T> = T extends Required<Pick<T, TKey>> ? true : false;
+type CaptureKeysAreExact = Expect<
+  Equal<keyof CaptureQueueMessageV2, "version" | "userId" | "captureId" | "traceId">
+>;
+type JobKeysAreExact = Expect<
+  Equal<keyof TenantJobEnvelopeV1, "version" | "userId" | "jobId" | "jobType" | "traceId">
+>;
+type CaptureConstructorUserIdIsRequired = Expect<
+  IsRequired<CreateCaptureQueueMessageV2Input, "userId">
+>;
+type JobConstructorUserIdIsRequired = Expect<IsRequired<CreateTenantJobEnvelopeV1Input, "userId">>;
 
-const payloadSchema = z
-  .object({
-    captureId: z.string().uuid(),
-  })
-  .strict()
-  .readonly();
+const compileTimeContract: [
+  CaptureKeysAreExact,
+  JobKeysAreExact,
+  CaptureConstructorUserIdIsRequired,
+  JobConstructorUserIdIsRequired,
+] = [true, true, true, true];
 
 describe("tenant job contracts", () => {
-  it("creates a strict, immutable capture queue v2 message", () => {
-    const message = createCaptureQueueMessageV2({ captureId: CAPTURE_ID, authContext });
-
-    expect(message).toEqual({ version: 2, captureId: CAPTURE_ID, authContext });
-    expect(Object.isFrozen(message)).toBe(true);
-    expect(Object.isFrozen(message.authContext)).toBe(true);
+  it("locks the public top-level fields at compile time", () => {
+    expect(compileTimeContract).toEqual([true, true, true, true]);
   });
 
+  it("creates a strict, immutable capture queue v2 message", () => {
+    const message = createCaptureQueueMessageV2({
+      userId: USER_ID,
+      captureId: CAPTURE_ID,
+      traceId: TRACE_ID,
+    });
+
+    expect(message).toEqual({
+      version: 2,
+      userId: USER_ID,
+      captureId: CAPTURE_ID,
+      traceId: TRACE_ID,
+    });
+    expect(Object.isFrozen(message)).toBe(true);
+  });
+
+  it.each(["userId", "captureId", "traceId"])(
+    "rejects a capture message missing %s",
+    (missingField) => {
+      const incomplete: Record<string, unknown> = {
+        version: 2,
+        userId: USER_ID,
+        captureId: CAPTURE_ID,
+        traceId: TRACE_ID,
+      };
+      delete incomplete[missingField];
+
+      expect(() => parseCaptureQueueMessageV2(incomplete)).toThrow();
+    }
+  );
+
   it.each([
-    ["legacy version", { version: 1, captureId: CAPTURE_ID, authContext }],
-    ["missing tenant context", { version: 2, captureId: CAPTURE_ID }],
-    ["malformed capture UUID", { version: 2, captureId: "capture-1", authContext }],
-    ["unknown fields", { version: 2, captureId: CAPTURE_ID, authContext, tenantId: TENANT_ID }],
-  ])("rejects capture messages with %s", (_case, message) => {
+    ["legacy version", { version: 1, userId: USER_ID, captureId: CAPTURE_ID, traceId: TRACE_ID }],
+    [
+      "malformed user UUID",
+      { version: 2, userId: "user-1", captureId: CAPTURE_ID, traceId: TRACE_ID },
+    ],
+    [
+      "malformed capture UUID",
+      { version: 2, userId: USER_ID, captureId: "capture-1", traceId: TRACE_ID },
+    ],
+    [
+      "malformed trace UUID",
+      { version: 2, userId: USER_ID, captureId: CAPTURE_ID, traceId: "trace-1" },
+    ],
+    [
+      "forged auth context",
+      {
+        version: 2,
+        userId: USER_ID,
+        captureId: CAPTURE_ID,
+        traceId: TRACE_ID,
+        authContext: { userId: USER_ID },
+      },
+    ],
+    [
+      "forged tenantId",
+      {
+        version: 2,
+        userId: USER_ID,
+        captureId: CAPTURE_ID,
+        traceId: TRACE_ID,
+        tenantId: USER_ID,
+      },
+    ],
+  ])("rejects a capture message with %s", (_case, message) => {
     expect(() => parseCaptureQueueMessageV2(message)).toThrow();
   });
 
-  it("rejects forged nested authorization in a capture message", () => {
-    expect(() =>
-      parseCaptureQueueMessageV2({
-        version: 2,
-        captureId: CAPTURE_ID,
-        authContext: { ...authContext, actorId: JOB_ID },
-      })
-    ).toThrow("A user actorId must match userId");
-  });
-
-  it("does not accept a control-plane system context as tenant authorization", () => {
-    const systemContext = createSystemContext({
-      actorKind: "system",
-      actorId: JOB_ID,
-      requestId: REQUEST_ID,
+  it("creates a strict, immutable tenant job envelope", () => {
+    const envelope = createTenantJobEnvelopeV1({
+      userId: USER_ID,
+      jobId: JOB_ID,
+      jobType: "capture.extract",
+      traceId: TRACE_ID,
     });
-
-    expect(() =>
-      parseCaptureQueueMessageV2({
-        version: 2,
-        captureId: CAPTURE_ID,
-        authContext: systemContext,
-      })
-    ).toThrow();
-  });
-
-  it("creates and freezes an envelope plus its strict payload", () => {
-    const envelope = createTenantJobEnvelopeV1(
-      {
-        jobId: JOB_ID,
-        jobType: "capture.extract",
-        authContext,
-        payload: { captureId: CAPTURE_ID },
-      },
-      payloadSchema
-    );
 
     expect(envelope).toEqual({
       version: 1,
+      userId: USER_ID,
       jobId: JOB_ID,
       jobType: "capture.extract",
-      authContext,
-      payload: { captureId: CAPTURE_ID },
+      traceId: TRACE_ID,
     });
     expect(Object.isFrozen(envelope)).toBe(true);
-    expect(Object.isFrozen(envelope.payload)).toBe(true);
   });
+
+  it.each(["userId", "jobId", "jobType", "traceId"])(
+    "rejects a job envelope missing %s",
+    (missingField) => {
+      const incomplete: Record<string, unknown> = {
+        version: 1,
+        userId: USER_ID,
+        jobId: JOB_ID,
+        jobType: "capture.extract",
+        traceId: TRACE_ID,
+      };
+      delete incomplete[missingField];
+
+      expect(() => parseTenantJobEnvelopeV1(incomplete)).toThrow();
+    }
+  );
 
   it.each([
     [
-      "missing authorization",
-      { version: 1, jobId: JOB_ID, jobType: "capture.extract", payload: { captureId: CAPTURE_ID } },
+      "wrong version",
+      { version: 2, userId: USER_ID, jobId: JOB_ID, jobType: "capture.extract", traceId: TRACE_ID },
+    ],
+    [
+      "malformed user UUID",
+      {
+        version: 1,
+        userId: "user-1",
+        jobId: JOB_ID,
+        jobType: "capture.extract",
+        traceId: TRACE_ID,
+      },
     ],
     [
       "malformed job UUID",
       {
         version: 1,
+        userId: USER_ID,
         jobId: "job-1",
         jobType: "capture.extract",
-        authContext,
-        payload: { captureId: CAPTURE_ID },
+        traceId: TRACE_ID,
       },
     ],
     [
       "malformed job type",
+      { version: 1, userId: USER_ID, jobId: JOB_ID, jobType: "Capture Extract", traceId: TRACE_ID },
+    ],
+    [
+      "malformed trace UUID",
       {
         version: 1,
+        userId: USER_ID,
         jobId: JOB_ID,
-        jobType: "Capture Extract",
-        authContext,
+        jobType: "capture.extract",
+        traceId: "trace-1",
+      },
+    ],
+    [
+      "forged payload",
+      {
+        version: 1,
+        userId: USER_ID,
+        jobId: JOB_ID,
+        jobType: "capture.extract",
+        traceId: TRACE_ID,
         payload: { captureId: CAPTURE_ID },
       },
     ],
     [
-      "an unknown envelope field",
-      {
-        version: 1,
-        jobId: JOB_ID,
-        jobType: "capture.extract",
-        authContext,
-        payload: { captureId: CAPTURE_ID },
-        elevated: true,
-      },
+      "mismatched capture-message fields",
+      { version: 1, userId: USER_ID, captureId: CAPTURE_ID, traceId: TRACE_ID },
     ],
-    [
-      "an unknown payload field",
-      {
-        version: 1,
-        jobId: JOB_ID,
-        jobType: "capture.extract",
-        authContext,
-        payload: { captureId: CAPTURE_ID, tenantId: TENANT_ID },
-      },
-    ],
-  ])("rejects an envelope with %s", (_case, envelope) => {
-    expect(() => parseTenantJobEnvelopeV1(envelope, payloadSchema)).toThrow();
+  ])("rejects a job envelope with %s", (_case, envelope) => {
+    expect(() => parseTenantJobEnvelopeV1(envelope)).toThrow();
   });
 });
