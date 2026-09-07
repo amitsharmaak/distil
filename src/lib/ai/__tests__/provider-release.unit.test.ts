@@ -1,10 +1,18 @@
 const generateContent = jest.fn();
 const embedContent = jest.fn();
 const getGenerativeModel = jest.fn(() => ({ generateContent, embedContent }));
+const mockOpenAICreate = jest.fn();
+const mockAnthropicCreate = jest.fn();
 
 jest.mock("@google/generative-ai", () => ({
   GoogleGenerativeAI: jest.fn(() => ({ getGenerativeModel })),
 }));
+
+jest.mock("openai", () => jest.fn(() => ({ chat: { completions: { create: mockOpenAICreate } } })));
+
+jest.mock("@anthropic-ai/sdk", () =>
+  jest.fn(() => ({ messages: { create: mockAnthropicCreate } }))
+);
 
 jest.mock("@/lib/config", () => ({
   config: {
@@ -25,10 +33,16 @@ import {
   PROVIDER_FALLBACK_MODELS,
   TASK_MODEL_CANDIDATES,
 } from "../ai-config";
-import { GeminiProviderImpl, createProviders } from "../providers";
+import {
+  AnthropicProviderImpl,
+  GeminiProviderImpl,
+  OpenAIProviderImpl,
+  createProviders,
+} from "../providers";
 import type { ResponseSchema } from "@google/generative-ai";
 import { cosineSimilarity, embedItem, generateEmbedding } from "../embeddings";
 import { upsertItemEmbedding } from "@/lib/database";
+import { config } from "@/lib/config";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -105,6 +119,93 @@ describe("Gemini Preview release configuration", () => {
 
   it("creates only the configured provider", () => {
     expect([...createProviders().keys()]).toEqual(["gemini"]);
+  });
+
+  it("creates every explicitly configured provider", () => {
+    const mutableConfig = config as { openaiApiKey: string; anthropicApiKey: string };
+    mutableConfig.openaiApiKey = "test-openai-key";
+    mutableConfig.anthropicApiKey = "test-anthropic-key";
+
+    expect([...createProviders().keys()]).toEqual(["gemini", "openai", "anthropic"]);
+
+    mutableConfig.openaiApiKey = "";
+    mutableConfig.anthropicApiKey = "";
+  });
+});
+
+describe("non-Gemini provider release behavior", () => {
+  it("generates OpenAI text and structured JSON with bounded defaults and overrides", async () => {
+    mockOpenAICreate
+      .mockResolvedValueOnce({ choices: [{ message: { content: "accepted" } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: '{"ok":true}' } }] });
+    const provider = new OpenAIProviderImpl("test-key");
+
+    await expect(provider.generateText("prompt", "gpt-test")).resolves.toBe("accepted");
+    await expect(
+      provider.generateJSON<{ ok: boolean }>("prompt", "gpt-test", {
+        maxTokens: 321,
+        temperature: 0.2,
+      })
+    ).resolves.toEqual({ ok: true });
+    expect(mockOpenAICreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ max_tokens: 4096, temperature: undefined })
+    );
+    expect(mockOpenAICreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ max_tokens: 321, temperature: 0.2 })
+    );
+  });
+
+  it("sanitizes empty and malformed OpenAI responses", async () => {
+    mockOpenAICreate
+      .mockResolvedValueOnce({ choices: [] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: "not-json" } }] });
+    const provider = new OpenAIProviderImpl("test-key");
+
+    await expect(provider.generateText("prompt", "gpt-test")).rejects.toMatchObject({
+      category: "invalid_output",
+    });
+    await expect(provider.generateJSON("prompt", "gpt-test")).rejects.toMatchObject({
+      category: "invalid_output",
+    });
+  });
+
+  it("generates Anthropic text and structured JSON with bounded defaults and overrides", async () => {
+    mockAnthropicCreate
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "accepted" }] })
+      .mockResolvedValueOnce({ content: [{ type: "text", text: '[{"ok":true}]' }] });
+    const provider = new AnthropicProviderImpl("test-key");
+
+    await expect(provider.generateText("prompt", "claude-test")).resolves.toBe("accepted");
+    await expect(
+      provider.generateJSON<Array<{ ok: boolean }>>("prompt", "claude-test", {
+        maxTokens: 654,
+        temperature: 0.1,
+      })
+    ).resolves.toEqual([{ ok: true }]);
+    expect(mockAnthropicCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ max_tokens: 4096, temperature: undefined })
+    );
+    expect(mockAnthropicCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ max_tokens: 654, temperature: 0.1 })
+    );
+  });
+
+  it("sanitizes non-text and blank Anthropic responses", async () => {
+    mockAnthropicCreate
+      .mockResolvedValueOnce({ content: [{ type: "tool_use", id: "tool-1" }] })
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "   " }] });
+    const provider = new AnthropicProviderImpl("test-key");
+
+    await expect(provider.generateText("prompt", "claude-test")).rejects.toMatchObject({
+      category: "invalid_output",
+    });
+    await expect(provider.generateText("prompt", "claude-test")).rejects.toMatchObject({
+      category: "invalid_output",
+    });
   });
 });
 
