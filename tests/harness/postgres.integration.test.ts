@@ -3,7 +3,7 @@ import { PostgresTestHarness } from "../support/postgres";
 
 jest.setTimeout(120_000);
 
-describe("PostgreSQL 16 Testcontainers lifecycle", () => {
+describe("PostgreSQL 16 test harness lifecycle", () => {
   const harness = new PostgresTestHarness();
 
   beforeAll(async () => {

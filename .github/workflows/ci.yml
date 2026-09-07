@@ -54,9 +54,21 @@ jobs:
     name: PostgreSQL integration tests
     runs-on: ubuntu-latest
     env:
-      # Every suite stops its own container, and GitHub discards the runner VM.
-      # Avoid the flaky Ryuk sidecar socket that can fail startup with write EPIPE.
-      TESTCONTAINERS_RYUK_DISABLED: "true"
+      DISTIL_TEST_POSTGRES_URL: postgresql://distil:distil_test_password@127.0.0.1:5432/distil_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: distil_test
+          POSTGRES_USER: distil
+          POSTGRES_PASSWORD: distil_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U distil -d distil_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
