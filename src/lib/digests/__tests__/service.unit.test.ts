@@ -1,0 +1,162 @@
+import { DigestError, enqueueDigest, localDateFor, runDigest, selectDigestItems } from "../service";
+import type { DigestStore, PersonalPreferences } from "../types";
+
+const preferences: PersonalPreferences = {
+  digestEnabled: true,
+  digestTimezone: "Asia/Kolkata",
+  personalizationEnabled: true,
+  updatedAt: "2026-09-07T00:00:00.000Z",
+};
+
+function store(overrides: Partial<DigestStore> = {}): DigestStore {
+  return {
+    getPreferences: jest.fn().mockResolvedValue(preferences),
+    updatePreferences: jest.fn(),
+    resetPreferences: jest.fn(),
+    findDigest: jest.fn().mockResolvedValue(undefined),
+    listDigests: jest.fn(),
+    createDigest: jest.fn().mockImplementation(async (digest) => digest),
+    dismissDigest: jest.fn(),
+    listPriorityCandidates: jest.fn().mockResolvedValue([
+      {
+        id: "p1",
+        title: "P1",
+        summary: "",
+        priority: "high",
+        createdAt: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        id: "p2",
+        title: "P2",
+        summary: "two",
+        priority: "medium",
+        createdAt: "2026-08-02T00:00:00.000Z",
+      },
+      {
+        id: "p3",
+        title: "P3",
+        summary: "three",
+        priority: "low",
+        createdAt: "2026-08-03T00:00:00.000Z",
+      },
+      {
+        id: "p4",
+        title: "P4",
+        summary: "four",
+        priority: "low",
+        createdAt: "2026-08-04T00:00:00.000Z",
+      },
+    ]),
+    listResurfacedCandidates: jest.fn().mockResolvedValue([
+      {
+        id: "r1",
+        title: "R1",
+        summary: "one",
+        priority: "low",
+        createdAt: "2026-07-01T00:00:00.000Z",
+      },
+      {
+        id: "r2",
+        title: "R2",
+        summary: "two",
+        priority: "low",
+        createdAt: "2026-07-02T00:00:00.000Z",
+      },
+    ]),
+    enqueue: jest.fn().mockImplementation(async (job) => job),
+    ...overrides,
+  };
+}
+
+describe("digest selection", () => {
+  it("selects at most three priority and two resurfaced items, then fills deterministically", () => {
+    const items = selectDigestItems(
+      [
+        {
+          id: "p1",
+          title: "P1",
+          summary: "",
+          priority: "high",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          id: "p2",
+          title: "P2",
+          summary: "",
+          priority: "medium",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          id: "p3",
+          title: "P3",
+          summary: "",
+          priority: "low",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          id: "p4",
+          title: "P4",
+          summary: "",
+          priority: "low",
+          createdAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+      [
+        {
+          id: "r1",
+          title: "R1",
+          summary: "",
+          priority: "low",
+          createdAt: "2026-07-01T00:00:00.000Z",
+        },
+      ]
+    );
+    expect(items).toHaveLength(5);
+    expect(items.map((item) => item.category)).toEqual([
+      "priority",
+      "priority",
+      "priority",
+      "resurfaced",
+      "priority",
+    ]);
+    expect(items[0].summary).toBe("Saved 2026-08-01.");
+  });
+
+  it("is opt-in and idempotent for a local date", async () => {
+    const disabled = store({
+      getPreferences: jest.fn().mockResolvedValue({ ...preferences, digestEnabled: false }),
+    });
+    await expect(runDigest(disabled, { idempotencyKey: "one" })).rejects.toMatchObject({
+      code: "DIGEST_DISABLED",
+    });
+    const existing = { id: "old", localDate: "2026-09-07" };
+    const existingStore = store({ findDigest: jest.fn().mockResolvedValue(existing) });
+    await expect(
+      runDigest(existingStore, { idempotencyKey: "one", localDate: "2026-09-07" })
+    ).resolves.toBe(existing);
+  });
+
+  it("stores deterministic degraded results and only enqueues opted-in cron work", async () => {
+    const repository = store();
+    const digest = await runDigest(
+      repository,
+      { idempotencyKey: "one", localDate: "2026-09-07" },
+      new Date("2026-09-07T01:00:00.000Z")
+    );
+    expect(digest.contentMode).toBe("deterministic");
+    expect(digest.status).toBe("degraded");
+    expect(digest.title).toBe("Your digest for 2026-09-07");
+    expect(digest.items).toHaveLength(5);
+    await expect(
+      enqueueDigest(repository, preferences, "cron", new Date("2026-09-07T01:00:00.000Z"))
+    ).resolves.toMatchObject({ requestedBy: "cron" });
+    await expect(
+      enqueueDigest(repository, { ...preferences, digestEnabled: false }, "cron")
+    ).resolves.toBeUndefined();
+  });
+
+  it("validates timezone names without silently changing a local date", () => {
+    expect(localDateFor("Asia/Kolkata", new Date("2026-09-06T20:00:00.000Z"))).toBe("2026-09-07");
+    expect(() => localDateFor("not-a-timezone")).toThrow(DigestError);
+  });
+});

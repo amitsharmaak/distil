@@ -182,15 +182,31 @@ export const digestRuns = pgTable(
   {
     id: text().primaryKey(),
     digestDate: date("digest_date", { mode: "string" }).notNull().unique(),
+    localDate: date("local_date", { mode: "string" }).notNull().unique(),
     status: text().notNull().default("pending"),
     createdAt: time("created_at").notNull(),
     completedAt: time("completed_at"),
     dismissedAt: time("dismissed_at"),
+    timezone: text().notNull().default("UTC"),
+    selectionVersion: text("selection_version").notNull().default("deterministic-v1"),
+    contentMode: text("content_mode").notNull().default("deterministic"),
+    selectionMetadata: jsonb("selection_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    titleText: text("title_text").notNull().default(""),
+    summaryText: text("summary_text").notNull().default(""),
+    updatedAt: time("updated_at").notNull().defaultNow(),
   },
   (t) => [
     check(
       "digest_runs_status_check",
       sql`${t.status} in ('pending', 'ready', 'degraded', 'failed')`
+    ),
+    check("digest_runs_content_mode_check", sql`${t.contentMode} in ('deterministic','ai')`),
+    check(
+      "digest_runs_selection_metadata_check",
+      sql`jsonb_typeof(${t.selectionMetadata}) = 'object'`
     ),
   ]
 );
@@ -207,6 +223,13 @@ export const digestItems = pgTable(
     category: text().notNull(),
     position: integer().notNull(),
     reason: text().notNull(),
+    titleSnapshot: text("title_snapshot").notNull().default(""),
+    summarySnapshot: text("summary_snapshot").notNull().default(""),
+    selectionMetadata: jsonb("selection_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    dismissedAt: time("dismissed_at"),
   },
   (t) => [
     primaryKey({ columns: [t.digestRunId, t.itemId] }),
@@ -214,6 +237,49 @@ export const digestItems = pgTable(
     index("digest_items_item_idx").on(t.itemId),
     check("digest_items_category_check", sql`${t.category} in ('priority', 'resurfaced')`),
     check("digest_items_position_check", sql`${t.position} >= 0`),
+    check(
+      "digest_items_selection_metadata_check",
+      sql`jsonb_typeof(${t.selectionMetadata}) = 'object'`
+    ),
+  ]
+);
+
+export const personalPreferences = pgTable(
+  "personal_preferences",
+  {
+    id: text().primaryKey().default("default"),
+    digestEnabled: boolean("digest_enabled").notNull().default(false),
+    digestTimezone: text("digest_timezone").notNull().default("UTC"),
+    personalizationEnabled: boolean("personalization_enabled").notNull().default(true),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("personal_preferences_singleton_check", sql`${t.id} = 'default'`),
+    check(
+      "personal_preferences_timezone_check",
+      sql`length(trim(${t.digestTimezone})) between 1 and 100`
+    ),
+  ]
+);
+
+export const digestJobs = pgTable(
+  "digest_jobs",
+  {
+    id: text().primaryKey(),
+    localDate: date("local_date", { mode: "string" }).notNull().unique(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    status: text().notNull().default("queued"),
+    requestedBy: text("requested_by").notNull(),
+    createdAt: time("created_at").notNull().defaultNow(),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("digest_jobs_status_idx").on(t.status, t.createdAt),
+    check(
+      "digest_jobs_status_check",
+      sql`${t.status} in ('queued','running','completed','failed')`
+    ),
+    check("digest_jobs_requested_by_check", sql`${t.requestedBy} in ('cron','manual')`),
   ]
 );
 

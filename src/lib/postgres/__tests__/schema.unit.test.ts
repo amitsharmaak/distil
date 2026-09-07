@@ -17,6 +17,7 @@ it("exports every PostgreSQL table through Phase 2 intelligence", () => {
       "annotations",
       "contentChunks",
       "digestItems",
+      "digestJobs",
       "digestRuns",
       "feedback",
       "itemEmbeddings",
@@ -31,6 +32,7 @@ it("exports every PostgreSQL table through Phase 2 intelligence", () => {
       "notifications",
       "oauthTokens",
       "publisherQueue",
+      "personalPreferences",
       "rateLimitWindows",
       "rawContent",
       "researchReports",
@@ -54,6 +56,12 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.collectionItems.collectionId).toBeDefined();
   expect(schema.itemEvents.eventKey).toBeDefined();
   expect(schema.digestRuns.digestDate).toBeDefined();
+  expect(schema.digestRuns.localDate).toBeDefined();
+  expect(schema.digestRuns.selectionMetadata).toBeDefined();
+  expect(schema.digestRuns.titleText).toBeDefined();
+  expect(schema.digestItems.titleSnapshot).toBeDefined();
+  expect(schema.personalPreferences.digestEnabled).toBeDefined();
+  expect(schema.digestJobs.idempotencyKey).toBeDefined();
   expect(schema.itemContentVersions.contentHash).toBeDefined();
   expect(schema.contentChunks.searchVector).toBeDefined();
   expect(schema.contentChunks.embeddingStatus).toBeDefined();
