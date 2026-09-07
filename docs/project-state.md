@@ -1,11 +1,26 @@
-# Distil master plan and Phase 1 progress handoff
+# Distil project roadmap and state
 
 Last updated: 2026-09-07 (Asia/Kolkata)
 
-This is the durable restart point for the overall Distil product plan and the active Phase 1
-execution. Read the master plan first to understand why Phase 1 exists, then use the Phase 1 record
-to resume implementation and deployment. This file intentionally contains no passwords, tokens,
-database connection strings, session secrets, or AI provider keys.
+This is the canonical, durable restart point for the Distil project across development sessions.
+Keep the product roadmap stable near the top and continuously update the active-phase status,
+decisions, resources, evidence, blockers, and exact next steps below it. Read this file before
+resuming work, and update it whenever material progress or a roadmap decision is made. It
+intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
+provider keys.
+
+## How to use this file
+
+At the start of a new session:
+
+1. Read this file and verify the recorded branch, worktree, commit, and external-resource state.
+2. Confirm any time-sensitive external state before acting; do not assume a local server or cloud
+   deployment is still running.
+3. Resume from the first incomplete item under the active phase's next execution sequence.
+
+Whenever material work is completed, update the date, implementation/test evidence, external
+resource state, decisions, blockers, and next steps, then commit the update on the active integration
+branch. Keep secrets out of this file and record only variable names and masked resource metadata.
 
 ## Distil's higher-level goal
 
