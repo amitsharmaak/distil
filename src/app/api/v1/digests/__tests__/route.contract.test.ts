@@ -132,4 +132,22 @@ describe("Phase 2 digest API contract", () => {
       item: { digestRunId: "digest-1", itemId: "item-1", dismissedAt: expect.any(String) },
     });
   });
+
+  it("returns persisted digests and closes PostgreSQL on successful reads", async () => {
+    mockSession.mockResolvedValueOnce();
+    const response = await GET(new Request("http://localhost:3000/api/v1/digests?limit=1"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ digests: [] });
+    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
+  });
+
+  it("returns the PostgreSQL requirement before constructing a digest store", async () => {
+    delete process.env.DATABASE_URL;
+    mockSession.mockResolvedValueOnce();
+    const response = await GET(new Request("http://localhost:3000/api/v1/digests"));
+
+    expect(response.status).toBe(503);
+    expect(mockStore).not.toHaveBeenCalled();
+  });
 });

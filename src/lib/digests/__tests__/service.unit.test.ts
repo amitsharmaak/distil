@@ -1,5 +1,6 @@
 import {
   DigestError,
+  dismissDigest,
   dismissDigestItem,
   enqueueDigest,
   localDateFor,
@@ -181,5 +182,84 @@ describe("digest selection", () => {
     await expect(dismissDigestItem(store(), "digest-1", "missing")).rejects.toMatchObject({
       code: "DIGEST_ITEM_NOT_FOUND",
     });
+  });
+
+  it("fills priority gaps from resurfacing and preserves the selected category metadata", () => {
+    const items = selectDigestItems(
+      [],
+      [
+        {
+          id: "r1",
+          title: "R1",
+          summary: "",
+          priority: "low",
+          createdAt: "2026-07-01T00:00:00.000Z",
+        },
+      ]
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      category: "resurfaced",
+      position: 0,
+      summary: "Saved 2026-07-01.",
+      selectionMetadata: { deterministicSummary: true, category: "resurfaced" },
+    });
+  });
+
+  it("keeps a manual priority in the deterministic reason and singular digest copy", async () => {
+    const manual = {
+      id: "manual",
+      title: "Manual",
+      summary: "",
+      priority: "low" as const,
+      manualPriority: "high" as const,
+      createdAt: "2026-09-01T00:00:00.000Z",
+    };
+    expect(selectDigestItems([manual], [])).toEqual([
+      expect.objectContaining({
+        reason: "Unread high priority item.",
+        selectionMetadata: expect.objectContaining({ effectivePriority: "high" }),
+      }),
+    ]);
+
+    const repository = store({
+      listPriorityCandidates: jest.fn().mockResolvedValue([manual]),
+      listResurfacedCandidates: jest.fn().mockResolvedValue([]),
+    });
+    await expect(
+      runDigest(repository, { idempotencyKey: "one", localDate: "2026-09-07" })
+    ).resolves.toMatchObject({ summary: "A deterministic selection of 1 item for today." });
+  });
+
+  it("uses the preference-local date and treats digest dismissal as idempotent", async () => {
+    const repository = store({
+      dismissDigest: jest.fn().mockResolvedValue({ id: "digest-1", dismissedAt: "already" }),
+    });
+    const digest = await runDigest(
+      repository,
+      { idempotencyKey: "one" },
+      new Date("2026-09-06T20:00:00.000Z")
+    );
+
+    expect(digest.localDate).toBe("2026-09-07");
+    await expect(dismissDigest(repository, "digest-1")).resolves.toMatchObject({ id: "digest-1" });
+    await expect(dismissDigest(store(), "missing")).rejects.toMatchObject({
+      code: "DIGEST_NOT_FOUND",
+    });
+  });
+
+  it("produces a stable empty deterministic digest message", async () => {
+    const repository = store({
+      listPriorityCandidates: jest.fn().mockResolvedValue([]),
+      listResurfacedCandidates: jest.fn().mockResolvedValue([]),
+    });
+    await expect(
+      runDigest(
+        repository,
+        { idempotencyKey: "empty", localDate: "2026-09-07" },
+        new Date("2026-09-07T00:00:00.000Z")
+      )
+    ).resolves.toMatchObject({ summary: "No eligible unread or resurfaced items today." });
   });
 });

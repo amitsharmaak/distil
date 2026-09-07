@@ -80,4 +80,35 @@ describe("digest cron contract", () => {
     });
     expect(mockRuntimeEnqueue.mock.calls[1][1]).toEqual(mockRuntimeEnqueue.mock.calls[0][1]);
   });
+
+  it("does not open PostgreSQL while disabled or unconfigured", async () => {
+    delete process.env.FEATURE_DIGESTS;
+    const disabled = await GET(request());
+    expect(disabled.status).toBe(200);
+    await expect(disabled.json()).resolves.toMatchObject({
+      enqueued: false,
+      reason: "FEATURE_DISABLED",
+    });
+    expect(mockClient).not.toHaveBeenCalled();
+
+    process.env.FEATURE_DIGESTS = "true";
+    delete process.env.DATABASE_URL;
+    const unconfigured = await GET(request());
+    expect(unconfigured.status).toBe(503);
+    expect(mockClient).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe failure while closing PostgreSQL when enqueueing fails", async () => {
+    mockStore.mockImplementation(
+      () =>
+        ({
+          getPreferences: jest.fn().mockRejectedValue(new Error("database unavailable")),
+        }) as never
+    );
+
+    const response = await GET(request());
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "PROCESSING_FAILED" } });
+    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
+  });
 });
