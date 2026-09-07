@@ -52,6 +52,7 @@ const manifest: TenantMigrationManifest = {
       queue: { statusColumn: "status", kindColumn: "kind" },
     },
   ],
+  supplementalTables: [],
   controlTables: [],
 };
 

@@ -10,14 +10,21 @@ describe("Phase 3 tenant migration manifest", () => {
       .map((table) => `public.${getTableName(table)}`)
       .sort();
 
-    expect(tenantBearingTableNames.slice().sort()).toEqual(schemaTables);
     expect(tenantBearingTableNames).toHaveLength(36);
+    const supplementalTableNames = tenantMigrationManifest.supplementalTables.map(
+      ({ schema, table }) => `${schema}.${table}`
+    );
+    expect([...tenantBearingTableNames, ...supplementalTableNames].sort()).toEqual(schemaTables);
+    expect(schemaTables).toHaveLength(45);
   });
 
   it("classifies the migration ledger explicitly as non-tenant control data", () => {
-    expect(tenantMigrationManifest.controlTables).toEqual([
-      expect.objectContaining({ table: "distil_migrations", tenantBearing: false }),
-    ]);
+    expect(tenantMigrationManifest.controlTables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ table: "distil_migrations", tenantBearing: false }),
+        expect.objectContaining({ table: "distil_tenant_migrations", tenantBearing: false }),
+      ])
+    );
   });
 
   it("uses one explicit immutable UUID ownership contract", () => {

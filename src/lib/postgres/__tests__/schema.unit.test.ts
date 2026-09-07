@@ -1,12 +1,15 @@
 import * as schema from "../schema";
 
-it("exports every PostgreSQL table through Phase 2 intelligence", () => {
+it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => {
   expect(Object.keys(schema).sort()).toEqual(
     [
       "agentActions",
+      "accountDeletions",
+      "accountExports",
       "aiSummaries",
       "approvalQueue",
       "auditLog",
+      "authIdentities",
       "captureRequests",
       "captureTokens",
       "chatConversations",
@@ -23,6 +26,7 @@ it("exports every PostgreSQL table through Phase 2 intelligence", () => {
       "itemEmbeddings",
       "intelligenceArtifacts",
       "intelligenceClaims",
+      "invitations",
       "itemEvents",
       "itemContentVersions",
       "itemNotes",
@@ -36,8 +40,13 @@ it("exports every PostgreSQL table through Phase 2 intelligence", () => {
       "rateLimitWindows",
       "rawContent",
       "researchReports",
+      "researchSuggestionSources",
       "researchSuggestions",
+      "sessionMetadata",
+      "usageCounters",
+      "userEntitlements",
       "userSettings",
+      "users",
       "workflowRuns",
     ].sort()
   );
@@ -69,4 +78,9 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.intelligenceClaims.claimHash).toBeDefined();
   expect(schema.claimEvidence.exactExcerpt).toBeDefined();
   expect(schema.knowledgeBackfillCheckpoints.jobKey).toBeDefined();
+  expect(schema.users.id).toBeDefined();
+  expect(schema.invitations.normalizedEmail).toBeDefined();
+  expect(schema.accountExports.downloadExpiresAt).toBeDefined();
+  expect(schema.accountDeletions.purgeAfter).toBeDefined();
+  expect(schema.researchSuggestionSources.itemId).toBeDefined();
 });

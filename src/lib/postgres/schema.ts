@@ -35,7 +35,7 @@ export const users = pgTable(
   (t) => [
     check(
       "users_status_check",
-      sql`${t.status} in ('migration_pending','active','suspended','deleting','deleted')`
+      sql`${t.status} in ('migration_pending','active','suspended','deletion_pending','deleted')`
     ),
   ]
 );
@@ -126,7 +126,12 @@ export const accountExports = pgTable(
     contentHash: text("content_hash"),
     requestedAt: time("requested_at").notNull().defaultNow(),
     completedAt: time("completed_at"),
-    expiresAt: time("expires_at"),
+    downloadExpiresAt: time("download_expires_at")
+      .notNull()
+      .default(sql`now() + interval '24 hours'`),
+    purgeAfter: time("purge_after")
+      .notNull()
+      .default(sql`now() + interval '7 days'`),
   },
   (t) => [
     uniqueIndex("account_exports_user_id_idx").on(t.userId, t.id),
@@ -145,15 +150,25 @@ export const accountDeletions = pgTable(
     status: text().notNull().default("requested"),
     checkpoint: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     requestedAt: time("requested_at").notNull().defaultNow(),
+    purgeAfter: time("purge_after")
+      .notNull()
+      .default(sql`now() + interval '7 days'`),
+    cancelledAt: time("cancelled_at"),
+    cancelledByActorId: uuid("cancelled_by_actor_id"),
+    cancellationReason: text("cancellation_reason"),
     completedAt: time("completed_at"),
   },
   (t) => [
     uniqueIndex("account_deletions_user_id_idx").on(t.userId, t.id),
     check(
       "account_deletions_status_check",
-      sql`${t.status} in ('requested','draining','deleting','completed','failed')`
+      sql`${t.status} in ('requested','draining','purging','completed','cancelled','failed')`
     ),
     check("account_deletions_checkpoint_check", sql`jsonb_typeof(${t.checkpoint}) = 'object'`),
+    check(
+      "account_deletions_cancellation_check",
+      sql`${t.status} <> 'cancelled' or (${t.cancelledAt} is not null and ${t.cancelledByActorId} is not null and ${t.cancellationReason} is not null)`
+    ),
   ]
 );
 
@@ -256,15 +271,25 @@ export const items = pgTable(
   ]
 );
 
-export const itemNotes = pgTable("item_notes", {
-  userId: tenantOwner(),
-  itemId: text("item_id")
-    .primaryKey()
-    .references(() => items.id, { onDelete: "cascade" }),
-  body: text().notNull(),
-  createdAt: time("created_at").notNull(),
-  updatedAt: time("updated_at").notNull(),
-});
+export const itemNotes = pgTable(
+  "item_notes",
+  {
+    userId: tenantOwner(),
+    itemId: text("item_id")
+      .primaryKey()
+      .references(() => items.id, { onDelete: "cascade" }),
+    body: text().notNull(),
+    createdAt: time("created_at").notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "item_notes_user_item_fk",
+    }).onDelete("cascade"),
+  ]
+);
 
 export const annotations = pgTable(
   "annotations",
@@ -287,6 +312,11 @@ export const annotations = pgTable(
     updatedAt: time("updated_at").notNull(),
   },
   (t) => [
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "annotations_user_item_fk",
+    }).onDelete("cascade"),
     index("annotations_item_idx").on(t.itemId, t.createdAt),
     index("annotations_status_idx").on(t.itemId, t.status),
     check("annotations_quote_check", sql`length(${t.selectedQuote}) > 0`),
@@ -308,7 +338,10 @@ export const collections = pgTable(
     createdAt: time("created_at").notNull(),
     updatedAt: time("updated_at").notNull(),
   },
-  (t) => [check("collections_name_check", sql`length(trim(${t.name})) > 0`)]
+  (t) => [
+    uniqueIndex("collections_user_id_id_idx").on(t.userId, t.id),
+    check("collections_name_check", sql`length(trim(${t.name})) > 0`),
+  ]
 );
 
 export const collectionItems = pgTable(
@@ -326,6 +359,16 @@ export const collectionItems = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.collectionId, t.itemId] }),
+    foreignKey({
+      columns: [t.userId, t.collectionId],
+      foreignColumns: [collections.userId, collections.id],
+      name: "collection_items_user_collection_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "collection_items_user_item_fk",
+    }).onDelete("cascade"),
     index("collection_items_item_idx").on(t.itemId),
     index("collection_items_order_idx").on(t.collectionId, t.position, t.addedAt),
     check("collection_items_position_check", sql`${t.position} >= 0`),
@@ -347,6 +390,11 @@ export const itemEvents = pgTable(
   },
   (t) => [
     uniqueIndex("item_events_user_event_key_idx").on(t.userId, t.eventKey),
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "item_events_user_item_fk",
+    }).onDelete("cascade"),
     index("item_events_item_idx").on(t.itemId, t.occurredAt.desc()),
     index("item_events_type_idx").on(t.eventType, t.occurredAt.desc()),
     check(
@@ -418,6 +466,16 @@ export const digestItems = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.digestRunId, t.itemId] }),
+    foreignKey({
+      columns: [t.userId, t.digestRunId],
+      foreignColumns: [digestRuns.userId, digestRuns.id],
+      name: "digest_items_user_run_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "digest_items_user_item_fk",
+    }).onDelete("cascade"),
     uniqueIndex("digest_items_run_position_idx").on(t.digestRunId, t.position),
     index("digest_items_item_idx").on(t.itemId),
     check("digest_items_category_check", sql`${t.category} in ('priority', 'resurfaced')`),
@@ -433,13 +491,14 @@ export const personalPreferences = pgTable(
   "personal_preferences",
   {
     userId: tenantOwner(),
-    id: text().primaryKey().default("default"),
+    id: text().notNull().default("default"),
     digestEnabled: boolean("digest_enabled").notNull().default(false),
     digestTimezone: text("digest_timezone").notNull().default("UTC"),
     personalizationEnabled: boolean("personalization_enabled").notNull().default(true),
     updatedAt: time("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    primaryKey({ columns: [t.userId, t.id] }),
     check("personal_preferences_singleton_check", sql`${t.id} = 'default'`),
     check(
       "personal_preferences_timezone_check",
@@ -501,6 +560,11 @@ export const itemContentVersions = pgTable(
     uniqueIndex("item_content_versions_user_id_idx").on(t.userId, t.id),
     uniqueIndex("item_content_versions_user_id_item_idx").on(t.userId, t.id, t.itemId),
     index("item_content_versions_item_created_idx").on(t.itemId, t.createdAt.desc()),
+    foreignKey({
+      columns: [t.userId, t.itemId],
+      foreignColumns: [items.userId, items.id],
+      name: "item_content_versions_user_item_fk",
+    }).onDelete("cascade"),
     check("item_content_versions_version_check", sql`${t.version} > 0`),
     check("item_content_versions_hash_check", sql`${t.contentHash} ~ '^sha256:[0-9a-f]{64}$'`),
     check(
@@ -549,6 +613,15 @@ export const contentChunks = pgTable(
     uniqueIndex("content_chunks_user_id_idx").on(t.userId, t.id),
     index("content_chunks_item_idx").on(t.itemId, t.contentVersionId, t.ordinal),
     index("content_chunks_search_idx").using("gin", t.searchVector),
+    foreignKey({
+      columns: [t.userId, t.contentVersionId, t.itemId],
+      foreignColumns: [
+        itemContentVersions.userId,
+        itemContentVersions.id,
+        itemContentVersions.itemId,
+      ],
+      name: "content_chunks_user_version_item_fk",
+    }).onDelete("cascade"),
     foreignKey({
       columns: [t.contentVersionId, t.itemId],
       foreignColumns: [itemContentVersions.id, itemContentVersions.itemId],
@@ -620,6 +693,15 @@ export const intelligenceArtifacts = pgTable(
     index("intelligence_artifacts_content_version_idx").on(t.contentVersionId),
     index("intelligence_artifacts_status_idx").on(t.status, t.createdAt),
     foreignKey({
+      columns: [t.userId, t.contentVersionId, t.itemId],
+      foreignColumns: [
+        itemContentVersions.userId,
+        itemContentVersions.id,
+        itemContentVersions.itemId,
+      ],
+      name: "intelligence_artifacts_user_version_item_fk",
+    }).onDelete("cascade"),
+    foreignKey({
       columns: [t.contentVersionId, t.itemId],
       foreignColumns: [itemContentVersions.id, itemContentVersions.itemId],
       name: "intelligence_artifacts_version_item_fk",
@@ -683,6 +765,11 @@ export const intelligenceClaims = pgTable(
       t.ordinal
     ),
     uniqueIndex("intelligence_claims_user_id_idx").on(t.userId, t.id),
+    foreignKey({
+      columns: [t.userId, t.artifactId],
+      foreignColumns: [intelligenceArtifacts.userId, intelligenceArtifacts.id],
+      name: "intelligence_claims_user_artifact_fk",
+    }).onDelete("cascade"),
     index("intelligence_claims_artifact_idx").on(t.artifactId),
     check("intelligence_claims_ordinal_check", sql`${t.ordinal} >= 0`),
     check("intelligence_claims_text_check", sql`length(${t.claim}) > 0`),
@@ -712,6 +799,16 @@ export const claimEvidence = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.claimId, t.chunkId, t.startOffset, t.endOffset] }),
+    foreignKey({
+      columns: [t.userId, t.claimId],
+      foreignColumns: [intelligenceClaims.userId, intelligenceClaims.id],
+      name: "claim_evidence_user_claim_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.userId, t.chunkId],
+      foreignColumns: [contentChunks.userId, contentChunks.id],
+      name: "claim_evidence_user_chunk_fk",
+    }).onDelete("cascade"),
     index("claim_evidence_chunk_idx").on(t.chunkId),
     check(
       "claim_evidence_offsets_check",
@@ -726,7 +823,7 @@ export const knowledgeBackfillCheckpoints = pgTable(
   "knowledge_backfill_checkpoints",
   {
     userId: tenantOwner(),
-    jobKey: text("job_key").primaryKey(),
+    jobKey: text("job_key").notNull(),
     jobType: text("job_type").notNull(),
     status: text().notNull().default("pending"),
     cursor: text(),
@@ -740,6 +837,7 @@ export const knowledgeBackfillCheckpoints = pgTable(
     updatedAt: time("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    primaryKey({ columns: [t.userId, t.jobKey] }),
     index("knowledge_backfill_status_idx").on(t.status, t.updatedAt),
     check(
       "knowledge_backfill_type_check",
@@ -837,7 +935,7 @@ export const researchSuggestions = pgTable(
     topic: text().notNull(),
     reason: text().notNull().default(""),
     suggestedQuery: text("suggested_query").notNull(),
-    sourceItemIds: jsonb("source_item_ids").$type<string[]>().notNull().default([]),
+    legacySourceItemIds: jsonb("source_item_ids").$type<[]>().notNull().default([]),
     status: text().notNull().default("pending"),
     researchReportId: text("research_report_id").references(() => researchReports.id, {
       onDelete: "set null",
@@ -847,7 +945,14 @@ export const researchSuggestions = pgTable(
   (t) => [
     uniqueIndex("research_suggestions_user_id_idx").on(t.userId, t.id),
     index("research_suggestions_status_idx").on(t.status),
-    check("research_source_items_array_check", sql`jsonb_typeof(${t.sourceItemIds}) = 'array'`),
+    check(
+      "research_source_items_array_check",
+      sql`jsonb_typeof(${t.legacySourceItemIds}) = 'array'`
+    ),
+    check(
+      "research_suggestions_legacy_sources_empty_check",
+      sql`${t.legacySourceItemIds} = '[]'::jsonb`
+    ),
   ]
 );
 export const researchSuggestionSources = pgTable(
@@ -895,13 +1000,16 @@ export const itemEmbeddings = pgTable(
   {
     userId: tenantOwner(),
     itemId: text("item_id")
-      .primaryKey()
+      .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
     embedding: jsonb().$type<number[]>().notNull(),
     model: text().notNull(),
     createdAt: time("created_at").notNull(),
   },
-  (t) => [check("item_embeddings_array_check", sql`jsonb_typeof(${t.embedding}) = 'array'`)]
+  (t) => [
+    primaryKey({ columns: [t.userId, t.itemId] }),
+    check("item_embeddings_array_check", sql`jsonb_typeof(${t.embedding}) = 'array'`),
+  ]
 );
 export const auditLog = pgTable(
   "audit_log",

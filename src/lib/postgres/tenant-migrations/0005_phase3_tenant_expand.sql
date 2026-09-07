@@ -1,6 +1,22 @@
 -- Phase 3 expand: additive only. Existing application rows remain writable while
 -- every ownership column is nullable. Apply through the dedicated tenant migrator.
 
+CREATE OR REPLACE FUNCTION distil_current_user_id()
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+PARALLEL SAFE
+AS $phase3_context$
+DECLARE
+  configured_user_id text := nullif(current_setting('app.user_id', true), '');
+BEGIN
+  IF configured_user_id IS NULL THEN
+    RAISE EXCEPTION 'app.user_id is required for tenant data access';
+  END IF;
+  RETURN configured_user_id::uuid;
+END
+$phase3_context$;
+
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY,
   primary_email text,
@@ -10,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
   CONSTRAINT users_status_check
-    CHECK (status IN ('migration_pending','active','suspended','deleting','deleted'))
+    CHECK (status IN ('migration_pending','active','suspended','deletion_pending','deleted'))
 );
 
 CREATE TABLE IF NOT EXISTS auth_identities (
@@ -71,7 +87,8 @@ CREATE TABLE IF NOT EXISTS account_exports (
   content_hash text,
   requested_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz,
-  expires_at timestamptz,
+  download_expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours',
+  purge_after timestamptz NOT NULL DEFAULT now() + interval '7 days',
   UNIQUE (user_id, id),
   CONSTRAINT account_exports_status_check
     CHECK (status IN ('pending','running','ready','failed','expired'))
@@ -83,12 +100,20 @@ CREATE TABLE IF NOT EXISTS account_deletions (
   status text NOT NULL DEFAULT 'requested',
   checkpoint jsonb NOT NULL DEFAULT '{}'::jsonb,
   requested_at timestamptz NOT NULL DEFAULT now(),
+  purge_after timestamptz NOT NULL DEFAULT now() + interval '7 days',
+  cancelled_at timestamptz,
+  cancelled_by_actor_id uuid,
+  cancellation_reason text,
   completed_at timestamptz,
   UNIQUE (user_id, id),
   CONSTRAINT account_deletions_status_check
-    CHECK (status IN ('requested','draining','deleting','completed','failed')),
+    CHECK (status IN ('requested','draining','purging','completed','cancelled','failed')),
   CONSTRAINT account_deletions_checkpoint_check
-    CHECK (jsonb_typeof(checkpoint) = 'object')
+    CHECK (jsonb_typeof(checkpoint) = 'object'),
+  CONSTRAINT account_deletions_cancellation_check
+    CHECK (status <> 'cancelled' OR
+      (cancelled_at IS NOT NULL AND cancelled_by_actor_id IS NOT NULL
+        AND cancellation_reason IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS usage_counters (

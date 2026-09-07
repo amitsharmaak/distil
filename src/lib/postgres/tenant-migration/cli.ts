@@ -80,14 +80,14 @@ export function buildDryRunPlan(ownerId: string) {
     lifecycle: [
       {
         stage: "expand",
-        implementedHere: false,
-        prerequisite: "Reviewed migration adds the users record and nullable user_id uuid columns.",
+        implementedHere: true,
+        prerequisite: "Apply only through db:tenant:migrate with the reviewed immutable UUID.",
       },
       {
         stage: "backfill",
-        implementedHere: false,
+        implementedHere: true,
         prerequisite:
-          "Reviewed bounded updater assigns only null owners to the explicit Amit UUID.",
+          "Freeze writes and preserve the before report; only null owners receive the UUID.",
       },
       {
         stage: "verify",
@@ -96,8 +96,9 @@ export function buildDryRunPlan(ownerId: string) {
       },
       {
         stage: "contract",
-        implementedHere: false,
-        prerequisite: "Verification passes before NOT NULL, FKs, scoped uniqueness, or RLS.",
+        implementedHere: true,
+        prerequisite:
+          "Pass the before report; verification reruns transactionally before constraints and RLS.",
       },
     ],
     controls: [
@@ -110,6 +111,7 @@ export function buildDryRunPlan(ownerId: string) {
       "record-queue-state",
       "compare-before-and-after-invariant-fingerprints",
     ],
-    mutationPolicy: "No DDL, backfill, auth, repository, or runtime mutations are implemented.",
+    mutationPolicy:
+      "This dry run is read-only; mutations require a separate explicit one-stage db:tenant:migrate invocation.",
   };
 }

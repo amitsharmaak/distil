@@ -1,7 +1,9 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres, { type Sql } from "postgres";
-
 import { tenantMigrationManifest } from "@/lib/postgres/tenant-migration/manifest";
+import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
+import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
 import {
   assertTenantMigrationInvariants,
   findTenantIsolationActivation,
@@ -14,7 +16,9 @@ import { TenantRlsPoolHarness, observePooledTenantIsolation } from "../support/r
 jest.setTimeout(120_000);
 
 const migrations = resolve(process.cwd(), "src/lib/postgres/migrations");
-const activation = findTenantIsolationActivation(migrations, tenantMigrationManifest);
+const tenantMigrations = resolve(process.cwd(), "src/lib/postgres/tenant-migrations");
+const rolesSql = resolve(process.cwd(), "src/lib/postgres/roles/phase3_roles.sql");
+const activation = findTenantIsolationActivation(tenantMigrations, tenantMigrationManifest);
 const describeWithTenantMigration = activation.ready ? describe : describe.skip;
 const runtimeRole = "distil_rls_test_app";
 
@@ -33,6 +37,32 @@ describeWithTenantMigration(
     beforeAll(async () => {
       await owner.start();
       await owner.migrate(migrations);
+      await owner.sql.unsafe("DROP TABLE __distil_test_migrations");
+      await owner.sql.unsafe(await readFile(rolesSql, "utf8"));
+      await applyTenantMigrationStage({
+        sql: owner.sql,
+        stage: "expand",
+        ownerId: fixture.alpha.user.id,
+        migrationsDirectory: tenantMigrations,
+      });
+      const baseline = await buildTenantMigrationReport({
+        client: owner.sql,
+        stage: "before",
+        ownerId: fixture.alpha.user.id,
+      });
+      await applyTenantMigrationStage({
+        sql: owner.sql,
+        stage: "backfill",
+        ownerId: fixture.alpha.user.id,
+        migrationsDirectory: tenantMigrations,
+      });
+      await applyTenantMigrationStage({
+        sql: owner.sql,
+        stage: "contract",
+        ownerId: fixture.alpha.user.id,
+        migrationsDirectory: tenantMigrations,
+        baseline,
+      });
 
       await owner.sql`
         INSERT INTO users (id)

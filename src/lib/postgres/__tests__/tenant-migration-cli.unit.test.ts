@@ -22,10 +22,10 @@ describe("tenant migration CLI contract", () => {
     });
     expect(plan.tenantTables).toHaveLength(36);
     expect(plan.lifecycle).toEqual([
-      expect.objectContaining({ stage: "expand", implementedHere: false }),
-      expect.objectContaining({ stage: "backfill", implementedHere: false }),
+      expect.objectContaining({ stage: "expand", implementedHere: true }),
+      expect.objectContaining({ stage: "backfill", implementedHere: true }),
       expect.objectContaining({ stage: "verify", implementedHere: true }),
-      expect.objectContaining({ stage: "contract", implementedHere: false }),
+      expect.objectContaining({ stage: "contract", implementedHere: true }),
     ]);
     expect(JSON.stringify(plan)).not.toContain("email");
   });

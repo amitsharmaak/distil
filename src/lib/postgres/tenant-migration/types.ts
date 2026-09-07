@@ -55,6 +55,15 @@ export interface ControlTableClassification {
   readonly reason: string;
 }
 
+export interface SupplementalTableClassification {
+  readonly schema: string;
+  readonly table: string;
+  readonly tenantBearing: boolean;
+  readonly lifecycle: "identity" | "account" | "normalized-link";
+  readonly jsonColumns: readonly JsonColumnClassification[];
+  readonly reason: string;
+}
+
 export interface TenantMigrationManifest {
   readonly contractVersion: typeof TENANT_MIGRATION_CONTRACT_VERSION;
   readonly id: string;
@@ -66,6 +75,8 @@ export interface TenantMigrationManifest {
     readonly sqlType: "uuid";
   };
   readonly tables: readonly TenantTableClassification[];
+  /** Phase 3 tables created by expand and therefore excluded from frozen Phase 2 row hashes. */
+  readonly supplementalTables: readonly SupplementalTableClassification[];
   readonly controlTables: readonly ControlTableClassification[];
 }
 

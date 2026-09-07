@@ -67,7 +67,11 @@ export function validateManifest(manifest: TenantMigrationManifest): void {
 
   const known = new Set<string>();
   for (const schema of manifest.applicationSchemas) assertIdentifier(schema, "application schema");
-  for (const entry of [...manifest.tables, ...manifest.controlTables]) {
+  for (const entry of [
+    ...manifest.tables,
+    ...manifest.supplementalTables,
+    ...manifest.controlTables,
+  ]) {
     assertIdentifier(entry.schema, "table schema");
     assertIdentifier(entry.table, "table");
     if (!manifest.applicationSchemas.includes(entry.schema)) {
@@ -78,6 +82,19 @@ export function validateManifest(manifest: TenantMigrationManifest): void {
     const name = `${entry.schema}.${entry.table}`;
     if (known.has(name)) throw new Error(`Duplicate table classification: ${name}`);
     known.add(name);
+  }
+
+  for (const table of manifest.supplementalTables) {
+    const declaredJson = new Set<string>();
+    for (const column of table.jsonColumns) {
+      if (declaredJson.has(column.column)) {
+        throw new Error(`${table.table}.${column.column} is classified twice`);
+      }
+      declaredJson.add(column.column);
+      if ((!column.references || column.references.length === 0) && !column.noTenantReferences) {
+        throw new Error(`${table.table}.${column.column} must classify its JSON references`);
+      }
+    }
   }
 
   const tenantTables = new Set(manifest.tables.map(({ table }) => table));
@@ -172,7 +189,9 @@ export function verifyDiscoveredSchema(
   const failures: VerificationFailure[] = [];
   const discoveredTables = new Set(columns.map(({ schema, table }) => `${schema}.${table}`));
   const classified = new Set(
-    [...manifest.tables, ...manifest.controlTables].map(({ schema, table }) => `${schema}.${table}`)
+    [...manifest.tables, ...manifest.supplementalTables, ...manifest.controlTables].map(
+      ({ schema, table }) => `${schema}.${table}`
+    )
   );
   for (const table of [...discoveredTables].sort()) {
     if (!classified.has(table)) {
@@ -232,6 +251,31 @@ export function verifyDiscoveredSchema(
         table: name,
         detail: `${name}.${table.ownerColumn} is required after expansion`,
       });
+    }
+  }
+  for (const table of manifest.supplementalTables) {
+    const name = `${table.schema}.${table.table}`;
+    const actual = columns.filter(
+      (column) => column.schema === table.schema && column.table === table.table
+    );
+    if (stage === "after" && actual.length === 0) {
+      failures.push({
+        code: "MISSING_SUPPLEMENTAL_TABLE",
+        table: name,
+        detail: `${name} must exist after Phase 3 expand`,
+      });
+      continue;
+    }
+    const jsonColumns = actual.filter(({ dataType }) => dataType === "jsonb");
+    const classifiedJson = new Set(table.jsonColumns.map(({ column }) => column));
+    for (const column of jsonColumns) {
+      if (!classifiedJson.has(column.column)) {
+        failures.push({
+          code: "UNCLASSIFIED_JSON_COLUMN",
+          table: name,
+          detail: `${name}.${column.column} lacks a JSON reference classification`,
+        });
+      }
     }
   }
   return failures;
