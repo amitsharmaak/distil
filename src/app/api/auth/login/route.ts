@@ -7,8 +7,10 @@ import { requestIp } from "@/lib/auth/request";
 import { login } from "@/lib/auth/service";
 import { sessionCookieOptions } from "@/lib/auth/session";
 import { getRepositorySet } from "@/lib/database";
+import { legacyAuthBridgeAvailable, legacyAuthDisabledResponse } from "@/lib/auth/legacy-bridge";
 
 export async function POST(request: Request): Promise<Response> {
+  if (!legacyAuthBridgeAvailable()) return legacyAuthDisabledResponse();
   try {
     const environment = readAuthEnvironment();
     requireAllowedOrigin(request, environment.allowedOrigins);

@@ -1,8 +1,10 @@
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { readSessionCookie } from "@/lib/auth/request";
 import { verifySessionToken } from "@/lib/auth/session";
+import { legacyAuthBridgeAvailable, legacyAuthDisabledResponse } from "@/lib/auth/legacy-bridge";
 
 export async function GET(request: Request): Promise<Response> {
+  if (!legacyAuthBridgeAvailable()) return legacyAuthDisabledResponse();
   const environment = readAuthEnvironment();
   const authenticated = await verifySessionToken(
     readSessionCookie(request),

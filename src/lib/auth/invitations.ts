@@ -32,11 +32,19 @@ export function normalizeEmail(email: string): string {
 }
 
 function hashToken(secret: string, salt: string): string {
-  return createHash("sha256").update(salt, "utf8").update("\0", "utf8").update(secret, "utf8").digest("hex");
+  return createHash("sha256")
+    .update(salt, "utf8")
+    .update("\0", "utf8")
+    .update(secret, "utf8")
+    .digest("hex");
 }
 
 function hashEmail(email: string, salt: string): string {
-  return createHash("sha256").update(salt, "utf8").update("\0", "utf8").update(normalizeEmail(email), "utf8").digest("hex");
+  return createHash("sha256")
+    .update(salt, "utf8")
+    .update("\0", "utf8")
+    .update(normalizeEmail(email), "utf8")
+    .digest("hex");
 }
 
 function parseToken(token: string): { invitationId: string; secret: string } | undefined {
@@ -44,7 +52,10 @@ function parseToken(token: string): { invitationId: string; secret: string } | u
   if (separator < 0) return undefined;
   const invitationId = token.slice(0, separator);
   const secret = token.slice(separator + 1);
-  if (!invitationIdSchema.safeParse(invitationId).success || !/^[A-Za-z0-9_-]{40,64}$/.test(secret)) {
+  if (
+    !invitationIdSchema.safeParse(invitationId).success ||
+    !/^[A-Za-z0-9_-]{40,64}$/.test(secret)
+  ) {
     return undefined;
   }
   return { invitationId, secret };
@@ -80,7 +91,9 @@ export async function issueInvitation(
   await repositories.createInvitation(record);
 
   const url = new URL("/invite", input.appOrigin);
-  url.searchParams.set("token", `${invitationId}.${secret}`);
+  // URL fragments are not sent in HTTP requests or Referer headers, keeping
+  // the raw one-time token out of application and infrastructure logs.
+  url.hash = new URLSearchParams({ token: `${invitationId}.${secret}` }).toString();
   return { invitationId, invitationUrl: url.toString(), expiresAt };
 }
 
@@ -131,7 +144,12 @@ export async function executeInvitationCommand(
   value: unknown,
   repositories: AuthRepositoryPort,
   now = new Date()
-): Promise<{ invitationId: string; invitationUrl?: string; expiresAt?: string; revoked?: boolean }> {
+): Promise<{
+  invitationId: string;
+  invitationUrl?: string;
+  expiresAt?: string;
+  revoked?: boolean;
+}> {
   const command = invitationCommandSchema.parse(value);
   if (command.action === "issue") return issueInvitation(command, repositories, now);
   const revoked = await repositories.revokeInvitation({

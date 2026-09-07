@@ -1,7 +1,12 @@
 import { createAuthContext, requestIdSchema, sessionIdSchema, userIdSchema } from "@/lib/contracts";
 import { readSessionCookie } from "@/lib/auth/request";
 import { verifySessionToken } from "@/lib/auth/session";
-import { AccessDeniedError, type FreshAuthMarker, type ProviderIdentity, type ResolvedAuthRequest } from "@/lib/auth/account";
+import {
+  AccessDeniedError,
+  type FreshAuthMarker,
+  type ProviderIdentity,
+  type ResolvedAuthRequest,
+} from "@/lib/auth/account";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 
 export const FRESH_AUTH_WINDOW_MS = 10 * 60 * 1000;
@@ -35,7 +40,9 @@ export function requireFreshAuthentication(marker: FreshAuthMarker): void {
   if (!marker.isFresh) throw new AccessDeniedError("unauthenticated");
 }
 
-export async function readProviderIdentity(provider: ProviderIdentityPort): Promise<ProviderIdentity> {
+export async function readProviderIdentity(
+  provider: ProviderIdentityPort
+): Promise<ProviderIdentity> {
   const result = await provider.getSession();
   if (result.error || !result.data?.user || !result.data.session) {
     throw new AccessDeniedError("unauthenticated");
@@ -72,7 +79,9 @@ export async function resolveNeonAuthRequest(
       userId: account.userId,
       actorKind: "user",
       actorId: account.userId,
-      requestId: parsedRequestId.success ? parsedRequestId.data : requestIdSchema.parse(crypto.randomUUID()),
+      requestId: parsedRequestId.success
+        ? parsedRequestId.data
+        : requestIdSchema.parse(crypto.randomUUID()),
       ...(parsedSessionId.success ? { sessionId: parsedSessionId.data } : {}),
     }),
     account,
@@ -95,6 +104,8 @@ export async function resolveLegacyAuthRequest(
     userId,
     actorKind: "user",
     actorId: userId,
-    requestId: parsedRequestId.success ? parsedRequestId.data : requestIdSchema.parse(crypto.randomUUID()),
+    requestId: parsedRequestId.success
+      ? parsedRequestId.data
+      : requestIdSchema.parse(crypto.randomUUID()),
   });
 }

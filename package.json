@@ -39,7 +39,8 @@
     "db:import:sqlite": "tsx scripts/import-sqlite.ts",
     "db:tenant:verify": "tsx scripts/verify-tenant-migration.ts",
     "db:tenant:migrate": "tsx scripts/migrate-tenant.ts",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "auth:invite": "tsx scripts/auth-invitations.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

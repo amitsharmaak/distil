@@ -43,7 +43,9 @@ export interface InvitationRepositoryPort {
    * creates/reactivates the user and inserts auth_identities(provider,
    * provider_subject, user_id). A replay returns undefined.
    */
-  consumeInvitationAndLinkIdentity(input: ConsumeInvitationInput): Promise<LinkedAccount | undefined>;
+  consumeInvitationAndLinkIdentity(
+    input: ConsumeInvitationInput
+  ): Promise<LinkedAccount | undefined>;
 }
 
 export interface AuthIdentityRepositoryPort {

@@ -1,6 +1,6 @@
 # ADR 0003: Neon Auth with app-enforced invitations
 
-**Status:** Proposed; feature disabled
+**Status:** Implemented behind feature flag; feature disabled by default
 
 **Date:** 2026-09-07
 
@@ -15,10 +15,10 @@ to that account's internal user ID. A valid Neon Auth session alone is not autho
 Workspaces, workspace membership, end-user roles, shared tenancy, and workspace-owner invitation
 flows are Phase 6 concerns and must not be introduced by this integration.
 
-This is deliberately an integration foundation, not an activation. `FEATURE_NEON_AUTH` is false
-unless it is exactly `true`, no Neon package has been added, and no route, proxy, session, schema,
-or current single-user behavior has changed. `readNeonAuthFoundation` only describes whether the
-future server-side configuration is present and never returns a secret.
+This is deliberately an integration, not an activation. `FEATURE_NEON_AUTH` is false unless it is
+exactly `true`. The pinned Neon adapter, invitation-only magic-link route, identity resolver,
+session/device helpers, and composed proxy remain dormant while the flag is off. The existing
+single-user session remains a bounded feature-off rollback bridge.
 
 ## Evidence and SDK decision
 
@@ -32,12 +32,23 @@ Validation performed on 2026-09-07:
 | Recommended server API | `createNeonAuth` from `@neondatabase/auth/next/server`         |
 | Next adapter API       | `auth.handler()`, `auth.middleware()`, and `auth.getSession()` |
 | Magic-link capability  | Declares `signIn.magicLink` and `/magic-link/verify` endpoints |
+| Production audit       | Blocked: 1 high and 7 moderate findings after pinning          |
+| Dependency graph       | Blocked: invalid Better Auth peer resolutions                  |
+| License review         | Blocked: AGPL packages pulled through the unused auth UI graph |
 
 The SDK is compatible with the repository's Next 16 version by declared peer dependency and its
 own development dependency uses Next `16.2.11`. It remains beta, so the Phase 3 implementation
 must pin an exact vetted version rather than a caret range and include an upgrade review. The
 validated SDK API is the post-v0.2 unified API; do not implement examples using the superseded
 `neonAuth`, `authApiHandler`, or `neonAuthMiddleware` entry points.
+
+Pinning also exposed release blockers that must not be waived merely because the selected server
+subpath compiles. `npm audit --omit=dev` reports eight production findings (one high, seven
+moderate). `npm ls` reports incompatible `better-call` peer resolutions under Better Auth. The
+package also installs `@neondatabase/auth-ui` even though Distil does not import it; that graph pulls
+AGPL-licensed `@triplit/client` and `ua-parser-js`. `FEATURE_NEON_AUTH` must remain off until Neon
+provides or Distil validates a dependency graph with resolved advisories/peers and an acceptable
+license posture. The pin in this repository is an integration target, not release approval.
 
 The eventual server configuration is conceptually:
 
@@ -104,7 +115,7 @@ idempotent on `(provider, provider_subject)`. An existing mapping can authentica
 user is active; an uninvited identity has no mapping to an active user and is denied. Email changes
 require a verified provider email and an explicit conflict policy; they never merge two internal
 users automatically. This personal-account model has no workspace, membership, or workspace
-ownership tables or predicates. The required tables and repository ports are intentionally left to
+model includes no workspace, membership, or workspace ownership tables or predicates. The required tables and concrete repository adapters are intentionally left to
 the Phase 3 migration workstream.
 
 ## Session and device contract
@@ -152,6 +163,7 @@ Do not point Preview at Production Auth or share cookie-signing secrets across e
 | `NEON_AUTH_BASE_URL`       | That Preview branch's Auth URL                     | Server-only; never expose through a `NEXT_PUBLIC_` variable                  |
 | `NEON_AUTH_COOKIE_SECRET`  | Unique random secret, at least 32 characters       | Server-only; stable for that environment while sessions must survive deploys |
 | `NEON_AUTH_WEBHOOK_SECRET` | Absent unless a separately reviewed webhook exists | Server-only; no route means no value is needed                               |
+| `DISTIL_LEGACY_USER_ID`    | Migrated first account's internal UUID             | Server-only; required only while tenant-aware routes use the legacy bridge   |
 
 The current SDK does not need a public Auth URL when using its Next adapter. App callback and
 redirect origins must be exact HTTPS Preview origins configured in the provider, never a wildcard
@@ -181,8 +193,9 @@ supported, and must not be included in logs, analytics, referrers, or support ti
 
 Before moving `FEATURE_NEON_AUTH` to true, complete all of these:
 
-1. Pin the SDK version and compile/build it against the deployed Next 16 version. Re-run the API
-   review because the package is beta.
+1. Replace or remediate the pinned SDK dependency graph: clear the production audit findings,
+   invalid Better Auth peers, and AGPL transitive-license review; then compile/build it against the
+   deployed Next 16 version and re-run the API review because the package is beta.
 2. Prove magic-link-only configuration and resolve the self-registration limitation above in a
    disposable Preview branch with no real user data.
 3. Add unit tests for disabled/misconfigured flags, invite hashing/expiry/atomic consumption,

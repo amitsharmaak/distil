@@ -1,16 +1,27 @@
 import { getNeonAuthServer, NeonAuthConfigurationError } from "@/lib/auth/neon-server";
-import { gatedNeonAuthHandler, type NeonAuthHandler } from "@/lib/auth/neon-route";
+import { dispatchGatedNeonAuth, type NeonAuthHandler } from "@/lib/auth/neon-route";
+import { readAuthEnvironment } from "@/lib/auth/environment";
+import { AuthError } from "@/lib/auth/errors";
 
 async function dispatch(
   request: Request,
   context: { params: Promise<{ path: string[] }> }
 ): Promise<Response> {
   try {
-    const handlers = getNeonAuthServer().handler();
-    const handler = handlers[request.method as keyof typeof handlers] as NeonAuthHandler | undefined;
-    if (!handler) return new Response(null, { status: 405 });
-    return gatedNeonAuthHandler(handler)(request, context);
+    return dispatchGatedNeonAuth(request, context, {
+      allowedOrigins: readAuthEnvironment().allowedOrigins,
+      loadHandler(method) {
+        const handlers = getNeonAuthServer().handler();
+        return handlers[method as keyof typeof handlers] as NeonAuthHandler | undefined;
+      },
+    });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return Response.json(
+        { error: { code: "ORIGIN_NOT_ALLOWED", message: "Unable to continue" } },
+        { status: 403 }
+      );
+    }
     if (error instanceof NeonAuthConfigurationError) {
       return Response.json(
         { error: { code: "AUTH_UNAVAILABLE", message: "Authentication is unavailable" } },
