@@ -152,7 +152,7 @@ describe("Topbar", () => {
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    expect(mockPush).toHaveBeenCalledWith("/feed?q=durable%20queues");
+    expect(mockPush).toHaveBeenCalledWith("/search?q=durable%20queues");
   });
 
   it("cancels a pending debounce and searches immediately on Enter", () => {
@@ -164,7 +164,7 @@ describe("Topbar", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(mockPush).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/feed?q=phase%20one");
+    expect(mockPush).toHaveBeenCalledWith("/search?q=phase%20one");
 
     act(() => {
       jest.advanceTimersByTime(300);
@@ -172,26 +172,26 @@ describe("Topbar", () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
-  it("returns to the feed for an empty search, Escape, and the clear control", () => {
+  it("returns to search for an empty search, Escape, and the clear control", () => {
     render(<Topbar />);
 
     const input = screen.getByPlaceholderText("Search articles, topics, authors...");
 
     fireEvent.change(input, { target: { value: "   " } });
-    expect(mockPush).toHaveBeenLastCalledWith("/feed");
+    expect(mockPush).toHaveBeenLastCalledWith("/search");
 
     fireEvent.change(input, { target: { value: "temporary" } });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input).toHaveValue("");
-    expect(mockPush).toHaveBeenLastCalledWith("/feed");
+    expect(mockPush).toHaveBeenLastCalledWith("/search");
 
     fireEvent.change(input, { target: { value: "clear me" } });
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect(input).toHaveValue("");
-    expect(mockPush).toHaveBeenLastCalledWith("/feed");
+    expect(mockPush).toHaveBeenLastCalledWith("/search");
   });
 
-  it("submits an empty search on Enter to the feed", () => {
+  it("submits an empty search on Enter to search", () => {
     render(<Topbar />);
 
     const input = screen.getByPlaceholderText("Search articles, topics, authors...");
@@ -200,7 +200,7 @@ describe("Topbar", () => {
     mockPush.mockClear();
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockPush).toHaveBeenCalledWith("/feed");
+    expect(mockPush).toHaveBeenCalledWith("/search");
   });
 
   it("defaults an omitted unread count to zero", async () => {

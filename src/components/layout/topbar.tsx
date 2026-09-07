@@ -36,11 +36,11 @@ export function Topbar() {
       setSearchValue(value);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (value.trim() === "") {
-        router.push("/feed");
+        router.push("/search");
         return;
       }
       debounceRef.current = setTimeout(() => {
-        router.push(`/feed?q=${encodeURIComponent(value.trim())}`);
+        router.push(`/search?q=${encodeURIComponent(value.trim())}`);
       }, 300);
     },
     [router]
@@ -51,12 +51,12 @@ export function Topbar() {
       if (e.key === "Enter") {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const v = searchValue.trim();
-        router.push(v ? `/feed?q=${encodeURIComponent(v)}` : "/feed");
+        router.push(v ? `/search?q=${encodeURIComponent(v)}` : "/search");
       }
       if (e.key === "Escape") {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         setSearchValue("");
-        router.push("/feed");
+        router.push("/search");
       }
     },
     [router, searchValue]
@@ -65,7 +65,7 @@ export function Topbar() {
   const handleSearchClear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearchValue("");
-    router.push("/feed");
+    router.push("/search");
   }, [router]);
 
   const fetchCount = useCallback(() => {

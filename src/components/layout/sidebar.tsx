@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/digests", label: "Digests", icon: Sparkles },
+  { href: "/search", label: "Search", icon: Search },
+  { href: "/ask", label: "Ask", icon: Bot },
   { href: "/collections", label: "Collections", icon: Folder },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/save", label: "Save", icon: BookmarkPlus },
