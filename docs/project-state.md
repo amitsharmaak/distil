@@ -630,6 +630,37 @@ Task 4 progress (2026-09-07, not yet accepted):
   hostile cases, zero secret leakage, and all receipts terminal under 60 seconds; aggregate logged
   cost; then record the accepted commit/deployment and mark Task 4 complete.
 
+Task 4 acceptance record (complete only after the repaired commit passes Preview):
+
+- **Release identity:** commit `[pending]`; immutable Preview deployment `[pending]`; deployment ID
+  `[pending]`; acceptance timestamp `[pending, IST]`. Keep the Task 3 deployment above as rollback
+  until every check below passes and the stable Preview alias has been deliberately repointed.
+- **Structured-model preflight:** record pass/fail for the configured primary summary model and its
+  summary-only quota fallback using native JSON response mode. Record model IDs, latency, and
+  normalized failure category only; do not paste prompts, responses, provider payloads, or keys.
+- **Fresh sequential matrix:** record one row each for short news, long analysis, technical article,
+  paywall/partial content, and extraction-hostile content. For each row record receipt/item ID,
+  terminal state, worker attempt count, processing time, successful model or extractive fallback,
+  feed-summary quality, cached-brief result, and any sanitized failure category. Use fresh canonical
+  URLs so an earlier deduplication result cannot bypass the repaired worker.
+- **Required outcomes:** all receipts terminate on their first worker attempt inside 60 seconds; the
+  three public articles have coherent plaintext 2-3 sentence feed summaries and cached briefs with
+  an overview plus 3-5 key points; paywall content is either faithfully summarized from substantive
+  visible prose or rejected; extraction-hostile content is rejected without a summary cache row.
+  No stored result may contain markup, whitespace/date/cookie boilerplate, or unsupported claims.
+- **Behavior checks:** force-regenerate one accepted article and verify the following non-force call
+  is a cache hit; resubmit one canonical URL and verify the same receipt/item returns with no new AI
+  call; exercise a controlled primary 429 and verify immediate summary-model fallback without a
+  duplicate capture, same-model quota retry, or queue loop.
+- **Cost and safety:** label the total as `application-estimated logged generation cost`; record call
+  count, input/output token estimates, total cost, median/max successful latency, and model mix.
+  Require the acceptance-window total below `$0.25` and the configured daily application guardrail
+  below `$1.00`. Record that application, queue, and build logs were scanned for secrets, connection
+  strings, provider payloads, prompts, and captured content, with findings `[pending]`.
+- **Decision:** `[pending: accepted or rejected]`. Mark **Task 4 complete** above only when all required
+  outcomes pass against the same commit and deployment. If rejected, leave the stable alias and
+  rollback position unchanged and record the failing checks plus the next restart step.
+
 #### Task 5 — Provision and accept independent capture clients
 
 - [ ] Create a `Browser Extension` capture token; store it only in the extension and record only its

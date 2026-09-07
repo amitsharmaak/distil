@@ -12,6 +12,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { DEFAULT_MODEL_CONFIG } from "@/lib/ai/ai-config";
 
 // ---------------------------------------------------------------------------
 // Load .env.test.local before any SDK is imported
@@ -93,23 +94,57 @@ describe("Slack", () => {
 // ---------------------------------------------------------------------------
 describe("Gemini", () => {
   const apiKey = process.env.GEMINI_API_KEY;
+  const summaryAssignment = DEFAULT_MODEL_CONFIG.summarize;
 
   if (!apiKey) {
-    skip("generateContent", "GEMINI_API_KEY not set");
+    skip("structured summary generation", "GEMINI_API_KEY not set");
     return;
   }
 
-  test("generateContent — model responds to a simple prompt", async () => {
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  test("configured summary model returns native structured JSON", async () => {
+    expect(summaryAssignment.provider).toBe("gemini");
+
+    const { GoogleGenerativeAI, SchemaType } = await import("@google/generative-ai");
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({
+      model: summaryAssignment.model,
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            overview: { type: SchemaType.STRING },
+            keyPoints: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+              minItems: 3,
+              maxItems: 5,
+            },
+          },
+          required: ["overview", "keyPoints"],
+        },
+      },
+    });
 
-    const result = await model.generateContent('Reply with exactly the word "pong".');
-    const text = result.response.text().trim().toLowerCase();
+    const result = await model.generateContent(
+      "Summarize this source in two sentences and give exactly three key points: " +
+        "Distil saves articles for later reading. It creates concise summaries so readers can " +
+        "decide what deserves their attention. Return only the requested structured response."
+    );
+    const parsed: unknown = JSON.parse(result.response.text());
 
-    expect(typeof text).toBe("string");
-    expect(text.length).toBeGreaterThan(0);
-    console.log(`  ✓ Gemini response: "${text}"`);
+    expect(parsed).toEqual({
+      overview: expect.any(String),
+      keyPoints: expect.any(Array),
+    });
+
+    const summary = parsed as { overview: string; keyPoints: string[] };
+    expect(summary.overview.trim().length).toBeGreaterThan(0);
+    expect(summary.keyPoints).toHaveLength(3);
+    expect(
+      summary.keyPoints.every((point) => typeof point === "string" && point.trim().length > 0)
+    ).toBe(true);
+    console.log(`  ✓ Gemini structured JSON validated for ${summaryAssignment.model}`);
   }, 30_000);
 });
 
