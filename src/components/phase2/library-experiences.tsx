@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArchiveRestore, FolderPlus, Trash2 } from "lucide-react";
+import { ArchiveRestore, FolderPlus, Pencil, Save, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { config } from "@/lib/config";
@@ -31,6 +32,141 @@ function ItemLink({ item }: { item: FeedItem }) {
         {item.aiSummary || item.summary || "No summary is available yet."}
       </p>
     </Link>
+  );
+}
+
+function CollectionEditor({
+  collection,
+  onUpdated,
+  onDeleted,
+}: {
+  collection: Collection;
+  onUpdated: (collection: Collection) => void;
+  onDeleted: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(collection.name);
+  const [description, setDescription] = useState(collection.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = await api<{ collection: Collection }>(
+        `/api/v1/collections/${collection.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), description: description.trim() || null }),
+        }
+      );
+      onUpdated(payload.collection);
+      setEditing(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Collection could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!deletePending || saving) {
+      setDeletePending(true);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await api(`/api/v1/collections/${collection.id}`, { method: "DELETE" });
+      onDeleted();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Collection could not be deleted.");
+      setDeletePending(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing)
+    return (
+      <form
+        onSubmit={save}
+        className="rounded-xl border bg-card p-4"
+        aria-label={`Edit ${collection.name}`}
+      >
+        <label className="sr-only" htmlFor={`edit-collection-name-${collection.id}`}>
+          Collection name
+        </label>
+        <input
+          id={`edit-collection-name-${collection.id}`}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={200}
+          className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+        />
+        <label className="sr-only" htmlFor={`edit-collection-description-${collection.id}`}>
+          Collection description
+        </label>
+        <textarea
+          id={`edit-collection-description-${collection.id}`}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          maxLength={20_000}
+          className="mt-2 min-h-20 w-full rounded-md border bg-background p-2 text-base"
+          placeholder="Optional description"
+        />
+        <div className="mt-2 flex gap-2">
+          <Button type="submit" disabled={!name.trim() || saving} className="min-h-11 gap-2">
+            <Save className="h-4 w-4" /> Save
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setEditing(false)}
+            disabled={saving}
+            className="min-h-11 gap-2"
+          >
+            <X className="h-4 w-4" /> Cancel
+          </Button>
+        </div>
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </form>
+    );
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="min-h-11 gap-2"
+        onClick={() => setEditing(true)}
+      >
+        <Pencil className="h-4 w-4" /> Edit
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="min-h-11 gap-2 text-destructive hover:text-destructive"
+        onClick={() => void remove()}
+        disabled={saving}
+      >
+        <Trash2 className="h-4 w-4" /> {deletePending ? "Confirm delete" : "Delete"}
+      </Button>
+      {error && (
+        <p role="alert" className="basis-full text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -126,6 +262,7 @@ export function CollectionsExperience() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -154,10 +291,11 @@ export function CollectionsExperience() {
       const payload = await api<{ collection: Collection }>("/api/v1/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, description: description.trim() || null }),
       });
       setCollections((current) => [...current, payload.collection]);
       setName("");
+      setDescription("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Collection could not be created.");
     } finally {
@@ -187,6 +325,17 @@ export function CollectionsExperience() {
           placeholder="e.g. Product strategy"
           className="min-h-11 flex-1 rounded-md border bg-background px-3 text-base"
         />
+        <label className="sr-only" htmlFor="collection-description">
+          Collection description
+        </label>
+        <input
+          id="collection-description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          maxLength={20_000}
+          placeholder="Optional description"
+          className="min-h-11 flex-1 rounded-md border bg-background px-3 text-base"
+        />
         <Button type="submit" disabled={!name.trim() || creating} className="min-h-11 gap-2">
           <FolderPlus className="h-4 w-4" />
           Create collection
@@ -208,17 +357,32 @@ export function CollectionsExperience() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {collections.map((collection) => (
             <li key={collection.id}>
-              <Link
-                href={`/collections/${collection.id}`}
-                className="block min-h-28 rounded-xl border bg-card p-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <h2 className="font-serif text-lg font-semibold">{collection.name}</h2>
-                {collection.description && (
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                    {collection.description}
-                  </p>
-                )}
-              </Link>
+              <div className="rounded-xl border bg-card p-4">
+                <Link
+                  href={`/collections/${collection.id}`}
+                  className="block min-h-20 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <h2 className="font-serif text-lg font-semibold">{collection.name}</h2>
+                  {collection.description && (
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {collection.description}
+                    </p>
+                  )}
+                </Link>
+                <CollectionEditor
+                  collection={collection}
+                  onUpdated={(updated) =>
+                    setCollections((current) =>
+                      current.map((entry) => (entry.id === updated.id ? updated : entry))
+                    )
+                  }
+                  onDeleted={() =>
+                    setCollections((current) =>
+                      current.filter((entry) => entry.id !== collection.id)
+                    )
+                  }
+                />
+              </div>
             </li>
           ))}
         </ul>
@@ -232,6 +396,7 @@ export function CollectionsExperience() {
 }
 
 export function CollectionDetailExperience({ collectionId }: { collectionId: string }) {
+  const router = useRouter();
   const [detail, setDetail] = useState<CollectionDetail | null>(null);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -299,6 +464,13 @@ export function CollectionDetailExperience({ collectionId }: { collectionId: str
         {detail.collection.description && (
           <p className="mt-1 text-muted-foreground">{detail.collection.description}</p>
         )}
+        <CollectionEditor
+          collection={detail.collection}
+          onUpdated={(collection) =>
+            setDetail((current) => (current ? { ...current, collection } : current))
+          }
+          onDeleted={() => router.push("/collections")}
+        />
       </header>
       {error && (
         <p

@@ -14,13 +14,38 @@
  * content lives in FeedPageContent and FeedPage wraps it in <Suspense>.
  */
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilters } from "@/components/feed/feed-filters";
 import type { ContentItem, SourceType, ContentType, Priority } from "@/lib/types";
 import { config } from "@/lib/config";
+import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
+
+function queryValues(params: URLSearchParams, name: string): string[] {
+  return params
+    .getAll(name)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function dateQueryValue(value: string, end = false): string {
+  return value ? `${value}T${end ? "23:59:59.999" : "00:00:00.000"}Z` : "";
+}
+
+function updateFeedUrl(updates: Record<string, string | string[] | undefined>) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  for (const [name, value] of Object.entries(updates)) {
+    url.searchParams.delete(name);
+    if (Array.isArray(value)) value.forEach((entry) => url.searchParams.append(name, entry));
+    else if (value) url.searchParams.set(name, value);
+  }
+  url.searchParams.delete("cursor");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 function FeedPageContent() {
   // ── State ───────────────────────────────────────────────────────────────────
@@ -38,12 +63,38 @@ function FeedPageContent() {
   const searchQuery = searchParams.get("q") ?? "";
 
   /** Active filter selections — empty array means "show all". */
-  const [selectedSources, setSelectedSources] = useState<SourceType[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<ContentType[]>([]);
-  const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([]);
+  const [selectedSources, setSelectedSources] = useState<SourceType[]>(
+    () => queryValues(searchParams, "source") as SourceType[]
+  );
+  const [selectedTypes, setSelectedTypes] = useState<ContentType[]>(
+    () => queryValues(searchParams, "contentType") as ContentType[]
+  );
+  const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>(
+    () => queryValues(searchParams, "priority") as Priority[]
+  );
+  const [selectedTopics, setSelectedTopics] = useState<string[]>(() =>
+    queryValues(searchParams, "topic")
+  );
+  const [selectedCollections, setSelectedCollections] = useState<string[]>(() =>
+    queryValues(searchParams, "collection")
+  );
+  const [archive, setArchive] = useState<FeedArchiveFilter>(
+    () => (searchParams.get("archive") as FeedArchiveFilter) || "exclude"
+  );
+  const [sort, setSort] = useState<FeedSort>(
+    () => (searchParams.get("sort") as FeedSort) || "for_you"
+  );
+  const [dateFrom, setDateFrom] = useState(() => (searchParams.get("dateFrom") ?? "").slice(0, 10));
+  const [dateTo, setDateTo] = useState(() => (searchParams.get("dateTo") ?? "").slice(0, 10));
 
   /** When false, already-read items are hidden. Initialized from ?showRead=true param. */
-  const [showRead, setShowRead] = useState(searchParams.get("showRead") === "true");
+  const [showRead, setShowRead] = useState(() => {
+    const read = searchParams.get("read");
+    return read ? read === "true" : searchParams.get("showRead") === "true";
+  });
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [collections, setCollections] = useState<{ id: string; name: string }[]>([]);
+  const initialCursor = useRef<string | undefined>(searchParams.get("cursor") ?? undefined);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -52,38 +103,79 @@ function FeedPageContent() {
    * the pipeline show with skeleton UI. When a search query is present, it is
    * forwarded to the API for FTS5 full-text filtering.
    */
-  const fetchItems = useCallback(() => {
-    // Phase 2 owns normal consumption queries. Search remains on the legacy
-    // endpoint until the cited keyword-search route is wired in its next slice.
-    const url = new URL(`${config.apiBaseUrl}${searchQuery ? "/api/items" : "/api/v1/feed"}`);
-    if (searchQuery) {
-      url.searchParams.set("includeProcessing", "true");
-      url.searchParams.set("q", searchQuery);
-    } else {
-      url.searchParams.set("archive", "exclude");
-      url.searchParams.set("sort", "for_you");
-      url.searchParams.set("limit", "100");
-      if (!showRead) url.searchParams.set("read", "false");
-      selectedSources.forEach((source) => url.searchParams.append("source", source));
-      selectedTypes.forEach((type) => url.searchParams.append("contentType", type));
-      selectedPriorities.forEach((priority) => url.searchParams.append("priority", priority));
-    }
-    return fetch(url.toString())
-      .then((res) => res.json())
-      .then((data: { items: ContentItem[] }) => {
-        setItems(data.items);
-        setLoadedQuery(searchQuery);
-        return data.items;
-      })
-      .catch(() => {
-        setLoadedQuery(searchQuery);
-        return [] as ContentItem[];
-      });
-  }, [searchQuery, selectedSources, selectedTypes, selectedPriorities, showRead]);
+  const fetchItems = useCallback(
+    (cursor?: string, append = false) => {
+      // Phase 2 owns normal consumption queries. Search remains on the legacy
+      // endpoint until the cited keyword-search route is wired in its next slice.
+      const url = new URL(`${config.apiBaseUrl}${searchQuery ? "/api/items" : "/api/v1/feed"}`);
+      if (searchQuery) {
+        url.searchParams.set("includeProcessing", "true");
+        url.searchParams.set("q", searchQuery);
+      } else {
+        url.searchParams.set("archive", archive);
+        url.searchParams.set("sort", sort);
+        url.searchParams.set("limit", "100");
+        if (!showRead) url.searchParams.set("read", "false");
+        selectedTopics.forEach((topic) => url.searchParams.append("topic", topic));
+        selectedSources.forEach((source) => url.searchParams.append("source", source));
+        selectedTypes.forEach((type) => url.searchParams.append("contentType", type));
+        selectedPriorities.forEach((priority) => url.searchParams.append("priority", priority));
+        selectedCollections.forEach((collection) =>
+          url.searchParams.append("collection", collection)
+        );
+        if (dateFrom) url.searchParams.set("dateFrom", dateQueryValue(dateFrom));
+        if (dateTo) url.searchParams.set("dateTo", dateQueryValue(dateTo, true));
+        if (cursor) url.searchParams.set("cursor", cursor);
+      }
+      return fetch(url.toString())
+        .then((res) => res.json())
+        .then((data: { items: ContentItem[]; nextCursor?: string }) => {
+          setItems((current) => (append ? [...current, ...data.items] : data.items));
+          setNextCursor(data.nextCursor);
+          setLoadedQuery(searchQuery);
+          return data.items;
+        })
+        .catch(() => {
+          if (!append) setLoadedQuery(searchQuery);
+          return [] as ContentItem[];
+        });
+    },
+    [
+      archive,
+      dateFrom,
+      dateTo,
+      searchQuery,
+      selectedCollections,
+      selectedPriorities,
+      selectedSources,
+      selectedTopics,
+      selectedTypes,
+      showRead,
+      sort,
+    ]
+  );
 
   useEffect(() => {
-    fetchItems();
+    const cursor = initialCursor.current;
+    initialCursor.current = undefined;
+    fetchItems(cursor);
   }, [fetchItems]);
+
+  useEffect(() => {
+    if (searchQuery) return;
+    let cancelled = false;
+    fetch(`${config.apiBaseUrl}/api/v1/collections`)
+      .then((res) => res.json())
+      .then((data: { collections?: { id: string; name: string }[] }) => {
+        if (!cancelled) setCollections(data.collections ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCollections([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery]);
 
   const loading = loadedQuery !== searchQuery;
 
@@ -115,6 +207,49 @@ function FeedPageContent() {
     if (!searchQuery && !showRead && item.isRead) return false;
     return true;
   });
+
+  const topicOptions = Array.from(new Set(items.flatMap((item) => item.topics))).sort();
+
+  const setSources = (values: SourceType[]) => {
+    setSelectedSources(values);
+    updateFeedUrl({ source: values });
+  };
+  const setTypes = (values: ContentType[]) => {
+    setSelectedTypes(values);
+    updateFeedUrl({ contentType: values });
+  };
+  const setPriorities = (values: Priority[]) => {
+    setSelectedPriorities(values);
+    updateFeedUrl({ priority: values });
+  };
+  const setTopics = (values: string[]) => {
+    setSelectedTopics(values);
+    updateFeedUrl({ topic: values });
+  };
+  const setCollectionFilter = (values: string[]) => {
+    setSelectedCollections(values);
+    updateFeedUrl({ collection: values });
+  };
+  const setReadFilter = (value: boolean) => {
+    setShowRead(value);
+    updateFeedUrl({ read: value ? "true" : "false", showRead: undefined });
+  };
+  const setArchiveFilter = (value: FeedArchiveFilter) => {
+    setArchive(value);
+    updateFeedUrl({ archive: value });
+  };
+  const setSortFilter = (value: FeedSort) => {
+    setSort(value);
+    updateFeedUrl({ sort: value });
+  };
+  const setFromDate = (value: string) => {
+    setDateFrom(value);
+    updateFeedUrl({ dateFrom: value ? dateQueryValue(value) : undefined });
+  };
+  const setToDate = (value: string) => {
+    setDateTo(value);
+    updateFeedUrl({ dateTo: value ? dateQueryValue(value, true) : undefined });
+  };
 
   /** Optimistically mark an item as read in local state. */
   function handleMarkRead(id: string) {
@@ -150,13 +285,27 @@ function FeedPageContent() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         selectedSources={selectedSources}
-        onSourcesChange={setSelectedSources}
+        onSourcesChange={setSources}
         selectedTypes={selectedTypes}
-        onTypesChange={setSelectedTypes}
+        onTypesChange={setTypes}
         selectedPriorities={selectedPriorities}
-        onPrioritiesChange={setSelectedPriorities}
+        onPrioritiesChange={setPriorities}
         showRead={showRead}
-        onShowReadChange={setShowRead}
+        onShowReadChange={setReadFilter}
+        archive={archive}
+        onArchiveChange={setArchiveFilter}
+        sort={sort}
+        onSortChange={setSortFilter}
+        selectedTopics={selectedTopics}
+        onTopicsChange={setTopics}
+        topicOptions={topicOptions}
+        selectedCollections={selectedCollections}
+        onCollectionsChange={setCollectionFilter}
+        collectionOptions={collections}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={setFromDate}
+        onDateToChange={setToDate}
       />
 
       {/* Item list */}
@@ -181,6 +330,17 @@ function FeedPageContent() {
           ))
         )}
       </div>
+      {nextCursor && !loading && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            className="min-h-11 rounded-md border px-4 text-sm font-medium hover:bg-accent"
+            onClick={() => void fetchItems(nextCursor, true)}
+          >
+            Load more
+          </button>
+        </div>
+      )}
     </div>
   );
 }

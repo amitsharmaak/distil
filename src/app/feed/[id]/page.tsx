@@ -20,6 +20,7 @@ import { ArticleNavigation } from "@/components/feed/article-navigation";
 import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
 import { DetailActionBar } from "@/components/feed/detail-action-bar";
 import { ReaderKnowledgeControls } from "@/components/phase2/reader-knowledge-controls";
+import { ReaderAnnotations } from "@/components/phase2/reader-annotations";
 
 /* ── Constants ── */
 
@@ -269,67 +270,69 @@ export default async function ItemDetailPage({
 
       {/* ── Content body ── */}
       <section className="min-h-[30vh]">
-        {/* Video embed (when applicable) */}
-        {strategy.detail.showEmbedPlayer && (
-          <div className="mb-6">
-            <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
-          </div>
-        )}
-
-        {strategy.detail.showTweetRenderer ? (
-          /* Tweet — rendered directly in reader typography, with inline video if present */
-          <div className="space-y-5">
-            {(() => {
-              const twitterVideo = (
-                item.detectedMedia as
-                  | Array<{ type: string; platform?: string; embedUrl?: string }>
-                  | undefined
-              )?.find((m) => m.type === "video" && m.platform === "twitter");
-              return twitterVideo?.embedUrl ? (
-                <video
-                  src={twitterVideo.embedUrl}
-                  controls
-                  className="w-full rounded-xl border border-border"
-                  style={{ maxHeight: 480 }}
-                />
-              ) : null;
-            })()}
-            <div className="distil-reader space-y-4">
-              {item.summary.split(/\n\n+/).map((para, i) => (
-                <p key={i} className="whitespace-pre-line">
-                  {renderTweetText(para)}
-                </p>
-              ))}
+        <ReaderAnnotations itemId={item.id}>
+          {/* Video embed (when applicable) */}
+          {strategy.detail.showEmbedPlayer && (
+            <div className="mb-6">
+              <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
             </div>
-          </div>
-        ) : strategy.detail.showAISummary ? (
-          /* Article — AI summary with lazy content extraction */
-          <LazyArticleExtract
-            itemId={item.id}
-            url={item.url}
-            hasFullContent={!!item.fullContent}
-            contentExtractedAt={item.contentExtractedAt}
-          >
-            <AISummary
-              itemId={item.id}
-              ogSummary={item.summary}
-              fullContent={item.fullContent}
-              initialBriefSummary={aiSummaries.brief ?? null}
-              initialDetailedSummary={aiSummaries.detailed ?? null}
-            />
-          </LazyArticleExtract>
-        ) : item.contentType === "podcast" && !strategy.detail.showEmbedPlayer ? (
-          /* Podcast placeholder */
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center p-12">
-              <div className="rounded-full bg-primary/10 p-4">
-                <Headphones className="h-8 w-8 text-primary" />
+          )}
+
+          {strategy.detail.showTweetRenderer ? (
+            /* Tweet — rendered directly in reader typography, with inline video if present */
+            <div className="space-y-5">
+              {(() => {
+                const twitterVideo = (
+                  item.detectedMedia as
+                    | Array<{ type: string; platform?: string; embedUrl?: string }>
+                    | undefined
+                )?.find((m) => m.type === "video" && m.platform === "twitter");
+                return twitterVideo?.embedUrl ? (
+                  <video
+                    src={twitterVideo.embedUrl}
+                    controls
+                    className="w-full rounded-xl border border-border"
+                    style={{ maxHeight: 480 }}
+                  />
+                ) : null;
+              })()}
+              <div className="distil-reader space-y-4">
+                {item.summary.split(/\n\n+/).map((para, i) => (
+                  <p key={i} className="whitespace-pre-line">
+                    {renderTweetText(para)}
+                  </p>
+                ))}
               </div>
-              <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
-              {item.duration && <p className="text-xs text-muted-foreground">{item.duration}</p>}
-            </CardContent>
-          </Card>
-        ) : null}
+            </div>
+          ) : strategy.detail.showAISummary ? (
+            /* Article — AI summary with lazy content extraction */
+            <LazyArticleExtract
+              itemId={item.id}
+              url={item.url}
+              hasFullContent={!!item.fullContent}
+              contentExtractedAt={item.contentExtractedAt}
+            >
+              <AISummary
+                itemId={item.id}
+                ogSummary={item.summary}
+                fullContent={item.fullContent}
+                initialBriefSummary={aiSummaries.brief ?? null}
+                initialDetailedSummary={aiSummaries.detailed ?? null}
+              />
+            </LazyArticleExtract>
+          ) : item.contentType === "podcast" && !strategy.detail.showEmbedPlayer ? (
+            /* Podcast placeholder */
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-12">
+                <div className="rounded-full bg-primary/10 p-4">
+                  <Headphones className="h-8 w-8 text-primary" />
+                </div>
+                <p className="mt-3 text-sm font-medium">Listen to Podcast</p>
+                {item.duration && <p className="text-xs text-muted-foreground">{item.duration}</p>}
+              </CardContent>
+            </Card>
+          ) : null}
+        </ReaderAnnotations>
       </section>
 
       <ReaderKnowledgeControls itemId={item.id} />

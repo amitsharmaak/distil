@@ -4,14 +4,9 @@ import * as React from "react";
 import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { SourceType, ContentType, Priority } from "@/lib/types";
+import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
 import { cn } from "@/lib/utils";
 
 const sourceOptions: { value: SourceType; label: string }[] = [
@@ -44,9 +39,23 @@ interface FeedFiltersProps {
   onPrioritiesChange: (priorities: Priority[]) => void;
   showRead: boolean;
   onShowReadChange: (show: boolean) => void;
+  archive: FeedArchiveFilter;
+  onArchiveChange: (archive: FeedArchiveFilter) => void;
+  sort: FeedSort;
+  onSortChange: (sort: FeedSort) => void;
+  selectedTopics: string[];
+  onTopicsChange: (topics: string[]) => void;
+  topicOptions: string[];
+  selectedCollections: string[];
+  onCollectionsChange: (collections: string[]) => void;
+  collectionOptions: { id: string; name: string }[];
+  dateFrom: string;
+  dateTo: string;
+  onDateFromChange: (date: string) => void;
+  onDateToChange: (date: string) => void;
 }
 
-function FilterPill<T extends string>({
+function FilterPill({
   label,
   selected,
   onToggle,
@@ -62,7 +71,7 @@ function FilterPill<T extends string>({
         "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
         selected
           ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent",
+          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent"
       )}
     >
       {label}
@@ -91,9 +100,7 @@ function FilterGroup<T extends string>({
 
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[11px] font-medium text-muted-foreground">
-        {label}:
-      </span>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}:</span>
       {options.map((opt) => (
         <FilterPill
           key={opt.value}
@@ -117,6 +124,20 @@ export function FeedFilters({
   onPrioritiesChange,
   showRead,
   onShowReadChange,
+  archive,
+  onArchiveChange,
+  sort,
+  onSortChange,
+  selectedTopics,
+  onTopicsChange,
+  topicOptions,
+  selectedCollections,
+  onCollectionsChange,
+  collectionOptions,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
 }: FeedFiltersProps) {
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
@@ -124,7 +145,13 @@ export function FeedFilters({
     selectedSources.length +
     selectedTypes.length +
     selectedPriorities.length +
-    (showRead ? 0 : 1);
+    selectedTopics.length +
+    selectedCollections.length +
+    (showRead ? 0 : 1) +
+    (archive !== "exclude" ? 1 : 0) +
+    (sort !== "for_you" ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
 
   const viewToggle = (
     <div className="flex items-center rounded-lg border border-border">
@@ -154,11 +181,58 @@ export function FeedFilters({
         "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
         !showRead
           ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:bg-accent",
+          : "border-border bg-card text-muted-foreground hover:bg-accent"
       )}
     >
       {showRead ? "Showing all" : "Unread only"}
     </button>
+  );
+
+  const advancedControls = (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <label className="text-[11px] font-medium text-muted-foreground">
+        Sort
+        <select
+          value={sort}
+          onChange={(event) => onSortChange(event.target.value as FeedSort)}
+          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
+        >
+          <option value="for_you">For you</option>
+          <option value="recent">Most recent</option>
+          <option value="priority">Priority</option>
+        </select>
+      </label>
+      <label className="text-[11px] font-medium text-muted-foreground">
+        Archive
+        <select
+          value={archive}
+          onChange={(event) => onArchiveChange(event.target.value as FeedArchiveFilter)}
+          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
+        >
+          <option value="exclude">Active only</option>
+          <option value="include">Include archived</option>
+          <option value="only">Archived only</option>
+        </select>
+      </label>
+      <label className="text-[11px] font-medium text-muted-foreground">
+        From date
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(event) => onDateFromChange(event.target.value)}
+          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
+        />
+      </label>
+      <label className="text-[11px] font-medium text-muted-foreground">
+        To date
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(event) => onDateToChange(event.target.value)}
+          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
+        />
+      </label>
+    </div>
   );
 
   return (
@@ -171,10 +245,7 @@ export function FeedFilters({
               <SlidersHorizontal className="h-4 w-4" />
               Filters
               {activeCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs"
-                >
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs">
                   {activeCount}
                 </Badge>
               )}
@@ -206,11 +277,29 @@ export function FeedFilters({
                 selected={selectedTypes}
                 onChange={onTypesChange}
               />
+              {topicOptions.length > 0 && (
+                <FilterGroup
+                  label="Topic"
+                  options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
+                  selected={selectedTopics}
+                  onChange={onTopicsChange}
+                />
+              )}
+              {collectionOptions.length > 0 && (
+                <FilterGroup
+                  label="Collection"
+                  options={collectionOptions.map((collection) => ({
+                    value: collection.id,
+                    label: collection.name,
+                  }))}
+                  selected={selectedCollections}
+                  onChange={onCollectionsChange}
+                />
+              )}
+              {advancedControls}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">
-                    Read:
-                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">Read:</span>
                   {readToggle}
                 </div>
                 {viewToggle}
@@ -251,7 +340,27 @@ export function FeedFilters({
             selected={selectedTypes}
             onChange={onTypesChange}
           />
+          {topicOptions.length > 0 && (
+            <FilterGroup
+              label="Topic"
+              options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
+              selected={selectedTopics}
+              onChange={onTopicsChange}
+            />
+          )}
+          {collectionOptions.length > 0 && (
+            <FilterGroup
+              label="Collection"
+              options={collectionOptions.map((collection) => ({
+                value: collection.id,
+                label: collection.name,
+              }))}
+              selected={selectedCollections}
+              onChange={onCollectionsChange}
+            />
+          )}
         </div>
+        <div className="pt-1">{advancedControls}</div>
       </div>
     </div>
   );
