@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  rmSync(directory, { recursive: true, force: true });
+  if (directory) rmSync(directory, { recursive: true, force: true });
   await harness.reset();
 });
 afterAll(async () => harness.stop());

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
@@ -9,8 +9,11 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => setHydrated(true), []);
 
   async function login(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,7 +76,12 @@ export default function LoginPage() {
               {error}
             </p>
           )}
-          <Button type="submit" size="lg" className="min-h-11 w-full" disabled={submitting}>
+          <Button
+            type="submit"
+            size="lg"
+            className="min-h-11 w-full"
+            disabled={!hydrated || submitting}
+          >
             <LockKeyhole className="h-4 w-4" />
             {submitting ? "Signing in…" : "Sign in"}
           </Button>

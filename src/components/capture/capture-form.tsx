@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookmarkPlus } from "lucide-react";
 import type { CaptureReceipt, CreateCaptureResponse } from "@/lib/contracts/capture";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,13 @@ interface ErrorEnvelope {
 }
 
 export function CaptureForm() {
+  const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<CaptureReceipt>();
   const [duplicate, setDuplicate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => setHydrated(true), []);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -116,7 +119,12 @@ export function CaptureForm() {
           {error}
         </p>
       )}
-      <Button type="submit" size="lg" className="min-h-11 w-full sm:w-auto" disabled={submitting}>
+      <Button
+        type="submit"
+        size="lg"
+        className="min-h-11 w-full sm:w-auto"
+        disabled={!hydrated || submitting}
+      >
         <BookmarkPlus className="h-4 w-4" />
         {submitting ? "Saving…" : "Save to Distil"}
       </Button>

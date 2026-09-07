@@ -19,7 +19,7 @@
     "test:unit": "jest --runInBand --testPathPatterns='\\.unit\\.test\\.'",
     "test:component": "jest --runInBand --testPathPatterns='\\.component\\.test\\.'",
     "test:contract": "jest --runInBand --testPathPatterns='\\.contract\\.test\\.'",
-    "test:integration": "jest --runInBand --testPathPatterns='\\.integration\\.test\\.' --testPathIgnorePatterns='\\.sqlite-integration\\.test\\.'",
+    "test:integration": "node scripts/run-postgres-integration.mjs",
     "test:sqlite-compat": "jest --runInBand --testPathPatterns='\\.sqlite-integration\\.test\\.'",
     "test:security": "jest --runInBand --testPathPatterns='security'",
     "test:e2e": "playwright test tests/e2e --project=desktop-chromium --project=mobile-chromium --project=mobile-webkit",

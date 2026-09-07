@@ -12,6 +12,7 @@ const config: Config = {
     "/node_modules/",
     "/.next/",
     "\\.live\\.test\\.[jt]sx?$",
+    "\\.integration\\.test\\.[jt]sx?$",
     "\\.sqlite-integration\\.test\\.[jt]sx?$",
     "/tests/e2e/",
     "/tests/extension/",
