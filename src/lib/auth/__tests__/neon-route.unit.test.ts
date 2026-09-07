@@ -2,6 +2,7 @@ import {
   dispatchGatedNeonAuth,
   gatedNeonAuthHandler,
   isAllowedNeonAuthRoute,
+  type NeonAuthHandler,
 } from "@/lib/auth/neon-route";
 
 describe("Neon Auth route gate", () => {
@@ -23,6 +24,21 @@ describe("Neon Auth route gate", () => {
     );
     expect(response.status).toBe(404);
     expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("delegates allowed paths through the simple gate", async () => {
+    const provider = jest.fn<Promise<Response>, Parameters<NeonAuthHandler>>(async () =>
+      Response.json({ ok: true })
+    );
+    const response = await gatedNeonAuthHandler(provider)(
+      new Request("https://distil.example/api/auth/get-session"),
+      { params: Promise.resolve({ path: ["get-session"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(provider).toHaveBeenCalledWith(expect.any(Request), {
+      params: expect.any(Promise),
+    });
+    await expect(provider.mock.calls[0]![1].params).resolves.toEqual({ path: ["get-session"] });
   });
 
   it("rejects blocked paths before constructing the SDK adapter", async () => {
@@ -78,5 +94,58 @@ describe("Neon Auth route gate", () => {
       )
     ).rejects.toThrow("Invalid auth callback");
     expect(loadHandler).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed callback URLs and same-origin callbacks with the wrong path", async () => {
+    const dependencies = {
+      loadAllowedOrigins: () => new Set(["https://distil.example"]),
+      loadHandler: jest.fn(),
+    };
+    for (const callbackURL of ["not a url", "https://distil.example/unexpected"]) {
+      await expect(
+        dispatchGatedNeonAuth(
+          new Request(
+            `https://distil.example/api/auth/magic-link/verify?callbackURL=${encodeURIComponent(callbackURL)}`
+          ),
+          { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
+          dependencies
+        )
+      ).rejects.toEqual(expect.objectContaining({ code: "ORIGIN_NOT_ALLOWED" }));
+    }
+    expect(dependencies.loadHandler).not.toHaveBeenCalled();
+  });
+
+  it("allows each fixed magic-link callback and returns 405 without a method handler", async () => {
+    const requestUrl = new URL("https://distil.example/api/auth/magic-link/verify");
+    requestUrl.searchParams.set(
+      "callbackURL",
+      "https://distil.example/api/auth/invitations/complete"
+    );
+    requestUrl.searchParams.set(
+      "newUserCallbackURL",
+      "https://distil.example/api/auth/invitations/complete"
+    );
+    requestUrl.searchParams.set("errorCallbackURL", "https://distil.example/access-denied");
+    const response = await dispatchGatedNeonAuth(
+      new Request(requestUrl),
+      { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
+      {
+        loadAllowedOrigins: () => new Set(["https://distil.example"]),
+        loadHandler: jest.fn(() => undefined),
+      }
+    );
+    expect(response.status).toBe(405);
+  });
+
+  it("does not load origins for the read-only session endpoint", async () => {
+    const loadAllowedOrigins = jest.fn(() => new Set(["https://distil.example"]));
+    const handler = jest.fn(async () => new Response(null, { status: 204 }));
+    const response = await dispatchGatedNeonAuth(
+      new Request("https://distil.example/api/auth/get-session"),
+      { params: Promise.resolve({ path: ["get-session"] }) },
+      { loadAllowedOrigins, loadHandler: jest.fn(() => handler) }
+    );
+    expect(response.status).toBe(204);
+    expect(loadAllowedOrigins).not.toHaveBeenCalled();
   });
 });

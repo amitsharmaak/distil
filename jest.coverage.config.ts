@@ -24,6 +24,7 @@ const config: Config = {
     "!src/**/*.test.{ts,tsx}",
     "!src/lib/mock-data.ts",
     "!src/lib/contracts/capture.ts",
+    "!src/lib/auth/ports.ts",
     "!src/lib/repositories/ports.ts",
   ],
   coverageReporters: ["text", "lcov", "json"],

@@ -53,7 +53,10 @@ test("fails closed when a changed runtime file has no coverage record", () => {
 test("exempts explicitly identified type-only files", () => {
   const result = changedCoverage(
     {},
-    new Map([["src/lib/contracts/capture.ts", new Set([1])]]),
+    new Map([
+      ["src/lib/contracts/capture.ts", new Set([1])],
+      ["src/lib/auth/ports.ts", new Set([1])],
+    ]),
     "/repo"
   );
   assert.deepEqual(result.missing, []);

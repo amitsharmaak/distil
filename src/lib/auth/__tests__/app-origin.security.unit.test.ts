@@ -16,4 +16,19 @@ describe("server-owned application origin", () => {
     ).toThrow("HTTPS");
     expect(() => readApplicationOrigin({ NODE_ENV: "production" })).toThrow("not configured");
   });
+
+  it("permits the exact local development origin but no other insecure origin", () => {
+    expect(
+      readApplicationOrigin({
+        NODE_ENV: "development",
+        NEXT_PUBLIC_API_BASE_URL: "http://localhost:3000/save",
+      })
+    ).toBe("http://localhost:3000");
+    expect(() =>
+      readApplicationOrigin({
+        NODE_ENV: "development",
+        NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:3000",
+      })
+    ).toThrow("HTTPS");
+  });
 });

@@ -1,6 +1,14 @@
-import { createMagicLinkRequestHandler } from "@/lib/auth/magic-link";
+import {
+  createInvitationCompletionHandler,
+  createMagicLinkRequestHandler,
+  neonMagicLinkProvider,
+} from "@/lib/auth/magic-link";
 import { issueInvitation } from "@/lib/auth/invitations";
-import { openPendingInvitation, PENDING_INVITATION_COOKIE } from "@/lib/auth/invite-state";
+import {
+  openPendingInvitation,
+  PENDING_INVITATION_COOKIE,
+  sealPendingInvitation,
+} from "@/lib/auth/invite-state";
 import type { AuthRepositoryPort, InvitationRecord } from "@/lib/auth/ports";
 
 const origin = "https://distil.example";
@@ -28,6 +36,24 @@ function cookieValue(setCookie: string): string {
 }
 
 describe("invitation-gated magic links", () => {
+  it("adapts the Neon provider without widening callback inputs", async () => {
+    const session = { data: null, error: null };
+    const auth = {
+      getSession: jest.fn().mockResolvedValue(session),
+      signIn: { magicLink: jest.fn().mockResolvedValue({ error: null }) },
+    };
+    const provider = neonMagicLinkProvider(auth);
+    await expect(provider.getSession()).resolves.toBe(session);
+    const input = {
+      email: "amit@example.com",
+      callbackURL: `${origin}/api/auth/invitations/complete`,
+      newUserCallbackURL: `${origin}/api/auth/invitations/complete`,
+      errorCallbackURL: `${origin}/access-denied`,
+    };
+    await expect(provider.requestMagicLink(input)).resolves.toEqual({ error: null });
+    expect(auth.signIn.magicLink).toHaveBeenCalledWith(input);
+  });
+
   it("validates the invitation before provider dispatch and fixes every callback origin", async () => {
     const repositories = repository();
     const invitation = await issueInvitation(
@@ -110,5 +136,138 @@ describe("invitation-gated magic links", () => {
       });
     }
     expect(provider.requestMagicLink).not.toHaveBeenCalled();
+  });
+
+  it.each([{ invitationToken: "invalid" }, { email: "amit@example.com" }])(
+    "rejects malformed input before provider dispatch",
+    async (body) => {
+      const provider = {
+        getSession: jest.fn(),
+        requestMagicLink: jest.fn().mockResolvedValue({ error: null }),
+      };
+      const response = await createMagicLinkRequestHandler({
+        provider,
+        repositories: repository(),
+        appOrigin: origin,
+        stateSecret,
+      })(
+        new Request(`${origin}/api/auth/invitations/request-link`, {
+          method: "POST",
+          headers: { origin, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      );
+      expect(response.status).toBe(403);
+      expect(provider.requestMagicLink).not.toHaveBeenCalled();
+    }
+  );
+
+  it("redacts provider and malformed-JSON failures as unavailable", async () => {
+    const repositories = repository();
+    const invitation = await issueInvitation(
+      {
+        action: "issue",
+        email: "amit@example.com",
+        issuedByActorId: actorId,
+        reason: "Pilot",
+        appOrigin: origin,
+      },
+      repositories
+    );
+    const token = new URLSearchParams(new URL(invitation.invitationUrl).hash.slice(1)).get(
+      "token"
+    )!;
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest.fn().mockResolvedValue({ error: new Error("provider detail") }),
+    };
+    const handler = createMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      stateSecret,
+    });
+    const providerResponse = await handler(
+      new Request(`${origin}/api/auth/invitations/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com", invitationToken: token }),
+      })
+    );
+    expect(providerResponse.status).toBe(503);
+    await expect(providerResponse.json()).resolves.toEqual({
+      error: { code: "AUTH_UNAVAILABLE", message: "Unable to continue" },
+    });
+
+    const malformedResponse = await handler(
+      new Request(`${origin}/api/auth/invitations/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: "{",
+      })
+    );
+    expect(malformedResponse.status).toBe(503);
+  });
+
+  it("accepts a sealed invitation, redirects safely, and clears one-time state", async () => {
+    const repositories = repository();
+    const invitation = await issueInvitation(
+      {
+        action: "issue",
+        email: "amit@example.com",
+        issuedByActorId: actorId,
+        reason: "Pilot",
+        appOrigin: origin,
+      },
+      repositories
+    );
+    const token = new URLSearchParams(new URL(invitation.invitationUrl).hash.slice(1)).get(
+      "token"
+    )!;
+    jest.mocked(repositories.consumeInvitationAndLinkIdentity).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      primaryEmail: "amit@example.com",
+      status: "active",
+    } as never);
+    const provider = {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: "provider-subject",
+            email: "amit@example.com",
+            emailVerified: true,
+          },
+          session: { id: "provider-session", createdAt: new Date() },
+        },
+        error: null,
+      }),
+    };
+    const state = await sealPendingInvitation({ token, nextPath: "/feed" }, stateSecret);
+    const response = await createInvitationCompletionHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      stateSecret,
+    })(
+      new Request(`${origin}/api/auth/invitations/complete`, {
+        headers: { cookie: `${PENDING_INVITATION_COOKIE}=${encodeURIComponent(state)}` },
+      })
+    );
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${origin}/feed`);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(repositories.consumeInvitationAndLinkIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed and clears missing or invalid completion state", async () => {
+    const response = await createInvitationCompletionHandler({
+      provider: { getSession: jest.fn() },
+      repositories: repository(),
+      appOrigin: origin,
+      stateSecret,
+    })(new Request(`${origin}/api/auth/invitations/complete`));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${origin}/access-denied`);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });
