@@ -19,6 +19,7 @@ import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
 import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
 import { DetailActionBar } from "@/components/feed/detail-action-bar";
+import { ReaderKnowledgeControls } from "@/components/phase2/reader-knowledge-controls";
 
 /* ── Constants ── */
 
@@ -330,6 +331,8 @@ export default async function ItemDetailPage({
           </Card>
         ) : null}
       </section>
+
+      <ReaderKnowledgeControls itemId={item.id} />
 
       {/* ── Sticky action bar ── */}
       <DetailActionBar

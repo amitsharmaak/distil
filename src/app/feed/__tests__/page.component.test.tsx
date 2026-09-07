@@ -150,7 +150,9 @@ describe("FeedPage", () => {
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
     expect(screen.queryByText("Read video")).not.toBeInTheDocument();
     expect(screen.queryByText("Rejected")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("https://distil.test/api/items?includeProcessing=true");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://distil.test/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Mark Unread article read" }));
     expect(screen.queryByText("Unread article")).not.toBeInTheDocument();

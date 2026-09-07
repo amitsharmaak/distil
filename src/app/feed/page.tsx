@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilters } from "@/components/feed/feed-filters";
@@ -52,9 +53,21 @@ function FeedPageContent() {
    * forwarded to the API for FTS5 full-text filtering.
    */
   const fetchItems = useCallback(() => {
-    const url = new URL(`${config.apiBaseUrl}/api/items`);
-    url.searchParams.set("includeProcessing", "true");
-    if (searchQuery) url.searchParams.set("q", searchQuery);
+    // Phase 2 owns normal consumption queries. Search remains on the legacy
+    // endpoint until the cited keyword-search route is wired in its next slice.
+    const url = new URL(`${config.apiBaseUrl}${searchQuery ? "/api/items" : "/api/v1/feed"}`);
+    if (searchQuery) {
+      url.searchParams.set("includeProcessing", "true");
+      url.searchParams.set("q", searchQuery);
+    } else {
+      url.searchParams.set("archive", "exclude");
+      url.searchParams.set("sort", "for_you");
+      url.searchParams.set("limit", "100");
+      if (!showRead) url.searchParams.set("read", "false");
+      selectedSources.forEach((source) => url.searchParams.append("source", source));
+      selectedTypes.forEach((type) => url.searchParams.append("contentType", type));
+      selectedPriorities.forEach((priority) => url.searchParams.append("priority", priority));
+    }
     return fetch(url.toString())
       .then((res) => res.json())
       .then((data: { items: ContentItem[] }) => {
@@ -66,7 +79,7 @@ function FeedPageContent() {
         setLoadedQuery(searchQuery);
         return [] as ContentItem[];
       });
-  }, [searchQuery]);
+  }, [searchQuery, selectedSources, selectedTypes, selectedPriorities, showRead]);
 
   useEffect(() => {
     fetchItems();
@@ -114,7 +127,17 @@ function FeedPageContent() {
     <div className="space-y-6">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
+          <div className="flex gap-3 text-sm text-muted-foreground">
+            <Link href="/collections" className="hover:text-foreground">
+              Collections
+            </Link>
+            <Link href="/archive" className="hover:text-foreground">
+              Archive
+            </Link>
+          </div>
+        </div>
         <p className="text-muted-foreground">
           {searchQuery
             ? `Search results for "${searchQuery}"`
