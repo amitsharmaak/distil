@@ -75,11 +75,11 @@ export const annotationUpdateSchema = z
   .refine((value) => Object.keys(value).length > 0, "at least one annotation field is required")
   .refine(
     (value) =>
-      (value.startOffset === undefined) === (value.endOffset === undefined) &&
-      (value.startOffset === undefined ||
-        value.startOffset === null ||
-        value.endOffset === null ||
-        (value.endOffset !== undefined && value.endOffset > value.startOffset)),
+      (value.startOffset === undefined && value.endOffset === undefined) ||
+      (value.startOffset === null && value.endOffset === null) ||
+      (typeof value.startOffset === "number" &&
+        typeof value.endOffset === "number" &&
+        value.endOffset > value.startOffset),
     "startOffset and endOffset must be provided together and endOffset must be greater"
   );
 
@@ -281,12 +281,11 @@ export async function createAnnotation(
       createdAt: isoNow(),
       updatedAt: isoNow(),
     });
-  } catch (error) {
-    throw new ReaderError(
-      "CONFLICT",
-      409,
-      error instanceof Error ? error.message : "Annotation already exists"
-    );
+  } catch {
+    // Keep database details out of the API response. The unique id derived from
+    // an idempotency key is the public conflict contract; SQL errors may contain
+    // schema, query, or content details that are only useful in server logs.
+    throw new ReaderError("CONFLICT", 409, "Annotation already exists");
   }
 }
 
@@ -373,12 +372,8 @@ export async function createCollection(
       createdAt: isoNow(),
       updatedAt: isoNow(),
     });
-  } catch (error) {
-    throw new ReaderError(
-      "CONFLICT",
-      409,
-      error instanceof Error ? error.message : "Collection already exists"
-    );
+  } catch {
+    throw new ReaderError("CONFLICT", 409, "Collection already exists");
   }
 }
 
@@ -416,7 +411,7 @@ export async function addCollectionItem(
   repositories: RepositorySet,
   collectionId: string,
   itemId: string,
-  position = 0
+  position?: number
 ): Promise<CollectionItemRecord> {
   const collection = await repositories.collections.find(collectionId);
   if (!collection)
