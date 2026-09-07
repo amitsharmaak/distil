@@ -10,10 +10,10 @@ import {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-// Synchronous: the request stays open until the user finishes login or the
-// 5-minute timeout fires. Long-lived but acceptable for a local-only flow,
-// and lets the client show accurate state on response.
-export const maxDuration = 600;
+// This route is local-only while hosted connectors are disabled. Keep its
+// declaration within the Hobby deployment ceiling so the dormant route does
+// not block Preview builds.
+export const maxDuration = 60;
 
 export async function POST(_request: Request, context: RouteContext) {
   let publisherId: string | undefined;
@@ -22,10 +22,7 @@ export async function POST(_request: Request, context: RouteContext) {
     publisherId = id;
     const publisher = getById(id);
     if (!publisher) {
-      return NextResponse.json(
-        { error: "Publisher not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Publisher not found" }, { status: 404 });
     }
 
     await runInteractiveLogin(publisher);
@@ -35,16 +32,13 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ status: "ok" });
   } catch (err) {
     if (publisherId) invalidateStatusCache(publisherId);
-    connectorLogger.error(
-      { err, publisherId },
-      "[publishers/login] interactive login failed",
-    );
+    connectorLogger.error({ err, publisherId }, "[publishers/login] interactive login failed");
     apiLogger.error({ err }, "POST /api/publishers/[id]/login failed");
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : "Login failed",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
