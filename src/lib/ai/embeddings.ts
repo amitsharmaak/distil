@@ -7,9 +7,11 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "@/lib/config";
 import { getRecentEmbeddings, upsertItemEmbedding } from "@/lib/database";
+import { withRetry } from "./retry";
 
 const OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
-const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
+const GEMINI_EMBEDDING_MODEL = "gemini-embedding-001";
+const GEMINI_REQUEST_TIMEOUT_MS = 5_000;
 
 type EmbeddingProvider = "openai" | "gemini";
 
@@ -21,7 +23,7 @@ function getEmbeddingProvider(): EmbeddingProvider | null {
 
 /**
  * Generates a text embedding using the best available provider.
- * Prefers OpenAI (text-embedding-3-small), then Gemini (text-embedding-004).
+ * Prefers OpenAI (text-embedding-3-small), then Gemini (gemini-embedding-001).
  * Anthropic has no embedding model — falls back to another available provider.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
@@ -51,7 +53,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   // provider === "gemini"
   const genai = new GoogleGenerativeAI(config.geminiApiKey);
   const model = genai.getGenerativeModel({ model: GEMINI_EMBEDDING_MODEL });
-  const result = await model.embedContent(trimmed);
+  const result = await withRetry(
+    () => model.embedContent(trimmed, { timeout: GEMINI_REQUEST_TIMEOUT_MS }),
+    { maxAttempts: 2, baseDelay: 250, maxDelay: 250 }
+  );
   const values = result.embedding?.values;
   if (!values || values.length === 0) {
     throw new Error("Gemini returned empty embedding");
