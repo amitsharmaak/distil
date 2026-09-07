@@ -508,16 +508,18 @@ security tests, and extension E2E passed. Static checks, PostgreSQL integration,
 mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 `https://github.com/amitsharmaak/distil/actions/runs/34116738471`.
 
-- [ ] Format `docs/ARCHITECTURE.md`; run `npm run lint` and `npm run typecheck`.
-- [ ] Reproduce and fix the Testcontainers `write EPIPE` failure; make
+- [x] Format `docs/ARCHITECTURE.md`; run `npm run lint` and `npm run typecheck`.
+- [x] Reproduce and fix the Testcontainers `write EPIPE` failure; make
       `npm run test:integration` pass on GitHub without contacting Neon or another shared database.
-- [ ] Make `npm run test:coverage` handle PostgreSQL integration consistently while preserving the
+- [x] Make `npm run test:coverage` handle PostgreSQL integration consistently while preserving the
       changed-lines coverage gate.
-- [ ] Diagnose the missing `Read article` result in `tests/e2e/save.spec.ts`; make all 24 desktop
+- [x] Diagnose the missing `Read article` result in `tests/e2e/save.spec.ts`; make all 24 desktop
       Chromium, mobile Chromium, and mobile WebKit tests pass without weakening the receipt assertion.
-- [ ] Push the fixes and record one GitHub Actions URL where all eight prerequisite jobs and the
+- [x] Push the fixes and record one GitHub Actions URL where all eight prerequisite jobs and the
       aggregate `quality-gate` pass for the same commit.
-- [ ] **Task 1 complete:** append the passing commit and Actions URL here.
+- [x] **Task 1 complete:** commit `1ebe2eea42fb7271f4f42145032d2587603fbfee`; all eight
+      prerequisite jobs and the aggregate quality gate passed in
+      `https://github.com/amitsharmaak/distil/actions/runs/34123377510`.
 
 #### Task 2 — Close dependency and security release findings
 
