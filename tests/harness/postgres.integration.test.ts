@@ -12,6 +12,13 @@ describe("PostgreSQL 16 test harness lifecycle", () => {
   });
 
   afterAll(async () => {
+    await harness.sql.begin(async (transaction) => {
+      await transaction.unsafe("DROP TABLE IF EXISTS harness_records");
+      await transaction`
+        DELETE FROM __distil_test_migrations
+        WHERE name = '0001_create_harness_records.sql'
+      `;
+    });
     await harness.stop();
   });
 

@@ -132,8 +132,14 @@ describeWithTenantMigration(
       if (concurrencySql) await concurrencySql.end({ timeout: 5 });
       await owner.sql.unsafe(`
         DROP TABLE IF EXISTS __distil_rls_pool_probe;
-        DROP OWNED BY ${runtimeRole};
-        DROP ROLE IF EXISTS ${runtimeRole};
+        DO $phase3_test_role_cleanup$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${runtimeRole}') THEN
+            DROP OWNED BY ${runtimeRole};
+            DROP ROLE ${runtimeRole};
+          END IF;
+        END
+        $phase3_test_role_cleanup$;
       `);
       await owner.stop();
     });
