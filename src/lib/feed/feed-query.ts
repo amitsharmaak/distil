@@ -231,13 +231,10 @@ export class PostgresFeedQuery {
     if (query.sources?.length)
       conditions.push(this.sql`i.source_type = ANY(${this.sql.array(query.sources)})`);
     if (query.contentTypes?.length)
-      conditions.push(
-        this.sql`i.content_type = ANY(${this.sql.array(query.contentTypes)})`
-      );
+      conditions.push(this.sql`i.content_type = ANY(${this.sql.array(query.contentTypes)})`);
     if (query.priorities?.length)
       conditions.push(
-        this
-          .sql`COALESCE(i.manual_priority, i.priority) = ANY(${this.sql.array(query.priorities)})`
+        this.sql`COALESCE(i.manual_priority, i.priority) = ANY(${this.sql.array(query.priorities)})`
       );
     if (query.collectionIds?.length)
       conditions.push(this.sql`EXISTS (

@@ -2,7 +2,13 @@ import { readAuthEnvironment } from "@/lib/auth/environment";
 import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
 import { getRepositorySet } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
-import { collectionUpdateSchema, deleteCollection, getCollection, parseBody, updateCollection } from "@/lib/phase2/reader-service";
+import {
+  collectionUpdateSchema,
+  deleteCollection,
+  getCollection,
+  parseBody,
+  updateCollection,
+} from "@/lib/phase2/reader-service";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -19,7 +25,11 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   try {
     await requireSessionMutation(request, readAuthEnvironment());
     const input = parseBody(await readJson(request), collectionUpdateSchema);
-    const collection = await updateCollection(await getRepositorySet(), (await context.params).id, input);
+    const collection = await updateCollection(
+      await getRepositorySet(),
+      (await context.params).id,
+      input
+    );
     return Response.json({ collection });
   } catch (error) {
     return readerErrorResponse(error);

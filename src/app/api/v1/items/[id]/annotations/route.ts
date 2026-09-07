@@ -2,7 +2,12 @@ import { readAuthEnvironment } from "@/lib/auth/environment";
 import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
 import { getRepositorySet } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
-import { annotationCreateSchema, createAnnotation, listAnnotations, parseBody } from "@/lib/phase2/reader-service";
+import {
+  annotationCreateSchema,
+  createAnnotation,
+  listAnnotations,
+  parseBody,
+} from "@/lib/phase2/reader-service";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -20,7 +25,11 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   try {
     await requireSessionMutation(request, readAuthEnvironment());
     const input = parseBody(await readJson(request), annotationCreateSchema);
-    const annotation = await createAnnotation(await getRepositorySet(), (await context.params).id, input);
+    const annotation = await createAnnotation(
+      await getRepositorySet(),
+      (await context.params).id,
+      input
+    );
     return Response.json({ annotation }, { status: 201 });
   } catch (error) {
     return readerErrorResponse(error);

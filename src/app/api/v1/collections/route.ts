@@ -2,7 +2,12 @@ import { readAuthEnvironment } from "@/lib/auth/environment";
 import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
 import { getRepositorySet } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
-import { collectionCreateSchema, createCollection, listCollections, parseBody } from "@/lib/phase2/reader-service";
+import {
+  collectionCreateSchema,
+  createCollection,
+  listCollections,
+  parseBody,
+} from "@/lib/phase2/reader-service";
 
 export async function GET(request: Request): Promise<Response> {
   try {

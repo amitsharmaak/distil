@@ -24,8 +24,21 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     await requireRequestSession(request, readAuthEnvironment());
     const { id } = await context.params;
     const item = await (await getRepositorySet()).items.findById(id);
-    if (!item) return Response.json({ error: { code: "ITEM_NOT_FOUND", message: `Item with id "${id}" was not found` } }, { status: 404 });
-    return Response.json({ state: { isRead: item.isRead, archived: Boolean(item.archivedAt), archivedAt: item.archivedAt ?? null, readAt: item.readAt ?? null, readingProgress: item.readingProgress ?? 0, manualPriority: item.manualPriority ?? null } });
+    if (!item)
+      return Response.json(
+        { error: { code: "ITEM_NOT_FOUND", message: `Item with id "${id}" was not found` } },
+        { status: 404 }
+      );
+    return Response.json({
+      state: {
+        isRead: item.isRead,
+        archived: Boolean(item.archivedAt),
+        archivedAt: item.archivedAt ?? null,
+        readAt: item.readAt ?? null,
+        readingProgress: item.readingProgress ?? 0,
+        manualPriority: item.manualPriority ?? null,
+      },
+    });
   } catch (error) {
     return readerErrorResponse(error);
   }

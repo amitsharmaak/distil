@@ -23,7 +23,10 @@ function repositorySet(overrides: Record<string, unknown> = {}): RepositorySet {
     readingProgress: 0,
   };
   return {
-    items: { findById: jest.fn().mockResolvedValue(item), update: jest.fn().mockImplementation(async (_id, patch) => ({ ...item, ...patch })) },
+    items: {
+      findById: jest.fn().mockResolvedValue(item),
+      update: jest.fn().mockImplementation(async (_id, patch) => ({ ...item, ...patch })),
+    },
     itemEvents: { append: jest.fn().mockImplementation(async (event) => event) },
     ...overrides,
   } as unknown as RepositorySet;
@@ -36,21 +39,41 @@ describe("Phase 2 reader service contracts", () => {
   });
 
   it("enforces strict annotation and collection payloads", () => {
-    expect(() => parseBody({ selectedQuote: "quote", contentHash: "h", contentVersion: "v", extra: true }, annotationCreateSchema)).toThrow(ReaderError);
-    expect(() => parseBody({ name: "Inbox", extra: true }, collectionCreateSchema)).toThrow(ReaderError);
+    expect(() =>
+      parseBody(
+        { selectedQuote: "quote", contentHash: "h", contentVersion: "v", extra: true },
+        annotationCreateSchema
+      )
+    ).toThrow(ReaderError);
+    expect(() => parseBody({ name: "Inbox", extra: true }, collectionCreateSchema)).toThrow(
+      ReaderError
+    );
   });
 
   it("records read and completion transitions while preserving idempotent event keys", async () => {
     const repositories = repositorySet();
-    const item = await updateItemState(repositories, "item-1", parseBody({ readingProgress: 1, idempotencyKey: "reader-1" }, stateSchema));
+    const item = await updateItemState(
+      repositories,
+      "item-1",
+      parseBody({ readingProgress: 1, idempotencyKey: "reader-1" }, stateSchema)
+    );
     expect(item.isRead).toBe(true);
     expect(item.readingProgress).toBe(1);
-    expect(repositories.itemEvents.append).toHaveBeenCalledWith(expect.objectContaining({ eventType: "completed", eventKey: "item-1:reader-1:completed" }));
-    expect(repositories.items.update).toHaveBeenCalledWith("item-1", expect.objectContaining({ isRead: true, readingProgress: 1 }));
+    expect(repositories.itemEvents.append).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "completed", eventKey: "item-1:reader-1:completed" })
+    );
+    expect(repositories.items.update).toHaveBeenCalledWith(
+      "item-1",
+      expect.objectContaining({ isRead: true, readingProgress: 1 })
+    );
   });
 
   it("uses 404 for missing items", async () => {
-    const repositories = repositorySet({ items: { findById: jest.fn().mockResolvedValue(undefined) } });
-    await expect(updateItemState(repositories, "missing", parseBody({ isRead: true }, stateSchema))).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
+    const repositories = repositorySet({
+      items: { findById: jest.fn().mockResolvedValue(undefined) },
+    });
+    await expect(
+      updateItemState(repositories, "missing", parseBody({ isRead: true }, stateSchema))
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
   });
 });
