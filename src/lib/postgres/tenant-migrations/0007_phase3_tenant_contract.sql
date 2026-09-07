@@ -257,9 +257,156 @@ UPDATE research_suggestions SET source_item_ids = '[]'::jsonb;
 ALTER TABLE research_suggestions ADD CONSTRAINT research_suggestions_legacy_sources_empty_check
   CHECK (source_item_ids = '[]'::jsonb);
 
+-- Pre-context authentication functions are exact-key lookups, not browsing
+-- APIs. They execute as the migration role because no app.user_id exists until
+-- provider identity or invitation acceptance resolves an account.
+CREATE OR REPLACE FUNCTION distil_resolve_auth_identity(
+  requested_provider text,
+  requested_subject text
+)
+RETURNS TABLE (user_id uuid, primary_email text, status text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_resolve_identity$
+  SELECT identity.user_id, account.primary_email, account.status
+  FROM public.auth_identities AS identity
+  JOIN public.users AS account ON account.id = identity.user_id
+  WHERE identity.provider = requested_provider
+    AND identity.provider_subject = requested_subject
+  LIMIT 1
+$phase3_resolve_identity$;
+
+CREATE OR REPLACE FUNCTION distil_find_invitation(requested_id uuid)
+RETURNS TABLE (
+  id uuid,
+  normalized_email text,
+  email_hash text,
+  token_salt text,
+  token_hash text,
+  status text,
+  issued_by_actor_id uuid,
+  issuance_reason text,
+  created_at timestamptz,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  revoked_by_actor_id uuid,
+  revoke_reason text,
+  consumed_at timestamptz,
+  consumed_by_user_id uuid
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_find_invitation$
+  SELECT invitation.id, invitation.normalized_email, invitation.email_hash,
+         invitation.token_salt, invitation.token_hash, invitation.status,
+         invitation.issued_by_actor_id, invitation.issuance_reason,
+         invitation.created_at, invitation.expires_at, invitation.revoked_at,
+         invitation.revoked_by_actor_id, invitation.revoke_reason,
+         invitation.consumed_at, invitation.consumed_by_user_id
+  FROM public.invitations AS invitation
+  WHERE invitation.id = requested_id
+  LIMIT 1
+$phase3_find_invitation$;
+
+CREATE OR REPLACE FUNCTION distil_consume_invitation(
+  requested_id uuid,
+  requested_token_hash text,
+  requested_email_hash text,
+  requested_provider text,
+  requested_subject text,
+  requested_session_id text,
+  requested_consumed_at timestamptz
+)
+RETURNS TABLE (user_id uuid, primary_email text, status text)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_consume_invitation$
+DECLARE
+  invitation public.invitations%ROWTYPE;
+  account_id uuid;
+  account_status text;
+BEGIN
+  IF requested_session_id IS NULL OR length(requested_session_id) = 0 THEN
+    RETURN;
+  END IF;
+  SELECT candidate.* INTO invitation
+  FROM public.invitations AS candidate
+  WHERE candidate.id = requested_id
+  FOR UPDATE;
+  IF NOT FOUND
+    OR invitation.status <> 'pending'
+    OR invitation.revoked_at IS NOT NULL
+    OR invitation.consumed_at IS NOT NULL
+    OR invitation.expires_at <= requested_consumed_at
+    OR invitation.token_hash <> requested_token_hash
+    OR invitation.email_hash <> requested_email_hash THEN
+    RETURN;
+  END IF;
+
+  SELECT identity.user_id INTO account_id
+  FROM public.auth_identities AS identity
+  WHERE identity.provider = requested_provider
+    AND identity.provider_subject = requested_subject
+  FOR UPDATE;
+
+  IF account_id IS NULL THEN
+    account_id := gen_random_uuid();
+    INSERT INTO public.users (id, primary_email, status)
+    VALUES (account_id, invitation.normalized_email, 'active');
+    INSERT INTO public.auth_identities (
+      id, user_id, provider, provider_subject, email, email_verified
+    ) VALUES (
+      gen_random_uuid(), account_id, requested_provider, requested_subject,
+      invitation.normalized_email, true
+    );
+  ELSE
+    SELECT account.status INTO account_status
+    FROM public.users AS account
+    WHERE account.id = account_id
+    FOR UPDATE;
+    IF account_status IN ('deletion_pending','deleted') THEN
+      RETURN;
+    END IF;
+    UPDATE public.users
+    SET status = 'active', updated_at = requested_consumed_at
+    WHERE id = account_id;
+  END IF;
+
+  UPDATE public.invitations
+  SET status = 'accepted', consumed_at = requested_consumed_at,
+      consumed_by_user_id = account_id
+  WHERE id = requested_id;
+
+  RETURN QUERY
+  SELECT account.id, account.primary_email, account.status
+  FROM public.users AS account
+  WHERE account.id = account_id;
+END
+$phase3_consume_invitation$;
+
+ALTER FUNCTION distil_resolve_auth_identity(text, text) OWNER TO distil_migration;
+ALTER FUNCTION distil_find_invitation(uuid) OWNER TO distil_migration;
+ALTER FUNCTION distil_consume_invitation(uuid, text, text, text, text, text, timestamptz)
+  OWNER TO distil_migration;
+
+REVOKE ALL ON FUNCTION distil_resolve_auth_identity(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION distil_find_invitation(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION
+  distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) FROM PUBLIC;
+
 GRANT EXECUTE ON FUNCTION distil_current_user_id() TO distil_runtime;
+GRANT EXECUTE ON FUNCTION distil_resolve_auth_identity(text, text) TO distil_runtime;
+GRANT EXECUTE ON FUNCTION distil_find_invitation(uuid) TO distil_runtime;
+GRANT EXECUTE ON FUNCTION
+  distil_consume_invitation(uuid, text, text, text, text, text, timestamptz) TO distil_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO distil_runtime;
-REVOKE ALL ON invitations, distil_tenant_migrations FROM distil_runtime;
+REVOKE ALL ON invitations, auth_identities, distil_tenant_migrations FROM distil_runtime;
 DO $phase3_optional_ledger$
 BEGIN
   IF to_regclass('public.distil_migrations') IS NOT NULL THEN

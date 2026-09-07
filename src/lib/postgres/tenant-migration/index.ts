@@ -1,5 +1,9 @@
 export { buildDryRunPlan, parseTenantMigrationArgs } from "./cli";
-export { tenantBearingTableNames, tenantMigrationManifest } from "./manifest";
+export {
+  tenantBearingTableNames,
+  tenantMigrationManifest,
+  tenantProtectedTables,
+} from "./manifest";
 export { applyTenantMigrationStage, TENANT_MIGRATION_STAGES } from "./migrator";
 export type {
   AppliedTenantMigration,
@@ -26,6 +30,7 @@ export type {
   TenantMigrationReport,
   TenantMigrationStage,
   SupplementalTableClassification,
+  TenantProtectedTableClassification,
   TenantTableClassification,
   TenantTableSnapshot,
   UniquenessClassification,

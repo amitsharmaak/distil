@@ -7,6 +7,7 @@ export type RlsPolicyCommand = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
 
 export interface TenantTableInvariantSpec {
   tableName: string;
+  ownerColumn?: string;
   tenantReferences?: {
     tableName: string;
     columnName?: string;
@@ -165,7 +166,7 @@ export async function tenantMigrationInvariantIssues(
   const issues: string[] = [];
 
   for (const spec of specs) {
-    const userColumn = "user_id";
+    const userColumn = spec.ownerColumn ?? "user_id";
     const columns = await sql<ColumnRow[]>`
       SELECT is_nullable
       FROM information_schema.columns

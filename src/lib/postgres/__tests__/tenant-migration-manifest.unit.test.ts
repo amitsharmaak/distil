@@ -1,7 +1,11 @@
 import { getTableName } from "drizzle-orm";
 
 import * as schema from "../schema";
-import { tenantBearingTableNames, tenantMigrationManifest } from "../tenant-migration/manifest";
+import {
+  tenantBearingTableNames,
+  tenantMigrationManifest,
+  tenantProtectedTables,
+} from "../tenant-migration/manifest";
 import { validateManifest } from "../tenant-migration/verifier";
 
 describe("Phase 3 tenant migration manifest", () => {
@@ -25,6 +29,18 @@ describe("Phase 3 tenant migration manifest", () => {
         expect.objectContaining({ table: "distil_tenant_migrations", tenantBearing: false }),
       ])
     );
+  });
+
+  it("enumerates every RLS-protected legacy, identity, account, and normalized-link table", () => {
+    expect(tenantProtectedTables).toHaveLength(44);
+    expect(tenantProtectedTables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ table: "users", ownerColumn: "id" }),
+        expect.objectContaining({ table: "auth_identities", ownerColumn: "user_id" }),
+        expect.objectContaining({ table: "research_suggestion_sources", ownerColumn: "user_id" }),
+      ])
+    );
+    expect(tenantProtectedTables.some(({ table }) => table === "invitations")).toBe(false);
   });
 
   it("uses one explicit immutable UUID ownership contract", () => {

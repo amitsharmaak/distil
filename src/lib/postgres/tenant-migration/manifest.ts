@@ -3,6 +3,7 @@ import type {
   QueueClassification,
   ReferenceClassification,
   TenantMigrationManifest,
+  TenantProtectedTableClassification,
   TenantTableClassification,
   UniquenessClassification,
 } from "./types";
@@ -395,6 +396,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "users",
       tenantBearing: true,
+      ownerColumn: "id",
       lifecycle: "identity",
       jsonColumns: [],
       reason: "Account root created by Phase 3 expand; the frozen dataset has no predecessor row.",
@@ -403,6 +405,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "auth_identities",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "identity",
       jsonColumns: [],
       reason: "Provider identities are created by the account acceptance boundary.",
@@ -420,6 +423,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "session_metadata",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "identity",
       jsonColumns: [],
       reason: "Session metadata starts empty and is populated only by Phase 3 authentication.",
@@ -428,6 +432,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "account_exports",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "account",
       jsonColumns: [],
       reason: "Export state starts empty and has no frozen Phase 2 predecessor.",
@@ -436,6 +441,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "account_deletions",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "account",
       jsonColumns: [
         json("checkpoint", "Deletion checkpoint contains stage cursors, not row identifiers."),
@@ -446,6 +452,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "usage_counters",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "account",
       jsonColumns: [],
       reason: "Per-account usage starts empty and is not synthesized from Phase 2 audit rows.",
@@ -454,6 +461,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "user_entitlements",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "account",
       jsonColumns: [],
       reason: "Entitlements start empty and are assigned by the account control plane.",
@@ -462,6 +470,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       schema: "public",
       table: "research_suggestion_sources",
       tenantBearing: true,
+      ownerColumn: "user_id",
       lifecycle: "normalized-link",
       jsonColumns: [],
       reason: "Backfill-normalized projection of Phase 2 research_suggestions.source_item_ids.",
@@ -487,3 +496,17 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
 export const tenantBearingTableNames = tenantMigrationManifest.tables.map(
   ({ schema, table }) => `${schema}.${table}`
 );
+
+export const tenantProtectedTables: readonly TenantProtectedTableClassification[] = [
+  ...tenantMigrationManifest.tables.map(({ schema, table, ownerColumn }) => ({
+    schema,
+    table,
+    ownerColumn,
+  })),
+  ...tenantMigrationManifest.supplementalTables
+    .filter(
+      (table): table is typeof table & { tenantBearing: true; ownerColumn: "id" | "user_id" } =>
+        table.tenantBearing && table.ownerColumn !== undefined
+    )
+    .map(({ schema, table, ownerColumn }) => ({ schema, table, ownerColumn })),
+];

@@ -59,9 +59,16 @@ export interface SupplementalTableClassification {
   readonly schema: string;
   readonly table: string;
   readonly tenantBearing: boolean;
+  readonly ownerColumn?: "id" | "user_id";
   readonly lifecycle: "identity" | "account" | "normalized-link";
   readonly jsonColumns: readonly JsonColumnClassification[];
   readonly reason: string;
+}
+
+export interface TenantProtectedTableClassification {
+  readonly schema: string;
+  readonly table: string;
+  readonly ownerColumn: "id" | "user_id";
 }
 
 export interface TenantMigrationManifest {

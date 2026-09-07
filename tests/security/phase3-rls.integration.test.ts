@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres, { type Sql } from "postgres";
-import { tenantMigrationManifest } from "@/lib/postgres/tenant-migration/manifest";
+import {
+  tenantMigrationManifest,
+  tenantProtectedTables,
+} from "@/lib/postgres/tenant-migration/manifest";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
 import {
@@ -139,7 +142,20 @@ describeWithTenantMigration(
     it("checks every Phase 2 and Wave 0 tenant table for ownership, composite FKs, FORCE RLS, CRUD policies, and scoped keys", async () => {
       await assertTenantMigrationInvariants(
         owner.sql,
-        tenantManifestInvariantSpecs(tenantMigrationManifest)
+        [
+          ...tenantManifestInvariantSpecs(tenantMigrationManifest),
+          ...tenantProtectedTables
+            .filter(
+              ({ table }) =>
+                !tenantMigrationManifest.tables.some((classified) => classified.table === table)
+            )
+            .map(({ table, ownerColumn }) => ({
+              tableName: table,
+              ownerColumn,
+              ...(table === "users" ? {} : { tenantReferences: { tableName: "users" } }),
+              policySetting: "app.user_id",
+            })),
+        ]
       );
     });
 

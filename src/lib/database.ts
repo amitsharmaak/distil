@@ -2,11 +2,15 @@ import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem, Priority } from "@/lib/types";
 import type * as Legacy from "@/lib/db";
 import { config } from "@/lib/config";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
 
 type LegacyModule = typeof import("@/lib/db");
 
 let repositoriesPromise: Promise<RepositorySet> | undefined;
 let legacyPromise: Promise<LegacyModule> | undefined;
+let tenantAccessPromise:
+  | Promise<import("@/lib/postgres/tenant-repositories").PostgresRepositoryAccess>
+  | undefined;
 
 function usesPostgres(): boolean {
   return Boolean(config.databaseUrl);
@@ -30,6 +34,18 @@ export async function getRepositorySet(): Promise<RepositorySet> {
     throw new Error("DATABASE_URL is required for Phase 1 repositories");
   }
   return repositories();
+}
+
+/** Phase 3 composition root. The returned methods never accept a user id. */
+export async function getTenantRepositories(context: AuthContext): Promise<RepositorySet> {
+  if (!usesPostgres()) throw new Error("DATABASE_URL is required for tenant repositories");
+  tenantAccessPromise ??= Promise.all([
+    import("@/lib/postgres/client"),
+    import("@/lib/postgres/tenant-repositories"),
+  ]).then(([client, access]) =>
+    access.createPostgresRepositoryAccess(client.createPostgresClient({ url: config.databaseUrl }))
+  );
+  return (await tenantAccessPromise).getTenantRepositories(context);
 }
 
 async function legacy(): Promise<LegacyModule> {

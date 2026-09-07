@@ -10,6 +10,7 @@ import type {
   KnowledgeBackfillType,
 } from "@/lib/knowledge/types";
 import type { ContentItem, Notification, Priority } from "@/lib/types";
+import type { UserId } from "@/lib/contracts/tenant-context";
 
 export interface ItemFilters {
   sourceType?: string;
@@ -618,4 +619,18 @@ export interface RepositorySet {
   publisherQueue: PublisherQueueRepository;
   jobs: JobQueueRepository;
   agent: AgentRepository;
+}
+
+export interface ControlPlaneAccountRepository {
+  /** Returns opaque account ids only; the control plane cannot read tenant content. */
+  listActiveUserIds(input: { afterUserId?: UserId; limit: number }): Promise<UserId[]>;
+  /** Enumerates lifecycle work without exposing export payloads or personal rows. */
+  listDeletionWork(input: {
+    before: string;
+    limit: number;
+  }): Promise<Array<{ deletionId: string; userId: UserId }>>;
+}
+
+export interface ControlPlaneRepositorySet {
+  accounts: ControlPlaneAccountRepository;
 }
