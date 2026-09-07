@@ -27,6 +27,6 @@ negative-test catalog are described in
 [`docs/phase-3-isolation-testing.md`](../docs/phase-3-isolation-testing.md).
 
 The Phase 3 RLS integration suite skips without starting PostgreSQL until
-tenant columns, RLS enablement, and a policy appear in the production migration
+`user_id` ownership, RLS enablement, and a policy appear in the production migration
 directory. It becomes a failing gate automatically once those migration signals
 exist.

@@ -35,8 +35,8 @@ interface TenantJobEnvelopeV1 {
 }
 ```
 
-`tests/support/phase3-tenancy.ts` supplies two unrelated users, workspaces, actor contexts, owned
-resource ids, valid queue envelopes, and forged envelopes. Route bodies and queue payloads must never
+`tests/support/phase3-tenancy.ts` supplies two unrelated users, actor contexts, owned resource ids,
+valid queue envelopes, and forged envelopes. Route bodies and queue payloads must never
 be allowed to override `AuthContext.userId`. Consumers must resolve resources with both `userId` and
 the resource id; a syntactically valid beta envelope naming an alpha resource is a denial case.
 
@@ -46,7 +46,7 @@ the resource id; a syntactically valid beta envelope naming an alpha resource is
 
 - a JSON loader and validator with decisions for every actor kind;
 - semantic checks that tenant-bound users are `own` or `deny`, never unscoped `allow`;
-- mandatory cross-tenant existence concealment for user/workspace resources;
+- mandatory cross-tenant existence concealment for user-owned resources;
 - bidirectional coverage checks, so newly added and stale surfaces both fail;
 - Next route discovery with normalized dynamic paths such as `/api/items/:id`.
 
@@ -72,7 +72,7 @@ worker entry point from a helper.
 The database is the final tenant boundary. Wave 1 migrations should satisfy these invariants for
 every tenant-owned table:
 
-- an immutable, `NOT NULL` `user_id` (or deliberate `workspace_id`) with a foreign key;
+- an immutable, `NOT NULL` `user_id` with a foreign key;
 - row-level security enabled and forced;
 - policies for select, insert, update, and delete that bind the row tenant to
   `current_setting('app.user_id', true)`;
@@ -86,8 +86,9 @@ pattern. A session-level `SET app.user_id` is unsafe with pooling and is not an 
 
 `tests/security/phase3-rls.integration.test.ts` is automatically discovered by the existing
 PostgreSQL integration runner. It initially appears as skipped without starting Docker. It activates
-when the migration directory contains all three signals: a tenant column, RLS enablement, and a
-policy. Once active it:
+when the migration directory contains all three signals: a `user_id` column, RLS enablement, and a
+policy. A `workspace_id` migration cannot activate this gate; workspaces remain Phase 6. Once active
+it:
 
 1. inspects real migrated catalogs for ownership, foreign-key, RLS, policy, and scoped-unique-key
    invariants on core tables;

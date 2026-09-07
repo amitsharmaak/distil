@@ -10,7 +10,6 @@ describe("Phase 3 two-tenant fixtures", () => {
     const { alpha, beta } = createTwoTenantFixture();
 
     expect(alpha.user.id).not.toBe(beta.user.id);
-    expect(alpha.workspace.id).not.toBe(beta.workspace.id);
     expect(Object.values(alpha.auth).every((context) => context.userId === alpha.user.id)).toBe(
       true
     );

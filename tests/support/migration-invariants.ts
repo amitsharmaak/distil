@@ -6,7 +6,6 @@ export type RlsPolicyCommand = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
 
 export interface TenantTableInvariantSpec {
   tableName: string;
-  tenantColumn?: string;
   tenantReferences?: {
     tableName: string;
     columnName?: string;
@@ -24,7 +23,7 @@ export interface TenantMigrationEvidence {
   present: boolean;
   files: string[];
   signals: {
-    tenantColumn: boolean;
+    userColumn: boolean;
     rlsEnabled: boolean;
     policyCreated: boolean;
   };
@@ -44,11 +43,11 @@ export function findTenantMigrationEvidence(migrationsDirectory: string): Tenant
     .sort((left, right) => left.localeCompare(right));
   const tenantFiles = files.filter((name) => {
     const source = readFileSync(resolve(directory, name), "utf8");
-    return /\b(?:user_id|workspace_id)\b/i.test(source) || /ROW\s+LEVEL\s+SECURITY/i.test(source);
+    return /\buser_id\b/i.test(source) || /ROW\s+LEVEL\s+SECURITY/i.test(source);
   });
   const source = files.map((name) => readFileSync(resolve(directory, name), "utf8")).join("\n");
   const signals = {
-    tenantColumn: /\b(?:user_id|workspace_id)\b/i.test(source),
+    userColumn: /\buser_id\b/i.test(source),
     rlsEnabled: /ENABLE\s+ROW\s+LEVEL\s+SECURITY/i.test(source),
     policyCreated: /CREATE\s+POLICY/i.test(source),
   };
@@ -97,20 +96,20 @@ export async function tenantMigrationInvariantIssues(
   const issues: string[] = [];
 
   for (const spec of specs) {
-    const tenantColumn = spec.tenantColumn ?? "user_id";
+    const userColumn = "user_id";
     const columns = await sql<ColumnRow[]>`
       SELECT is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'public'
         AND table_name = ${spec.tableName}
-        AND column_name = ${tenantColumn}
+        AND column_name = ${userColumn}
     `;
     if (columns.length === 0) {
-      issues.push(`${spec.tableName} is missing ${tenantColumn}`);
+      issues.push(`${spec.tableName} is missing ${userColumn}`);
       continue;
     }
     if ((spec.requireNotNull ?? true) && columns[0].is_nullable !== "NO") {
-      issues.push(`${spec.tableName}.${tenantColumn} must be NOT NULL`);
+      issues.push(`${spec.tableName}.${userColumn} must be NOT NULL`);
     }
 
     const tableSecurity = await sql<TableSecurityRow[]>`
@@ -146,7 +145,7 @@ export async function tenantMigrationInvariantIssues(
         WHERE constraint_row.contype = 'f'
           AND source_namespace.nspname = 'public'
           AND source_table.relname = ${spec.tableName}
-          AND source_attribute.attname = ${tenantColumn}
+          AND source_attribute.attname = ${userColumn}
       `;
       const referenceColumn = spec.tenantReferences.columnName ?? "id";
       if (
@@ -157,7 +156,7 @@ export async function tenantMigrationInvariantIssues(
         )
       ) {
         issues.push(
-          `${spec.tableName}.${tenantColumn} must reference ${spec.tenantReferences.tableName}.${referenceColumn}`
+          `${spec.tableName}.${userColumn} must reference ${spec.tenantReferences.tableName}.${referenceColumn}`
         );
       }
     }
@@ -177,10 +176,8 @@ export async function tenantMigrationInvariantIssues(
         .flatMap((policy) => [policy.qual, policy.with_check])
         .filter((value): value is string => Boolean(value))
         .join(" ");
-      if (!policySql.includes(tenantColumn) || !policySql.includes(spec.policySetting)) {
-        issues.push(
-          `${spec.tableName} policies must bind ${tenantColumn} to ${spec.policySetting}`
-        );
+      if (!policySql.includes(userColumn) || !policySql.includes(spec.policySetting)) {
+        issues.push(`${spec.tableName} policies must bind ${userColumn} to ${spec.policySetting}`);
       }
     }
 
@@ -201,7 +198,7 @@ export async function tenantMigrationInvariantIssues(
         GROUP BY index_class.relname
       `;
       for (const businessKey of spec.tenantScopedUniqueKeys) {
-        const expected = [tenantColumn, ...businessKey];
+        const expected = [userColumn, ...businessKey];
         if (!uniqueIndexes.some((index) => containsColumns(index.columns, expected))) {
           issues.push(`${spec.tableName} needs tenant-scoped unique key (${expected.join(", ")})`);
         }

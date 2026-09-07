@@ -30,9 +30,6 @@ export interface TenantFixture {
     id: string;
     email: string;
   };
-  workspace: {
-    id: string;
-  };
   auth: {
     session: AuthContext;
     captureToken: AuthContext;
@@ -61,9 +58,6 @@ const tenant = (sequence: number, name: string): TenantFixture => {
     user: {
       id: userId,
       email: `${name}@tenant.example.test`,
-    },
-    workspace: {
-      id: `40000000-0000-4000-8000-${suffix}`,
     },
     auth: {
       session: {

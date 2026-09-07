@@ -4,7 +4,7 @@ import type { AuthContext } from "./phase3-tenancy";
 
 export type AuthorizationActorKind = AuthContext["actorKind"];
 export type AuthorizationDecision = "deny" | "own" | "allow";
-export type AuthorizationResourceScope = "public" | "user" | "workspace" | "system";
+export type AuthorizationResourceScope = "public" | "user" | "system";
 export type AuthorizationSurfaceKind = "route" | "worker";
 
 export interface AuthorizationMatrixEntry {
@@ -25,7 +25,7 @@ export interface AuthorizationMatrix {
 
 const actorKinds: AuthorizationActorKind[] = ["user", "capture-token", "system"];
 const decisions: AuthorizationDecision[] = ["deny", "own", "allow"];
-const scopes: AuthorizationResourceScope[] = ["public", "user", "workspace", "system"];
+const scopes: AuthorizationResourceScope[] = ["public", "user", "system"];
 const surfaceKinds: AuthorizationSurfaceKind[] = ["route", "worker"];
 const routeMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -113,7 +113,7 @@ export function validateAuthorizationMatrix(input: unknown): string[] {
       }
     }
 
-    const tenantBound = raw.resourceScope === "user" || raw.resourceScope === "workspace";
+    const tenantBound = raw.resourceScope === "user";
     if (tenantBound && raw.unauthenticated === "allow") {
       issues.push(`tenant-bound surface cannot allow unauthenticated access: ${surface ?? index}`);
     }
