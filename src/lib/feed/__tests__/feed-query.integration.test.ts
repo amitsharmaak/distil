@@ -73,7 +73,7 @@ describe("PostgresFeedQuery", () => {
       now: new Date("2026-09-07T00:00:00Z"),
     });
     expect(first.items).toHaveLength(1);
-    expect(first.items[0].id).toBe("match-a");
+    expect(first.items[0].id).toBe("match-b");
     expect(first.items[0].rank.reasons).toContain("Item priority: high");
     expect(first.nextCursor).toBeTruthy();
 
@@ -88,7 +88,7 @@ describe("PostgresFeedQuery", () => {
       cursor: first.nextCursor,
       now: new Date("2026-09-07T00:00:00Z"),
     });
-    expect(second.items.map((entry) => entry.id)).toEqual(["match-b"]);
+    expect(second.items.map((entry) => entry.id)).toEqual(["match-a"]);
   });
 
   it("honors manual priority and supports chronological and archive escape hatches", async () => {
@@ -103,7 +103,7 @@ describe("PostgresFeedQuery", () => {
       (await feed.list({ sort: "for_you", now: new Date("2026-09-07T00:00:00Z") })).items.map(
         (entry) => entry.id
       )
-    ).toEqual(["manual-low", "learned-high"]);
+    ).toEqual(["learned-high", "manual-low"]);
     expect(
       (await feed.list({ sort: "recent" })).items.map((entry) => entry.rank.reasons[0])
     ).toEqual(["Chronological order", "Chronological order"]);

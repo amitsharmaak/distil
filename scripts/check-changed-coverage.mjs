@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const COVERAGE_PATH = path.resolve("coverage/coverage-final.json");
+const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const TYPE_ONLY_FILES = new Set([
   "src/lib/contracts/capture.ts",
   "src/lib/intelligence/types.ts",
@@ -147,7 +148,10 @@ export function evaluateCoverage(coverage, changed, root = process.cwd()) {
 function run() {
   if (!existsSync(COVERAGE_PATH))
     throw new Error("coverage/coverage-final.json is missing; run Jest with --coverage first.");
-  const git = (args) => execFileSync("git", args, { encoding: "utf8" }).trim();
+  // The first push to a long-lived branch compares against main and can exceed
+  // Node's 1 MiB default buffer even with a zero-context diff.
+  const git = (args) =>
+    execFileSync("git", args, { encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT_BYTES }).trim();
   const base = selectBaseRef(git, process.env.COVERAGE_BASE_REF);
   if (!base) throw new Error("Unable to determine a coverage base distinct from HEAD.");
   const diff = git(["diff", "--unified=0", `${base}...HEAD`, "--", "src/**/*.ts", "src/**/*.tsx"]);
