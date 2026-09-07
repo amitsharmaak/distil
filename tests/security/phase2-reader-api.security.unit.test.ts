@@ -40,9 +40,23 @@ import { createPostgresClient } from "@/lib/postgres/client";
 import { FeedQueryError, PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
 import { POST as createCollectionRoute } from "@/app/api/v1/collections/route";
+import { GET as listCollectionsRoute } from "@/app/api/v1/collections/route";
+import {
+  DELETE as deleteCollectionRoute,
+  GET as getCollectionRoute,
+  PATCH as patchCollectionRoute,
+} from "@/app/api/v1/collections/[id]/route";
+import { DELETE as deleteMembership } from "@/app/api/v1/collections/[id]/items/[itemId]/route";
 import { PUT as putNote } from "@/app/api/v1/items/[id]/note/route";
 import { PATCH as patchState } from "@/app/api/v1/items/[id]/state/route";
-import { POST as createAnnotationRoute } from "@/app/api/v1/items/[id]/annotations/route";
+import {
+  GET as listAnnotationsRoute,
+  POST as createAnnotationRoute,
+} from "@/app/api/v1/items/[id]/annotations/route";
+import {
+  DELETE as deleteAnnotationRoute,
+  PATCH as patchAnnotationRoute,
+} from "@/app/api/v1/items/[id]/annotations/[annotationId]/route";
 import { PUT as putMembership } from "@/app/api/v1/collections/[id]/items/[itemId]/route";
 
 const mockSession = requireRequestSession as jest.MockedFunction<typeof requireRequestSession>;
@@ -314,5 +328,66 @@ describe("Phase 2 reader API contract and security boundaries", () => {
       )
     ).resolves.toBe(annotation);
     expect(repo.annotations.create).not.toHaveBeenCalled();
+  });
+
+  it("covers authenticated annotation and collection read/mutation routes", async () => {
+    const repo = repositories();
+    const annotation = {
+      id: "annotation-1",
+      itemId: "item-1",
+      selectedQuote: "quote",
+      prefix: "",
+      suffix: "",
+      contentHash: "hash",
+      contentVersion: "v1",
+      status: "active" as const,
+    };
+    repo.annotations.listForItem.mockResolvedValue([annotation]);
+    repo.annotations.update.mockResolvedValue(annotation);
+    repo.annotations.delete.mockResolvedValue(true);
+    repo.collections.list.mockResolvedValue([{ id: "collection-1", name: "Inbox" }]);
+    repo.collections.find.mockResolvedValue({ id: "collection-1", name: "Inbox" });
+    repo.collections.listItems.mockResolvedValue([]);
+    repo.collections.update.mockResolvedValue({ id: "collection-1", name: "Updated" });
+    repo.collections.delete.mockResolvedValue(true);
+    mockRepositories.mockResolvedValue(repo as unknown as RepositorySet);
+
+    const annotationList = await listAnnotationsRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "item-1" }),
+    });
+    expect(annotationList.status).toBe(200);
+    await expect(annotationList.json()).resolves.toEqual({ annotations: [annotation] });
+
+    const annotationPatch = await patchAnnotationRoute(
+      jsonRequest("http://localhost", "PATCH", { comment: "Remember" }),
+      { params: Promise.resolve({ id: "item-1", annotationId: "annotation-1" }) }
+    );
+    expect(annotationPatch.status).toBe(200);
+    const annotationDelete = await deleteAnnotationRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "item-1", annotationId: "annotation-1" }),
+    });
+    expect(annotationDelete.status).toBe(204);
+
+    const collectionList = await listCollectionsRoute(new Request("http://localhost"));
+    expect(collectionList.status).toBe(200);
+    const collectionGet = await getCollectionRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "collection-1" }),
+    });
+    expect(collectionGet.status).toBe(200);
+    const collectionPatch = await patchCollectionRoute(
+      jsonRequest("http://localhost", "PATCH", { name: "Updated" }),
+      { params: Promise.resolve({ id: "collection-1" }) }
+    );
+    expect(collectionPatch.status).toBe(200);
+    const collectionDelete = await deleteCollectionRoute(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "collection-1" }),
+    });
+    expect(collectionDelete.status).toBe(204);
+
+    repo.collections.removeItem.mockResolvedValue(true);
+    const membershipDelete = await deleteMembership(new Request("http://localhost"), {
+      params: Promise.resolve({ id: "collection-1", itemId: "item-1" }),
+    });
+    expect(membershipDelete.status).toBe(204);
   });
 });

@@ -1,13 +1,13 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { ReaderAnnotations } from "../reader-annotations";
 
 jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
 
-function response(payload: unknown): Response {
-  return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
+function response(payload: unknown, ok = true): Response {
+  return { ok, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
 
 const baseAnnotation = {
@@ -86,5 +86,81 @@ describe("ReaderAnnotations", () => {
       "https://distil.test/api/v1/items/item-1/annotations/annotation-1",
       expect.objectContaining({ method: "DELETE" })
     );
+  });
+
+  it("shows loading and load failures", async () => {
+    fetchMock.mockReturnValue(new Promise<Response>(() => {}) as Promise<Response>);
+    render(
+      <ReaderAnnotations itemId="item-1">
+        <p>Reader text</p>
+      </ReaderAnnotations>
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading highlights");
+
+    cleanup();
+    fetchMock.mockReset();
+    fetchMock.mockRejectedValue(new Error("Highlights unavailable"));
+    render(
+      <ReaderAnnotations itemId="item-2">
+        <p>Reader text</p>
+      </ReaderAnnotations>
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Highlights unavailable");
+  });
+
+  it("marks stale anchors orphaned and keeps failed edits and deletes visible", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      if (!init?.method)
+        return Promise.resolve(
+          response({
+            annotations: [
+              { ...baseAnnotation, selectedQuote: "Old text", startOffset: 0, endOffset: 8 },
+            ],
+          })
+        );
+      if (init.method === "PATCH")
+        return Promise.resolve(response({ error: { message: "Edit failed" } }, false));
+      return Promise.resolve(response({ error: { message: "Delete failed" } }, false));
+    });
+    render(
+      <ReaderAnnotations itemId="item-1">
+        <p>Current reader text</p>
+      </ReaderAnnotations>
+    );
+    expect(await screen.findByText(/no longer matches/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit comment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Re-anchor" }));
+    expect(screen.getByText("Select replacement text above")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Delete failed");
+  });
+
+  it("reports a failed anchored highlight save and ignores empty selections", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      if (!init?.method) return Promise.resolve(response({ annotations: [] }));
+      return Promise.resolve(response({ error: { message: "Save failed" } }, false));
+    });
+    render(
+      <ReaderAnnotations itemId="item-1">
+        <p>Reader text to select</p>
+      </ReaderAnnotations>
+    );
+    const paragraph = screen.getByText("Reader text to select");
+    const textNode = paragraph.firstChild;
+    if (!textNode) throw new Error("Expected reader text node");
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 6);
+    const browserSelection = window.getSelection();
+    browserSelection?.removeAllRanges();
+    browserSelection?.addRange(range);
+    fireEvent.mouseUp(paragraph);
+    fireEvent.click(await screen.findByRole("button", { name: "Save highlight" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Save failed");
+
+    browserSelection?.removeAllRanges();
+    fireEvent.mouseUp(paragraph);
+    expect(screen.queryByRole("dialog", { name: "Save highlight" })).toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import FeedPage from "../page";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
@@ -49,6 +49,12 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onPrioritiesChange,
     showRead,
     onShowReadChange,
+    onArchiveChange,
+    onSortChange,
+    onTopicsChange,
+    onCollectionsChange,
+    onDateFromChange,
+    onDateToChange,
   }: {
     viewMode: "card" | "compact";
     onViewModeChange: (mode: "card" | "compact") => void;
@@ -60,6 +66,12 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onPrioritiesChange: (priorities: Priority[]) => void;
     showRead: boolean;
     onShowReadChange: (showRead: boolean) => void;
+    onArchiveChange: (archive: "exclude" | "only" | "include") => void;
+    onSortChange: (sort: "for_you" | "recent" | "priority") => void;
+    onTopicsChange: (topics: string[]) => void;
+    onCollectionsChange: (collections: string[]) => void;
+    onDateFromChange: (date: string) => void;
+    onDateToChange: (date: string) => void;
   }) => (
     <div data-testid="filters">
       <output>
@@ -89,6 +101,24 @@ jest.mock("@/components/feed/feed-filters", () => ({
       </button>
       <button type="button" onClick={() => onShowReadChange(!showRead)}>
         Toggle read
+      </button>
+      <button type="button" onClick={() => onArchiveChange("include")}>
+        Include archive
+      </button>
+      <button type="button" onClick={() => onSortChange("recent")}>
+        Sort recent
+      </button>
+      <button type="button" onClick={() => onTopicsChange(["Testing"])}>
+        Testing topic
+      </button>
+      <button type="button" onClick={() => onCollectionsChange(["collection-1"])}>
+        Collection one
+      </button>
+      <button type="button" onClick={() => onDateFromChange("2026-01-01")}>
+        From date
+      </button>
+      <button type="button" onClick={() => onDateToChange("2026-01-03")}>
+        To date
       </button>
     </div>
   ),
@@ -126,6 +156,7 @@ describe("FeedPage", () => {
   let fetchMock: jest.MockedFunction<typeof fetch>;
 
   beforeEach(() => {
+    cleanup();
     mockSearch = "";
     fetchMock = jest.mocked(global.fetch);
   });
