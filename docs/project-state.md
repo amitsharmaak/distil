@@ -924,12 +924,20 @@ additive migrations and resumable backfill state; do not use destructive down mi
 
 ## Phase 3 ownership and tenant-isolation foundation
 
-Phase 3 Wave 0 ownership analysis is recorded in `docs/phase-3-ownership.md`, with the complete
-machine-readable inventory in `docs/authorization-matrix.json`. The baseline is documentation-only:
-the current schema and runtime remain single-user and must not be treated as tenant-safe.
-The workstream branch/worktree is `codex/p3-ownership` at `/private/tmp/distil-p3-ownership`, based
-on Phase 2 commit `9ed064f`; its commit is intended for integration by the Phase 3 lead and must not
-be merged from this worktree.
+Phase 3 is active on `codex/phase-3-tenancy` at `/private/tmp/distil-phase3-root`. The reconciled
+Phase 2 code freeze is `2ade16b2347c2f50566cb3a73a67312855392fc8`; its restart-document commit is
+`e2b5a46ff93c0343563a87203a5baa2b30d74f90`. Phase 3 Wave 1 is frozen at
+`d6aa79c440ab35d163a9e4a4ed8cfe7f26e00ea0`. GitHub Actions run `34148397258` passed the exact
+Wave 1 SHA: static checks, unit/component/contract and isolation tests, security tests, coverage,
+PostgreSQL/RLS integration, production build, extension E2E, and web/mobile E2E are all green.
+
+Wave 0 ownership analysis is recorded in `docs/phase-3-ownership.md`, with the complete
+machine-readable inventory in `docs/authorization-matrix.json`. Wave 1 added the identity schema,
+additive ownership expansion/backfill/contract migrations, tenant-aware repository composition,
+transaction-local tenant context, forced RLS, runtime/migration role separation, invitation/auth
+foundations, migration verification, and a two-tenant adversarial harness. This is a foundation,
+not beta readiness: legacy routes and workers still using `getRepositorySet()` must be converted in
+Wave 2, and the complete route/queue/knowledge boundary matrix must pass without optional adapters.
 
 The Phase 3 tenant is one user account. Every personal root row, repository operation, direct SQL
 query, route/page loader, job, connector, search/AI context, audit record, quota and future object
@@ -937,9 +945,25 @@ must carry the same verified user identity. Workspaces remain a later explicit s
 cannot weaken personal ownership. Foreign and missing IDs must both return `404`, and candidate rows
 must be tenant-filtered before ranking, aggregation or AI context assembly.
 
-The matrix covers the 36 current Drizzle tables, 67 API route files and methods, 16 page files, all
-repository families and direct SQL paths, workers/crons, search/AI/agent paths, connectors,
-logs/audit, rate limits/quotas, extension/local storage, and planned object-store seams at baseline
-commit `9ed064f`. Its Phase 2 delta checklist must be rerun when integrating onto any newer Phase 2
-commit. Multi-user exposure remains blocked until ownership is implemented and generated A/B
-cross-tenant tests pass across route, repository, worker, search and AI boundaries.
+The matrix covers the application tables, API route files and methods, page files, repository
+families and direct SQL paths, workers/crons, search/AI/agent paths, connectors, logs/audit,
+rate limits/quotas, extension/local storage, and planned object-store seams. Multi-user exposure
+remains blocked until ownership is propagated and A/B cross-tenant tests pass across route,
+repository, worker, search, AI, export, and lifecycle boundaries.
+
+Wave 2 began from the exact Wave 1 SHA in three isolated worktrees:
+
+- `/private/tmp/distil-p3-wave2-capture` (`codex/p3-wave2-capture`) owns capture, tokens, queue v2,
+  retries, rate limits, jobs, cron, publisher queues, and backfills.
+- `/private/tmp/distil-p3-wave2-knowledge` (`codex/p3-wave2-knowledge`) owns feed/reader data,
+  retrieval, answers/citations, prompt assembly, artifacts, personalization, digests, and AI usage.
+- `/private/tmp/distil-p3-wave2-surfaces` (`codex/p3-wave2-surfaces`) owns remaining routes,
+  research/agent/chat, notifications/settings, dormant connectors, loaders, and extension account
+  separation.
+
+Keep `FEATURE_NEON_AUTH=false`. The pinned `@neondatabase/auth@0.5.0-beta` server dependency has no
+high-severity npm advisory after the `fast-uri` override, but still has an invalid Better Auth peer
+graph and AGPL transitive packages (`@triplit/client` and `ua-parser-js`). Neon CLI authentication,
+Preview provisioning, sender configuration, and the SDK dependency/legal decision are external
+gates. Do not provision real users, link Amit, remove the legacy bridge, or issue invitations until
+those gates and Waves 2-4 pass.
