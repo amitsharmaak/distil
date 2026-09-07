@@ -661,6 +661,51 @@ all Production resources remain out of scope until Phase 1 closes.
 - Use maximum safe implementation parallelism with isolated worktrees, exclusive ownership of
   collision-prone files, and staged integration and rollout.
 
+### Implementation freeze and current status (2026-09-07)
+
+- **Frozen Phase 2 implementation SHA:** `2ade16b2347c2f50566cb3a73a67312855392fc8` on
+  `codex/phase-2-knowledge`.
+- The exact frozen SHA passed the complete GitHub quality workflow in run
+  [34140700123](https://github.com/amitsharmaak/distil/actions/runs/34140700123): production build;
+  unit, component, contract, and SQLite compatibility tests; Docker-backed PostgreSQL integration;
+  changed-code coverage; security; static checks; desktop/mobile browser E2E; and extension E2E.
+- The final PostgreSQL defect was a shared-table contract mismatch between the core digest
+  repository and the in-app digest store. Commit `751b598` writes both `digest_date` and required
+  `local_date`; `2ade16b` adds regression coverage for populated and absent completion/dismissal
+  timestamps. Applied migrations `0001` through `0004` were not rewritten.
+- The implemented product surface now includes the reader and library lifecycle, notes,
+  annotations and re-anchoring states, collections, archive/read/progress/manual priority controls,
+  cursor-based filtered feed, Today priority/resurfacing, deterministic personalization and reset,
+  PostgreSQL content versions/chunks/artifacts/claims/evidence/backfills, keyword passage search,
+  grounded answers with abstention/excerpt degradation, durable summary regeneration jobs, and
+  opt-in in-app digests with history/preferences/dismissal.
+- Local verification at the freeze included TypeScript, lint with 11 non-blocking existing
+  warnings, production build, 63 SQLite compatibility tests, 10 extension E2E tests, and the enabled
+  Phase 2 Playwright smoke across desktop Chromium, mobile Chromium, and mobile WebKit. The full
+  coverage run passed with 103 suites and 710 tests; the pre-fix whole-Phase-2 comparison measured
+  85.1% changed lines and 80.5% changed branches, and the final compatibility delta measured 100%
+  of its changed branches.
+- This is an **implementation freeze**, not Phase 2 release acceptance. No stable Preview alias or
+  Production resource was changed. Phase 3 may use this SHA as its frozen baseline. Any later Phase
+  2 schema, API, or queue change requires explicit forward-port triage into Phase 3.
+
+Remaining Phase 2 release and acceptance gates:
+
+- Pin the production embedding provider/model/dimension, then add the compatible pgvector HNSW
+  space, bounded embedding backfill, semantic retrieval, and reciprocal-rank fusion. Current search
+  correctly remains keyword/excerpt based without this pin.
+- Add and accept a live text-generation provider/failover path. Current grounded answers and
+  summaries preserve deterministic evidence-backed degradation when generation is unavailable.
+- Improve and re-run the recorded evaluation set before acceptance. Current deterministic fixture
+  results are: retrieval Recall@5 100% and nDCG@10 83.3%; citation precision 66.7% and citation
+  support 100%; abstention 66.7%; summary claim support 66.7% and evidence coverage 100%; ranking
+  nDCG 100% and diversity 70.8%. These do not yet meet every quality threshold below.
+- Provision a Phase 2-isolated Neon/Vercel Preview, apply migrations, dry-run and execute resumable
+  backfills, shadow retrieval/ranking, measure the latency/cost gates, and inspect logs for secrets.
+- Complete real-device and daily-habit acceptance: real iPhone capture through reading, recall and
+  citation usefulness, digest timing/timezone behavior, accessibility, rollback, and degraded-mode
+  checks against one deployment ID and the frozen code SHA.
+
 ### Git, worktree, and agent state
 
 - Phase 2 integration branch: `codex/phase-2-knowledge`
@@ -682,7 +727,7 @@ known limitations.
 
 ### Execution waves
 
-#### Wave 0 — Contracts and testable prototypes (active)
+#### Wave 0 — Contracts and testable prototypes (completed)
 
 1. **Platform contract:** add the PostgreSQL-only core migration, Drizzle schema, repository ports
    and adapters, and tests for item lifecycle state, notes, annotations, collections, item events,
@@ -712,7 +757,7 @@ Wave 0 implementation evidence:
   container runtime. That evidence remains a Preview/CI gate rather than a reason to delay Wave 1
   implementation.
 
-#### Wave 1 — Core product streams
+#### Wave 1 — Core product streams (completed implementation)
 
 Run three streams in parallel after the Wave 0 contract gate:
 
@@ -725,7 +770,7 @@ Run three streams in parallel after the Wave 0 contract gate:
    summaries/claims and evidence, full-text search, vector search after model pinning, reciprocal
    rank fusion, and durable AI jobs.
 
-Wave 1 foundation evidence:
+Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 
 - Reader/organization APIs integrated at `3641f2c`: strict authenticated item-state, note,
   annotation, collection, and membership routes backed by the Wave 0 repositories.
@@ -739,11 +784,12 @@ Wave 1 foundation evidence:
 - Integrated verification passes: TypeScript, formatting/lint with only the seven known baseline
   warnings, 51 unit suites with 385 tests, 7 contract suites with 53 tests, and the 2 Phase 2
   component suites with 5 tests.
-- PostgreSQL integration execution remains pending on Docker-enabled CI. UI wiring, repository
-  adapters for the intelligence tables, vector/provider work, learned personalization, and digests
-  remain incomplete Wave 1/2 work.
+- At that checkpoint, PostgreSQL integration execution still depended on Docker-enabled CI, and UI
+  wiring, intelligence adapters, personalization, and digests remained incomplete. The current
+  authoritative state is the implementation-freeze record above; vector/provider work remains an
+  explicit release gate.
 
-#### Wave 2 — Trust, briefing, and integrated quality
+#### Wave 2 — Trust, briefing, and integrated quality (completed implementation)
 
 1. Upgrade chat and answers to passage-level retrieval, six-message conversation context, validated
    citations, evidence-based abstention, and source excerpts when generation is unavailable.
@@ -752,7 +798,7 @@ Wave 1 foundation evidence:
 3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
    coverage across the integrated product.
 
-#### Wave 3 — Isolated Preview and acceptance
+#### Wave 3 — Isolated Preview and acceptance (pending)
 
 Use a Phase 2-specific Neon branch/database and Vercel Preview. Apply additive migrations, verify
 dry-run backfill counts, enable knowledge features first, backfill chunks and embeddings in bounded
