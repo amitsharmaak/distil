@@ -9,6 +9,7 @@ import {
   runDigestSchema,
 } from "@/lib/digests/service";
 import { createPostgresClient } from "@/lib/postgres/client";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -20,6 +21,12 @@ export async function POST(request: Request): Promise<Response> {
       (body as { action?: unknown }).action === "dismiss";
     const dismissInput = isDismiss ? parse(body, dismissDigestSchema) : undefined;
     const runInput = isDismiss ? undefined : parse(body, runDigestSchema);
+    if (!readPhase2FeatureFlags().digests) {
+      return Response.json(
+        { error: { code: "FEATURE_DISABLED", message: "In-app digests are not enabled" } },
+        { status: 503 }
+      );
+    }
     if (!process.env.DATABASE_URL) {
       return Response.json(
         { error: { code: "POSTGRES_REQUIRED", message: "Digests require PostgreSQL" } },

@@ -27,6 +27,8 @@ export interface FeedQuery extends FeedFilters {
   cursor?: string;
   /** Injectable clock keeps ordering and cursor tests deterministic. */
   now?: Date;
+  /** Server-gated and user-controlled; never inferred from a client request. */
+  personalizationEnabled?: boolean;
 }
 
 export interface FeedRankExplanation {
@@ -38,6 +40,7 @@ export interface FeedRankExplanation {
     itemPriority: Priority;
     aiPriorityScore?: number;
     recencyBoost?: number;
+    affinityScore?: number;
   };
 }
 
@@ -126,6 +129,48 @@ function manualPriorityScore(priority: Priority): number {
   return priority === "high" ? 300 : priority === "medium" ? 200 : -100;
 }
 
+export const PERSONALIZATION_HALF_LIFE_DAYS = 60;
+
+export function decayAffinity(weight: number, occurredAt: string, now = new Date()): number {
+  const ageDays = Math.max(0, (now.getTime() - new Date(occurredAt).getTime()) / 86_400_000);
+  return weight * Math.exp((-Math.LN2 * ageDays) / PERSONALIZATION_HALF_LIFE_DAYS);
+}
+
+/**
+ * Reserves at most two places in a complete top ten for relevant alternatives.
+ * Pagination deliberately applies the SQL score only; reordering a partial page
+ * would make opaque keyset cursors skip unreturned rows.
+ */
+export function reserveTopTenDiversity<T extends Pick<ContentItem, "id" | "sourceType" | "topics">>(
+  items: T[]
+): T[] {
+  if (items.length <= 10) return items;
+  const top = items.slice(0, 10);
+  const dominantSource = top.reduce<Record<string, number>>((counts, item) => {
+    counts[item.sourceType] = (counts[item.sourceType] ?? 0) + 1;
+    return counts;
+  }, {});
+  const source = Object.entries(dominantSource).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+  )[0];
+  if (!source || source[1] < 8) return items;
+  const alternatives = items
+    .slice(10)
+    .filter((item) => item.sourceType !== source[0])
+    .slice(0, 2);
+  if (!alternatives.length) return items;
+  const replacementCount = alternatives.length;
+  const removed = top.slice(10 - replacementCount);
+  const retained = top.slice(0, 10 - replacementCount);
+  const selectedIds = new Set([...retained, ...alternatives].map((item) => item.id));
+  return [
+    ...retained,
+    ...alternatives,
+    ...removed,
+    ...items.slice(10).filter((item) => !selectedIds.has(item.id)),
+  ];
+}
+
 function clampPageSize(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) return DEFAULT_FEED_PAGE_SIZE;
   return Math.min(Math.max(Math.floor(value), 1), MAX_FEED_PAGE_SIZE);
@@ -164,6 +209,7 @@ export function decodeFeedCursor(value: string | undefined, sort: FeedSort): Cur
 export function explainFeedRank(
   item: Pick<ContentItem, "priority" | "manualPriority" | "createdAt"> & {
     aiPriorityScore?: number;
+    affinityScore?: number;
   },
   sort: FeedSort,
   now = new Date()
@@ -183,9 +229,10 @@ export function explainFeedRank(
     sort === "priority"
       ? priorityScore(item.priority)
       : (item.aiPriorityScore ?? priorityScore(item.priority));
+  const affinityScore = sort === "for_you" ? (item.affinityScore ?? 0) : 0;
   const score = item.manualPriority
     ? manualPriorityScore(item.manualPriority) + recencyBoost
-    : base + recencyBoost;
+    : base + recencyBoost + affinityScore;
   const reasons = item.manualPriority
     ? [`Manual priority: ${item.manualPriority}`, "Recent items receive a small tie-break"]
     : [
@@ -194,6 +241,9 @@ export function explainFeedRank(
           : "Current baseline priority score",
         "Recent items receive a small tie-break",
       ];
+  if (!item.manualPriority && affinityScore !== 0) {
+    reasons.splice(1, 0, "Personalized from explicit feedback and reading actions");
+  }
   return {
     sort,
     score: Number(score.toFixed(6)),
@@ -203,12 +253,17 @@ export function explainFeedRank(
       itemPriority: item.priority,
       aiPriorityScore: item.aiPriorityScore,
       recencyBoost: Number(recencyBoost.toFixed(6)),
+      affinityScore: Number(affinityScore.toFixed(6)),
     },
   };
 }
 
 function rowAiPriorityScore(row: Row): number | undefined {
   return row.ai_priority_score == null ? undefined : Number(row.ai_priority_score);
+}
+
+function rowAffinityScore(row: Row): number | undefined {
+  return row.feed_affinity_score == null ? undefined : Number(row.feed_affinity_score);
 }
 
 /** PostgreSQL-backed filtered, keyset-paginated feed; no client-side filtering. */
@@ -250,12 +305,43 @@ export class PostgresFeedQuery {
         ? this.sql`CASE i.priority WHEN 'high' THEN 90 WHEN 'medium' THEN 50 ELSE 20 END`
         : this
             .sql`COALESCE(i.ai_priority_score, CASE i.priority WHEN 'high' THEN 90 WHEN 'medium' THEN 50 ELSE 20 END)`;
+    const affinity =
+      query.personalizationEnabled && sort === "for_you"
+        ? this.sql`COALESCE((
+            SELECT SUM(
+              (CASE e.event_type
+                WHEN 'feedback_recorded' THEN CASE
+                  WHEN COALESCE(e.metadata->>'rating','') ~ '^-?[0-9]+$'
+                    THEN CASE WHEN (e.metadata->>'rating')::integer > 0 THEN 3 ELSE -3 END
+                  ELSE 1
+                END
+                WHEN 'collection_added' THEN 2
+                WHEN 'completed' THEN 3
+                WHEN 'archived' THEN -2
+                ELSE 0
+              END) * exp(-ln(2) * GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - e.occurred_at)) / 86400) / ${PERSONALIZATION_HALF_LIFE_DAYS})
+            )
+            FROM item_events e
+            JOIN items signal ON signal.id=e.item_id
+            WHERE e.event_type IN ('feedback_recorded','collection_added','completed','archived')
+              AND (
+                signal.source_type=i.source_type
+                OR (i.author IS NOT NULL AND signal.author=i.author)
+                OR signal.content_type=i.content_type
+                OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements_text(i.topics) target(topic)
+                  WHERE signal.topics ? target.topic
+                )
+              )
+          ), 0)`
+        : this.sql`0`;
     const score = this.sql`CASE
       WHEN i.manual_priority='high' THEN 300 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='medium' THEN 200 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='low' THEN -100 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       ELSE ${baseline}
         + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
+        + ${affinity}
     END`;
 
     if (cursor) {
@@ -280,7 +366,7 @@ export class PostgresFeedQuery {
         ? this.sql`ORDER BY i.created_at DESC, i.id DESC`
         : this.sql`ORDER BY ${score} DESC, i.created_at DESC, i.id DESC`;
     const rows = await this.sql<Row[]>`
-      SELECT i.*, s.summary AS ai_summary_text, i.ai_priority_score, ${score} AS feed_rank_score
+      SELECT i.*, s.summary AS ai_summary_text, i.ai_priority_score, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
       FROM items i
       LEFT JOIN ai_summaries s ON s.item_id=i.id AND s.prompt_type='brief'
       ${where}
@@ -288,10 +374,10 @@ export class PostgresFeedQuery {
       LIMIT ${limit + 1}`;
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const items = pageRows.map((row) => {
+    let items = pageRows.map((row) => {
       const item = mapItem(row);
       const rank = explainFeedRank(
-        { ...item, aiPriorityScore: rowAiPriorityScore(row) },
+        { ...item, aiPriorityScore: rowAiPriorityScore(row), affinityScore: rowAffinityScore(row) },
         sort,
         new Date(now)
       );
@@ -303,6 +389,11 @@ export class PostgresFeedQuery {
         rank,
       };
     });
+    // See reserveTopTenDiversity: only a complete result can be safely
+    // rearranged without weakening the feed's opaque keyset cursor contract.
+    if (!query.cursor && !hasMore && sort === "for_you" && query.personalizationEnabled) {
+      items = reserveTopTenDiversity(items);
+    }
     const last = items.at(-1);
     return {
       items,

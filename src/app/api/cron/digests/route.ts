@@ -1,7 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { enqueueDigestRuntimeJob } from "@/lib/digests/runtime";
 import { enqueueDigest } from "@/lib/digests/service";
+import { getRepositorySet } from "@/lib/database";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { createPostgresClient } from "@/lib/postgres/client";
 
 function authorized(request: Request): boolean {
@@ -25,10 +28,14 @@ async function enqueue(request: Request): Promise<Response> {
       { status: 503 }
     );
   }
+  if (!readPhase2FeatureFlags().digests) {
+    return Response.json({ enqueued: false, reason: "FEATURE_DISABLED", job: null });
+  }
   const sql = createPostgresClient();
   try {
     const store = new PostgresDigestStore(sql);
     const job = await enqueueDigest(store, await store.getPreferences(), "cron");
+    if (job) await enqueueDigestRuntimeJob((await getRepositorySet()).jobs, job);
     return Response.json({ enqueued: Boolean(job), job: job ?? null });
   } catch {
     return Response.json(

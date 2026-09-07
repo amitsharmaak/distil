@@ -23,6 +23,7 @@ const mockStore = PostgresDigestStore as jest.MockedClass<typeof PostgresDigestS
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.DATABASE_URL = "postgres://test.example/distil";
+  process.env.FEATURE_DIGESTS = "true";
   mockClient.mockReturnValue(sql as never);
   mockStore.mockImplementation(
     () =>
@@ -40,7 +41,10 @@ beforeEach(() => {
   );
 });
 
-afterAll(() => delete process.env.DATABASE_URL);
+afterAll(() => {
+  delete process.env.DATABASE_URL;
+  delete process.env.FEATURE_DIGESTS;
+});
 
 describe("Phase 2 digest API contract", () => {
   it("authenticates before opening PostgreSQL for digest reads", async () => {
@@ -74,6 +78,19 @@ describe("Phase 2 digest API contract", () => {
     );
     expect(response.status).toBe(400);
     expect(mockMutation).toHaveBeenCalledTimes(1);
+    expect(mockClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual digest execution off until the server feature is enabled", async () => {
+    delete process.env.FEATURE_DIGESTS;
+    mockMutation.mockResolvedValueOnce();
+    const response = await POST(
+      new Request("http://localhost:3000/api/v1/digests/run", {
+        method: "POST",
+        body: JSON.stringify({ idempotencyKey: "safe" }),
+      })
+    );
+    expect(response.status).toBe(503);
     expect(mockClient).not.toHaveBeenCalled();
   });
 });

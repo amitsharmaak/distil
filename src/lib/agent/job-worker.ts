@@ -9,6 +9,7 @@
 
 import { dequeueJob, completeJob, enqueueJob } from "@/lib/database";
 import { aiLogger } from "@/lib/logger";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -52,6 +53,33 @@ jobHandlers.set("cross_source_insight", async (payload) => {
   if (!itemId) throw new Error("cross_source_insight job requires itemId");
   const { detectInsights } = await import("@/lib/agent/insight-detection");
   await detectInsights(itemId);
+});
+
+// Phase 2 jobs are registered with the same durable queue as the existing
+// workflows. Imports stay inside handlers so disabled features add no startup
+// work and never trigger a provider call.
+jobHandlers.set("knowledge_backfill", async (payload) => {
+  const [{ getRepositorySet }, { createKnowledgeBackfillJobHandler }] = await Promise.all([
+    import("@/lib/database"),
+    import("@/lib/knowledge/jobs"),
+  ]);
+  await createKnowledgeBackfillJobHandler(await getRepositorySet())(payload);
+});
+
+jobHandlers.set("digest_run", async (payload) => {
+  if (!readPhase2FeatureFlags().digests) return;
+  const [{ createPostgresClient }, { PostgresDigestStore }, { createDigestJobHandler }] =
+    await Promise.all([
+      import("@/lib/postgres/client"),
+      import("@/lib/digests/postgres-store"),
+      import("@/lib/digests/runtime"),
+    ]);
+  const sql = createPostgresClient();
+  try {
+    await createDigestJobHandler(new PostgresDigestStore(sql))(payload);
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
 });
 
 /**

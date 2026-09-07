@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireRequestSession } from "@/lib/auth/route-helpers";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { FeedQueryError, PostgresFeedQuery } from "@/lib/feed/feed-query";
+import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { apiLogger } from "@/lib/logger";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { createPostgresClient } from "@/lib/postgres/client";
 
 const querySchema = z.object({
@@ -78,6 +80,10 @@ export async function GET(request: Request): Promise<Response> {
 
     const sql = createPostgresClient();
     try {
+      const flags = readPhase2FeatureFlags();
+      const preferences = flags.personalization
+        ? await new PostgresDigestStore(sql).getPreferences()
+        : undefined;
       const page = await new PostgresFeedQuery(sql).list({
         read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
         archive: parsed.data.archive,
@@ -91,6 +97,9 @@ export async function GET(request: Request): Promise<Response> {
         sort: parsed.data.sort,
         limit: parsed.data.limit,
         cursor: parsed.data.cursor,
+        personalizationEnabled: Boolean(
+          flags.personalization && preferences?.personalizationEnabled
+        ),
       });
       return Response.json(page);
     } finally {
