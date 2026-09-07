@@ -13,7 +13,7 @@ describe("PostgreSQL harness helpers", () => {
     expect(migrations[0].sql).toContain("CREATE TABLE harness_records");
   });
 
-  it("guards access before the container starts", async () => {
+  it("guards access before the database starts", async () => {
     const harness = new PostgresTestHarness();
     expect(() => harness.sql).toThrow("has not been started");
     expect(() => harness.connectionUri).toThrow("has not been started");

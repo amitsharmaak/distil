@@ -3,7 +3,7 @@ import { PostgresTestHarness } from "../support/postgres";
 
 jest.setTimeout(120_000);
 
-describe("PostgreSQL 16 Testcontainers lifecycle", () => {
+describe("PostgreSQL 16 test harness lifecycle", () => {
   const harness = new PostgresTestHarness();
 
   beforeAll(async () => {
@@ -28,6 +28,9 @@ describe("PostgreSQL 16 Testcontainers lifecycle", () => {
   });
 
   it("resets rows and identities while preserving migrations", async () => {
+    const migrationsBeforeReset = await harness.sql<{ count: string }[]>`
+      SELECT count(*)::text AS count FROM __distil_test_migrations
+    `;
     const first = await harness.sql<{ id: string }[]>`
       INSERT INTO harness_records (value)
       VALUES ('before-reset')
@@ -51,6 +54,6 @@ describe("PostgreSQL 16 Testcontainers lifecycle", () => {
 
     expect(rows[0].count).toBe("0");
     expect(afterReset[0].id).toBe("1");
-    expect(migrations[0].count).toBe("1");
+    expect(migrations[0].count).toBe(migrationsBeforeReset[0].count);
   });
 });

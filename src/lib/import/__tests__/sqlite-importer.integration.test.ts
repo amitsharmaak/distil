@@ -7,11 +7,13 @@ import { createPostgresImportTarget, importSqlite } from "../sqlite-importer";
 
 jest.setTimeout(120_000);
 const harness = new PostgresTestHarness();
+let harnessStarted = false;
 let directory: string;
 let sourcePath: string;
 
 beforeAll(async () => {
   await harness.start();
+  harnessStarted = true;
   await harness.migrate(resolve(process.cwd(), "src/lib/postgres/migrations"));
 });
 
@@ -57,7 +59,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   if (directory) rmSync(directory, { recursive: true, force: true });
-  await harness.reset();
+  if (harnessStarted) await harness.reset();
 });
 afterAll(async () => harness.stop());
 

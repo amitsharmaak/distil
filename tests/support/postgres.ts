@@ -18,6 +18,7 @@ export interface PostgresTestHarnessOptions {
   database?: string;
   username?: string;
   password?: string;
+  connectionUri?: string;
 }
 
 export async function loadSqlMigrations(migrationsDirectory: string): Promise<SqlMigration[]> {
@@ -102,6 +103,7 @@ export async function resetTestDatabase(
 export class PostgresTestHarness {
   private container?: StartedPostgreSqlContainer;
   private client?: Sql;
+  private activeConnectionUri?: string;
 
   constructor(private readonly options: PostgresTestHarnessOptions = {}) {}
 
@@ -113,10 +115,10 @@ export class PostgresTestHarness {
   }
 
   get connectionUri(): string {
-    if (!this.container) {
+    if (!this.activeConnectionUri) {
       throw new Error("PostgreSQL test harness has not been started");
     }
-    return this.container.getConnectionUri();
+    return this.activeConnectionUri;
   }
 
   async start(): Promise<this> {
@@ -124,14 +126,21 @@ export class PostgresTestHarness {
       throw new Error("PostgreSQL test harness is already started");
     }
 
-    const container = await new PostgreSqlContainer(this.options.image ?? "postgres:16-alpine")
-      .withDatabase(this.options.database ?? "distil_test")
-      .withUsername(this.options.username ?? "distil")
-      .withPassword(this.options.password ?? "distil_test_password")
-      .start();
+    const suppliedConnectionUri =
+      this.options.connectionUri ?? process.env.DISTIL_TEST_POSTGRES_URL;
+    const container = suppliedConnectionUri
+      ? undefined
+      : await new PostgreSqlContainer(this.options.image ?? "postgres:16-alpine")
+          .withDatabase(this.options.database ?? "distil_test")
+          .withUsername(this.options.username ?? "distil")
+          .withPassword(this.options.password ?? "distil_test_password")
+          .start();
+    const connectionUri = suppliedConnectionUri ?? container?.getConnectionUri();
+    if (!connectionUri)
+      throw new Error("PostgreSQL test harness could not determine a connection URI");
 
     try {
-      const client = postgres(container.getConnectionUri(), {
+      const client = postgres(connectionUri, {
         max: 2,
         prepare: false,
         connect_timeout: 10,
@@ -140,9 +149,10 @@ export class PostgresTestHarness {
       await client`SELECT 1`;
       this.container = container;
       this.client = client;
+      this.activeConnectionUri = connectionUri;
       return this;
     } catch (error) {
-      await container.stop();
+      await container?.stop();
       throw error;
     }
   }
@@ -160,6 +170,7 @@ export class PostgresTestHarness {
     const container = this.container;
     this.client = undefined;
     this.container = undefined;
+    this.activeConnectionUri = undefined;
 
     let clientError: unknown;
     if (client) {

@@ -9,6 +9,7 @@ const originalEnvironment = {
   apiToken: process.env.DISTIL_API_TOKEN,
   passwordHash: process.env.DISTIL_WEB_PASSWORD_HASH,
   sessionSecret: process.env.DISTIL_SESSION_SECRET,
+  testMode: process.env.DISTIL_TEST_MODE,
   nodeEnv: process.env.NODE_ENV,
 };
 
@@ -22,6 +23,7 @@ function loadAuth(
     apiToken?: string;
     configured?: boolean;
     nodeEnv?: string;
+    testMode?: boolean;
   } = {}
 ): AuthModule {
   jest.resetModules();
@@ -35,6 +37,7 @@ function loadAuth(
     options.configured ? "a-session-secret-with-at-least-32-bytes" : undefined
   );
   setOrDelete("NODE_ENV", options.nodeEnv ?? "test");
+  setOrDelete("DISTIL_TEST_MODE", options.testMode ? "1" : undefined);
   return jest.requireActual<AuthModule>("@/lib/middleware/auth");
 }
 
@@ -43,6 +46,7 @@ afterEach(() => {
   setOrDelete("DISTIL_API_TOKEN", originalEnvironment.apiToken);
   setOrDelete("DISTIL_WEB_PASSWORD_HASH", originalEnvironment.passwordHash);
   setOrDelete("DISTIL_SESSION_SECRET", originalEnvironment.sessionSecret);
+  setOrDelete("DISTIL_TEST_MODE", originalEnvironment.testMode);
   setOrDelete("NODE_ENV", originalEnvironment.nodeEnv);
 });
 
@@ -60,6 +64,12 @@ describe("single-user middleware authentication", () => {
     const response = await checkAuth(new NextRequest("https://distil.test/api/items"));
 
     expect(response?.status).toBe(503);
+  });
+
+  it("allows an isolated production-mode E2E build when test mode is explicit", async () => {
+    const { checkAuth } = loadAuth({ nodeEnv: "production", testMode: true });
+
+    await expect(checkAuth(new NextRequest("https://distil.test/api/items"))).resolves.toBeNull();
   });
 
   it("accepts the deprecated token only on legacy capture", async () => {
