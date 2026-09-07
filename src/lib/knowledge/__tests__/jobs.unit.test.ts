@@ -46,6 +46,8 @@ function dependencies(
       findCurrent: jest.fn(),
       listForItem: jest.fn(),
       publish: jest.fn(),
+      updatePending: jest.fn(),
+      complete: jest.fn(),
       listLegacySummaryCandidates: jest.fn().mockResolvedValue([]),
       listDegradedSummaryCandidates: jest.fn().mockResolvedValue([]),
     },

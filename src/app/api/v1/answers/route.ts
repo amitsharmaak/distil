@@ -3,6 +3,7 @@ import { requireSessionMutation } from "@/lib/auth/route-helpers";
 import { knowledgeErrorResponse, parseKnowledgeBody } from "@/lib/knowledge/http";
 import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
 import { answerFromKnowledge, answerRequestSchema, assertDateRange } from "@/lib/knowledge/service";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { createPostgresClient } from "@/lib/postgres/client";
 
 export async function POST(request: Request): Promise<Response> {
@@ -10,6 +11,12 @@ export async function POST(request: Request): Promise<Response> {
     await requireSessionMutation(request, readAuthEnvironment());
     const input = await parseKnowledgeBody(request, answerRequestSchema);
     assertDateRange(input.filters ?? {});
+    if (!readPhase2FeatureFlags().answers) {
+      return Response.json(
+        { error: { code: "FEATURE_DISABLED", message: "Grounded answers are not enabled" } },
+        { status: 503 }
+      );
+    }
     if (!process.env.DATABASE_URL) {
       return Response.json(
         { error: { code: "POSTGRES_REQUIRED", message: "Grounded answers require PostgreSQL" } },

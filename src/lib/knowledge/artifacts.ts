@@ -17,7 +17,8 @@ export type ArtifactFailureReason =
   | "generation_unavailable"
   | "invalid_output"
   | "insufficient_content"
-  | "provider_error";
+  | "provider_error"
+  | "budget_exceeded";
 
 export interface IntelligenceArtifact {
   id: string;

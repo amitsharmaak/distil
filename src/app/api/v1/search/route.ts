@@ -5,6 +5,7 @@ import { requireRequestSession } from "@/lib/auth/route-helpers";
 import { KnowledgeServiceError } from "@/lib/knowledge/service";
 import { knowledgeErrorResponse } from "@/lib/knowledge/http";
 import { PostgresPassageSearchStore, searchPassages } from "@/lib/knowledge/retrieval";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { createPostgresClient } from "@/lib/postgres/client";
 
 const schema = z.object({
@@ -50,6 +51,12 @@ function multi(params: URLSearchParams, key: string): string[] | undefined {
 export async function GET(request: Request): Promise<Response> {
   try {
     await requireRequestSession(request, readAuthEnvironment());
+    if (!readPhase2FeatureFlags().search) {
+      return Response.json(
+        { error: { code: "FEATURE_DISABLED", message: "Knowledge search is not enabled" } },
+        { status: 503 }
+      );
+    }
     if (!process.env.DATABASE_URL) {
       return Response.json(
         { error: { code: "POSTGRES_REQUIRED", message: "Knowledge search requires PostgreSQL" } },

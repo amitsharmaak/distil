@@ -21,6 +21,7 @@ const request = (body: unknown) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env.FEATURE_KNOWLEDGE_UI = "true";
   jest.mocked(requireSessionMutation).mockResolvedValue();
   jest.mocked(getRepositorySet).mockResolvedValue({} as never);
   jest.mocked(enqueueSummaryRegeneration).mockResolvedValue({
@@ -30,6 +31,8 @@ beforeEach(() => {
 });
 
 describe("POST summary regeneration security", () => {
+  afterAll(() => delete process.env.FEATURE_KNOWLEDGE_UI);
+
   it("requires origin/session and an idempotency key", async () => {
     jest
       .mocked(requireSessionMutation)
@@ -48,5 +51,12 @@ describe("POST summary regeneration security", () => {
     );
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({ jobId: "job" });
+  });
+
+  it("does not open repositories when knowledge intelligence is disabled", async () => {
+    delete process.env.FEATURE_KNOWLEDGE_UI;
+    const response = await POST(request({ idempotencyKey: "key" }), context);
+    expect(response.status).toBe(503);
+    expect(getRepositorySet).not.toHaveBeenCalled();
   });
 });

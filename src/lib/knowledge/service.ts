@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { sha256 } from "@/lib/knowledge/content-identity";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import { getTraceId } from "@/lib/middleware/trace";
 import type { ArtifactType } from "./artifacts";
 import {
   type PassageFilters,
@@ -320,6 +321,7 @@ export async function enqueueSummaryRegeneration(
   ).slice("sha256:".length, 39);
   const artifactId = `art_${identity}`;
   const jobId = `ksj_${identity}`;
+  const traceId = getTraceId();
   const at = now.toISOString();
   const artifact = (
     await repositories.intelligenceArtifacts.publish({
@@ -331,7 +333,7 @@ export async function enqueueSummaryRegeneration(
       provenance: "generated",
       promptVersion: "grounded-summary-v1",
       makeCurrent: false,
-      metadata: { jobId, requestedLength: input.length },
+      metadata: { jobId, traceId, requestedLength: input.length },
       createdAt: at,
       updatedAt: at,
     })
@@ -344,6 +346,8 @@ export async function enqueueSummaryRegeneration(
       contentVersionId: contentVersion.id,
       artifactId,
       artifactType,
+      jobId,
+      traceId,
     }),
     priority: 3,
     maxRetries: 3,

@@ -16,6 +16,7 @@ const sql = { end: jest.fn() };
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.DATABASE_URL = "postgres://test.example/distil";
+  process.env.FEATURE_SEARCH = "true";
   jest.mocked(requireRequestSession).mockResolvedValue();
   jest.mocked(createPostgresClient).mockReturnValue(sql as never);
   jest.mocked(searchPassages).mockResolvedValue({
@@ -26,7 +27,10 @@ beforeEach(() => {
   });
 });
 
-afterAll(() => delete process.env.DATABASE_URL);
+afterAll(() => {
+  delete process.env.DATABASE_URL;
+  delete process.env.FEATURE_SEARCH;
+});
 
 describe("GET /api/v1/search", () => {
   it("authenticates before opening PostgreSQL", async () => {
@@ -35,6 +39,13 @@ describe("GET /api/v1/search", () => {
       .mockRejectedValueOnce(new AuthError("UNAUTHORIZED", 401, "unauthorized"));
     const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
     expect(response.status).toBe(401);
+    expect(createPostgresClient).not.toHaveBeenCalled();
+  });
+
+  it("stops before opening PostgreSQL when search is disabled", async () => {
+    delete process.env.FEATURE_SEARCH;
+    const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
+    expect(response.status).toBe(503);
     expect(createPostgresClient).not.toHaveBeenCalled();
   });
 

@@ -59,6 +59,8 @@ type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
 const iso = (value: unknown): string =>
   value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
+const nullableString = (value: unknown): string | null =>
+  value === null || value === undefined ? null : String(value);
 
 class PostgresItems implements ItemRepository {
   constructor(private readonly sql: Sql) {}
@@ -1072,6 +1074,77 @@ class PostgresIntelligenceArtifacts implements IntelligenceArtifactRepository {
         RETURNING *
       `;
       return { record: mapArtifact(rows[0]), created: true };
+    });
+  }
+
+  async updatePending(
+    id: string,
+    patch: Parameters<IntelligenceArtifactRepository["updatePending"]>[1]
+  ) {
+    const row = first(
+      await this.sql<Row[]>`
+        UPDATE intelligence_artifacts
+        SET content=${patch.content ?? null},content_hash=${patch.contentHash ?? null},
+            prompt_version=${patch.promptVersion ?? null},provider=${patch.provider ?? null},
+            model=${patch.model ?? null},metadata=metadata || ${this.sql.json(patch.metadata as never)},
+            updated_at=${patch.updatedAt}
+        WHERE id=${id} AND status='pending'
+        RETURNING *
+      `
+    );
+    if (row) return mapArtifact(row);
+    return this.findById(id);
+  }
+
+  async complete(
+    id: string,
+    completion: Parameters<IntelligenceArtifactRepository["complete"]>[1]
+  ) {
+    return this.sql.begin(async (tx) => {
+      const artifact = first(
+        await tx<Row[]>`SELECT * FROM intelligence_artifacts WHERE id=${id} FOR UPDATE`
+      );
+      if (!artifact) return undefined;
+      if (String(artifact.status) !== "pending") return mapArtifact(artifact);
+      const canBeCurrent = completion.status === "ready" || completion.status === "degraded";
+      const makeCurrent = completion.makeCurrent && canBeCurrent;
+      await tx`SELECT id FROM items WHERE id=${String(artifact.item_id)} FOR UPDATE`;
+      const current = makeCurrent
+        ? first(
+            await tx<Row[]>`
+              SELECT * FROM intelligence_artifacts
+              WHERE item_id=${String(artifact.item_id)}
+                AND artifact_type=${String(artifact.artifact_type)}
+                AND is_current=true
+                AND id<>${id}
+              FOR UPDATE
+            `
+          )
+        : undefined;
+      if (current) {
+        await tx`
+          UPDATE intelligence_artifacts
+          SET status='stale',is_current=false,updated_at=${completion.updatedAt}
+          WHERE id=${String(current.id)}
+        `;
+      }
+      const content = completion.content ?? nullableString(artifact.content);
+      const contentHash = completion.contentHash ?? nullableString(artifact.content_hash);
+      const promptVersion = completion.promptVersion ?? nullableString(artifact.prompt_version);
+      const provider = completion.provider ?? nullableString(artifact.provider);
+      const model = completion.model ?? nullableString(artifact.model);
+      const rows = await tx<Row[]>`
+        UPDATE intelligence_artifacts
+        SET status=${completion.status},content=${content},content_hash=${contentHash},
+            prompt_version=${promptVersion},provider=${provider},model=${model},is_current=${makeCurrent},
+            supersedes_artifact_id=${current ? String(current.id) : null},
+            metadata=metadata || ${tx.json(completion.metadata as never)},
+            error_code=${completion.errorCode ?? null},error_message=${completion.errorMessage ?? null},
+            updated_at=${completion.updatedAt},completed_at=${completion.completedAt ?? completion.updatedAt}
+        WHERE id=${id} AND status='pending'
+        RETURNING *
+      `;
+      return rows[0] ? mapArtifact(rows[0]) : undefined;
     });
   }
 

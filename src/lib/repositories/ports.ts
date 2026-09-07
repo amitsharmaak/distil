@@ -468,6 +468,32 @@ export interface IntelligenceArtifactRepository {
   publish(
     record: NewIntelligenceArtifact
   ): Promise<{ record: IntelligenceArtifact; created: boolean }>;
+  /** Stores validated output on a pending artifact before dependent rows are published. */
+  updatePending(
+    id: string,
+    patch: Pick<
+      IntelligenceArtifact,
+      "content" | "contentHash" | "promptVersion" | "provider" | "model" | "metadata" | "updatedAt"
+    >
+  ): Promise<IntelligenceArtifact | undefined>;
+  /** Completes a pending artifact and optionally promotes it, retaining any prior current on failure. */
+  complete(
+    id: string,
+    completion: Pick<
+      IntelligenceArtifact,
+      | "status"
+      | "content"
+      | "contentHash"
+      | "promptVersion"
+      | "provider"
+      | "model"
+      | "metadata"
+      | "errorCode"
+      | "errorMessage"
+      | "updatedAt"
+      | "completedAt"
+    > & { makeCurrent: boolean }
+  ): Promise<IntelligenceArtifact | undefined>;
   listLegacySummaryCandidates(input: {
     afterSummaryId?: string;
     limit: number;

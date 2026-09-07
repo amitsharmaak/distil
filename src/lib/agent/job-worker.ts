@@ -66,6 +66,14 @@ jobHandlers.set("knowledge_backfill", async (payload) => {
   await createKnowledgeBackfillJobHandler(await getRepositorySet())(payload);
 });
 
+jobHandlers.set("regenerate_intelligence_summary", async (payload) => {
+  const [{ getRepositorySet }, { createIntelligenceSummaryJobHandler }] = await Promise.all([
+    import("@/lib/database"),
+    import("@/lib/knowledge/intelligence-runtime"),
+  ]);
+  await createIntelligenceSummaryJobHandler(await getRepositorySet())(payload);
+});
+
 jobHandlers.set("digest_run", async (payload) => {
   if (!readPhase2FeatureFlags().digests) return;
   const [{ createPostgresClient }, { PostgresDigestStore }, { createDigestJobHandler }] =
@@ -108,7 +116,11 @@ export async function processNextJob(workerId = "main"): Promise<boolean> {
   }
 
   try {
-    const payload = JSON.parse((job.payload as string) || "{}");
+    const payload =
+      typeof job.payload === "string" ? JSON.parse(job.payload || "{}") : (job.payload ?? {});
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+      throw new Error("Job payload must be a JSON object");
+    }
     await handler(payload);
     await completeJob(jobId);
     aiLogger.info({ jobId, jobType }, "Job completed successfully");

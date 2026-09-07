@@ -23,6 +23,7 @@ const request = (body: unknown) =>
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.DATABASE_URL = "postgres://test.example/distil";
+  process.env.FEATURE_ANSWERS = "true";
   jest.mocked(requireSessionMutation).mockResolvedValue();
   jest.mocked(createPostgresClient).mockReturnValue(sql as never);
   jest.mocked(answerFromKnowledge).mockResolvedValue({
@@ -36,7 +37,10 @@ beforeEach(() => {
   });
 });
 
-afterAll(() => delete process.env.DATABASE_URL);
+afterAll(() => {
+  delete process.env.DATABASE_URL;
+  delete process.env.FEATURE_ANSWERS;
+});
 
 describe("POST /api/v1/answers security", () => {
   it("rejects a disallowed origin before parsing or opening storage", async () => {
@@ -57,6 +61,13 @@ describe("POST /api/v1/answers security", () => {
     }));
     const tooMany = await POST(request({ query: "What is saved?", messages }));
     expect(tooMany.status).toBe(400);
+    expect(createPostgresClient).not.toHaveBeenCalled();
+  });
+
+  it("stops before opening PostgreSQL when answers are disabled", async () => {
+    delete process.env.FEATURE_ANSWERS;
+    const response = await POST(request({ query: "What is saved?" }));
+    expect(response.status).toBe(503);
     expect(createPostgresClient).not.toHaveBeenCalled();
   });
 
