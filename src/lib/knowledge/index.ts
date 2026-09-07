@@ -4,4 +4,6 @@ export * from "./chunking";
 export * from "./content-identity";
 export * from "./grounding";
 export * from "./jobs";
+export * from "./retrieval";
+export * from "./service";
 export * from "./types";
