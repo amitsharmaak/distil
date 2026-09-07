@@ -429,8 +429,10 @@ npm run dev -- --hostname 127.0.0.1 --port 3100
 - Plan: Hobby (free; personal/non-commercial use)
 - Vercel project: `project-evgf1`
 - Project dashboard: `https://vercel.com/pv-1850/project-evgf1`
-- Project state: CLI-linked to the Phase 1 worktree with a ready Preview deployment. The Git
-  repository is still not connected and Production has not been deployed.
+- Project state: CLI-linked to the Phase 1 worktree with a ready Preview deployment. The Phase 1
+  branch is published to GitHub, but the repository is still not connected to Vercel and Production
+  has not been deployed.
+- GitHub branch: `https://github.com/amitsharmaak/distil/tree/codex/phase-1-personal-capture`
 - Stable Preview URL: `https://distil-preview-pv-1850.vercel.app`
 - Current immutable deployment: `dpl_4XZdkSDZBaEnarsz5HdbJkDk2pEi`
 - Deployment inspector: `https://vercel.com/pv-1850/project-evgf1/4XZdkSDZBaEnarsz5HdbJkDk2pEi`
@@ -499,16 +501,16 @@ should not be used by the new clients.
 2. Run `npm run test:ci`, including the PostgreSQL Testcontainers suite, on a Docker-capable host.
 3. Review and resolve the production dependency audit before promotion. The current production-only
    audit reports 10 advisories (8 high, 2 moderate), including a direct Next.js update to `16.3.4`.
-4. Push `codex/phase-1-personal-capture` and connect that branch to the existing Vercel project for
-   repeatable CI/CD without deploying `main`.
+4. Connect `codex/phase-1-personal-capture` to the existing Vercel project for repeatable CI/CD
+   without deploying `main`.
 5. Configure separate capture tokens for the iPhone Shortcut and browser extension.
 6. Run the real-device checklist on the iPhone 14 Pro Max using Chrome and at least two other apps.
 7. Keep Production disconnected until Preview acceptance and an explicit promotion decision.
 
 ### Known blockers and decisions
 
-- The Phase 1 branch is deployed through the CLI but remains local and is not connected to GitHub or
-  Vercel CI/CD.
+- The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
+  to Vercel CI/CD.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
