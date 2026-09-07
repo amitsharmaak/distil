@@ -1,10 +1,12 @@
 import {
   createExtractiveSummary,
   isUsableArticleText,
+  normalizeArticleText,
   normalizePlaintext,
   prepareCaptureSummaryInput,
   validateSummaryOutput,
 } from "../content-quality";
+import { extractContentFromHtml } from "@/lib/content-extractor";
 
 const source =
   "The first sentence contains enough substantive information for a reader to understand the topic. " +
@@ -31,11 +33,69 @@ describe("content quality", () => {
     expect(normalizePlaintext(`${source}\nSubscribe now`)).toBe(source);
   });
 
-  it("keeps exactly the first 36k and final 12k characters for long inputs", () => {
+  it("removes shell phrases concatenated with a substantive excerpt", () => {
+    const readabilityStyleText =
+      `Sign in to continue reading. ${source} ` +
+      "Subscribe now for unlimited access to our journalism. Already a subscriber? Log in.";
+
+    expect(normalizeArticleText(readabilityStyleText)).toBe(source);
+    expect(isUsableArticleText(readabilityStyleText)).toBe(true);
+  });
+
+  it("does not strip ordinary prose that discusses subscriptions or login behavior", () => {
+    const prose =
+      "The product lets users subscribe for weekly research updates without opening the application. " +
+      "Administrators sign in to access dashboards that explain delivery and engagement trends.";
+
+    expect(normalizeArticleText(prose)).toBe(prose);
+  });
+
+  it.each([
+    "Sign in to continue reading. Subscribe now for unlimited access to award-winning journalism. Already a subscriber? Log in.",
+    "Checking your browser. Verify that you are human. Please wait while we check your connection. Enable JavaScript and cookies to continue.",
+    "We use cookies to improve your experience. By continuing, you agree to our cookie policy. Manage cookie preferences.",
+  ])("rejects a document-level access shell: %s", (shell) => {
+    expect(normalizeArticleText(shell)).toBe("");
+    expect(isUsableArticleText(shell)).toBe(false);
+  });
+
+  it("handles shell and excerpt text produced by actual Readability extraction", () => {
+    const html = `<!doctype html><html><head><title>Subscriber story</title></head><body>
+      <article>
+        <p>Sign in to continue reading.</p>
+        <p>${source}</p>
+        <p>Subscribe now for unlimited access to our journalism.</p>
+        <p>Already a subscriber? Log in.</p>
+      </article>
+    </body></html>`;
+    const extracted = extractContentFromHtml(html, "https://example.com/subscriber-story");
+
+    expect(extracted).not.toBeNull();
+    expect(normalizeArticleText(extracted!.textContent)).toBe(source);
+    expect(isUsableArticleText(extracted!.textContent)).toBe(true);
+  });
+
+  it("rejects an actual Readability extraction containing only a challenge shell", () => {
+    const html = `<!doctype html><html><head><title>Security check</title></head><body>
+      <main><article>
+        <h1>Checking your browser</h1>
+        <p>Verify that you are human.</p>
+        <p>Please wait while we check your connection.</p>
+        <p>Enable JavaScript and cookies to continue.</p>
+      </article></main>
+    </body></html>`;
+    const extracted = extractContentFromHtml(html, "https://example.com/security-check");
+
+    expect(extracted).not.toBeNull();
+    expect(isUsableArticleText(extracted!.textContent)).toBe(false);
+  });
+
+  it("keeps bounded opening and final 12k characters for long inputs", () => {
     const input = `${"a".repeat(36_000)}${"middle".repeat(1_000)}${"z".repeat(12_000)}`;
     const prepared = prepareCaptureSummaryInput(input);
     expect(prepared).toHaveLength(48_000);
-    expect(prepared.slice(0, 36_000)).toBe("a".repeat(36_000));
+    expect(prepared).toContain("[... middle omitted ...]");
+    expect(prepared.startsWith("a".repeat(35_000))).toBe(true);
     expect(prepared.slice(-12_000)).toBe("z".repeat(12_000));
   });
 

@@ -1,4 +1,5 @@
 const mockInsertAuditLog = jest.fn().mockResolvedValue(undefined);
+const mockWarn = jest.fn();
 
 jest.mock("@/lib/database", () => ({
   insertAuditLog: (...args: unknown[]) => mockInsertAuditLog(...args),
@@ -9,7 +10,7 @@ jest.mock("@/lib/middleware/trace", () => ({
 }));
 
 jest.mock("@/lib/logger", () => ({
-  aiLogger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  aiLogger: { info: jest.fn(), warn: mockWarn, error: jest.fn() },
 }));
 
 import type { AIProvider } from "../providers";
@@ -60,6 +61,34 @@ describe("AIRouter task-scoped model fallback", () => {
     expect(mockInsertAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ model: "gemini-3.5-flash-lite", provider: "gemini" })
     );
+  });
+
+  it("logs sanitized metadata when audit persistence fails", async () => {
+    mockInsertAuditLog.mockRejectedValueOnce(
+      new Error("connection failed for postgres://user:secret@database.internal/distil")
+    );
+    const provider = new ScriptedProvider({ overview: "accepted" });
+    const router = new AIRouter(new Map([["gemini", provider]]));
+
+    await expect(router.generateJSONWithMetadata("prompt", "summarize")).resolves.toEqual({
+      value: { overview: "accepted" },
+      provider: "gemini",
+      model: "gemini-3.5-flash-lite",
+    });
+
+    expect(mockWarn).toHaveBeenCalledWith(
+      {
+        event: "ai_audit_persistence_failed",
+        category: "unknown",
+        traceId: "trace-test",
+        task: "summarize",
+        provider: "gemini",
+        model: "gemini-3.5-flash-lite",
+      },
+      "ai_audit_persistence_failed"
+    );
+    expect(JSON.stringify(mockWarn.mock.calls)).not.toContain("secret");
+    expect(JSON.stringify(mockWarn.mock.calls)).not.toContain("database.internal");
   });
 
   it("moves immediately to 3.1 Flash-Lite after a primary quota failure", async () => {

@@ -150,8 +150,18 @@ export class AIRouter {
         latencyMs: metrics.latency_ms,
         traceId: traceId ?? undefined,
       });
-    } catch (err) {
-      aiLogger.warn({ err }, "Failed to persist AI call to audit_log");
+    } catch {
+      aiLogger.warn(
+        {
+          event: "ai_audit_persistence_failed",
+          category: "unknown",
+          traceId,
+          task: metrics.task,
+          provider: metrics.provider,
+          model: metrics.model,
+        },
+        "ai_audit_persistence_failed"
+      );
     }
   }
 

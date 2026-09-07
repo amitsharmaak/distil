@@ -10,18 +10,21 @@
  */
 
 import crypto from "crypto";
-import * as aiRouter from "./router";
+import { SchemaType, type ResponseSchema } from "@google/generative-ai";
+import { JSDOM } from "jsdom";
+import { generateJSONWithMetadata } from "./router";
 import {
   summarizePrompt,
   chunkSummarizePrompt,
   synthesizeChunkSummariesPrompt,
 } from "@/lib/prompts/summarize";
-import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
+import { getAISummary, upsertAISummary, getItemById, updateItem } from "@/lib/database";
 import type { SummaryOutput } from "./types";
 import type { ContentItem } from "@/lib/types";
-import type { AITask, ProviderName } from "./ai-config";
+import type { ProviderName } from "./ai-config";
 import {
   prepareCaptureSummaryInput,
+  containsMeaningfulHtml,
   validateSummaryOutput,
 } from "@/lib/intelligence/content-quality";
 import { aiLogger } from "@/lib/logger";
@@ -29,31 +32,37 @@ import { getTraceId } from "@/lib/middleware/trace";
 
 export type { SummaryOutput };
 
-export interface RoutedGeneration<T> {
-  value: T;
-  provider: ProviderName;
-  model: string;
+function summaryResponseSchema(length: "brief" | "detailed"): ResponseSchema {
+  return {
+    type: SchemaType.OBJECT,
+    properties: {
+      overview: { type: SchemaType.STRING },
+      keyPoints: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
+        minItems: length === "brief" ? 3 : 5,
+        maxItems: length === "brief" ? 5 : 8,
+      },
+      whyItMatters: { type: SchemaType.STRING },
+      notableQuotes: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
+        maxItems: 3,
+      },
+    },
+    required: ["overview", "keyPoints"],
+  };
 }
 
-/**
- * Temporary integration seam for the routing workstream. Once the router's
- * metadata API is present this calls it directly; the fallback keeps this
- * isolated branch buildable without duplicating model-fallback behavior.
- */
-async function generateJSONWithObservedModel<T>(
+function generateStructuredSummary(
   prompt: string,
-  task: AITask
-): Promise<RoutedGeneration<T>> {
-  const metadataRouter = aiRouter as typeof aiRouter & {
-    generateJSONWithMetadata?: <V>(prompt: string, task: AITask) => Promise<RoutedGeneration<V>>;
-  };
-  if (metadataRouter.generateJSONWithMetadata) {
-    return metadataRouter.generateJSONWithMetadata<T>(prompt, task);
-  }
-
-  const value = await aiRouter.generateJSON<T>(prompt, task);
-  const { provider, model } = aiRouter.getEffectiveModel(task);
-  return { value, provider, model };
+  task: "summarize" | "summarize-complex",
+  length: "brief" | "detailed"
+) {
+  return generateJSONWithMetadata<SummaryOutput>(prompt, task, {
+    maxTokens: 2_048,
+    responseSchema: summaryResponseSchema(length),
+  });
 }
 
 /** Estimate token count as ~4 chars per token. */
@@ -113,9 +122,11 @@ export function renderSummaryMarkdown(output: SummaryOutput): string {
   return lines.join("\n");
 }
 
-/** Get the content to summarize (fullContent, summary, or fallback). */
+/** Get plaintext to summarize from stored reader HTML, summary, or fallback. */
 function getSummarizableContent(item: { fullContent?: string; summary: string }): string {
-  return item.fullContent ?? item.summary ?? "";
+  const content = item.fullContent ?? item.summary ?? "";
+  if (!containsMeaningfulHtml(content)) return content;
+  return new JSDOM(content).window.document.body.textContent ?? "";
 }
 
 async function persistSummary(
@@ -140,31 +151,23 @@ export interface CaptureSummaryResult {
   provider: ProviderName;
 }
 
-/** Generate and cache the single structured summary used by capture-time processing. */
+/** Generate the single structured summary used by capture-time processing. */
 export async function generateCaptureSummary(item: ContentItem): Promise<CaptureSummaryResult> {
   const source = prepareCaptureSummaryInput(getSummarizableContent(item));
   const prompt = summarizePrompt({ ...item, fullContent: source }, "brief");
-  const generated = await generateJSONWithObservedModel<SummaryOutput>(prompt, "summarize");
+  const generated = await generateStructuredSummary(prompt, "summarize", "brief");
   const output = validateSummaryOutput(generated.value, source, "brief");
   const summary = renderSummaryMarkdown(output);
 
-  try {
-    await persistSummary(item.id, summary, generated.model, "brief");
-  } catch {
-    aiLogger.warn(
-      {
-        event: "summary_cache_failed",
-        traceId: getTraceId(),
-        itemId: item.id,
-        task: "summarize",
-        provider: generated.provider,
-        model: generated.model,
-      },
-      "summary_cache_failed"
-    );
-    throw new Error("Summary cache persistence failed");
-  }
   return { output, summary, model: generated.model, provider: generated.provider };
+}
+
+/** Persist a generated capture brief after its feed overview is durable. */
+export async function persistCaptureSummary(
+  itemId: string,
+  generated: CaptureSummaryResult
+): Promise<void> {
+  await persistSummary(itemId, generated.summary, generated.model, "brief");
 }
 
 /**
@@ -200,6 +203,22 @@ export async function generateSummary(
 
   if (length === "brief") {
     const generated = await generateCaptureSummary(item);
+    await updateItem(itemId, { summary: generated.output.overview });
+    try {
+      await persistCaptureSummary(itemId, generated);
+    } catch {
+      aiLogger.warn(
+        {
+          event: "summary_cache_failed",
+          traceId: getTraceId(),
+          itemId,
+          task: "summarize",
+          provider: generated.provider,
+          model: generated.model,
+        },
+        "summary_cache_failed"
+      );
+    }
     return { summary: generated.summary, cached: false };
   }
 
@@ -214,34 +233,29 @@ export async function generateSummary(
     const chunkOutputs: SummaryOutput[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const prompt = chunkSummarizePrompt(chunks[i], i, chunks.length);
-      const chunkGenerated = await generateJSONWithObservedModel<SummaryOutput>(
-        prompt,
-        "summarize"
-      );
+      const chunkGenerated = await generateStructuredSummary(prompt, "summarize", "brief");
       chunkOutputs.push(validateSummaryOutput(chunkGenerated.value, chunks[i], "brief"));
     }
 
     const chunkSummaries = chunkOutputs.map((o) => JSON.stringify(o, null, 2));
     const synthesizePrompt = synthesizeChunkSummariesPrompt(chunkSummaries, item);
-    const generated = await generateJSONWithObservedModel<SummaryOutput>(
+    const generated = await generateStructuredSummary(
       synthesizePrompt,
-      "summarize-complex"
+      "summarize-complex",
+      "detailed"
     );
     output = validateSummaryOutput(generated.value, content, "detailed");
     generatedModel = generated.model;
   } else if (estimatedTokens >= 2000) {
     // Medium: single summarize-complex call
     const prompt = summarizePrompt(item, length);
-    const generated = await generateJSONWithObservedModel<SummaryOutput>(
-      prompt,
-      "summarize-complex"
-    );
+    const generated = await generateStructuredSummary(prompt, "summarize-complex", "detailed");
     output = validateSummaryOutput(generated.value, content, "detailed");
     generatedModel = generated.model;
   } else {
     // Short: single summarize call
     const prompt = summarizePrompt(item, length);
-    const generated = await generateJSONWithObservedModel<SummaryOutput>(prompt, "summarize");
+    const generated = await generateStructuredSummary(prompt, "summarize", "detailed");
     output = validateSummaryOutput(generated.value, content, "detailed");
     generatedModel = generated.model;
   }

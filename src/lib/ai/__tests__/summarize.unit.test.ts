@@ -11,28 +11,29 @@ process.env.DB_PATH = ":memory:";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 jest.mock("../router", () => ({
-  generateJSON: jest.fn(),
-  getEffectiveModel: jest.fn(() => ({ model: "gemini-2.5-flash" })),
+  generateJSONWithMetadata: jest.fn(),
 }));
 
 jest.mock("@/lib/database", () => ({
   getAISummary: jest.fn(),
   upsertAISummary: jest.fn(),
   getItemById: jest.fn(),
+  updateItem: jest.fn(),
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import { generateCaptureSummary, generateSummary } from "../summarize";
-import { generateJSON } from "../router";
-import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
+import { generateJSONWithMetadata } from "../router";
+import { getAISummary, upsertAISummary, getItemById, updateItem } from "@/lib/database";
 import type { ContentItem } from "@/lib/types";
 
 // Typed mock helpers.
-const mockGenerateJSON = generateJSON as jest.Mock;
+const mockGenerateJSON = generateJSONWithMetadata as jest.Mock;
 const mockGetAISummary = getAISummary as jest.Mock;
 const mockUpsertAISummary = upsertAISummary as jest.Mock;
 const mockGetItemById = getItemById as jest.Mock;
+const mockUpdateItem = updateItem as jest.Mock;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,11 @@ beforeEach(() => {
   // techCrunchItem has ~200 chars in summary → ~50 tokens → uses "summarize" task.
   mockGetAISummary.mockReturnValue(undefined);
   mockGetItemById.mockReturnValue(techCrunchItem);
-  mockGenerateJSON.mockResolvedValue(mockBriefOutput);
+  mockGenerateJSON.mockResolvedValue({
+    value: mockBriefOutput,
+    provider: "gemini",
+    model: "gemini-3.5-flash-lite",
+  });
 });
 
 // ── Cache behaviour ───────────────────────────────────────────────────────────
@@ -196,7 +201,11 @@ describe("generateSummary — cache behaviour", () => {
       type === "brief" ? briefRow : undefined
     );
 
-    mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
+    mockGenerateJSON.mockResolvedValue({
+      value: mockDetailedOutput,
+      provider: "gemini",
+      model: "gemini-3.5-flash-lite",
+    });
 
     const result = await generateSummary(techCrunchItem.id, {
       length: "detailed",
@@ -220,16 +229,52 @@ describe("generateSummary — generation", () => {
         itemId: techCrunchItem.id,
         summary: mockBriefSummary,
         promptType: "brief",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash-lite",
       })
     );
+  });
+
+  it("updates the feed overview before caching a regenerated brief", async () => {
+    await generateSummary(techCrunchItem.id, { length: "brief", force: true });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith(techCrunchItem.id, {
+      summary: mockBriefOutput.overview,
+    });
+    expect(mockUpdateItem.mock.invocationCallOrder[0]).toBeLessThan(
+      mockUpsertAISummary.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("keeps a regenerated feed overview when optional cache persistence fails", async () => {
+    mockUpsertAISummary.mockRejectedValueOnce(new Error("db-host-with-secret"));
+
+    await expect(
+      generateSummary(techCrunchItem.id, { length: "brief", force: true })
+    ).resolves.toEqual({ summary: mockBriefSummary, cached: false });
+    expect(mockUpdateItem).toHaveBeenCalledWith(techCrunchItem.id, {
+      summary: mockBriefOutput.overview,
+    });
   });
 
   it("persists model name in the DB cache entry", async () => {
     await generateSummary(techCrunchItem.id, { length: "brief" });
 
     const call = mockUpsertAISummary.mock.calls[0][0] as { model: string };
-    expect(call.model).toBe("gemini-2.5-flash");
+    expect(call.model).toBe("gemini-3.5-flash-lite");
+  });
+
+  it("persists the actual quota-fallback model returned by the router", async () => {
+    mockGenerateJSON.mockResolvedValueOnce({
+      value: mockBriefOutput,
+      provider: "gemini",
+      model: "gemini-3.1-flash-lite",
+    });
+
+    await generateSummary(techCrunchItem.id, { length: "brief" });
+
+    expect(mockUpsertAISummary).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gemini-3.1-flash-lite" })
+    );
   });
 
   it("stores a unique id with each upsert", async () => {
@@ -282,6 +327,56 @@ describe("generateSummary — generation", () => {
     expect(prompt).toContain("opening");
     expect(prompt).toContain("conclusion");
     expect(prompt.length).toBeLessThan(50_000);
+    expect(mockGenerateJSON).toHaveBeenCalledWith(
+      expect.any(String),
+      "summarize",
+      expect.objectContaining({
+        maxTokens: 2_048,
+        responseSchema: expect.objectContaining({
+          required: ["overview", "keyPoints"],
+          properties: expect.objectContaining({
+            keyPoints: expect.objectContaining({ minItems: 3, maxItems: 5 }),
+          }),
+        }),
+      })
+    );
+  });
+
+  it("converts stored reader HTML to plaintext for forced brief regeneration", async () => {
+    mockGetItemById.mockReturnValue({
+      ...techCrunchItem,
+      fullContent:
+        "<article><p>Readable first sentence about the release.</p><p>Readable second sentence with supporting evidence.</p></article>",
+    });
+
+    await generateSummary(techCrunchItem.id, { length: "brief", force: true });
+
+    const prompt = mockGenerateJSON.mock.calls[0][0] as string;
+    expect(prompt).toContain("Readable first sentence");
+    expect(prompt).not.toContain("<article>");
+    expect(prompt).not.toContain("<p>");
+  });
+
+  it("uses the detailed key-point bounds for detailed generation", async () => {
+    mockGenerateJSON.mockResolvedValueOnce({
+      value: mockDetailedOutput,
+      provider: "gemini",
+      model: "gemini-3.5-flash-lite",
+    });
+
+    await generateSummary(techCrunchItem.id, { length: "detailed", force: true });
+
+    expect(mockGenerateJSON).toHaveBeenCalledWith(
+      expect.any(String),
+      "summarize",
+      expect.objectContaining({
+        responseSchema: expect.objectContaining({
+          properties: expect.objectContaining({
+            keyPoints: expect.objectContaining({ minItems: 5, maxItems: 8 }),
+          }),
+        }),
+      })
+    );
   });
 });
 
@@ -298,7 +393,11 @@ describe("generateSummary — TechCrunch article fixture", () => {
   });
 
   it("detailed summary also contains Why This Matters section", async () => {
-    mockGenerateJSON.mockResolvedValueOnce(mockDetailedOutput);
+    mockGenerateJSON.mockResolvedValueOnce({
+      value: mockDetailedOutput,
+      provider: "gemini",
+      model: "gemini-3.5-flash-lite",
+    });
 
     const result = await generateSummary(techCrunchItem.id, {
       length: "detailed",

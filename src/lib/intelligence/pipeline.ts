@@ -21,7 +21,11 @@ import {
   updateRawContentItemId,
 } from "../database";
 import type { ContentItem, SourceType } from "../types";
-import { generateCaptureSummary } from "../ai/summarize";
+import {
+  generateCaptureSummary,
+  persistCaptureSummary,
+  type CaptureSummaryResult,
+} from "../ai/summarize";
 import { embedItem } from "../ai/embeddings";
 import { detectStrategy } from "../content-strategies";
 import { aiLogger } from "../logger";
@@ -34,7 +38,7 @@ import { enrichContent } from "./enricher";
 import {
   createExtractiveSummary,
   isUsableArticleText,
-  normalizePlaintext,
+  normalizeArticleText,
 } from "./content-quality";
 import type {
   RawContent,
@@ -237,7 +241,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
 
     const strategy = detectStrategy(raw.url ?? "");
     const shouldGenerateAISummary = strategy.generateAISummary || extracted.isXArticle;
-    const normalizedText = normalizePlaintext(extracted.cleanTextContent ?? "");
+    const normalizedText = normalizeArticleText(extracted.cleanTextContent ?? "");
 
     if (shouldGenerateAISummary && !isUsableArticleText(normalizedText)) {
       aiLogger.warn(
@@ -276,9 +280,10 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       enriched = minimalEnrichment(extracted);
     }
 
+    let generatedCaptureSummary: CaptureSummaryResult | undefined;
     if (shouldGenerateAISummary) {
       try {
-        const captureSummary = await generateCaptureSummary({
+        generatedCaptureSummary = await generateCaptureSummary({
           ...initialItem,
           id: targetItemId,
           title: extracted.title,
@@ -290,7 +295,7 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
           priority: enriched.priority,
           contentType: classification.contentType,
         });
-        enriched = { ...enriched, summary: captureSummary.output.overview };
+        enriched = { ...enriched, summary: generatedCaptureSummary.output.overview };
       } catch (error) {
         const failure = summaryFailureContext(error);
         aiLogger.warn(
@@ -366,6 +371,26 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
       detectedMedia,
       informationDensity: analysis.informationDensityScore,
     });
+
+    // The feed overview is the durable capture contract. Cache the richer brief
+    // only after that overview has been written, and never discard a valid AI
+    // result merely because this optional cache write failed.
+    if (generatedCaptureSummary) {
+      await persistCaptureSummary(targetItemId, generatedCaptureSummary).catch(() => {
+        aiLogger.warn(
+          {
+            event: "summary_cache_failed",
+            traceId: getTraceId(),
+            captureId: raw.id,
+            itemId: targetItemId,
+            task: "summarize",
+            provider: generatedCaptureSummary.provider,
+            model: generatedCaptureSummary.model,
+          },
+          "summary_cache_failed"
+        );
+      });
+    }
 
     // Step 10: Update ai_priority_score
     await updateItemProcessingStatus(targetItemId, "ready");

@@ -12,7 +12,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { DEFAULT_MODEL_CONFIG } from "@/lib/ai/ai-config";
+import { DEFAULT_MODEL_CONFIG, TASK_MODEL_CANDIDATES } from "@/lib/ai/ai-config";
 
 // ---------------------------------------------------------------------------
 // Load .env.test.local before any SDK is imported
@@ -95,57 +95,66 @@ describe("Slack", () => {
 describe("Gemini", () => {
   const apiKey = process.env.GEMINI_API_KEY;
   const summaryAssignment = DEFAULT_MODEL_CONFIG.summarize;
+  const summaryCandidates = TASK_MODEL_CANDIDATES.summarize?.gemini ?? [];
 
   if (!apiKey) {
-    skip("structured summary generation", "GEMINI_API_KEY not set");
+    skip("structured summary candidates", "GEMINI_API_KEY not set");
     return;
   }
 
-  test("configured summary model returns native structured JSON", async () => {
+  test("summary candidate configuration includes primary and fallback", () => {
     expect(summaryAssignment.provider).toBe("gemini");
+    expect(summaryCandidates).toHaveLength(2);
+    expect(summaryCandidates[0]).toBe(summaryAssignment.model);
+  });
 
-    const { GoogleGenerativeAI, SchemaType } = await import("@google/generative-ai");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: summaryAssignment.model,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            overview: { type: SchemaType.STRING },
-            keyPoints: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-              minItems: 3,
-              maxItems: 5,
+  test.each(summaryCandidates)(
+    "configured summary candidate %s returns native structured JSON",
+    async (modelId) => {
+      const { GoogleGenerativeAI, SchemaType } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: modelId,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: SchemaType.OBJECT,
+            properties: {
+              overview: { type: SchemaType.STRING },
+              keyPoints: {
+                type: SchemaType.ARRAY,
+                items: { type: SchemaType.STRING },
+                minItems: 3,
+                maxItems: 5,
+              },
             },
+            required: ["overview", "keyPoints"],
           },
-          required: ["overview", "keyPoints"],
         },
-      },
-    });
+      });
 
-    const result = await model.generateContent(
-      "Summarize this source in two sentences and give exactly three key points: " +
-        "Distil saves articles for later reading. It creates concise summaries so readers can " +
-        "decide what deserves their attention. Return only the requested structured response."
-    );
-    const parsed: unknown = JSON.parse(result.response.text());
+      const result = await model.generateContent(
+        "Summarize this source in two sentences and give exactly three key points: " +
+          "Distil saves articles for later reading. It creates concise summaries so readers can " +
+          "decide what deserves their attention. Return only the requested structured response."
+      );
+      const parsed: unknown = JSON.parse(result.response.text());
 
-    expect(parsed).toEqual({
-      overview: expect.any(String),
-      keyPoints: expect.any(Array),
-    });
+      expect(parsed).toEqual({
+        overview: expect.any(String),
+        keyPoints: expect.any(Array),
+      });
 
-    const summary = parsed as { overview: string; keyPoints: string[] };
-    expect(summary.overview.trim().length).toBeGreaterThan(0);
-    expect(summary.keyPoints).toHaveLength(3);
-    expect(
-      summary.keyPoints.every((point) => typeof point === "string" && point.trim().length > 0)
-    ).toBe(true);
-    console.log(`  ✓ Gemini structured JSON validated for ${summaryAssignment.model}`);
-  }, 30_000);
+      const summary = parsed as { overview: string; keyPoints: string[] };
+      expect(summary.overview.trim().length).toBeGreaterThan(0);
+      expect(summary.keyPoints).toHaveLength(3);
+      expect(
+        summary.keyPoints.every((point) => typeof point === "string" && point.trim().length > 0)
+      ).toBe(true);
+      console.log(`  ✓ Gemini structured JSON validated for ${modelId}`);
+    },
+    30_000
+  );
 });
 
 // ---------------------------------------------------------------------------

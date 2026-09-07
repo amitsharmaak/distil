@@ -23,6 +23,22 @@ const BOILERPLATE_LINE_PATTERN = new RegExp(
   "i"
 );
 
+// Sentence-level patterns are needed because Readability may concatenate a
+// page shell and article excerpt into one textContent line. Match only common
+// call-to-action/challenge sentences so surrounding article prose survives.
+const SHELL_SENTENCE_PATTERNS = [
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:please\s+)?(?:sign|log) in(?:\s+or\s+subscribe)?(?:\s+to\s+(?:continue|read|access)[^.!?]*)?[.!?]?/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)already (?:a )?subscriber[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)subscribe(?: now)?(?:\s+(?:for|to)\s+[^.!?]*)?(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)subscription required[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)to continue reading[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:this (?:article|content) is (?:available|reserved)|you have reached your (?:free )?article limit)[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:please\s+)?(?:enable javascript(?: and cookies)?|verify (?:that )?you are human|checking your browser|performing security verification|access denied|complete the security check)[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:we (?:have )?detected unusual traffic|please wait while we (?:check|verify) your (?:browser|connection))[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:we use cookies|this (?:site|website) uses cookies|by continuing,? you (?:agree|consent))[^.!?]*(?:[.!?]|$)/gi,
+  /(^\s*|[.!?]["')\]]*\s+|\n+)(?:accept (?:all )?cookies?|cookie (?:preferences|settings|policy)|manage (?:cookie )?preferences|continue reading|read the full article)\b[.!?]?/gi,
+];
+
 export const ARTICLE_MIN_CHARACTERS = 80;
 export const ARTICLE_MIN_WORDS = 12;
 export const SUMMARY_INPUT_MAX_CHARACTERS = 48_000;
@@ -60,18 +76,36 @@ export function normalizePlaintext(value: string): string {
     .trim();
 }
 
+/** Remove document-level login, paywall, cookie, and challenge shell text. */
+export function normalizeArticleText(value: string): string {
+  let normalized = normalizePlaintext(value);
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = normalized;
+    for (const pattern of SHELL_SENTENCE_PATTERNS) {
+      normalized = normalized.replace(pattern, (_match, boundary: string) => boundary);
+    }
+    if (normalized === before) break;
+  }
+  return normalizePlaintext(
+    normalized.replace(/\s+([,.;!?])/g, "$1").replace(/(?:^|\n)\s*[-–—|•]+\s*(?=\n|$)/g, "\n")
+  );
+}
+
 export function isUsableArticleText(value: string): boolean {
   if (!value || containsMeaningfulHtml(value)) return false;
-  const normalized = normalizePlaintext(value);
+  const normalized = normalizeArticleText(value);
   if (normalized.length < ARTICLE_MIN_CHARACTERS) return false;
   return normalized.split(/\s+/).filter(Boolean).length >= ARTICLE_MIN_WORDS;
 }
 
 /** Select bounded capture-time input while retaining both opening and conclusion. */
 export function prepareCaptureSummaryInput(value: string): string {
-  const normalized = normalizePlaintext(value);
+  const normalized = normalizeArticleText(value);
   if (normalized.length <= SUMMARY_INPUT_MAX_CHARACTERS) return normalized;
-  return normalized.slice(0, 36_000) + normalized.slice(-12_000);
+  const marker = "\n\n[... middle omitted ...]\n\n";
+  const tailLength = 12_000;
+  const headLength = SUMMARY_INPUT_MAX_CHARACTERS - tailLength - marker.length;
+  return `${normalized.slice(0, headLength)}${marker}${normalized.slice(-tailLength)}`;
 }
 
 function sentenceCount(value: string): number {
@@ -151,7 +185,7 @@ export function validateSummaryOutput(
 
 /** Build a conservative non-AI summary from complete source sentences only. */
 export function createExtractiveSummary(value: string, maxCharacters = 500): string | null {
-  const normalized = normalizePlaintext(value).replace(/\n+/g, " ");
+  const normalized = normalizeArticleText(value).replace(/\n+/g, " ");
   if (!isUsableArticleText(normalized)) return null;
 
   const sentences = normalized.match(/[^.!?]+[.!?]+(?:["')\]]+)?(?=\s|$)/g) ?? [];

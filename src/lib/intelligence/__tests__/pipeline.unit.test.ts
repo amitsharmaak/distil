@@ -8,7 +8,10 @@ jest.mock("../../database", () => ({
   updateItemPriorityScore: jest.fn(),
   updateRawContentItemId: jest.fn(),
 }));
-jest.mock("../../ai/summarize", () => ({ generateCaptureSummary: jest.fn() }));
+jest.mock("../../ai/summarize", () => ({
+  generateCaptureSummary: jest.fn(),
+  persistCaptureSummary: jest.fn(),
+}));
 jest.mock("../../ai/embeddings", () => ({ embedItem: jest.fn() }));
 jest.mock("../../content-strategies", () => ({ detectStrategy: jest.fn() }));
 jest.mock("../../connectors/publishers/types", () => ({
@@ -32,7 +35,7 @@ import {
   updateItemPriorityScore,
   updateRawContentItemId,
 } from "../../database";
-import { generateCaptureSummary } from "../../ai/summarize";
+import { generateCaptureSummary, persistCaptureSummary } from "../../ai/summarize";
 import { embedItem } from "../../ai/embeddings";
 import { detectStrategy } from "../../content-strategies";
 import { classify } from "../classifier";
@@ -114,6 +117,7 @@ beforeEach(() => {
     model: "gemini-3.5-flash-lite",
     provider: "gemini",
   });
+  jest.mocked(persistCaptureSummary).mockResolvedValue(undefined);
   jest.mocked(embedItem).mockResolvedValue(undefined);
 });
 
@@ -140,7 +144,32 @@ it("persists one structured overview and waits for summary and embedding work", 
     })
   );
   expect(generateCaptureSummary).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(updateItem).mock.invocationCallOrder[0]).toBeLessThan(
+    jest.mocked(persistCaptureSummary).mock.invocationCallOrder[0]
+  );
   expect(embedItem).toHaveBeenCalledWith("raw-1", "Article", aiOverview);
+});
+
+it("keeps the AI overview ready when optional brief caching fails", async () => {
+  jest.mocked(persistCaptureSummary).mockRejectedValueOnce(new Error("cache unavailable"));
+
+  const result = await processContent(raw());
+
+  expect(result).toMatchObject({ status: "ready", enriched: { summary: aiOverview } });
+  expect(updateItem).toHaveBeenCalledWith(
+    "raw-1",
+    expect.objectContaining({ summary: aiOverview, processingStatus: "processing" })
+  );
+  expect(updateItemProcessingStatus).toHaveBeenCalledWith("raw-1", "ready");
+});
+
+it("does not cache a brief when the feed overview write fails", async () => {
+  jest.mocked(updateItem).mockRejectedValueOnce(new Error("item write failed"));
+
+  const result = await processContent(raw());
+
+  expect(result).toMatchObject({ status: "rejected", rejectionReason: "item write failed" });
+  expect(persistCaptureSummary).not.toHaveBeenCalled();
 });
 
 it("returns an existing ready item without running intelligence stages", async () => {
@@ -226,6 +255,42 @@ it("rejects HTML and boilerplate rather than marking a bogus summary ready", asy
   jest.mocked(extractContent).mockResolvedValue({
     ...extracted,
     cleanTextContent: "<html><body><form>Sign in to continue</form></body></html>",
+  });
+
+  const result = await processContent(raw());
+
+  expect(result).toMatchObject({
+    status: "rejected",
+    rejectionReason: "The page did not contain readable article content",
+  });
+  expect(generateCaptureSummary).not.toHaveBeenCalled();
+  expect(updateItem).not.toHaveBeenCalled();
+});
+
+it("removes a concatenated paywall shell while preserving and summarizing its excerpt", async () => {
+  jest.mocked(extractContent).mockResolvedValue({
+    ...extracted,
+    cleanTextContent:
+      `Sign in to continue reading. ${articleText} ` +
+      "Subscribe now for unlimited access. Already a subscriber? Log in.",
+  });
+
+  const result = await processContent(raw());
+
+  expect(result).toMatchObject({
+    status: "ready",
+    extracted: { cleanTextContent: articleText },
+  });
+  expect(generateCaptureSummary).toHaveBeenCalledWith(
+    expect.objectContaining({ fullContent: articleText })
+  );
+});
+
+it("rejects a long challenge shell after document-level filtering", async () => {
+  jest.mocked(extractContent).mockResolvedValue({
+    ...extracted,
+    cleanTextContent:
+      "Checking your browser. Verify that you are human. Please wait while we check your connection. Enable JavaScript and cookies to continue.",
   });
 
   const result = await processContent(raw());
