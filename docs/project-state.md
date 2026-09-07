@@ -354,8 +354,9 @@ of scope.
 - Integration worktree: `/private/tmp/distil-phase1-root`
 - Phase 1 implementation baseline commit: `c0807b1`
 - Initial handoff-document commit: `42fc454`
-- Current deployed implementation commit: `a8420a1`
+- Current stable Preview implementation commit: `020944a7f8331d47cbc1691768dc404b6ae0fb9f`
 - Current accepted Task 2 release commit: `6714a1c6cd84a3cae925860b84409ed56de3824c`
+- Current accepted Task 3 release commit: `020944a7f8331d47cbc1691768dc404b6ae0fb9f`
 - Git remote: `git@github.com:amitsharmaak/distil.git`
 - The Phase 1 branch is published to GitHub and tracks `origin/codex/phase-1-personal-capture`.
 - The original checkout at `/Users/amitsharma/Projects/distil` remains on `main` and has user-owned
@@ -430,15 +431,16 @@ npm run dev -- --hostname 127.0.0.1 --port 3100
 - Plan: Hobby (free; personal/non-commercial use)
 - Vercel project: `project-evgf1`
 - Project dashboard: `https://vercel.com/pv-1850/project-evgf1`
-- Project state: CLI-linked to the Phase 1 worktree with a ready Preview deployment. The Phase 1
-  branch is published to GitHub, but the repository is still not connected to Vercel and Production
-  has not been deployed.
+- Project state: CLI-linked to the Phase 1 worktree and connected to GitHub repository
+  `amitsharmaak/distil`. Pushes to `codex/phase-1-personal-capture` create Preview deployments.
+  There is no successful Production deployment; the Git connection and Task 3 verification push
+  created Preview output only.
 - GitHub branch: `https://github.com/amitsharmaak/distil/tree/codex/phase-1-personal-capture`
 - Stable Preview URL: `https://distil-preview-pv-1850.vercel.app`
-- Current immutable deployment: `dpl_4XZdkSDZBaEnarsz5HdbJkDk2pEi`
-- Deployment inspector: `https://vercel.com/pv-1850/project-evgf1/4XZdkSDZBaEnarsz5HdbJkDk2pEi`
+- Current accepted immutable deployment: `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`
+- Deployment inspector: `https://vercel.com/pv-1850/project-evgf1/G82PKZd9nR2q7RffVvdeV62v4QB4`
 - Intended application region: Singapore (`sin1`).
-- Git repository has not yet been connected to the Vercel project.
+- Git repository connection: `amitsharmaak/distil` through Vercel for GitHub.
 
 Vercel Queues is available on Hobby. The capture consumer and dormant local-only publisher login
 route are capped at 60 seconds. A real Preview capture completed through the queue in one attempt
@@ -541,13 +543,25 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 #### Task 3 — Make Vercel Preview deployment repeatable from GitHub
 
-- [ ] Connect `amitsharmaak/distil` to the existing `pv-1850/project-evgf1` Vercel project.
-- [ ] Keep Production undeployed and retain the current Preview-only Neon isolation.
-- [ ] Confirm a commit on `codex/phase-1-personal-capture` creates a Preview for that exact SHA.
-- [ ] Verify `sin1`, the `capture-requests` consumer, its 60-second limit, and the stable Preview alias.
-- [ ] Verify unauthenticated `GET /api/health` succeeds, Vercel Authentication remains off, and
+- [x] Connect `amitsharmaak/distil` to the existing `pv-1850/project-evgf1` Vercel project.
+- [x] Keep Production undeployed and retain the current Preview-only Neon isolation.
+- [x] Confirm a commit on `codex/phase-1-personal-capture` creates a Preview for that exact SHA.
+- [x] Verify `sin1`, the `capture-requests` consumer, its 60-second limit, and the stable Preview alias.
+- [x] Verify unauthenticated `GET /api/health` succeeds, Vercel Authentication remains off, and
       Distil authentication remains on.
-- [ ] **Task 3 complete:** append the Git SHA, deployment ID, inspector URL, and health evidence here.
+- [x] **Task 3 complete (2026-09-07 20:18 IST):** verification commit
+      `020944a7f8331d47cbc1691768dc404b6ae0fb9f` produced ready Preview deployment
+      `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`; inspector:
+      `https://vercel.com/pv-1850/project-evgf1/G82PKZd9nR2q7RffVvdeV62v4QB4`. Vercel tied the
+      deployment to branch `codex/phase-1-personal-capture` and the exact commit. Deployment
+      resources list `/api/queue/capture-requests`; the reviewed `vercel.json` registers its
+      `capture-requests` queue trigger with `maxDuration: 60`; deployment inspection reports
+      `sin1`. The stable alias `https://distil-preview-pv-1850.vercel.app` was repointed to this
+      deployment. An unauthenticated health request returned HTTP 200, `cache-control: no-store`,
+      `x-vercel-id` containing `sin1`, and exactly `{"status":"ok","service":"distil"}`. Vercel
+      Authentication is disabled; unauthenticated `/` redirects to `/login`, and `/api/items`
+      returns HTTP 401. Every configured project variable remains scoped to Preview. The Git
+      connection and verification push created no new Production deployment.
 
 #### Task 4 — Configure and accept one AI provider
 
@@ -608,11 +622,15 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 ### Known blockers and decisions
 
-- The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
-  to Vercel CI/CD.
-- Tasks 1 and 2 are complete. Task 2's accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c`
-  passed all eight prerequisite jobs and the aggregate quality gate in run `34126389699`. Resume at
-  Task 3: connect the existing Vercel project to GitHub without deploying Production.
+- The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. A push to
+  `codex/phase-1-personal-capture` produced a ready Preview for the exact pushed SHA. The stable
+  Preview alias currently points to the accepted Task 3 deployment.
+- Tasks 1 through 3 are complete. Task 2's accepted commit
+  `6714a1c6cd84a3cae925860b84409ed56de3824c` passed all eight prerequisite jobs and the aggregate
+  quality gate in run `34126389699`. Task 3's accepted commit
+  `020944a7f8331d47cbc1691768dc404b6ae0fb9f` is deployed as
+  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume at Task 4: choose, configure, and accept one AI
+  provider in Preview.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
@@ -626,11 +644,12 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 ### Safety and rollback position
 
-The production environment has not been touched. The Neon resource is connected only to Preview;
-its schema and imported user data are now populated. The source SQLite database remains unchanged.
-Rollback should repoint the stable Preview alias to the previous verified deployment while leaving
-additive PostgreSQL migrations/imported rows intact unless a separate, explicit database recovery
-plan is approved.
+There is no successful Production deployment, and Production has no database or application
+secrets. The Neon resource and all configured project variables are connected only to Preview; its
+schema and imported user data are populated. The source SQLite database remains unchanged. The
+stable Preview alias points to the accepted Git-built Task 3 deployment. Rollback should repoint it
+to the previous verified deployment while leaving additive PostgreSQL migrations/imported rows
+intact unless a separate, explicit database recovery plan is approved.
 
 For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/vercel-deployment.md`,
 `docs/sqlite-import.md`, `docs/iphone-shortcut.md`, and `docs/security-audit.md`.
