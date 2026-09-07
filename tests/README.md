@@ -18,3 +18,15 @@ contact hosted databases, AI providers, connectors, or arbitrary websites.
 The root agent owns shared runner configuration and package metadata. Test
 support modules, browser harnesses, and feature suites have exclusive owners
 during parallel execution.
+
+## Phase 3 isolation
+
+The reusable two-tenant fixtures, authorization-matrix validator, migration
+invariant checks, pooled-connection RLS harness, forged queue inputs, and
+negative-test catalog are described in
+[`docs/phase-3-isolation-testing.md`](../docs/phase-3-isolation-testing.md).
+
+The Phase 3 RLS integration suite skips without starting PostgreSQL until
+tenant columns, RLS enablement, and a policy appear in the production migration
+directory. It becomes a failing gate automatically once those migration signals
+exist.

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "P3-AUTH-001",
+      "layer": "auth",
+      "surface": "protected routes",
+      "threat": "missing or expired session",
+      "setup": "Build a request with no valid session and no capture token.",
+      "attack": "Invoke every protected route method.",
+      "expected": "Reject before repository access with the matrix-defined unauthenticated response.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-ROUTE-001",
+      "layer": "route",
+      "surface": "single-resource routes",
+      "threat": "cross-tenant identifier guessing",
+      "setup": "Create the resource for alpha and authenticate as beta.",
+      "attack": "Read, update, or delete alpha's identifier as beta.",
+      "expected": "Return the same not-found response as an unknown identifier and make no mutation.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-ROUTE-002",
+      "layer": "route",
+      "surface": "nested collection item routes",
+      "threat": "mixed-tenant parent and child identifiers",
+      "setup": "Create a collection for alpha and an item for beta.",
+      "attack": "Attach beta's item to alpha's collection, and try the inverse combination.",
+      "expected": "Reject both combinations without revealing which identifier belongs to another tenant.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-REPO-001",
+      "layer": "repository",
+      "surface": "all tenant repository reads and mutations",
+      "threat": "omitted tenant predicate",
+      "setup": "Seed colliding business identifiers and distinguishable records for alpha and beta.",
+      "attack": "Execute every repository method using alpha's AuthContext.",
+      "expected": "Only alpha's rows are returned or mutated; tenant context is mandatory at the call boundary.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-DB-001",
+      "layer": "database",
+      "surface": "tenant-owned tables",
+      "threat": "repository regression or raw SQL missing a tenant predicate",
+      "setup": "Insert one row per tenant and use the restricted application database role.",
+      "attack": "Select, update, and delete beta's row while the transaction-local tenant is alpha.",
+      "expected": "RLS hides beta's row and prevents mutation even when application SQL is incorrectly broad.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-DB-002",
+      "layer": "database",
+      "surface": "pooled PostgreSQL connections",
+      "threat": "tenant context leaking between checked-out connections",
+      "setup": "Use a single-connection pool and alternate alpha, beta, and context-free transactions.",
+      "attack": "Query after each checkout and after a failed transaction.",
+      "expected": "Each transaction sees only its tenant and no tenant setting remains after commit or rollback.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-QUEUE-001",
+      "layer": "queue",
+      "surface": "capture queue consumer",
+      "threat": "forged CaptureQueueMessageV2 tenant",
+      "setup": "Create a capture for alpha and forge a syntactically valid envelope naming beta.",
+      "attack": "Deliver the forged envelope directly to the consumer.",
+      "expected": "Reject the tenant-resource mismatch and perform no fetch, item write, or status transition.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-QUEUE-002",
+      "layer": "queue",
+      "surface": "durable job consumer",
+      "threat": "forged TenantJobEnvelopeV1 tenant or legacy unscoped payload",
+      "setup": "Create a job for alpha and build the forged fixtures from tests/support/phase3-tenancy.ts.",
+      "attack": "Deliver wrong-version, missing-context, and beta-for-alpha envelopes.",
+      "expected": "Reject before resolving a handler and preserve the original job unchanged.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-SEARCH-001",
+      "layer": "search",
+      "surface": "keyword, semantic, and hybrid search",
+      "threat": "cross-tenant retrieval through an index",
+      "setup": "Give beta a uniquely searchable marker absent from alpha's data.",
+      "attack": "Search for beta's marker as alpha, including filters and pagination cursors.",
+      "expected": "Return no beta identifiers, snippets, counts, facets, or cursor information.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-AI-001",
+      "layer": "ai-context",
+      "surface": "answers, summaries, prioritization, and research",
+      "threat": "cross-tenant document assembled into an AI prompt",
+      "setup": "Give beta a unique canary string and capture outbound provider inputs.",
+      "attack": "Ask alpha a question designed to retrieve beta's canary.",
+      "expected": "The provider input, citations, persisted artifacts, and response contain no beta data.",
+      "delivery": "wave-1-gate"
+    },
+    {
+      "id": "P3-CACHE-001",
+      "layer": "cache",
+      "surface": "response, object, and embedding caches",
+      "threat": "cache key missing tenant identity",
+      "setup": "Warm a cache as alpha using the same non-tenant inputs beta will request.",
+      "attack": "Repeat the request as beta.",
+      "expected": "Beta cannot receive alpha's cached value; tenant identity is part of every private cache key.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-RATE-001",
+      "layer": "rate-limit",
+      "surface": "per-user and capture-token rate limits",
+      "threat": "one tenant consuming or bypassing another tenant's quota",
+      "setup": "Exhaust alpha's limit while beta has the same network address and request shape.",
+      "attack": "Request as beta, then rotate alpha's token while preserving alpha ownership.",
+      "expected": "Beta retains its quota and alpha cannot evade a user-scoped quota by rotating credentials.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-LOG-001",
+      "layer": "logging",
+      "surface": "application logs and audit records",
+      "threat": "tenant data leakage through observability",
+      "setup": "Use alpha and beta canaries in resource bodies, tokens, and query strings.",
+      "attack": "Exercise failures, retries, authorization denials, and AI-provider errors.",
+      "expected": "Logs have request and tenant correlation but contain no secrets or other tenant's content.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-OBJECT-001",
+      "layer": "object-storage",
+      "surface": "raw content, exports, and future media objects",
+      "threat": "guessable storage key or cross-tenant signed URL",
+      "setup": "Store an object for alpha and authenticate as beta.",
+      "attack": "Request the object key directly and replay any previously issued signed URL.",
+      "expected": "Deny access; private keys include an immutable tenant boundary and signed URLs are narrowly scoped.",
+      "delivery": "phase-3-exit"
+    }
+  ]
+}

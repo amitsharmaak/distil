@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "capture-create",
+      "surface": "POST /api/v1/captures",
+      "surfaceKind": "route",
+      "resourceScope": "user",
+      "unauthenticated": "deny",
+      "actors": {
+        "user": "own",
+        "capture-token": "own",
+        "system": "deny"
+      },
+      "concealCrossTenant": true,
+      "notes": "The authenticated AuthContext supplies userId; request bodies cannot choose it."
+    },
+    {
+      "id": "capture-consumer",
+      "surface": "worker:capture",
+      "surfaceKind": "worker",
+      "resourceScope": "user",
+      "unauthenticated": "deny",
+      "actors": {
+        "user": "deny",
+        "capture-token": "deny",
+        "system": "own"
+      },
+      "concealCrossTenant": true,
+      "notes": "CaptureQueueMessageV2 userId and captureId must resolve to the same tenant."
+    }
+  ]
+}
