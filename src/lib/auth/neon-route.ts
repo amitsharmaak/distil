@@ -1,3 +1,4 @@
+import { AuthError } from "@/lib/auth/errors";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 
 export const NEON_AUTH_ROUTE_METHODS = {
@@ -44,7 +45,30 @@ export async function dispatchGatedNeonAuth(
       { status: 404 }
     );
   }
-  if (request.method === "POST") requireAllowedOrigin(request, dependencies.loadAllowedOrigins());
+  const needsAllowedOrigins = path.join("/") === "magic-link/verify" || request.method === "POST";
+  const allowedOrigins = needsAllowedOrigins ? dependencies.loadAllowedOrigins() : undefined;
+  if (path.join("/") === "magic-link/verify") {
+    const expectedPaths: Record<string, string> = {
+      callbackURL: "/api/auth/invitations/complete",
+      newUserCallbackURL: "/api/auth/invitations/complete",
+      errorCallbackURL: "/access-denied",
+    };
+    const requestUrl = new URL(request.url);
+    for (const [name, expectedPath] of Object.entries(expectedPaths)) {
+      const value = requestUrl.searchParams.get(name);
+      if (!value) continue;
+      let callback: URL;
+      try {
+        callback = new URL(value);
+      } catch {
+        throw new AuthError("ORIGIN_NOT_ALLOWED", 403, "Invalid auth callback");
+      }
+      if (!allowedOrigins?.has(callback.origin) || callback.pathname !== expectedPath) {
+        throw new AuthError("ORIGIN_NOT_ALLOWED", 403, "Invalid auth callback");
+      }
+    }
+  }
+  if (request.method === "POST") requireAllowedOrigin(request, allowedOrigins!);
   const handler = dependencies.loadHandler(request.method);
   if (!handler) return new Response(null, { status: 405 });
   return handler(request, { params: Promise.resolve({ path }) });

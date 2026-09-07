@@ -11,6 +11,7 @@ import {
 import { readCookie } from "@/lib/auth/request";
 import { readProviderIdentity, type ProviderIdentityPort } from "@/lib/auth/request-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import { AuthError } from "@/lib/auth/errors";
 
 export interface MagicLinkProvider extends ProviderIdentityPort {
   requestMagicLink(input: {
@@ -80,7 +81,7 @@ export function createMagicLinkRequestHandler(dependencies: {
       );
       return response;
     } catch (error) {
-      if (error instanceof AccessDeniedError) {
+      if (error instanceof AccessDeniedError || error instanceof AuthError) {
         return Response.json(
           { error: { code: "ACCESS_DENIED", message: "Unable to continue" } },
           { status: 403 }

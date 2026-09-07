@@ -16,12 +16,30 @@ const PUBLIC_AUTH_PATHS = new Set([
   "/api/auth/magic-link/verify",
   "/api/auth/sign-out",
 ]);
+const PROTECTED_AUTH_PREFIXES = [
+  "/api/auth/account",
+  "/api/auth/devices",
+  "/api/auth/gmail",
+  "/api/auth/slack",
+] as const;
 
 export interface NeonProxyProvider extends ProviderIdentityPort {
   middleware(config: { loginUrl: string }): (request: NextRequest) => Promise<NextResponse>;
 }
 
 export function isPublicNeonPath(pathname: string): boolean {
+  if (pathname.startsWith("/api/auth/")) {
+    if (
+      PROTECTED_AUTH_PREFIXES.some(
+        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+      )
+    ) {
+      return false;
+    }
+    // Known public auth routes are handled explicitly. Everything else falls
+    // through to the catch-all's pre-SDK 404 gate.
+    return true;
+  }
   return (
     PUBLIC_PATHS.has(pathname) ||
     PUBLIC_AUTH_PATHS.has(pathname) ||

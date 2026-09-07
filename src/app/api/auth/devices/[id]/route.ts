@@ -4,6 +4,7 @@ import { authFailureResponse } from "@/lib/auth/http";
 import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { readAuthEnvironment } from "@/lib/auth/environment";
+import { requireFreshAuthentication } from "@/lib/auth/request-context";
 
 export async function DELETE(
   request: Request,
@@ -12,6 +13,7 @@ export async function DELETE(
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
     const resolved = await resolveCurrentAccount(request);
+    requireFreshAuthentication(resolved.freshAuth);
     const revoked = await revokeAuthDevice(
       neonSessionProvider(getNeonAuthServer()),
       (await params).id,

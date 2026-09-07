@@ -12,6 +12,7 @@ describe("Neon Auth route gate", () => {
     expect(isAllowedNeonAuthRoute(["sign-in", "email"], "POST")).toBe(false);
     expect(isAllowedNeonAuthRoute(["sign-up", "email"], "POST")).toBe(false);
     expect(isAllowedNeonAuthRoute(["delete-user"], "POST")).toBe(false);
+    expect(isAllowedNeonAuthRoute(["invitations", "issue"], "POST")).toBe(false);
   });
 
   it("does not invoke the provider for a blocked path", async () => {
@@ -63,5 +64,19 @@ describe("Neon Auth route gate", () => {
     );
     expect(allowed.status).toBe(200);
     expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects magic-link redirects outside the fixed application callback", async () => {
+    const loadHandler = jest.fn();
+    await expect(
+      dispatchGatedNeonAuth(
+        new Request(
+          "https://distil.example/api/auth/magic-link/verify?token=x&callbackURL=https%3A%2F%2Fhostile.example%2Fsteal"
+        ),
+        { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
+        { loadAllowedOrigins: () => new Set(["https://distil.example"]), loadHandler }
+      )
+    ).rejects.toThrow("Invalid auth callback");
+    expect(loadHandler).not.toHaveBeenCalled();
   });
 });

@@ -4,11 +4,13 @@ import { authFailureResponse } from "@/lib/auth/http";
 import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { readAuthEnvironment } from "@/lib/auth/environment";
+import { requireFreshAuthentication } from "@/lib/auth/request-context";
 
 export async function POST(request: Request): Promise<Response> {
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
-    await resolveCurrentAccount(request);
+    const resolved = await resolveCurrentAccount(request);
+    requireFreshAuthentication(resolved.freshAuth);
     return Response.json({
       revoked: await revokeOtherAuthDevices(neonSessionProvider(getNeonAuthServer())),
     });

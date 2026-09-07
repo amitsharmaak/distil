@@ -32,6 +32,13 @@ export function readNeonAuthFoundation(
   }
 
   const missing = REQUIRED_VARIABLES.filter((name) => !environment[name]?.trim());
+  if (
+    environment.NEON_AUTH_COOKIE_SECRET &&
+    environment.NEON_AUTH_COOKIE_SECRET.length < 32 &&
+    !missing.includes("NEON_AUTH_COOKIE_SECRET")
+  ) {
+    missing.push("NEON_AUTH_COOKIE_SECRET");
+  }
   return Object.freeze({
     enabled: true,
     status: missing.length === 0 ? "ready" : "misconfigured",

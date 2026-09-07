@@ -38,4 +38,14 @@ describe("readNeonAuthFoundation", () => {
       missing: ["NEON_AUTH_BASE_URL", "NEON_AUTH_COOKIE_SECRET"],
     });
   });
+
+  it("rejects a cookie secret shorter than the SDK's 32-character minimum", () => {
+    expect(
+      readNeonAuthFoundation({
+        FEATURE_NEON_AUTH: "true",
+        NEON_AUTH_BASE_URL: "https://auth.example.test",
+        NEON_AUTH_COOKIE_SECRET: "too-short",
+      })
+    ).toEqual({ enabled: true, status: "misconfigured", missing: ["NEON_AUTH_COOKIE_SECRET"] });
+  });
 });

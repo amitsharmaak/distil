@@ -39,7 +39,7 @@ describe("composed Neon proxy authorization", () => {
     expect(isPublicNeonPath("/api/v1/captures")).toBe(true);
     expect(isPublicNeonPath("/api/auth/devices")).toBe(false);
     expect(isPublicNeonPath("/api/auth/gmail")).toBe(false);
-    expect(isPublicNeonPath("/api/auth/invitations/issue")).toBe(false);
+    expect(isPublicNeonPath("/api/auth/invitations/issue")).toBe(true);
     expect(isPublicNeonPath("/api/v1/feed")).toBe(false);
   });
 
