@@ -5,6 +5,8 @@ import { insertFeedback, getItemById } from "@/lib/database";
 import { updatePreferencesFromFeedback } from "@/lib/ai/preferences";
 import { reprioritize } from "@/lib/ai/prioritize";
 
+const MAX_REASON_LENGTH = 1_000;
+
 /** POST /api/ai/feedback — Submit feedback on a content item. */
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +23,12 @@ export async function POST(req: NextRequest) {
     if (rating !== 1 && rating !== -1) {
       return NextResponse.json(
         { error: "rating must be 1 (like) or -1 (dislike)" },
+        { status: 400 }
+      );
+    }
+    if (reason !== undefined && (typeof reason !== "string" || reason.length > MAX_REASON_LENGTH)) {
+      return NextResponse.json(
+        { error: `reason must be a string of at most ${MAX_REASON_LENGTH} characters` },
         { status: 400 }
       );
     }

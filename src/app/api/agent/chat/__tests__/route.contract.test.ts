@@ -125,6 +125,33 @@ describe("POST /api/agent/chat", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects oversized messages before persisting or invoking AI", async () => {
+    const req = makeRequest("http://localhost:3000/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "x".repeat(20_001) }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    expect(mockInsertChatMessage).not.toHaveBeenCalled();
+    expect(mockRagQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed conversation identifiers", async () => {
+    const req = makeRequest("http://localhost:3000/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "hello", conversationId: { invalid: true } }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    expect(mockInsertChatMessage).not.toHaveBeenCalled();
+  });
+
   it("returns 200 with answer, citations, and chunksUsed", async () => {
     const req = makeRequest("http://localhost:3000/api/agent/chat", {
       method: "POST",
@@ -257,6 +284,17 @@ describe("POST /api/agent/chat", () => {
 // ── GET /api/agent/chat ───────────────────────────────────────────────────────
 
 describe("GET /api/agent/chat", () => {
+  it("rejects oversized conversation identifiers", async () => {
+    const req = makeRequest(
+      `http://localhost:3000/api/agent/chat?conversationId=${"x".repeat(129)}`
+    );
+
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+    expect(mockGetChatMessages).not.toHaveBeenCalled();
+  });
+
   it("returns messages for a given conversationId", async () => {
     const mockMessages = [
       { id: "msg-1", role: "user", content: "hello", created_at: new Date().toISOString() },

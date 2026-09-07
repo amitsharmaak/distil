@@ -72,17 +72,17 @@ npm run test:coverage # Run tests with coverage report
 
 All config is driven by environment variables. Copy `.env.example` to `.env.local` to configure locally.
 
-| Variable                   | Default                 | Purpose                                      |
-| -------------------------- | ----------------------- | -------------------------------------------- |
-| `DB_PATH`                  | `./data/distil.db`         | Path to the SQLite database file             |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000` | Base URL for client-side API calls           |
-| `GEMINI_API_KEY`           | *(none)*                | Google Gemini API key for AI features        |
-| `SLACK_CLIENT_ID`          | *(none)*                | Slack App Client ID (User OAuth flow)        |
-| `SLACK_CLIENT_SECRET`      | *(none)*                | Slack App Client Secret                      |
-| `SLACK_REDIRECT_URI`       | `http://localhost:3000/api/auth/slack/callback` | Must match a Redirect URL on the Slack App |
-| `SLACK_SYNC_CHANNELS` | *(empty — syncs nothing)* | Comma-separated channel names/IDs to sync; required to sync anything |
-| `GMAIL_NEWSLETTER_SENDERS` | *(empty)*               | Reserved for future use; Gmail sync auto-detects newsletters |
-| `GMAIL_SYNC_AFTER_DATE`    | 30 days ago             | Earliest date to sync emails (YYYY/MM/DD)    |
+| Variable                   | Default                                         | Purpose                                                              |
+| -------------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
+| `DB_PATH`                  | `./data/distil.db`                              | Path to the SQLite database file                                     |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3000`                         | Base URL for client-side API calls                                   |
+| `GEMINI_API_KEY`           | _(none)_                                        | Google Gemini API key for AI features                                |
+| `SLACK_CLIENT_ID`          | _(none)_                                        | Slack App Client ID (User OAuth flow)                                |
+| `SLACK_CLIENT_SECRET`      | _(none)_                                        | Slack App Client Secret                                              |
+| `SLACK_REDIRECT_URI`       | `http://localhost:3000/api/auth/slack/callback` | Must match a Redirect URL on the Slack App                           |
+| `SLACK_SYNC_CHANNELS`      | _(empty — syncs nothing)_                       | Comma-separated channel names/IDs to sync; required to sync anything |
+| `GMAIL_NEWSLETTER_SENDERS` | _(empty)_                                       | Reserved for future use; Gmail sync auto-detects newsletters         |
+| `GMAIL_SYNC_AFTER_DATE`    | 30 days ago                                     | Earliest date to sync emails (YYYY/MM/DD)                            |
 
 **Security rules:**
 
@@ -157,6 +157,7 @@ All config is driven by environment variables. Copy `.env.example` to `.env.loca
 ### AI Agent System
 
 The AI agent system uses Google Gemini (`gemini-2.5-flash`) for:
+
 1. **Summarization** — generates markdown summaries for content items (brief/detailed modes)
 2. **Feedback & Learning** — tracks user like/dislike with reasons, builds preference profile
 3. **Prioritization** — scores items using learned preferences (heuristic + optional AI ranking)
@@ -187,6 +188,7 @@ SQLite file at `data/distil.db` (gitignored). Tables:
 - `oauth_tokens` — OAuth credentials for source connectors
 
 Notes:
+
 - `topics` stored as JSON string, deserialized on read
 - `isRead` stored as 0/1 integer, converted to boolean on read
 - WAL mode enabled for concurrent read performance
@@ -499,3 +501,13 @@ distil/
 │       └── utils.ts
 └── tsconfig.json
 ```
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
