@@ -50,17 +50,23 @@ the resource id; a syntactically valid beta envelope naming an alpha resource is
 - bidirectional coverage checks, so newly added and stale surfaces both fail;
 - Next route discovery with normalized dynamic paths such as `/api/items/:id`.
 
-`tests/fixtures/phase3/authorization-matrix.valid.json` is a schema fixture, not the complete product
-matrix. Wave 1 should add the reviewed matrix under `tests/security` and gate it as follows:
+`tests/fixtures/phase3/authorization-matrix.valid.json` remains a compact schema fixture.
+`tests/fixtures/phase3/phase2-wave0-route-surfaces.json` is the frozen 96-surface Phase 2 + Wave 0
+route inventory. `createPhase2Wave0AuthorizationMatrix()` creates the least-privilege review matrix
+from that explicit inventory; discovery is compared in both directions so adding, removing, or
+renaming a route fails review rather than receiving a default policy. The worker inventory is also
+explicit (`worker:capture`, `worker:durable-job`).
 
 ```ts
 const routeSurfaces = discoverNextRouteSurfaces(resolve(process.cwd(), "src/app/api"));
 const workerSurfaces = ["worker:capture", "worker:durable-job"];
-const matrix = loadAuthorizationMatrix(
-  resolve(process.cwd(), "tests/security/authorization-matrix.json")
+const inventory = loadRouteSurfaceInventory(
+  resolve(process.cwd(), "tests/fixtures/phase3/phase2-wave0-route-surfaces.json")
 );
+assertRouteSurfaceInventory(inventory, routeSurfaces);
+const matrix = createPhase2Wave0AuthorizationMatrix(inventory);
 
-assertAuthorizationCoverage(matrix, [...routeSurfaces, ...workerSurfaces]);
+assertAuthorizationCoverage(matrix, [...inventory, ...workerSurfaces]);
 ```
 
 Every route method is a separate surface. `OPTIONS` may be public only where it performs no tenant
@@ -86,19 +92,22 @@ pattern. A session-level `SET app.user_id` is unsafe with pooling and is not an 
 
 `tests/security/phase3-rls.integration.test.ts` is automatically discovered by the existing
 PostgreSQL integration runner. It initially appears as skipped without starting Docker. It activates
-when the migration directory contains all three signals: a `user_id` column, RLS enablement, and a
-policy. A `workspace_id` migration cannot activate this gate; workspaces remain Phase 6. Once active
-it:
+only after the migration source includes `user_id`, `ENABLE` and `FORCE ROW LEVEL SECURITY`, a policy,
+and an explicit marker for every table in the immutable 36-table Phase 2 + Wave 0 manifest. A
+`workspace_id` migration, a one-table probe, or a partial tenant migration cannot activate this gate;
+workspaces remain Phase 6. Once active it:
 
-1. inspects real migrated catalogs for ownership, foreign-key, RLS, policy, and scoped-unique-key
-   invariants on core tables;
-2. connects as a restricted role through a one-connection pool;
-3. alternates alpha, beta, and alpha actor contexts and proves each sees only its own same-id row;
-4. proves the setting is absent after commit and after rollback.
+1. inspects real migrated catalogs for every manifest table: ownership, foreign key, composite
+   ownership relationships, RLS + FORCE RLS, all CRUD policies, and scoped uniqueness;
+2. connects as a non-superuser, non-owner, non-`BYPASSRLS` application role;
+3. proves context-free reads and writes fail closed, then exercises select/update/delete/insert under
+   that restricted role;
+4. alternates alpha, beta, and alpha through one pooled connection and proves the setting is absent
+   after commit and after rollback.
 
-Extend the invariant table list in the same test as Wave 1 partitions the remaining personal tables.
-Do not weaken the activation detector to keep a partial migration green; once tenant migrations
-start, missing core protection is a failing gate.
+The invariant list is generated directly from `tenantMigrationManifest`; do not hand-maintain a
+smaller core-table list or weaken the activation detector to keep a partial migration green. Once the
+full migration handoff is present, missing protection is a failing gate.
 
 ## Adversarial catalog
 
@@ -110,6 +119,22 @@ cases cover caches, quotas, logs, and object storage as those shared services ar
 Each implemented test should retain the catalog id in its test name. For cross-tenant resources,
 assert both non-disclosure and absence of side effects: no status transition, fetched URL, item write,
 provider call, queue dispatch, cache entry, or audit content belonging to the attacker.
+
+## Pending production interfaces
+
+`tests/security/phase3-boundaries.integration.test.ts` compiles now and activates each boundary
+independently through the precise `DISTIL_PHASE3_ISOLATION_ADAPTER` test-only module signal. The module
+must export `phase3IsolationAdapters` and may expose `routes`, `repositories`, `queue`, and
+`coexistence` separately. Each available adapter immediately gates its own concern; unavailable
+interfaces alone are skipped, never a blanket Phase 3 suite skip. Reuse the assertions in
+`tests/support/phase3-isolation.ts`:
+
+- `assertCrossTenantNotFound` proves cross-user reads return the identical 404/body as unknown ids.
+- `assertRepositoryIsolation` checks list, lookup, update, and delete paths.
+- `assertForgedQueueEnvelopesRejected` runs every malformed and cross-user queue envelope and checks
+  that no effect occurs.
+- `assertTenantScopedCoexistence` requires the same normalized URL, digest date, and preference key
+  to succeed for both users.
 
 ## Wave 1 integration checklist
 
@@ -124,6 +149,10 @@ provider call, queue dispatch, cache entry, or audit content belonging to the at
 - Add a reviewed full authorization matrix and explicit worker inventory to the security suite.
 - Parameterize consumer tests over `forgedQueueEnvelopeFixtures()` and route/repository tests over
   `createTwoTenantFixture()`.
+
+`npm run test:phase3-isolation` runs the deterministic fixture, matrix, activation, and adapter
+assertion tests in CI. The existing `npm run test:integration` runner automatically includes the
+PostgreSQL RLS and boundary-adapter integration suites.
 
 The normal unit suite validates fixture determinism, matrix/catalog structure, source inventory, and
 migration activation. Hosted services are never contacted.

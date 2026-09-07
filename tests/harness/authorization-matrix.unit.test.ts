@@ -1,9 +1,14 @@
 import { resolve } from "node:path";
 import {
   assertAuthorizationCoverage,
+  assertRouteSurfaceInventory,
   authorizationCoverageIssues,
+  createPhase2Wave0AuthorizationMatrix,
   discoverNextRouteSurfaces,
   loadAuthorizationMatrix,
+  loadRouteSurfaceInventory,
+  phase2Wave0WorkerSurfaces,
+  routeSurfaceInventoryIssues,
   validateAuthorizationMatrix,
 } from "../support/authorization-matrix";
 import {
@@ -86,6 +91,40 @@ describe("Phase 3 authorization matrix", () => {
         "DELETE /api/v1/collections/:id/items/:itemId",
       ])
     );
+  });
+
+  it("locks the final Phase 2 plus Wave 0 API inventory into a least-privilege matrix", () => {
+    const inventory = loadRouteSurfaceInventory(
+      resolve(fixtureDirectory, "phase2-wave0-route-surfaces.json")
+    );
+    const discovered = discoverNextRouteSurfaces(resolve(process.cwd(), "src/app/api"));
+    const matrix = createPhase2Wave0AuthorizationMatrix(inventory);
+
+    expect(inventory).toHaveLength(96);
+    expect(() => assertRouteSurfaceInventory(inventory, discovered)).not.toThrow();
+    expect(() =>
+      assertAuthorizationCoverage(matrix, [...inventory, ...phase2Wave0WorkerSurfaces()])
+    ).not.toThrow();
+    expect(matrix.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          surface: "GET /api/v1/captures/:id",
+          resourceScope: "user",
+          concealCrossTenant: true,
+        }),
+        expect.objectContaining({
+          surface: "POST /api/queue/capture-requests",
+          actors: expect.objectContaining({ system: "own", user: "deny" }),
+        }),
+      ])
+    );
+  });
+
+  it("reports an unreviewed API surface rather than silently applying a default", () => {
+    const inventory = ["GET /api/health"];
+    expect(
+      routeSurfaceInventoryIssues(inventory, ["GET /api/health", "POST /api/new-surface"])
+    ).toEqual(["unreviewed route surface: POST /api/new-surface"]);
   });
 });
 

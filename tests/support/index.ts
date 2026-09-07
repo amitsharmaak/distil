@@ -5,6 +5,7 @@ export * from "./migration-invariants";
 export * from "./msw";
 export * from "./negative-test-catalog";
 export * from "./phase3-tenancy";
+export * from "./phase3-isolation";
 export * from "./postgres";
 export * from "./rls";
 export * from "./secrets";

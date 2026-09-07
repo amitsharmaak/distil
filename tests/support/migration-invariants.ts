@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Sql } from "postgres";
+import type { TenantMigrationManifest } from "@/lib/postgres/tenant-migration/types";
 
 export type RlsPolicyCommand = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
 
@@ -10,6 +11,17 @@ export interface TenantTableInvariantSpec {
     tableName: string;
     columnName?: string;
   };
+  /**
+   * Every relation between tenant-owned tables must include ownership on both
+   * sides. A standalone foreign key (for example item_id -> items.id) can
+   * otherwise join an alpha row to beta's item when ids are guessed or copied.
+   */
+  ownershipReferences?: readonly {
+    name: string;
+    sourceColumns: readonly string[];
+    targetTable: string;
+    targetColumns: readonly string[];
+  }[];
   requireNotNull?: boolean;
   requireRls?: boolean;
   requireForcedRls?: boolean;
@@ -27,6 +39,12 @@ export interface TenantMigrationEvidence {
     rlsEnabled: boolean;
     policyCreated: boolean;
   };
+}
+
+export interface TenantIsolationActivation {
+  ready: boolean;
+  /** Missing feature markers, intentionally specific to the immutable inventory. */
+  missing: string[];
 }
 
 const SQL_FILE = /^\d+[A-Za-z0-9._-]*\.sql$/;
@@ -58,6 +76,32 @@ export function findTenantMigrationEvidence(migrationsDirectory: string): Tenant
   };
 }
 
+/**
+ * Do not turn the real RLS gate on for a partial migration. A Phase 3 migration
+ * is considered present only when its SQL explicitly names every frozen tenant
+ * table and the three security primitives. Catalog assertions still make the
+ * suite fail as soon as that precise handoff is attempted incorrectly.
+ */
+export function findTenantIsolationActivation(
+  migrationsDirectory: string,
+  manifest: Pick<TenantMigrationManifest, "tables">
+): TenantIsolationActivation {
+  const directory = resolve(migrationsDirectory);
+  const files = readdirSync(directory)
+    .filter((name) => SQL_FILE.test(name))
+    .sort((left, right) => left.localeCompare(right));
+  const source = files.map((name) => readFileSync(resolve(directory, name), "utf8")).join("\n");
+  const missing: string[] = [];
+  if (!/\buser_id\b/i.test(source)) missing.push("user_id ownership column");
+  if (!/ENABLE\s+ROW\s+LEVEL\s+SECURITY/i.test(source)) missing.push("ENABLE ROW LEVEL SECURITY");
+  if (!/FORCE\s+ROW\s+LEVEL\s+SECURITY/i.test(source)) missing.push("FORCE ROW LEVEL SECURITY");
+  if (!/CREATE\s+POLICY/i.test(source)) missing.push("CREATE POLICY");
+  for (const { table } of manifest.tables) {
+    if (!new RegExp(`\\b${table}\\b`, "i").test(source)) missing.push(`table marker: ${table}`);
+  }
+  return { ready: missing.length === 0, missing };
+}
+
 interface ColumnRow {
   is_nullable: "YES" | "NO";
 }
@@ -70,6 +114,13 @@ interface TableSecurityRow {
 interface ForeignKeyRow {
   foreign_table: string;
   foreign_column: string;
+}
+
+interface CompositeForeignKeyRow {
+  constraint_name: string;
+  source_columns: string[];
+  foreign_table: string;
+  foreign_columns: string[];
 }
 
 interface PolicyRow {
@@ -86,6 +137,24 @@ interface UniqueIndexRow {
 
 function containsColumns(actual: readonly string[], expected: readonly string[]): boolean {
   return actual.length === expected.length && expected.every((column) => actual.includes(column));
+}
+
+/** Generate catalog checks from the immutable Phase 2 / Wave 0 manifest. */
+export function tenantManifestInvariantSpecs(
+  manifest: Pick<TenantMigrationManifest, "tables">
+): TenantTableInvariantSpec[] {
+  return manifest.tables.map((table) => ({
+    tableName: table.table,
+    tenantReferences: { tableName: "users" },
+    policySetting: "app.user_id",
+    ownershipReferences: table.references.map((reference) => ({
+      name: reference.name,
+      sourceColumns: reference.columns,
+      targetTable: reference.targetTable,
+      targetColumns: reference.targetColumns,
+    })),
+    tenantScopedUniqueKeys: table.uniqueness.map((uniqueness) => [...uniqueness.columns]),
+  }));
 }
 
 /** Inspect migrated PostgreSQL catalogs instead of relying on SQL regexes. */
@@ -161,23 +230,73 @@ export async function tenantMigrationInvariantIssues(
       }
     }
 
+    if (spec.ownershipReferences && spec.ownershipReferences.length > 0) {
+      const foreignKeys = await sql<CompositeForeignKeyRow[]>`
+        SELECT constraint_row.conname AS constraint_name,
+               array_agg(source_attribute.attname ORDER BY keys.ordinality)::text[] AS source_columns,
+               foreign_table.relname AS foreign_table,
+               array_agg(foreign_attribute.attname ORDER BY keys.ordinality)::text[] AS foreign_columns
+        FROM pg_catalog.pg_constraint constraint_row
+        JOIN pg_catalog.pg_class source_table ON source_table.oid = constraint_row.conrelid
+        JOIN pg_catalog.pg_namespace source_namespace
+          ON source_namespace.oid = source_table.relnamespace
+        JOIN pg_catalog.pg_class foreign_table ON foreign_table.oid = constraint_row.confrelid
+        JOIN LATERAL unnest(constraint_row.conkey, constraint_row.confkey) WITH ORDINALITY
+          AS keys(source_attnum, foreign_attnum, ordinality) ON true
+        JOIN pg_catalog.pg_attribute source_attribute
+          ON source_attribute.attrelid = source_table.oid
+         AND source_attribute.attnum = keys.source_attnum
+        JOIN pg_catalog.pg_attribute foreign_attribute
+          ON foreign_attribute.attrelid = foreign_table.oid
+         AND foreign_attribute.attnum = keys.foreign_attnum
+        WHERE constraint_row.contype = 'f'
+          AND source_namespace.nspname = 'public'
+          AND source_table.relname = ${spec.tableName}
+        GROUP BY constraint_row.conname, foreign_table.relname
+      `;
+      for (const reference of spec.ownershipReferences) {
+        const expectedSource = [userColumn, ...reference.sourceColumns];
+        const expectedTarget = [userColumn, ...reference.targetColumns];
+        if (
+          !foreignKeys.some(
+            (key) =>
+              key.foreign_table === reference.targetTable &&
+              containsColumns(key.source_columns, expectedSource) &&
+              containsColumns(key.foreign_columns, expectedTarget)
+          )
+        ) {
+          issues.push(
+            `${spec.tableName}.${reference.name} must use ownership FK (${expectedSource.join(
+              ", "
+            )}) -> ${reference.targetTable}(${expectedTarget.join(", ")})`
+          );
+        }
+      }
+    }
+
     const policies = await sql<PolicyRow[]>`
       SELECT policyname, cmd, qual, with_check
       FROM pg_catalog.pg_policies
       WHERE schemaname = 'public' AND tablename = ${spec.tableName}
     `;
     for (const command of spec.requiredPolicyCommands ?? ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
-      if (!policies.some((policy) => policy.cmd === command || policy.cmd === "ALL")) {
+      const commandPolicies = policies.filter(
+        (policy) => policy.cmd === command || policy.cmd === "ALL"
+      );
+      if (commandPolicies.length === 0) {
         issues.push(`${spec.tableName} has no RLS policy covering ${command}`);
       }
-    }
-    if (spec.policySetting) {
-      const policySql = policies
-        .flatMap((policy) => [policy.qual, policy.with_check])
-        .filter((value): value is string => Boolean(value))
-        .join(" ");
-      if (!policySql.includes(userColumn) || !policySql.includes(spec.policySetting)) {
-        issues.push(`${spec.tableName} policies must bind ${userColumn} to ${spec.policySetting}`);
+      if (spec.policySetting) {
+        for (const policy of commandPolicies) {
+          const policySql = [policy.qual, policy.with_check]
+            .filter((value): value is string => Boolean(value))
+            .join(" ");
+          if (!policySql.includes(userColumn) || !policySql.includes(spec.policySetting)) {
+            issues.push(
+              `${spec.tableName} policy ${policy.policyname} covering ${command} must bind ${userColumn} to ${spec.policySetting}`
+            );
+          }
+        }
       }
     }
 

@@ -152,6 +152,141 @@ export function loadAuthorizationMatrix(file: string): AuthorizationMatrix {
   return parsed;
 }
 
+/** Load the frozen Phase 2 + Wave 0 route inventory without assigning trust at runtime. */
+export function loadRouteSurfaceInventory(file: string): string[] {
+  const parsed: unknown = JSON.parse(readFileSync(resolve(file), "utf8"));
+  if (!Array.isArray(parsed) || !parsed.every((surface) => typeof surface === "string")) {
+    throw new Error("Route surface inventory must be a JSON array of strings");
+  }
+  const surfaces = [...parsed].sort();
+  if (new Set(surfaces).size !== surfaces.length) {
+    throw new Error("Route surface inventory contains duplicate surfaces");
+  }
+  for (const surface of surfaces) {
+    const method = surface.split(" ", 1)[0];
+    if (!routeMethods.includes(method) || !/^\w+ \/api(?:\/|$)/.test(surface)) {
+      throw new Error(`Invalid route surface inventory entry: ${surface}`);
+    }
+  }
+  return surfaces;
+}
+
+/** Missing and stale routes are both breaking changes to the authorization review. */
+export function routeSurfaceInventoryIssues(
+  inventory: readonly string[],
+  discovered: readonly string[]
+): string[] {
+  const expected = new Set(inventory);
+  const actual = new Set(discovered);
+  const issues: string[] = [];
+  for (const surface of [...actual].sort()) {
+    if (!expected.has(surface)) issues.push(`unreviewed route surface: ${surface}`);
+  }
+  for (const surface of [...expected].sort()) {
+    if (!actual.has(surface)) issues.push(`removed route surface: ${surface}`);
+  }
+  return issues;
+}
+
+export function assertRouteSurfaceInventory(
+  inventory: readonly string[],
+  discovered: readonly string[]
+): void {
+  const issues = routeSurfaceInventoryIssues(inventory, discovered);
+  if (issues.length > 0) throw new Error(`Route inventory failed:\n- ${issues.join("\n- ")}`);
+}
+
+const publicRouteSurfaces = new Set([
+  "GET /api/health",
+  "GET /api/auth/gmail",
+  "GET /api/auth/gmail/callback",
+  "GET /api/auth/slack",
+  "GET /api/auth/slack/callback",
+  "POST /api/auth/login",
+]);
+
+const systemRouteSurfaces = new Set(["GET /api/cron/digests"]);
+const workerSurfaces = ["worker:capture", "worker:durable-job"] as const;
+
+function matrixId(surface: string): string {
+  return `phase2-wave0-${surface
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "")}`;
+}
+
+/**
+ * Generate the reviewed Phase 2 / Wave 0 least-privilege matrix. The explicit
+ * inventory, rather than route discovery alone, prevents new APIs from gaining
+ * a permissive default without a matrix review.
+ */
+export function createPhase2Wave0AuthorizationMatrix(
+  routeSurfaces: readonly string[]
+): AuthorizationMatrix {
+  const entries: AuthorizationMatrixEntry[] = routeSurfaces.map((surface) => {
+    if (publicRouteSurfaces.has(surface) || surface.startsWith("OPTIONS ")) {
+      return {
+        id: matrixId(surface),
+        surface,
+        surfaceKind: "route",
+        resourceScope: "public",
+        unauthenticated: "allow",
+        actors: { user: "allow", "capture-token": "allow", system: "allow" },
+        concealCrossTenant: false,
+      };
+    }
+    if (systemRouteSurfaces.has(surface)) {
+      return {
+        id: matrixId(surface),
+        surface,
+        surfaceKind: "route",
+        resourceScope: "system",
+        unauthenticated: "deny",
+        actors: { user: "deny", "capture-token": "deny", system: "allow" },
+        concealCrossTenant: false,
+      };
+    }
+    if (surface === "POST /api/queue/capture-requests") {
+      return {
+        id: matrixId(surface),
+        surface,
+        surfaceKind: "route",
+        resourceScope: "user",
+        unauthenticated: "deny",
+        actors: { user: "deny", "capture-token": "deny", system: "own" },
+        concealCrossTenant: true,
+      };
+    }
+    return {
+      id: matrixId(surface),
+      surface,
+      surfaceKind: "route",
+      resourceScope: "user",
+      unauthenticated: "deny",
+      actors: { user: "own", "capture-token": "deny", system: "deny" },
+      concealCrossTenant: true,
+    };
+  });
+  entries.push(
+    ...workerSurfaces.map((surface) => ({
+      id: matrixId(surface),
+      surface,
+      surfaceKind: "worker" as const,
+      resourceScope: "user" as const,
+      unauthenticated: "deny" as const,
+      actors: { user: "deny" as const, "capture-token": "deny" as const, system: "own" as const },
+      concealCrossTenant: true,
+    }))
+  );
+  const matrix = { version: 1 as const, entries };
+  assertValidAuthorizationMatrix(matrix);
+  return matrix;
+}
+
+export function phase2Wave0WorkerSurfaces(): readonly string[] {
+  return workerSurfaces;
+}
+
 /**
  * Fail when a route/worker is absent or when the matrix retains a removed
  * surface. Passing both directions prevents new endpoints from silently

@@ -49,6 +49,7 @@ jobs:
       - run: npm run test:component
       - run: npm run test:contract
       - run: npm run test:sqlite-compat
+      - run: npm run test:phase3-isolation
 
   postgres-integration:
     name: PostgreSQL integration tests

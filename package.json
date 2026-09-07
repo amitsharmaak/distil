@@ -22,6 +22,7 @@
     "test:integration": "node scripts/run-postgres-integration.mjs",
     "test:sqlite-compat": "jest --runInBand --testPathPatterns='\\.sqlite-integration\\.test\\.'",
     "test:security": "jest --runInBand --testPathPatterns='security'",
+    "test:phase3-isolation": "jest --runInBand tests/harness/phase3-tenancy.unit.test.ts tests/harness/phase3-isolation.unit.test.ts tests/harness/authorization-matrix.unit.test.ts tests/harness/migration-invariants.unit.test.ts",
     "test:e2e": "playwright test tests/e2e --project=desktop-chromium --project=mobile-chromium --project=mobile-webkit",
     "test:extension": "playwright test tests/extension --project=extension",
     "test:ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:e2e && npm run test:extension && npm run build",
