@@ -491,7 +491,7 @@ configured. The generated web password is stored in macOS Keychain under service
 | `FEATURE_CONNECTORS`              | `false`                                                                    |
 | `SYNC_INTERVAL_HOURS`             | `0`                                                                        |
 | `NEXT_PUBLIC_SYNC_INTERVAL_HOURS` | `0`                                                                        |
-| Selected AI provider secret(s)    | Not configured; select and add before AI-quality acceptance                |
+| Selected AI provider secret(s)    | `GEMINI_API_KEY`, Secret, Preview only; value stored only in Vercel        |
 
 Do not create public/client-side variables for a database URL, capture token, session secret,
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
@@ -565,18 +565,66 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 #### Task 4 — Configure and accept one AI provider
 
-- [ ] Choose Gemini, OpenAI, or Anthropic; record the expected models, budget ceiling, and rationale.
+- [x] Choose Gemini, OpenAI, or Anthropic; record the expected models, budget ceiling, and rationale.
       Anthropic alone cannot provide embeddings in the current implementation, so choose an embedding
       provider too if Anthropic is selected.
-- [ ] Add only the selected provider's Preview-scoped key in Vercel and redeploy the reviewed commit.
+- [x] Add only the selected provider's Preview-scoped key in Vercel and redeploy the reviewed commit.
       Never paste the key into Git, logs, this document, or chat.
-- [ ] Capture five public cases: short news, long analysis, technical article, paywall/partial content,
+- [x] Capture five public cases: short news, long analysis, technical article, paywall/partial content,
       and malformed or extraction-hostile content.
-- [ ] Record receipt terminal state, processing time, provider/model, faithfulness, and usefulness.
-- [ ] Test provider timeout/rate-limit behavior: safe retry, no duplicate, no leaked provider detail,
+- [x] Record receipt terminal state, processing time, provider/model, faithfulness, and usefulness.
+- [x] Test provider timeout/rate-limit behavior: safe retry, no duplicate, no leaked provider detail,
       no queue loop, and normal completion inside the 60-second worker budget.
-- [ ] Run deterministic evals and any approved live eval; inspect Vercel logs for secrets.
+- [x] Run deterministic evals and an approved live eval; inspect Vercel logs for secrets.
 - [ ] **Task 4 complete:** append accepted quality threshold, results, cost, commit, and deployment ID.
+
+Task 4 progress (2026-09-07, not yet accepted):
+
+- **Provider decision:** Gemini is the only configured Preview AI provider because one Preview-scoped
+  key covers both generation and embeddings and matches the existing evaluation harness. Stable
+  assignments are `gemini-3.5-flash` for summaries/research/search,
+  `gemini-3.5-flash-lite` for classification/tagging/prioritization/preferences, and
+  `gemini-embedding-001` for embeddings. The configured in-application ceiling is
+  `DISTIL_DAILY_AI_BUDGET=1.00`; this is a per-process guardrail, not a Google billing hard limit.
+  Current public list prices recorded during selection were $1.50/$9.00 per million input/output
+  tokens for Flash and $0.30/$2.50 for Flash-Lite. Only `GEMINI_API_KEY` and the budget variable were
+  added to Preview; no provider secret value was printed or committed.
+- **Implementation and tests:** commits `279a31c` and `a042f3b` replace retired/preview model IDs,
+  add bounded retry/timeout coverage, and add live-release tests. Deterministic evaluation passed all
+  50 cases (100% on every recorded metric). Live evaluation with Flash scored topic precision 98.3%,
+  topic recall 98.0%, category accuracy 100%, duplicate precision/recall 100%, priority accuracy 54%,
+  and ROUGE-L 25.0%. Priority and ROUGE are Phase 2 calibration baselines, not acceptance evidence for
+  the live capture summary path. The ignored live result artifact has SHA-256
+  `d189c806e61a2f7ea727ba16070f38db35023bf40eaad688aead07181ba01273`.
+- **Production-only defect found and fixed:** the first live matrix exposed a `jsdom` 30 / ESM bundle
+  crash on normal HTML. Commit `acf888c` pins the compatible server runtime, refreshes audited
+  transitive dependencies, and adds a real-parser regression test. The full local gate then passed:
+  500 tests across 65 suites, changed-line coverage 82.3%, changed-branch coverage 85.5%, 24 web/mobile
+  E2E cases, 10 extension E2E cases, and a production build. The production audit has no High or
+  Critical findings; four Moderate development-only `drizzle-kit`/`esbuild` findings remain. Commit
+  `b2736b2` raises the bounded Gemini attempt timeout from five to eight seconds after live summaries
+  consistently exceeded the original allowance. Its complete GitHub quality gate passed in
+  `https://github.com/amitsharmaak/distil/actions/runs/34142625895`.
+- **Final live capture matrix on `b2736b2`, deployment
+  `dpl_HCXZDHXip1mcavokbzZZgjVNyDnA`:** short news ready in 12.336s, long analysis ready in 9.078s,
+  technical article ready in 9.047s, subscriber/paywall content ready in 10.417s with partial HTML,
+  and extraction-hostile content rejected correctly in 1.879s as `UNSUPPORTED_CONTENT`. All five
+  reached a terminal state on the first worker attempt inside 60 seconds. A duplicate short-news
+  submission returned HTTP 200, `duplicate=true`, and the same receipt. No queue loop or provider
+  secret appeared in inspected logs. Logged successful Flash-Lite tagging calls cost approximately
+  $0.000249-$0.001965 each; exact matrix total remains to be aggregated before acceptance.
+- **Quality result and remaining blocker:** topic generation was useful on all four ready items, and
+  the hostile-content rejection was correct. The user-facing summaries did not pass a reasonable
+  faithfulness/usefulness threshold: short news fell back to whitespace/date boilerplate, long and
+  technical articles fell back to truthful but truncated source openings, and the paywall case stored
+  HTML boilerplate. Cached deep summaries were absent. Therefore Task 4 remains incomplete even though
+  provider connectivity, durability, deduplication, retry bounds, and terminal timing passed.
+- **Exact restart:** reproduce the Flash summary/deep-summary failure with one captured item;
+  distinguish timeout from malformed structured output; fix the summary path without weakening the
+  60-second worker bound; rerun the same five cases sequentially; require useful, source-grounded
+  summaries for the three public articles, graceful partial/rejection behavior for the paywall and
+  hostile cases, zero secret leakage, and all receipts terminal under 60 seconds; aggregate logged
+  cost; then record the accepted commit/deployment and mark Task 4 complete.
 
 #### Task 5 — Provision and accept independent capture clients
 
@@ -622,23 +670,26 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 ### Known blockers and decisions
 
-- The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. A push to
-  `codex/phase-1-personal-capture` produced a ready Preview for the exact pushed SHA. The stable
-  Preview alias currently points to the accepted Task 3 deployment.
-- Tasks 1 through 3 are complete. Task 2's accepted commit
+- The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. The stable Preview alias
+  currently points to Task 4 candidate `b2736b2`, deployment
+  `dpl_HCXZDHXip1mcavokbzZZgjVNyDnA`; Task 4 is not yet accepted because summary quality failed.
+- Tasks 1 through 3 are complete. Task 4 provider/runtime work is implemented but acceptance remains
+  blocked on the live summary path. Task 2's accepted commit
   `6714a1c6cd84a3cae925860b84409ed56de3824c` passed all eight prerequisite jobs and the aggregate
   quality gate in run `34126389699`. Task 3's accepted commit
   `020944a7f8331d47cbc1691768dc404b6ae0fb9f` is deployed as
-  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume at Task 4: choose, configure, and accept one AI
-  provider in Preview.
+  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume at Task 4's summary-quality blocker described above.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
-- The AI provider selection and Preview AI secret are not set.
+- Gemini is selected and its key plus the `$1.00` application budget guardrail are Preview-scoped.
+  No OpenAI or Anthropic key is configured in Preview.
 - Docker-backed PostgreSQL integration tests pass in the Task 1 GitHub quality gate but cannot run
   locally because Docker is not installed; Task 2 CI must rerun that gate.
-- The refreshed production dependency audit reports zero vulnerabilities. The original 8 High and
-  2 Moderate findings, dependency paths, reviewed upgrades, and current dispositions are recorded in
-  `docs/security-audit.md`; `npm audit fix --force` was not used.
+- The Task 2 refreshed production dependency audit reported zero vulnerabilities. The Task 4 server
+  parser compatibility pin retains zero High or Critical production findings; four Moderate
+  development-only `drizzle-kit`/`esbuild` findings are currently reported by the full audit. The
+  original findings and reviewed upgrades are recorded in `docs/security-audit.md`; `npm audit fix
+--force` was not used.
 - No production migration, production import, or production deployment has occurred.
 - Real iPhone Share Sheet behavior remains a manual device test.
 
@@ -647,9 +698,10 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 There is no successful Production deployment, and Production has no database or application
 secrets. The Neon resource and all configured project variables are connected only to Preview; its
 schema and imported user data are populated. The source SQLite database remains unchanged. The
-stable Preview alias points to the accepted Git-built Task 3 deployment. Rollback should repoint it
-to the previous verified deployment while leaving additive PostgreSQL migrations/imported rows
-intact unless a separate, explicit database recovery plan is approved.
+stable Preview alias points to Task 4 candidate `b2736b2`. The last accepted rollback target is the
+Task 3 deployment `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`; repointing the alias does not require a database
+rollback. Leave additive PostgreSQL migrations/imported rows intact unless a separate, explicit
+database recovery plan is approved.
 
 For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/vercel-deployment.md`,
 `docs/sqlite-import.md`, `docs/iphone-shortcut.md`, and `docs/security-audit.md`.
