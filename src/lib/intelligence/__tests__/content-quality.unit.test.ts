@@ -28,6 +28,15 @@ describe("content quality", () => {
     expect(isUsableArticleText("Sign in to continue")).toBe(false);
   });
 
+  it("rejects a fragmented account-login shell with no substantive prose", () => {
+    const loginShell =
+      "Use your Google Account Email or phone Forgot email? Not your computer? " +
+      "Use Guest mode to sign in privately. Create account Next";
+
+    expect(normalizeArticleText(loginShell)).toBe("");
+    expect(isUsableArticleText(loginShell)).toBe(false);
+  });
+
   it("accepts a substantive visible paywall excerpt after removing its shell", () => {
     expect(isUsableArticleText(`${source}\nSubscribe now`)).toBe(true);
     expect(normalizePlaintext(`${source}\nSubscribe now`)).toBe(source);

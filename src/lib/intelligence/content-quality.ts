@@ -39,6 +39,28 @@ const SHELL_SENTENCE_PATTERNS = [
   /(^\s*|[.!?]["')\]]*\s+|\n+)(?:accept (?:all )?cookies?|cookie (?:preferences|settings|policy)|manage (?:cookie )?preferences|continue reading|read the full article)\b[.!?]?/gi,
 ];
 
+const AUTH_SHELL_SIGNALS = [
+  /\b(?:sign|log) in\b/i,
+  /\buse your [a-z0-9 ._-]{0,40}account\b/i,
+  /\bemail or phone\b/i,
+  /\bforgot (?:your )?(?:email|password)\b/i,
+  /\bcreate (?:an )?account\b/i,
+  /\bguest mode\b/i,
+  /\benter your (?:email|password)\b/i,
+];
+
+const CHALLENGE_SHELL_SIGNALS = [
+  /\bverify (?:that )?you are human\b/i,
+  /\bchecking your browser\b/i,
+  /\bsecurity (?:check|verification)\b/i,
+  /\bunusual traffic\b/i,
+  /\benable javascript(?: and cookies)?\b/i,
+];
+
+function matchingSignalCount(value: string, signals: RegExp[]): number {
+  return signals.filter((signal) => signal.test(value)).length;
+}
+
 export const ARTICLE_MIN_CHARACTERS = 80;
 export const ARTICLE_MIN_WORDS = 12;
 export const SUMMARY_INPUT_MAX_CHARACTERS = 48_000;
@@ -79,6 +101,12 @@ export function normalizePlaintext(value: string): string {
 /** Remove document-level login, paywall, cookie, and challenge shell text. */
 export function normalizeArticleText(value: string): string {
   let normalized = normalizePlaintext(value);
+  if (
+    matchingSignalCount(normalized, AUTH_SHELL_SIGNALS) >= 3 ||
+    matchingSignalCount(normalized, CHALLENGE_SHELL_SIGNALS) >= 2
+  ) {
+    return "";
+  }
   for (let pass = 0; pass < 3; pass += 1) {
     const before = normalized;
     for (const pattern of SHELL_SENTENCE_PATTERNS) {
