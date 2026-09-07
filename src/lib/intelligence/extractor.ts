@@ -12,7 +12,6 @@ import {
   extractContentFromHtml,
   type ExtractedLink as ContentExtractorLink,
 } from "@/lib/content-extractor";
-import { fetchArticle } from "@/lib/connectors/publishers/fetcher";
 import { findByUrl as findPublisherByUrl } from "@/lib/connectors/publishers/registry";
 import { PublisherAuthRequired } from "@/lib/connectors/publishers/types";
 import { extractOGFromHtml, fetchOG } from "@/lib/og";
@@ -39,6 +38,10 @@ export async function extractContent(
     if (raw.url) {
       const publisher = findPublisherByUrl(raw.url);
       if (publisher) {
+        // Playwright is a local-only publisher dependency. Load it only for an
+        // actual publisher match so ordinary hosted item routes do not require
+        // a bundled browser runtime while connectors are disabled.
+        const { fetchArticle } = await import("@/lib/connectors/publishers/fetcher");
         return await fetchArticle(publisher, raw.url);
       }
     }
