@@ -47,6 +47,9 @@ const AUTH_SHELL_SIGNALS = [
   /\bcreate (?:an )?account\b/i,
   /\bguest mode\b/i,
   /\benter your (?:email|password)\b/i,
+  /\b(?:account|page) requires javascript\b/i,
+  /\bweb browser (?:either )?does not support javascript\b/i,
+  /\bscripts are being blocked\b/i,
 ];
 
 const CHALLENGE_SHELL_SIGNALS = [

@@ -37,6 +37,15 @@ describe("content quality", () => {
     expect(isUsableArticleText(loginShell)).toBe(false);
   });
 
+  it("rejects a script-dependent Microsoft account shell", () => {
+    const loginShell =
+      "Microsoft account requires JavaScript to sign in. This web browser either does not " +
+      "support JavaScript, or scripts are being blocked. Sign in to your Microsoft account.";
+
+    expect(normalizeArticleText(loginShell)).toBe("");
+    expect(isUsableArticleText(loginShell)).toBe(false);
+  });
+
   it("accepts a substantive visible paywall excerpt after removing its shell", () => {
     expect(isUsableArticleText(`${source}\nSubscribe now`)).toBe(true);
     expect(normalizePlaintext(`${source}\nSubscribe now`)).toBe(source);
