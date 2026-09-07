@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { config } from "@/lib/config";
 import type { ContentItem } from "@/lib/types";
 import { TokenSettings } from "@/components/capture/token-settings";
+import Link from "next/link";
 
 const sourceIcons: Record<string, React.ElementType> = {
   Mail,
@@ -365,6 +366,18 @@ export default function SettingsPage() {
         <TabsContent value="notifications" className="mt-4 space-y-4">
           <div className="rounded-xl border border-border bg-card p-5 space-y-4">
             <h3 className="text-sm font-semibold">Notification Preferences</h3>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <div>
+                <p className="text-sm font-medium">In-app digests</p>
+                <p className="text-xs text-muted-foreground">
+                  Opt in to a calm, explainable reading brief in your local timezone.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="min-h-11">
+                <Link href="/digests">Manage digests</Link>
+              </Button>
+            </div>
 
             <div className="flex items-center justify-between">
               <div>

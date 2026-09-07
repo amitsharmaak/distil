@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Newspaper, Rss, BookmarkPlus, Search, Settings } from "lucide-react";
+import { Newspaper, Rss, BookmarkPlus, Search, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
+  { href: "/digests", label: "Digests", icon: Sparkles },
   { href: "/save", label: "Save", icon: BookmarkPlus },
   { href: "/research", label: "Research", icon: Search },
   { href: "/settings", label: "Settings", icon: Settings },

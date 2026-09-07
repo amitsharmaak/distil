@@ -15,6 +15,7 @@ import {
   Folder,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
+  { href: "/digests", label: "Digests", icon: Sparkles },
   { href: "/collections", label: "Collections", icon: Folder },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/save", label: "Save", icon: BookmarkPlus },

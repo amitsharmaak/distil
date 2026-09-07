@@ -10,6 +10,7 @@ describe("MobileNav", () => {
     const { container } = render(<MobileNav />);
     expect(screen.getByRole("link", { name: "Save" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Feed" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Digests" })).toHaveAttribute("href", "/digests");
     expect(container.querySelector("nav")).toHaveClass(
       "h-[calc(4rem+env(safe-area-inset-bottom,0px))]"
     );

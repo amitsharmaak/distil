@@ -41,9 +41,10 @@ describe("Sidebar", () => {
       "/logo.png"
     );
     expect(screen.getByText("distil")).toBeInTheDocument();
-    expect(screen.getAllByRole("link")).toHaveLength(9);
+    expect(screen.getAllByRole("link")).toHaveLength(10);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
+    expect(screen.getByRole("link", { name: "Digests" })).toHaveAttribute("href", "/digests");
     expect(screen.getByRole("link", { name: "Collections" })).toHaveAttribute(
       "href",
       "/collections"
