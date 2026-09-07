@@ -396,13 +396,13 @@ Vercel-compatible article parser, and lazy-load the local-only Playwright publis
 
 ### Test and review status
 
-The most recently completed local verification reported:
+The most recently completed local verification (Task 2 candidate, 2026-09-07) reported:
 
-- Deterministic Jest suite: 544 passing tests.
-- Security suite: 108 passing tests.
+- Deterministic Jest suite: 551 passing tests.
+- Security suite: 112 passing tests.
 - Browser/mobile E2E: 24 passing tests.
 - Browser extension E2E: 10 passing tests.
-- Changed executable code coverage: 82.9% lines and 85.4% branches relative to `main`.
+- Changed executable code coverage: 82.3% lines and 85.4% branches relative to `main`.
 - Critical auth, capture, queue, URL-safety, and migration modules: above the 90% coverage gate.
 - Lint, formatting, TypeScript, changed-line coverage, and production build: passing.
 
@@ -525,14 +525,14 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 #### Task 2 — Close dependency and security release findings
 
-- [ ] Refresh `npm audit --omit=dev` and record package names, severities, dependency paths, and
+- [x] Refresh `npm audit --omit=dev` and record package names, severities, dependency paths, and
       recommended versions without storing secrets.
-- [ ] Reconcile the older `docs/security-audit.md` findings with the current Phase 1 implementation;
+- [x] Reconcile the older `docs/security-audit.md` findings with the current Phase 1 implementation;
       close findings already covered by sessions, origin checks, SSRF defenses, rate limits, and safe
       rendering.
-- [ ] Upgrade Next.js and its paired lint package together, then resolve remaining production
+- [x] Upgrade Next.js and its paired lint package together, then resolve remaining production
       advisories through explicit reviewed changes. Do not use `npm audit fix --force`.
-- [ ] Run security tests, deterministic tests, E2E, extension E2E, production build, and the audit.
+- [x] Run security tests, deterministic tests, E2E, extension E2E, production build, and the audit.
 - [ ] Push the fixes and record an all-green Actions run. Require zero Critical or High production
       advisories; document any accepted Moderate finding and rationale.
 - [ ] **Task 2 complete:** append the final audit counts, commit, and Actions URL here.
@@ -608,15 +608,16 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 - The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
   to Vercel CI/CD.
-- GitHub Actions run `34116738471` is red: static formatting, PostgreSQL Testcontainers, coverage,
-  and web/mobile E2E require fixes before other release work proceeds.
+- Task 1's GitHub quality gate is green at run `34123377510`. The Task 2 release candidate still
+  requires its own pushed all-green Actions run before Task 2 can be marked complete.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
-- Docker-backed PostgreSQL integration tests fail with `write EPIPE` on the GitHub Ubuntu runner and
-  cannot run locally because Docker is not installed.
-- The production dependency audit reports 8 high and 2 moderate advisories; no automatic audit fix
-  has been applied.
+- Docker-backed PostgreSQL integration tests pass in the Task 1 GitHub quality gate but cannot run
+  locally because Docker is not installed; Task 2 CI must rerun that gate.
+- The refreshed production dependency audit reports zero vulnerabilities. The original 8 High and
+  2 Moderate findings, dependency paths, reviewed upgrades, and current dispositions are recorded in
+  `docs/security-audit.md`; `npm audit fix --force` was not used.
 - No production migration, production import, or production deployment has occurred.
 - Real iPhone Share Sheet behavior remains a manual device test.
 

@@ -34,6 +34,9 @@ import {
   getChatConversations,
 } from "@/lib/database";
 
+const MAX_MESSAGE_LENGTH = 20_000;
+const MAX_CONVERSATION_ID_LENGTH = 128;
+
 export async function POST(request: NextRequest) {
   let body: { message?: string; conversationId?: string };
   try {
@@ -47,6 +50,20 @@ export async function POST(request: NextRequest) {
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return NextResponse.json(
+        { error: `Message must be at most ${MAX_MESSAGE_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+    if (
+      conversationId !== undefined &&
+      (typeof conversationId !== "string" ||
+        conversationId.length === 0 ||
+        conversationId.length > MAX_CONVERSATION_ID_LENGTH)
+    ) {
+      return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
     }
 
     // Get or create conversation
@@ -94,6 +111,9 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get("conversationId");
 
     if (conversationId) {
+      if (conversationId.length > MAX_CONVERSATION_ID_LENGTH) {
+        return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
+      }
       const messages = await getChatMessages(conversationId);
       return NextResponse.json({ messages });
     }

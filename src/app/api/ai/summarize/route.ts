@@ -39,9 +39,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     apiLogger.error({ err: error }, "Summarize error");
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate summary" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 });
   }
 }
