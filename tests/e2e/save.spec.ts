@@ -43,6 +43,7 @@ test("save screen fits the configured viewport and passes accessibility", async 
   await page.goto("/save");
   await expect(page.getByLabel("Article URL")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save to Distil" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save to Distil" })).toBeEnabled();
   await expectNoBlockingAccessibilityViolations(page, testInfo);
 
   const overflow = await page.evaluate(
