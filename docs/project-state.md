@@ -690,6 +690,20 @@ Wave 0 exits when contracts are frozen, migration from `0001_phase1.sql` passes 
 the fixture-backed product states are testable, and downstream work can compile against stable
 interfaces.
 
+Wave 0 implementation evidence:
+
+- Platform contracts integrated at `c24e92f`: additive `0002_phase2_core.sql`, item lifecycle
+  mapping, five new repository families, migration tests, and PostgreSQL repository tests.
+- Experience prototypes integrated at `2d191f7`: isolated Today and reader knowledge components;
+  2 component suites and 5 tests pass in the integration worktree.
+- Evaluation foundation integrated at `378a2ff` with formatting follow-up `a2c166c`: recorded
+  non-perfect predictions, deterministic Phase 2 metrics, and a working nightly entrypoint; 6 metric
+  tests plus both dry and nightly evaluation commands pass.
+- Integrated TypeScript passes. The complete unit suite passes with 43 suites and 351 tests.
+- PostgreSQL integration tests are authored but remain unexecuted locally because this host has no
+  container runtime. That evidence remains a Preview/CI gate rather than a reason to delay Wave 1
+  implementation.
+
 #### Wave 1 — Core product streams
 
 Run three streams in parallel after the Wave 0 contract gate:
