@@ -58,9 +58,21 @@ export const dismissDigestSchema = z
   .object({ action: z.literal("dismiss"), digestId: z.string().trim().min(1).max(128) })
   .strict();
 
+export const dismissDigestItemSchema = z
+  .object({
+    action: z.literal("dismiss_item"),
+    digestId: z.string().trim().min(1).max(128),
+    itemId: z.string().trim().min(1).max(128),
+  })
+  .strict();
+
 export class DigestError extends Error {
   constructor(
-    readonly code: "INVALID_REQUEST" | "DIGEST_DISABLED" | "DIGEST_NOT_FOUND",
+    readonly code:
+      | "INVALID_REQUEST"
+      | "DIGEST_DISABLED"
+      | "DIGEST_NOT_FOUND"
+      | "DIGEST_ITEM_NOT_FOUND",
     readonly status: 400 | 404 | 409,
     message: string
   ) {
@@ -201,6 +213,19 @@ export async function dismissDigest(
   const digest = await store.dismissDigest(digestId, now.toISOString());
   if (!digest) throw new DigestError("DIGEST_NOT_FOUND", 404, "Digest was not found");
   return digest;
+}
+
+export async function dismissDigestItem(
+  store: DigestStore,
+  digestId: string,
+  itemId: string,
+  now = new Date()
+): Promise<DigestItem> {
+  const item = await store.dismissDigestItem(digestId, itemId, now.toISOString());
+  if (!item) {
+    throw new DigestError("DIGEST_ITEM_NOT_FOUND", 404, "Digest item was not found");
+  }
+  return item;
 }
 
 export async function enqueueDigest(

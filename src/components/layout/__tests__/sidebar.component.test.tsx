@@ -74,6 +74,15 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Today" })).not.toHaveClass("bg-sidebar-accent");
   });
 
+  it("removes disabled Phase 2 destinations from navigation", () => {
+    render(<Sidebar showDigests={false} showKnowledgeUi={false} />);
+
+    expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Archive" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
+  });
+
   it("collapses and expands while keeping an accessible toggle", () => {
     render(<Sidebar />);
 

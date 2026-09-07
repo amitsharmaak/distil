@@ -34,6 +34,12 @@ beforeEach(() => {
         listResurfacedCandidates: jest.fn().mockResolvedValue([]),
         findDigest: jest.fn().mockResolvedValue(undefined),
         createDigest: jest.fn().mockImplementation(async (digest) => digest),
+        dismissDigest: jest.fn().mockImplementation(async (digestId) => ({ id: digestId })),
+        dismissDigestItem: jest.fn().mockResolvedValue({
+          digestRunId: "digest-1",
+          itemId: "item-1",
+          dismissedAt: "2026-09-07T05:00:00.000Z",
+        }),
         updatePreferences: jest
           .fn()
           .mockResolvedValue({ digestEnabled: true, digestTimezone: "UTC" }),
@@ -92,5 +98,38 @@ describe("Phase 2 digest API contract", () => {
     );
     expect(response.status).toBe(503);
     expect(mockClient).not.toHaveBeenCalled();
+  });
+
+  it("hides digest reads and narrow preference writes when the feature is disabled", async () => {
+    delete process.env.FEATURE_DIGESTS;
+    mockSession.mockResolvedValueOnce();
+    const listResponse = await GET(new Request("http://localhost:3000/api/v1/digests"));
+    expect(listResponse.status).toBe(503);
+    expect(mockClient).not.toHaveBeenCalled();
+
+    mockMutation.mockResolvedValueOnce();
+    const preferenceResponse = await PATCH(
+      new Request("http://localhost:3000/api/v1/digests/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ digestEnabled: true }),
+      })
+    );
+    expect(preferenceResponse.status).toBe(503);
+    expect(mockClient).not.toHaveBeenCalled();
+  });
+
+  it("persists an item dismissal through the strict digest action API", async () => {
+    mockMutation.mockResolvedValueOnce();
+    const response = await POST(
+      new Request("http://localhost:3000/api/v1/digests/run", {
+        method: "POST",
+        body: JSON.stringify({ action: "dismiss_item", digestId: "digest-1", itemId: "item-1" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      item: { digestRunId: "digest-1", itemId: "item-1", dismissedAt: expect.any(String) },
+    });
   });
 });

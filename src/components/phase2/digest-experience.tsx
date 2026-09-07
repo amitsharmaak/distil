@@ -230,7 +230,10 @@ export function DigestExperience() {
   const currentDigest = digests[0];
   const history = digests.slice(1);
   const visibleItems = useMemo(
-    () => currentDigest?.items.filter((item) => !dismissedItemIds.has(item.itemId)) ?? [],
+    () =>
+      currentDigest?.items.filter(
+        (item) => !item.dismissedAt && !dismissedItemIds.has(item.itemId)
+      ) ?? [],
     [currentDigest, dismissedItemIds]
   );
 
@@ -289,9 +292,33 @@ export function DigestExperience() {
     }
   }
 
-  function dismissItem(itemId: string) {
-    setDismissedItemIds((current) => new Set(current).add(itemId));
-    setNotice("Item dismissed from this digest view");
+  async function dismissItem(itemId: string) {
+    if (!currentDigest || dismissedItemIds.has(itemId)) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const payload = await requestJson<{ item: DigestItem }>("/api/v1/digests/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss_item", digestId: currentDigest.id, itemId }),
+      });
+      setDigests((current) =>
+        current.map((digest) =>
+          digest.id === currentDigest.id
+            ? {
+                ...digest,
+                items: digest.items.map((item) =>
+                  item.itemId === payload.item.itemId ? payload.item : item
+                ),
+              }
+            : digest
+        )
+      );
+      setDismissedItemIds((current) => new Set(current).add(itemId));
+      setNotice("Item dismissed from this digest");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Digest item could not be dismissed.");
+    }
   }
 
   async function dismissCurrentDigest() {
@@ -458,7 +485,11 @@ export function DigestExperience() {
                 {visibleItems.length ? (
                   <ol className="mt-5 space-y-3" aria-label="Digest items">
                     {visibleItems.map((item) => (
-                      <DigestItemCard key={item.itemId} item={item} onDismiss={dismissItem} />
+                      <DigestItemCard
+                        key={item.itemId}
+                        item={item}
+                        onDismiss={(itemId) => void dismissItem(itemId)}
+                      />
                     ))}
                   </ol>
                 ) : (

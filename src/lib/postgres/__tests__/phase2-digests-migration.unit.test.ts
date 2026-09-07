@@ -21,6 +21,7 @@ describe("Phase 2 digest PostgreSQL migration", () => {
     expect(migration).toMatch(/selection_metadata jsonb NOT NULL DEFAULT '\{\}'/);
     expect(migration).toMatch(/title_text text NOT NULL DEFAULT ''/);
     expect(migration).toMatch(/title_snapshot text NOT NULL DEFAULT ''/);
+    expect(migration).toMatch(/ADD COLUMN dismissed_at timestamptz/);
     expect(migration).not.toMatch(/DROP (TABLE|COLUMN)/);
   });
 });

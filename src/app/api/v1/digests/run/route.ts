@@ -4,6 +4,8 @@ import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { digestErrorResponse, parse, readJson } from "@/lib/digests/http";
 import {
   dismissDigest,
+  dismissDigestItem,
+  dismissDigestItemSchema,
   dismissDigestSchema,
   runDigest,
   runDigestSchema,
@@ -15,12 +17,13 @@ export async function POST(request: Request): Promise<Response> {
   try {
     await requireSessionMutation(request, readAuthEnvironment());
     const body = await readJson(request);
-    const isDismiss =
-      typeof body === "object" &&
-      body !== null &&
-      (body as { action?: unknown }).action === "dismiss";
+    const action =
+      typeof body === "object" && body !== null ? (body as { action?: unknown }).action : undefined;
+    const isDismiss = action === "dismiss";
+    const isItemDismiss = action === "dismiss_item";
     const dismissInput = isDismiss ? parse(body, dismissDigestSchema) : undefined;
-    const runInput = isDismiss ? undefined : parse(body, runDigestSchema);
+    const dismissItemInput = isItemDismiss ? parse(body, dismissDigestItemSchema) : undefined;
+    const runInput = isDismiss || isItemDismiss ? undefined : parse(body, runDigestSchema);
     if (!readPhase2FeatureFlags().digests) {
       return Response.json(
         { error: { code: "FEATURE_DISABLED", message: "In-app digests are not enabled" } },
@@ -39,6 +42,15 @@ export async function POST(request: Request): Promise<Response> {
       if (isDismiss) {
         return Response.json({
           digest: await dismissDigest(store, dismissInput!.digestId),
+        });
+      }
+      if (isItemDismiss) {
+        return Response.json({
+          item: await dismissDigestItem(
+            store,
+            dismissItemInput!.digestId,
+            dismissItemInput!.itemId
+          ),
         });
       }
       return Response.json({ digest: await runDigest(store, runInput!) }, { status: 201 });

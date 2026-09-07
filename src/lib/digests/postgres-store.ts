@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import type { Sql } from "postgres";
 
 import type {
@@ -137,6 +138,32 @@ export class PostgresDigestStore implements DigestStore {
     const rows = await this.sql<Row[]>`
       UPDATE digest_runs SET dismissed_at=COALESCE(dismissed_at,${at}),updated_at=${at} WHERE id=${id} RETURNING *`;
     return rows[0] ? this.hydrate(rows[0]) : undefined;
+  }
+
+  async dismissDigestItem(
+    digestRunId: string,
+    itemId: string,
+    at: string
+  ): Promise<DigestItem | undefined> {
+    return this.sql.begin(async (tx) => {
+      const rows = await tx<Row[]>`
+        UPDATE digest_items
+        SET dismissed_at=COALESCE(dismissed_at,${at})
+        WHERE digest_run_id=${digestRunId} AND item_id=${itemId}
+        RETURNING *`;
+      const row = rows[0];
+      if (!row) return undefined;
+      if (row.category === "resurfaced") {
+        const eventKey = `digest-dismiss:${createHash("sha256")
+          .update(`${digestRunId}:${itemId}`)
+          .digest("hex")}`;
+        await tx`
+          INSERT INTO item_events(id,event_key,item_id,event_type,metadata,occurred_at)
+          VALUES(${randomUUID()},${eventKey},${itemId},'resurfacing_dismissed',${tx.json({ digestRunId } as never)},${at})
+          ON CONFLICT (event_key) DO NOTHING`;
+      }
+      return this.mapItem(row);
+    });
   }
 
   async listPriorityCandidates(): Promise<DigestCandidate[]> {

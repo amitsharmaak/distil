@@ -21,6 +21,7 @@ import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
 import { DetailActionBar } from "@/components/feed/detail-action-bar";
 import { ReaderKnowledgeControls } from "@/components/phase2/reader-knowledge-controls";
 import { ReaderAnnotations } from "@/components/phase2/reader-annotations";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 /* ── Constants ── */
 
@@ -122,6 +123,18 @@ function renderTweetText(text: string): React.ReactNode[] {
   return nodes;
 }
 
+function ReaderKnowledgeBoundary({
+  enabled,
+  itemId,
+  children,
+}: {
+  enabled: boolean;
+  itemId: string;
+  children: React.ReactNode;
+}) {
+  return enabled ? <ReaderAnnotations itemId={itemId}>{children}</ReaderAnnotations> : children;
+}
+
 /* ── Page ── */
 
 export default async function ItemDetailPage({
@@ -133,6 +146,7 @@ export default async function ItemDetailPage({
 }) {
   const { id } = await params;
   const { filter } = await searchParams;
+  const knowledgeUiEnabled = readPhase2FeatureFlags().knowledgeUi;
 
   const item = await getItemById(id);
 
@@ -270,7 +284,7 @@ export default async function ItemDetailPage({
 
       {/* ── Content body ── */}
       <section className="min-h-[30vh]">
-        <ReaderAnnotations itemId={item.id}>
+        <ReaderKnowledgeBoundary enabled={knowledgeUiEnabled} itemId={item.id}>
           {/* Video embed (when applicable) */}
           {strategy.detail.showEmbedPlayer && (
             <div className="mb-6">
@@ -332,10 +346,10 @@ export default async function ItemDetailPage({
               </CardContent>
             </Card>
           ) : null}
-        </ReaderAnnotations>
+        </ReaderKnowledgeBoundary>
       </section>
 
-      <ReaderKnowledgeControls itemId={item.id} />
+      {knowledgeUiEnabled && <ReaderKnowledgeControls itemId={item.id} />}
 
       {/* ── Sticky action bar ── */}
       <DetailActionBar

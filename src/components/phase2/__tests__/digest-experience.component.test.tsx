@@ -52,11 +52,9 @@ function unavailable(): Response {
   return {
     ok: false,
     status: 503,
-    json: jest
-      .fn()
-      .mockResolvedValue({
-        error: { code: "POSTGRES_REQUIRED", message: "Digests require PostgreSQL" },
-      }),
+    json: jest.fn().mockResolvedValue({
+      error: { code: "POSTGRES_REQUIRED", message: "Digests require PostgreSQL" },
+    }),
   } as unknown as Response;
 }
 
@@ -107,6 +105,25 @@ describe("DigestExperience", () => {
     expect(screen.getByText("No previous digests.")).toBeInTheDocument();
   });
 
+  it("keeps previously persisted item dismissals out of a reloaded digest", async () => {
+    const previouslyDismissed = {
+      ...digest,
+      items: [{ ...digest.items[0], dismissedAt: "2026-09-07T05:00:00.000Z" }],
+    };
+    fetchMock.mockImplementation((input, init) => {
+      const path = String(input);
+      if (path.endsWith("/preferences") && !init?.method)
+        return Promise.resolve(ok({ preferences }));
+      if (path.includes("/digests?") && !init?.method)
+        return Promise.resolve(ok({ digests: [previouslyDismissed] }));
+      return Promise.resolve(ok({}));
+    });
+
+    render(<DigestExperience />);
+    expect(await screen.findByText("No items remain in this digest.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss item" })).not.toBeInTheDocument();
+  });
+
   it("renders a safe unavailable state when the digest service is unavailable", async () => {
     fetchMock.mockImplementation((input) => {
       if (String(input).endsWith("/preferences")) return Promise.resolve(unavailable());
@@ -119,7 +136,7 @@ describe("DigestExperience", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("feed and saved items remain available");
   });
 
-  it("runs a digest, dismisses an item locally, and dismisses the digest through the API", async () => {
+  it("runs a digest, persists an item dismissal, and dismisses the digest through the API", async () => {
     const dismissed = { ...digest, dismissedAt: "2026-09-07T05:00:00.000Z" };
     fetchMock.mockImplementation((input, init) => {
       const path = String(input);
@@ -130,6 +147,11 @@ describe("DigestExperience", () => {
       if (path.endsWith("/digests/run") && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         if (body.action === "dismiss") return Promise.resolve(ok({ digest: dismissed }));
+        if (body.action === "dismiss_item") {
+          return Promise.resolve(
+            ok({ item: { ...digest.items[0], dismissedAt: "2026-09-07T05:00:00.000Z" } })
+          );
+        }
         return Promise.resolve(ok({ digest }));
       }
       return Promise.resolve(ok({ preferences }));
@@ -139,6 +161,13 @@ describe("DigestExperience", () => {
     expect(screen.getByText("Unread high priority item.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss item" }));
     expect(await screen.findByText("No items remain in this digest.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://distil.test/api/v1/digests/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ action: "dismiss_item", digestId: "digest-1", itemId: "item-1" }),
+      })
+    );
     fireEvent.click(screen.getByRole("button", { name: "Dismiss digest" }));
     expect(await screen.findByText("Digest dismissed")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(

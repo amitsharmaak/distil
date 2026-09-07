@@ -4,6 +4,7 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -49,6 +50,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const flags = readPhase2FeatureFlags();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -56,7 +59,9 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <TooltipProvider>
-            <AppShell>{children}</AppShell>
+            <AppShell showDigests={flags.digests} showKnowledgeUi={flags.knowledgeUi}>
+              {children}
+            </AppShell>
           </TooltipProvider>
         </ThemeProvider>
       </body>

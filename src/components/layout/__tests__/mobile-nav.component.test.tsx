@@ -15,4 +15,10 @@ describe("MobileNav", () => {
       "h-[calc(4rem+env(safe-area-inset-bottom,0px))]"
     );
   });
+
+  it("removes the digest destination when digests are disabled server-side", () => {
+    render(<MobileNav showDigests={false} />);
+    expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Feed" })).toBeInTheDocument();
+  });
 });

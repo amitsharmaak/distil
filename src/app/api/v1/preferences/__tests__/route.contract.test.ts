@@ -71,14 +71,18 @@ describe("Phase 2 preferences API contract", () => {
     await expect(valid.json()).resolves.toEqual({ preferences: { personalizationEnabled: false } });
   });
 
-  it("resets personalization to the safe default through a same-origin POST", async () => {
+  it("resets personalization and digest settings to safe defaults through a same-origin POST", async () => {
     mockMutation.mockResolvedValueOnce();
     const response = await POST(
       new Request("http://localhost:3000/api/v1/preferences/reset", { method: "POST" })
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      preferences: { personalizationEnabled: true, digestEnabled: false },
+      preferences: {
+        personalizationEnabled: true,
+        digestEnabled: false,
+        digestTimezone: "UTC",
+      },
     });
   });
 });

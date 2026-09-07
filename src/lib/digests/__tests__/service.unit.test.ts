@@ -1,4 +1,11 @@
-import { DigestError, enqueueDigest, localDateFor, runDigest, selectDigestItems } from "../service";
+import {
+  DigestError,
+  dismissDigestItem,
+  enqueueDigest,
+  localDateFor,
+  runDigest,
+  selectDigestItems,
+} from "../service";
 import type { DigestStore, PersonalPreferences } from "../types";
 
 const preferences: PersonalPreferences = {
@@ -17,6 +24,7 @@ function store(overrides: Partial<DigestStore> = {}): DigestStore {
     listDigests: jest.fn(),
     createDigest: jest.fn().mockImplementation(async (digest) => digest),
     dismissDigest: jest.fn(),
+    dismissDigestItem: jest.fn(),
     listPriorityCandidates: jest.fn().mockResolvedValue([
       {
         id: "p1",
@@ -158,5 +166,20 @@ describe("digest selection", () => {
   it("validates timezone names without silently changing a local date", () => {
     expect(localDateFor("Asia/Kolkata", new Date("2026-09-06T20:00:00.000Z"))).toBe("2026-09-07");
     expect(() => localDateFor("not-a-timezone")).toThrow(DigestError);
+  });
+
+  it("persists item dismissal and makes missing digest items explicit", async () => {
+    const repository = store({
+      dismissDigestItem: jest
+        .fn()
+        .mockResolvedValue({ itemId: "r1", dismissedAt: "2026-09-07T01:00:00.000Z" }),
+    });
+    await expect(dismissDigestItem(repository, "digest-1", "r1")).resolves.toMatchObject({
+      itemId: "r1",
+    });
+    expect(repository.dismissDigestItem).toHaveBeenCalledWith("digest-1", "r1", expect.any(String));
+    await expect(dismissDigestItem(store(), "digest-1", "missing")).rejects.toMatchObject({
+      code: "DIGEST_ITEM_NOT_FOUND",
+    });
   });
 });

@@ -31,8 +31,10 @@ describe("digest durable job runtime", () => {
       requestedBy: "cron" as const,
       createdAt: "2026-09-07T02:00:00.000Z",
     };
-    await enqueueDigestRuntimeJob({ enqueue } as never, job);
-    await enqueueDigestRuntimeJob({ enqueue } as never, job);
+    await Promise.all([
+      enqueueDigestRuntimeJob({ enqueue } as never, job),
+      enqueueDigestRuntimeJob({ enqueue } as never, job),
+    ]);
     expect(enqueue).toHaveBeenCalledTimes(2);
     expect(enqueue.mock.calls[0][0]).toMatchObject({
       jobType: DIGEST_QUEUE_JOB,

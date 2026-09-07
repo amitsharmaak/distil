@@ -66,6 +66,11 @@ export interface DigestStore {
   listDigests(limit: number): Promise<DigestRun[]>;
   createDigest(run: DigestRun): Promise<DigestRun>;
   dismissDigest(id: string, at: string): Promise<DigestRun | undefined>;
+  dismissDigestItem(
+    digestRunId: string,
+    itemId: string,
+    at: string
+  ): Promise<DigestItem | undefined>;
   listPriorityCandidates(): Promise<DigestCandidate[]>;
   listResurfacedCandidates(): Promise<DigestCandidate[]>;
   enqueue(job: DigestJob): Promise<DigestJob>;
