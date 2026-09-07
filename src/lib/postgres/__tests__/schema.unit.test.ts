@@ -1,6 +1,6 @@
 import * as schema from "../schema";
 
-it("exports every legacy and Phase 1 PostgreSQL table", () => {
+it("exports every PostgreSQL table through Phase 2 intelligence", () => {
   expect(Object.keys(schema).sort()).toEqual(
     [
       "agentActions",
@@ -11,17 +11,23 @@ it("exports every legacy and Phase 1 PostgreSQL table", () => {
       "captureTokens",
       "chatConversations",
       "chatMessages",
+      "claimEvidence",
       "collectionItems",
       "collections",
       "annotations",
+      "contentChunks",
       "digestItems",
       "digestRuns",
       "feedback",
       "itemEmbeddings",
+      "intelligenceArtifacts",
+      "intelligenceClaims",
       "itemEvents",
+      "itemContentVersions",
       "itemNotes",
       "items",
       "jobQueue",
+      "knowledgeBackfillCheckpoints",
       "notifications",
       "oauthTokens",
       "publisherQueue",
@@ -48,4 +54,11 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.collectionItems.collectionId).toBeDefined();
   expect(schema.itemEvents.eventKey).toBeDefined();
   expect(schema.digestRuns.digestDate).toBeDefined();
+  expect(schema.itemContentVersions.contentHash).toBeDefined();
+  expect(schema.contentChunks.searchVector).toBeDefined();
+  expect(schema.contentChunks.embeddingStatus).toBeDefined();
+  expect(schema.intelligenceArtifacts.supersedesArtifactId).toBeDefined();
+  expect(schema.intelligenceClaims.claimHash).toBeDefined();
+  expect(schema.claimEvidence.exactExcerpt).toBeDefined();
+  expect(schema.knowledgeBackfillCheckpoints.jobKey).toBeDefined();
 });

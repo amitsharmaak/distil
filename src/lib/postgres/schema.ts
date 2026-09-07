@@ -5,6 +5,7 @@ import {
   customType,
   date,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -213,6 +214,274 @@ export const digestItems = pgTable(
     index("digest_items_item_idx").on(t.itemId),
     check("digest_items_category_check", sql`${t.category} in ('priority', 'resurfaced')`),
     check("digest_items_position_check", sql`${t.position} >= 0`),
+  ]
+);
+
+export const itemContentVersions = pgTable(
+  "item_content_versions",
+  {
+    id: text().primaryKey(),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    version: integer().notNull(),
+    contentHash: text("content_hash").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    source: text().notNull(),
+    content: text().notNull(),
+    characterCount: integer("character_count").notNull(),
+    tokenCount: integer("token_count").notNull(),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("item_content_versions_item_version_idx").on(t.itemId, t.version),
+    uniqueIndex("item_content_versions_identity_idx").on(
+      t.itemId,
+      t.contentHash,
+      t.extractorVersion
+    ),
+    uniqueIndex("item_content_versions_id_item_idx").on(t.id, t.itemId),
+    index("item_content_versions_item_created_idx").on(t.itemId, t.createdAt.desc()),
+    check("item_content_versions_version_check", sql`${t.version} > 0`),
+    check("item_content_versions_hash_check", sql`${t.contentHash} ~ '^sha256:[0-9a-f]{64}$'`),
+    check(
+      "item_content_versions_source_check",
+      sql`${t.source} in ('full_content', 'summary', 'raw_content')`
+    ),
+    check("item_content_versions_content_check", sql`length(${t.content}) > 0`),
+    check(
+      "item_content_versions_counts_check",
+      sql`${t.characterCount} > 0 and ${t.tokenCount} > 0`
+    ),
+  ]
+);
+
+export const contentChunks = pgTable(
+  "content_chunks",
+  {
+    id: text().primaryKey(),
+    contentVersionId: text("content_version_id").notNull(),
+    itemId: text("item_id").notNull(),
+    ordinal: integer().notNull(),
+    content: text().notNull(),
+    contentHash: text("content_hash").notNull(),
+    startOffset: integer("start_offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    tokenCount: integer("token_count").notNull(),
+    searchVector: tsvector("search_vector").generatedAlwaysAs(
+      sql`to_tsvector('english', coalesce(content, ''))`
+    ),
+    embeddingModel: text("embedding_model"),
+    embeddingDimensions: integer("embedding_dimensions"),
+    embeddingStatus: text("embedding_status").notNull().default("unconfigured"),
+    embeddingError: text("embedding_error"),
+    embeddingUpdatedAt: time("embedding_updated_at"),
+    embeddedAt: time("embedded_at"),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("content_chunks_version_ordinal_idx").on(t.contentVersionId, t.ordinal),
+    uniqueIndex("content_chunks_id_version_idx").on(t.id, t.contentVersionId),
+    index("content_chunks_item_idx").on(t.itemId, t.contentVersionId, t.ordinal),
+    index("content_chunks_search_idx").using("gin", t.searchVector),
+    foreignKey({
+      columns: [t.contentVersionId, t.itemId],
+      foreignColumns: [itemContentVersions.id, itemContentVersions.itemId],
+      name: "content_chunks_version_item_fk",
+    }).onDelete("cascade"),
+    check("content_chunks_ordinal_check", sql`${t.ordinal} >= 0`),
+    check("content_chunks_content_check", sql`length(${t.content}) > 0`),
+    check("content_chunks_hash_check", sql`${t.contentHash} ~ '^sha256:[0-9a-f]{64}$'`),
+    check(
+      "content_chunks_offsets_check",
+      sql`${t.startOffset} >= 0 and ${t.endOffset} > ${t.startOffset}`
+    ),
+    check("content_chunks_token_count_check", sql`${t.tokenCount} > 0`),
+    check(
+      "content_chunks_embedding_status_check",
+      sql`${t.embeddingStatus} in ('unconfigured', 'pending', 'ready', 'failed', 'stale')`
+    ),
+    check(
+      "content_chunks_embedding_dimensions_check",
+      sql`${t.embeddingDimensions} is null or ${t.embeddingDimensions} > 0`
+    ),
+    check(
+      "content_chunks_ready_embedding_check",
+      sql`${t.embeddingStatus} <> 'ready' or (${t.embeddingModel} is not null and ${t.embeddingDimensions} is not null and ${t.embeddedAt} is not null)`
+    ),
+    check(
+      "content_chunks_unconfigured_embedding_check",
+      sql`${t.embeddingStatus} <> 'unconfigured' or (${t.embeddingModel} is null and ${t.embeddingDimensions} is null and ${t.embeddedAt} is null)`
+    ),
+  ]
+);
+
+export const intelligenceArtifacts = pgTable(
+  "intelligence_artifacts",
+  {
+    id: text().primaryKey(),
+    itemId: text("item_id").notNull(),
+    contentVersionId: text("content_version_id").notNull(),
+    artifactType: text("artifact_type").notNull(),
+    version: integer().notNull(),
+    status: text().notNull().default("pending"),
+    content: text(),
+    contentHash: text("content_hash"),
+    provenance: text().notNull().default("generated"),
+    promptVersion: text("prompt_version"),
+    provider: text(),
+    model: text(),
+    isCurrent: boolean("is_current").notNull().default(false),
+    supersedesArtifactId: text("supersedes_artifact_id"),
+    metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: time("created_at").notNull().defaultNow(),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+    completedAt: time("completed_at"),
+  },
+  (t) => [
+    uniqueIndex("intelligence_artifacts_item_type_version_idx").on(
+      t.itemId,
+      t.artifactType,
+      t.version
+    ),
+    uniqueIndex("intelligence_artifacts_current_idx")
+      .on(t.itemId, t.artifactType)
+      .where(sql`${t.isCurrent} = true`),
+    index("intelligence_artifacts_content_version_idx").on(t.contentVersionId),
+    index("intelligence_artifacts_status_idx").on(t.status, t.createdAt),
+    foreignKey({
+      columns: [t.contentVersionId, t.itemId],
+      foreignColumns: [itemContentVersions.id, itemContentVersions.itemId],
+      name: "intelligence_artifacts_version_item_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.supersedesArtifactId],
+      foreignColumns: [t.id],
+      name: "intelligence_artifacts_supersedes_fk",
+    }).onDelete("set null"),
+    check(
+      "intelligence_artifacts_type_check",
+      sql`${t.artifactType} in ('brief_summary', 'detailed_summary', 'claims')`
+    ),
+    check("intelligence_artifacts_version_check", sql`${t.version} > 0`),
+    check(
+      "intelligence_artifacts_status_check",
+      sql`${t.status} in ('pending', 'ready', 'degraded', 'failed', 'stale')`
+    ),
+    check(
+      "intelligence_artifacts_hash_check",
+      sql`${t.contentHash} is null or ${t.contentHash} ~ '^sha256:[0-9a-f]{64}$'`
+    ),
+    check(
+      "intelligence_artifacts_provenance_check",
+      sql`${t.provenance} in ('generated', 'deterministic_fallback', 'legacy_unverified')`
+    ),
+    check(
+      "intelligence_artifacts_completion_check",
+      sql`${t.status} = 'pending' or ${t.completedAt} is not null`
+    ),
+    check(
+      "intelligence_artifacts_current_check",
+      sql`${t.isCurrent} = false or ${t.status} in ('ready', 'degraded')`
+    ),
+    check(
+      "intelligence_artifacts_summary_content_check",
+      sql`${t.artifactType} = 'claims' or ${t.status} not in ('ready', 'degraded') or (${t.content} is not null and ${t.contentHash} is not null)`
+    ),
+    check("intelligence_artifacts_metadata_check", sql`jsonb_typeof(${t.metadata}) = 'object'`),
+  ]
+);
+
+export const intelligenceClaims = pgTable(
+  "intelligence_claims",
+  {
+    id: text().primaryKey(),
+    artifactId: text("artifact_id")
+      .notNull()
+      .references(() => intelligenceArtifacts.id, { onDelete: "cascade" }),
+    ordinal: integer().notNull(),
+    claim: text().notNull(),
+    claimHash: text("claim_hash").notNull(),
+    confidence: doublePrecision(),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intelligence_claims_artifact_ordinal_idx").on(t.artifactId, t.ordinal),
+    index("intelligence_claims_artifact_idx").on(t.artifactId),
+    check("intelligence_claims_ordinal_check", sql`${t.ordinal} >= 0`),
+    check("intelligence_claims_text_check", sql`length(${t.claim}) > 0`),
+    check("intelligence_claims_hash_check", sql`${t.claimHash} ~ '^sha256:[0-9a-f]{64}$'`),
+    check(
+      "intelligence_claims_confidence_check",
+      sql`${t.confidence} is null or (${t.confidence} >= 0 and ${t.confidence} <= 1)`
+    ),
+  ]
+);
+
+export const claimEvidence = pgTable(
+  "claim_evidence",
+  {
+    claimId: text("claim_id")
+      .notNull()
+      .references(() => intelligenceClaims.id, { onDelete: "cascade" }),
+    chunkId: text("chunk_id")
+      .notNull()
+      .references(() => contentChunks.id, { onDelete: "cascade" }),
+    startOffset: integer("start_offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    exactExcerpt: text("exact_excerpt").notNull(),
+    evidenceHash: text("evidence_hash").notNull(),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.claimId, t.chunkId, t.startOffset, t.endOffset] }),
+    index("claim_evidence_chunk_idx").on(t.chunkId),
+    check(
+      "claim_evidence_offsets_check",
+      sql`${t.startOffset} >= 0 and ${t.endOffset} > ${t.startOffset}`
+    ),
+    check("claim_evidence_excerpt_check", sql`length(${t.exactExcerpt}) > 0`),
+    check("claim_evidence_hash_check", sql`${t.evidenceHash} ~ '^sha256:[0-9a-f]{64}$'`),
+  ]
+);
+
+export const knowledgeBackfillCheckpoints = pgTable(
+  "knowledge_backfill_checkpoints",
+  {
+    jobKey: text("job_key").primaryKey(),
+    jobType: text("job_type").notNull(),
+    status: text().notNull().default("pending"),
+    cursor: text(),
+    checkpoint: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    processedCount: integer("processed_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    attempt: integer().notNull().default(0),
+    lastError: text("last_error"),
+    startedAt: time("started_at"),
+    completedAt: time("completed_at"),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("knowledge_backfill_status_idx").on(t.status, t.updatedAt),
+    check(
+      "knowledge_backfill_type_check",
+      sql`${t.jobType} in ('content_versions', 'chunks', 'legacy_artifacts', 'embeddings')`
+    ),
+    check(
+      "knowledge_backfill_status_check",
+      sql`${t.status} in ('pending', 'running', 'completed', 'failed')`
+    ),
+    check(
+      "knowledge_backfill_counts_check",
+      sql`${t.processedCount} >= 0 and ${t.failedCount} >= 0 and ${t.attempt} >= 0`
+    ),
+    check("knowledge_backfill_checkpoint_check", sql`jsonb_typeof(${t.checkpoint}) = 'object'`),
+    check(
+      "knowledge_backfill_completion_check",
+      sql`${t.status} <> 'completed' or ${t.completedAt} is not null`
+    ),
   ]
 );
 
