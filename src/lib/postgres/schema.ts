@@ -14,15 +14,188 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 const time = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
 
+export const users = pgTable(
+  "users",
+  {
+    id: uuid().primaryKey(),
+    primaryEmail: text("primary_email"),
+    displayName: text("display_name"),
+    status: text().notNull().default("migration_pending"),
+    createdAt: time("created_at").notNull().defaultNow(),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+    deletedAt: time("deleted_at"),
+  },
+  (t) => [
+    check(
+      "users_status_check",
+      sql`${t.status} in ('migration_pending','active','suspended','deleting','deleted')`
+    ),
+  ]
+);
+
+const tenantOwner = () =>
+  uuid("user_id")
+    .notNull()
+    .default(sql`distil_current_user_id()`)
+    .references(() => users.id, { onDelete: "cascade" });
+
+export const authIdentities = pgTable(
+  "auth_identities",
+  {
+    id: uuid().primaryKey(),
+    userId: tenantOwner(),
+    provider: text().notNull(),
+    providerSubject: text("provider_subject").notNull(),
+    email: text(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    createdAt: time("created_at").notNull().defaultNow(),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("auth_identities_provider_subject_idx").on(t.provider, t.providerSubject),
+    uniqueIndex("auth_identities_user_id_idx").on(t.userId, t.id),
+  ]
+);
+
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: uuid().primaryKey(),
+    normalizedEmail: text("normalized_email").notNull(),
+    emailHash: text("email_hash").notNull(),
+    tokenSalt: text("token_salt").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    issuedByActorId: uuid("issued_by_actor_id").notNull(),
+    issuanceReason: text("issuance_reason").notNull(),
+    status: text().notNull().default("pending"),
+    expiresAt: time("expires_at").notNull(),
+    consumedByUserId: uuid("consumed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    consumedAt: time("consumed_at"),
+    revokedByActorId: uuid("revoked_by_actor_id"),
+    revokeReason: text("revoke_reason"),
+    revokedAt: time("revoked_at"),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "invitations_status_check",
+      sql`${t.status} in ('pending','accepted','revoked','expired')`
+    ),
+    check(
+      "invitations_acceptance_check",
+      sql`${t.status} <> 'accepted' or (${t.consumedByUserId} is not null and ${t.consumedAt} is not null)`
+    ),
+    check(
+      "invitations_revocation_check",
+      sql`${t.status} <> 'revoked' or (${t.revokedByActorId} is not null and ${t.revokeReason} is not null and ${t.revokedAt} is not null)`
+    ),
+  ]
+);
+
+export const sessionMetadata = pgTable(
+  "session_metadata",
+  {
+    id: uuid().primaryKey(),
+    userId: tenantOwner(),
+    sessionHash: text("session_hash").notNull().unique(),
+    deviceLabel: text("device_label"),
+    lastUsedAt: time("last_used_at"),
+    expiresAt: time("expires_at").notNull(),
+    revokedAt: time("revoked_at"),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("session_metadata_user_id_idx").on(t.userId, t.id)]
+);
+
+export const accountExports = pgTable(
+  "account_exports",
+  {
+    id: uuid().primaryKey(),
+    userId: tenantOwner(),
+    status: text().notNull().default("pending"),
+    objectRef: text("object_ref"),
+    contentHash: text("content_hash"),
+    requestedAt: time("requested_at").notNull().defaultNow(),
+    completedAt: time("completed_at"),
+    expiresAt: time("expires_at"),
+  },
+  (t) => [
+    uniqueIndex("account_exports_user_id_idx").on(t.userId, t.id),
+    check(
+      "account_exports_status_check",
+      sql`${t.status} in ('pending','running','ready','failed','expired')`
+    ),
+  ]
+);
+
+export const accountDeletions = pgTable(
+  "account_deletions",
+  {
+    id: uuid().primaryKey(),
+    userId: tenantOwner(),
+    status: text().notNull().default("requested"),
+    checkpoint: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    requestedAt: time("requested_at").notNull().defaultNow(),
+    completedAt: time("completed_at"),
+  },
+  (t) => [
+    uniqueIndex("account_deletions_user_id_idx").on(t.userId, t.id),
+    check(
+      "account_deletions_status_check",
+      sql`${t.status} in ('requested','draining','deleting','completed','failed')`
+    ),
+    check("account_deletions_checkpoint_check", sql`jsonb_typeof(${t.checkpoint}) = 'object'`),
+  ]
+);
+
+export const usageCounters = pgTable(
+  "usage_counters",
+  {
+    userId: tenantOwner(),
+    billingDate: date("billing_date", { mode: "string" }).notNull(),
+    operation: text().notNull(),
+    provider: text().notNull().default(""),
+    requestCount: integer("request_count").notNull().default(0),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    costMicrousd: bigint("cost_microusd", { mode: "number" }).notNull().default(0),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.billingDate, t.operation, t.provider] }),
+    check(
+      "usage_counters_nonnegative_check",
+      sql`${t.requestCount} >= 0 and ${t.inputTokens} >= 0 and ${t.outputTokens} >= 0 and ${t.costMicrousd} >= 0`
+    ),
+  ]
+);
+
+export const userEntitlements = pgTable(
+  "user_entitlements",
+  {
+    userId: tenantOwner(),
+    entitlement: text().notNull(),
+    enabled: boolean().notNull().default(true),
+    source: text().notNull().default("system"),
+    expiresAt: time("expires_at"),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.entitlement] })]
+);
+
 export const items = pgTable(
   "items",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     title: text().notNull(),
     summary: text().notNull().default(""),
@@ -57,7 +230,8 @@ export const items = pgTable(
     ),
   },
   (t) => [
-    uniqueIndex("items_normalized_url_idx").on(t.normalizedUrl),
+    uniqueIndex("items_user_id_id_idx").on(t.userId, t.id),
+    uniqueIndex("items_user_normalized_url_idx").on(t.userId, t.normalizedUrl),
     index("items_created_idx").on(t.createdAt.desc()),
     index("items_priority_idx").on(t.priority),
     index("items_source_idx").on(t.sourceType),
@@ -83,6 +257,7 @@ export const items = pgTable(
 );
 
 export const itemNotes = pgTable("item_notes", {
+  userId: tenantOwner(),
   itemId: text("item_id")
     .primaryKey()
     .references(() => items.id, { onDelete: "cascade" }),
@@ -94,6 +269,7 @@ export const itemNotes = pgTable("item_notes", {
 export const annotations = pgTable(
   "annotations",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id")
       .notNull()
@@ -125,6 +301,7 @@ export const annotations = pgTable(
 export const collections = pgTable(
   "collections",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     name: text().notNull(),
     description: text(),
@@ -137,6 +314,7 @@ export const collections = pgTable(
 export const collectionItems = pgTable(
   "collection_items",
   {
+    userId: tenantOwner(),
     collectionId: text("collection_id")
       .notNull()
       .references(() => collections.id, { onDelete: "cascade" }),
@@ -157,8 +335,9 @@ export const collectionItems = pgTable(
 export const itemEvents = pgTable(
   "item_events",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
-    eventKey: text("event_key").notNull().unique(),
+    eventKey: text("event_key").notNull(),
     itemId: text("item_id")
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
@@ -167,6 +346,7 @@ export const itemEvents = pgTable(
     occurredAt: time("occurred_at").notNull(),
   },
   (t) => [
+    uniqueIndex("item_events_user_event_key_idx").on(t.userId, t.eventKey),
     index("item_events_item_idx").on(t.itemId, t.occurredAt.desc()),
     index("item_events_type_idx").on(t.eventType, t.occurredAt.desc()),
     check(
@@ -180,9 +360,10 @@ export const itemEvents = pgTable(
 export const digestRuns = pgTable(
   "digest_runs",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
-    digestDate: date("digest_date", { mode: "string" }).notNull().unique(),
-    localDate: date("local_date", { mode: "string" }).notNull().unique(),
+    digestDate: date("digest_date", { mode: "string" }).notNull(),
+    localDate: date("local_date", { mode: "string" }).notNull(),
     status: text().notNull().default("pending"),
     createdAt: time("created_at").notNull(),
     completedAt: time("completed_at"),
@@ -199,6 +380,9 @@ export const digestRuns = pgTable(
     updatedAt: time("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex("digest_runs_user_id_id_idx").on(t.userId, t.id),
+    uniqueIndex("digest_runs_user_digest_date_idx").on(t.userId, t.digestDate),
+    uniqueIndex("digest_runs_user_local_date_idx").on(t.userId, t.localDate),
     check(
       "digest_runs_status_check",
       sql`${t.status} in ('pending', 'ready', 'degraded', 'failed')`
@@ -214,6 +398,7 @@ export const digestRuns = pgTable(
 export const digestItems = pgTable(
   "digest_items",
   {
+    userId: tenantOwner(),
     digestRunId: text("digest_run_id")
       .notNull()
       .references(() => digestRuns.id, { onDelete: "cascade" }),
@@ -247,6 +432,7 @@ export const digestItems = pgTable(
 export const personalPreferences = pgTable(
   "personal_preferences",
   {
+    userId: tenantOwner(),
     id: text().primaryKey().default("default"),
     digestEnabled: boolean("digest_enabled").notNull().default(false),
     digestTimezone: text("digest_timezone").notNull().default("UTC"),
@@ -265,15 +451,18 @@ export const personalPreferences = pgTable(
 export const digestJobs = pgTable(
   "digest_jobs",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
-    localDate: date("local_date", { mode: "string" }).notNull().unique(),
-    idempotencyKey: text("idempotency_key").notNull().unique(),
+    localDate: date("local_date", { mode: "string" }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
     status: text().notNull().default("queued"),
     requestedBy: text("requested_by").notNull(),
     createdAt: time("created_at").notNull().defaultNow(),
     updatedAt: time("updated_at").notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex("digest_jobs_user_local_date_idx").on(t.userId, t.localDate),
+    uniqueIndex("digest_jobs_user_idempotency_idx").on(t.userId, t.idempotencyKey),
     index("digest_jobs_status_idx").on(t.status, t.createdAt),
     check(
       "digest_jobs_status_check",
@@ -286,6 +475,7 @@ export const digestJobs = pgTable(
 export const itemContentVersions = pgTable(
   "item_content_versions",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id")
       .notNull()
@@ -300,13 +490,16 @@ export const itemContentVersions = pgTable(
     createdAt: time("created_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("item_content_versions_item_version_idx").on(t.itemId, t.version),
-    uniqueIndex("item_content_versions_identity_idx").on(
+    uniqueIndex("item_content_versions_user_item_version_idx").on(t.userId, t.itemId, t.version),
+    uniqueIndex("item_content_versions_user_identity_idx").on(
+      t.userId,
       t.itemId,
       t.contentHash,
       t.extractorVersion
     ),
     uniqueIndex("item_content_versions_id_item_idx").on(t.id, t.itemId),
+    uniqueIndex("item_content_versions_user_id_idx").on(t.userId, t.id),
+    uniqueIndex("item_content_versions_user_id_item_idx").on(t.userId, t.id, t.itemId),
     index("item_content_versions_item_created_idx").on(t.itemId, t.createdAt.desc()),
     check("item_content_versions_version_check", sql`${t.version} > 0`),
     check("item_content_versions_hash_check", sql`${t.contentHash} ~ '^sha256:[0-9a-f]{64}$'`),
@@ -325,6 +518,7 @@ export const itemContentVersions = pgTable(
 export const contentChunks = pgTable(
   "content_chunks",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     contentVersionId: text("content_version_id").notNull(),
     itemId: text("item_id").notNull(),
@@ -346,8 +540,13 @@ export const contentChunks = pgTable(
     createdAt: time("created_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("content_chunks_version_ordinal_idx").on(t.contentVersionId, t.ordinal),
+    uniqueIndex("content_chunks_user_version_ordinal_idx").on(
+      t.userId,
+      t.contentVersionId,
+      t.ordinal
+    ),
     uniqueIndex("content_chunks_id_version_idx").on(t.id, t.contentVersionId),
+    uniqueIndex("content_chunks_user_id_idx").on(t.userId, t.id),
     index("content_chunks_item_idx").on(t.itemId, t.contentVersionId, t.ordinal),
     index("content_chunks_search_idx").using("gin", t.searchVector),
     foreignKey({
@@ -385,6 +584,7 @@ export const contentChunks = pgTable(
 export const intelligenceArtifacts = pgTable(
   "intelligence_artifacts",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id").notNull(),
     contentVersionId: text("content_version_id").notNull(),
@@ -407,14 +607,16 @@ export const intelligenceArtifacts = pgTable(
     completedAt: time("completed_at"),
   },
   (t) => [
-    uniqueIndex("intelligence_artifacts_item_type_version_idx").on(
+    uniqueIndex("intelligence_artifacts_user_item_type_version_idx").on(
+      t.userId,
       t.itemId,
       t.artifactType,
       t.version
     ),
-    uniqueIndex("intelligence_artifacts_current_idx")
-      .on(t.itemId, t.artifactType)
+    uniqueIndex("intelligence_artifacts_user_current_idx")
+      .on(t.userId, t.itemId, t.artifactType)
       .where(sql`${t.isCurrent} = true`),
+    uniqueIndex("intelligence_artifacts_user_id_idx").on(t.userId, t.id),
     index("intelligence_artifacts_content_version_idx").on(t.contentVersionId),
     index("intelligence_artifacts_status_idx").on(t.status, t.createdAt),
     foreignKey({
@@ -463,6 +665,7 @@ export const intelligenceArtifacts = pgTable(
 export const intelligenceClaims = pgTable(
   "intelligence_claims",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     artifactId: text("artifact_id")
       .notNull()
@@ -474,7 +677,12 @@ export const intelligenceClaims = pgTable(
     createdAt: time("created_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("intelligence_claims_artifact_ordinal_idx").on(t.artifactId, t.ordinal),
+    uniqueIndex("intelligence_claims_user_artifact_ordinal_idx").on(
+      t.userId,
+      t.artifactId,
+      t.ordinal
+    ),
+    uniqueIndex("intelligence_claims_user_id_idx").on(t.userId, t.id),
     index("intelligence_claims_artifact_idx").on(t.artifactId),
     check("intelligence_claims_ordinal_check", sql`${t.ordinal} >= 0`),
     check("intelligence_claims_text_check", sql`length(${t.claim}) > 0`),
@@ -489,6 +697,7 @@ export const intelligenceClaims = pgTable(
 export const claimEvidence = pgTable(
   "claim_evidence",
   {
+    userId: tenantOwner(),
     claimId: text("claim_id")
       .notNull()
       .references(() => intelligenceClaims.id, { onDelete: "cascade" }),
@@ -516,6 +725,7 @@ export const claimEvidence = pgTable(
 export const knowledgeBackfillCheckpoints = pgTable(
   "knowledge_backfill_checkpoints",
   {
+    userId: tenantOwner(),
     jobKey: text("job_key").primaryKey(),
     jobType: text("job_type").notNull(),
     status: text().notNull().default("pending"),
@@ -554,6 +764,7 @@ export const knowledgeBackfillCheckpoints = pgTable(
 export const oauthTokens = pgTable(
   "oauth_tokens",
   {
+    userId: tenantOwner(),
     provider: text().notNull(),
     teamId: text("team_id").notNull().default(""),
     accessToken: text("access_token").notNull(),
@@ -562,11 +773,12 @@ export const oauthTokens = pgTable(
     email: text(),
     updatedAt: time("updated_at").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.provider, t.teamId] })]
+  (t) => [primaryKey({ columns: [t.userId, t.provider, t.teamId] })]
 );
 export const aiSummaries = pgTable(
   "ai_summaries",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id")
       .notNull()
@@ -576,11 +788,12 @@ export const aiSummaries = pgTable(
     promptType: text("prompt_type").notNull(),
     createdAt: time("created_at").notNull(),
   },
-  (t) => [uniqueIndex("ai_summaries_item_prompt_idx").on(t.itemId, t.promptType)]
+  (t) => [uniqueIndex("ai_summaries_user_item_prompt_idx").on(t.userId, t.itemId, t.promptType)]
 );
 export const feedback = pgTable(
   "feedback",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id")
       .notNull()
@@ -598,6 +811,7 @@ export const feedback = pgTable(
 export const researchReports = pgTable(
   "research_reports",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
     query: text().notNull(),
@@ -609,11 +823,15 @@ export const researchReports = pgTable(
     completedAt: time("completed_at"),
     progress: text(),
   },
-  (t) => [index("research_reports_item_idx").on(t.itemId)]
+  (t) => [
+    uniqueIndex("research_reports_user_id_idx").on(t.userId, t.id),
+    index("research_reports_item_idx").on(t.itemId),
+  ]
 );
 export const researchSuggestions = pgTable(
   "research_suggestions",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     topicKey: text("topic_key").notNull(),
     topic: text().notNull(),
@@ -627,18 +845,40 @@ export const researchSuggestions = pgTable(
     createdAt: time("created_at").notNull(),
   },
   (t) => [
+    uniqueIndex("research_suggestions_user_id_idx").on(t.userId, t.id),
     index("research_suggestions_status_idx").on(t.status),
     check("research_source_items_array_check", sql`jsonb_typeof(${t.sourceItemIds}) = 'array'`),
   ]
 );
-export const userSettings = pgTable("user_settings", {
-  key: text().primaryKey(),
-  value: text().notNull(),
-  updatedAt: time("updated_at").notNull(),
-});
+export const researchSuggestionSources = pgTable(
+  "research_suggestion_sources",
+  {
+    userId: tenantOwner(),
+    researchSuggestionId: text("research_suggestion_id").notNull(),
+    itemId: text("item_id").notNull(),
+    position: integer().notNull(),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.researchSuggestionId, t.position] }),
+    index("research_suggestion_sources_item_idx").on(t.userId, t.itemId),
+    check("research_suggestion_sources_position_check", sql`${t.position} >= 0`),
+  ]
+);
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    userId: tenantOwner(),
+    key: text().notNull(),
+    value: text().notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.key] })]
+);
 export const notifications = pgTable(
   "notifications",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id")
       .notNull()
@@ -653,6 +893,7 @@ export const notifications = pgTable(
 export const itemEmbeddings = pgTable(
   "item_embeddings",
   {
+    userId: tenantOwner(),
     itemId: text("item_id")
       .primaryKey()
       .references(() => items.id, { onDelete: "cascade" }),
@@ -665,6 +906,7 @@ export const itemEmbeddings = pgTable(
 export const auditLog = pgTable(
   "audit_log",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     action: text().notNull(),
     toolName: text("tool_name"),
@@ -687,6 +929,7 @@ export const auditLog = pgTable(
 export const workflowRuns = pgTable(
   "workflow_runs",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     workflowType: text("workflow_type").notNull(),
     itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
@@ -700,6 +943,7 @@ export const workflowRuns = pgTable(
     completedAt: time("completed_at"),
   },
   (t) => [
+    uniqueIndex("workflow_runs_user_id_idx").on(t.userId, t.id),
     index("workflow_runs_status_idx").on(t.status),
     index("workflow_runs_item_idx").on(t.itemId),
     index("workflow_runs_created_idx").on(t.createdAt.desc()),
@@ -709,6 +953,7 @@ export const workflowRuns = pgTable(
 export const agentActions = pgTable(
   "agent_actions",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     workflowId: text("workflow_id").references(() => workflowRuns.id, { onDelete: "set null" }),
     actionType: text("action_type").notNull(),
@@ -728,6 +973,7 @@ export const agentActions = pgTable(
 export const approvalQueue = pgTable(
   "approval_queue",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     workflowId: text("workflow_id").references(() => workflowRuns.id, { onDelete: "set null" }),
     actionType: text("action_type").notNull(),
@@ -745,15 +991,21 @@ export const approvalQueue = pgTable(
     check("approval_payload_object_check", sql`jsonb_typeof(${t.payload}) = 'object'`),
   ]
 );
-export const chatConversations = pgTable("chat_conversations", {
-  id: text().primaryKey(),
-  title: text(),
-  createdAt: time("created_at").notNull(),
-  updatedAt: time("updated_at").notNull(),
-});
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    userId: tenantOwner(),
+    id: text().primaryKey(),
+    title: text(),
+    createdAt: time("created_at").notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("chat_conversations_user_id_idx").on(t.userId, t.id)]
+);
 export const chatMessages = pgTable(
   "chat_messages",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     conversationId: text("conversation_id")
       .notNull()
@@ -769,8 +1021,10 @@ export const chatMessages = pgTable(
 export const jobQueue = pgTable(
   "job_queue",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     jobType: text("job_type").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
     payload: jsonb().notNull().default({}),
     status: text().notNull().default("pending"),
     priority: integer().notNull().default(0),
@@ -785,6 +1039,7 @@ export const jobQueue = pgTable(
     completedAt: time("completed_at"),
   },
   (t) => [
+    uniqueIndex("job_queue_user_idempotency_idx").on(t.userId, t.idempotencyKey),
     index("job_queue_status_idx").on(t.status, t.priority.desc(), t.createdAt),
     index("job_queue_type_idx").on(t.jobType),
     check("job_payload_object_check", sql`jsonb_typeof(${t.payload}) = 'object'`),
@@ -794,6 +1049,7 @@ export const jobQueue = pgTable(
 export const publisherQueue = pgTable(
   "publisher_queue",
   {
+    userId: tenantOwner(),
     publisherId: text("publisher_id").notNull(),
     url: text().notNull(),
     discoveredAt: time("discovered_at").notNull(),
@@ -802,13 +1058,14 @@ export const publisherQueue = pgTable(
     lastError: text("last_error"),
   },
   (t) => [
-    primaryKey({ columns: [t.publisherId, t.url] }),
+    primaryKey({ columns: [t.userId, t.publisherId, t.url] }),
     index("publisher_queue_status_idx").on(t.publisherId, t.status),
   ]
 );
 export const rawContent = pgTable(
   "raw_content",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
     sourceType: text("source_type").notNull(),
@@ -825,6 +1082,7 @@ export const rawContent = pgTable(
 export const captureRequests = pgTable(
   "capture_requests",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     url: text().notNull(),
     normalizedUrl: text("normalized_url").notNull(),
@@ -833,6 +1091,8 @@ export const captureRequests = pgTable(
     topics: jsonb().$type<string[]>().notNull().default([]),
     priority: text().notNull().default("medium"),
     source: text().notNull(),
+    originActorKind: text("origin_actor_kind").notNull(),
+    originActorId: uuid("origin_actor_id").notNull(),
     status: text().notNull().default("queued"),
     itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
     retryable: boolean().notNull().default(false),
@@ -843,8 +1103,8 @@ export const captureRequests = pgTable(
     updatedAt: time("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("capture_active_url_idx")
-      .on(t.normalizedUrl)
+    uniqueIndex("capture_user_active_url_idx")
+      .on(t.userId, t.normalizedUrl)
       .where(sql`${t.status} in ('queued', 'processing', 'ready')`),
     index("capture_created_idx").on(t.createdAt.desc()),
     check("capture_priority_check", sql`${t.priority} in ('high', 'medium', 'low')`),
@@ -860,6 +1120,7 @@ export const captureRequests = pgTable(
 export const captureTokens = pgTable(
   "capture_tokens",
   {
+    userId: tenantOwner(),
     id: text().primaryKey(),
     name: text().notNull(),
     tokenHash: text("token_hash").notNull().unique(),
@@ -877,13 +1138,28 @@ export const captureTokens = pgTable(
 export const rateLimitWindows = pgTable(
   "rate_limit_windows",
   {
+    userId: tenantOwner(),
     key: text().notNull(),
+    environment: text().notNull(),
+    principalKind: text("principal_kind").notNull(),
+    principalId: text("principal_id").notNull(),
+    operation: text().notNull(),
     windowStart: time("window_start").notNull(),
     windowSeconds: integer("window_seconds").notNull(),
     count: integer().notNull().default(0),
   },
   (t) => [
-    primaryKey({ columns: [t.key, t.windowStart, t.windowSeconds] }),
+    primaryKey({
+      columns: [
+        t.userId,
+        t.environment,
+        t.principalKind,
+        t.principalId,
+        t.operation,
+        t.windowStart,
+        t.windowSeconds,
+      ],
+    }),
     index("rate_limit_expiry_idx").on(t.windowStart),
     check("rate_limit_window_seconds_check", sql`${t.windowSeconds} > 0`),
     check("rate_limit_count_check", sql`${t.count} >= 0`),
