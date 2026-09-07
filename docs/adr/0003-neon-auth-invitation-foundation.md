@@ -8,9 +8,12 @@
 
 Phase 3 will use Neon Auth for authentication only, beginning with email magic links. Distil,
 not the authentication provider, will remain the authority for whether an authenticated identity
-may enter a workspace and what it may do there. Every application request that reads or mutates
-tenant data must resolve an active internal membership; a valid Neon Auth session alone is not
-authorization.
+may enter its personal account. Phase 3 is strictly personal `user_id` tenancy: every application
+request that reads or mutates personal data must resolve an active internal account and scope data
+to that account's internal user ID. A valid Neon Auth session alone is not authorization.
+
+Workspaces, workspace membership, end-user roles, shared tenancy, and workspace-owner invitation
+flows are Phase 6 concerns and must not be introduced by this integration.
 
 This is deliberately an integration foundation, not an activation. `FEATURE_NEON_AUTH` is false
 unless it is exactly `true`, no Neon package has been added, and no route, proxy, session, schema,
@@ -57,38 +60,41 @@ Sources: [Neon Auth v0.2 migration guide](https://neon.com/docs/auth/migrate/fro
 
 1. Only the magic-link plugin is enabled for the first user-facing flow. Password, OTP, social,
    passkey, organization-management, and self-service signup UI are out of scope.
-2. An invite is created by a current workspace owner. Store the invite token only as a salted,
-   one-way hash; bind it to a normalized email, workspace, role, expiry, issuer, and one-time
+2. An invite is issued only by an audited, operator-only command/control-plane API; it is not an
+   end-user or account-owner capability. Store the invite token only as a salted, one-way hash;
+   bind it to a normalized email, expiry, operator issuer, issuance reason, and one-time
    consumption timestamp. The raw token appears only in the email link.
 3. The invite landing page checks the token before requesting a magic link. It allows only a
    callback URL from the exact application origin allowlist and keeps the intended destination in
    server state, not a user-controlled redirect parameter.
 4. On a verified Neon Auth session, an idempotent server transaction consumes the matching active
-   invite and creates or reactivates an internal membership. It must compare the verified email
-   with the invite email using the product's canonical normalization rule.
-5. Authorization resolves `auth_user_id -> users.id -> workspace_memberships` on every protected
-   request. A pending, expired, revoked, wrong-email, or already-consumed invite cannot provide
-   application access. Returning a generic "unable to continue" response avoids invite/account
-   enumeration.
-6. Neon Auth's organizations and invitations are not the product authorization source of truth.
-   They may be evaluated later as UI conveniences, but Distil's invitation, role, and tenancy
-   records remain independently enforceable and auditable.
+   invite and creates or reactivates the internal `users` account with active status. It must
+   compare the verified email with the invite email using the product's canonical normalization
+   rule.
+5. Authorization resolves `auth_user_id -> users.id` and verifies active account status on every
+   protected request. All product queries are scoped to that `users.id` as `user_id`. A pending,
+   expired, revoked, wrong-email, or already-consumed invite cannot provide application access.
+   Returning a generic "unable to continue" response avoids invite/account enumeration.
+6. Neon Auth organizations and invitations are not used for Phase 3 product authorization or
+   tenancy. They may be evaluated only when Phase 6 collaboration is explicitly in scope; until
+   then, Distil's operator-issued invitation and active-account records remain independently
+   enforceable and auditable.
 
 There is one important feasibility limitation: the validated magic-link endpoint accepts an email
 and may create an identity. App-side enforcement can guarantee that an uninvited identity receives
 no Distil data, but it cannot by itself guarantee that no provider identity is created through a
 generic auth endpoint. Before enabling, verify in the Neon console and pinned SDK whether
 self-registration can be disabled for magic links. If it cannot, either accept harmless orphaned
-identities with no membership or put link issuance behind an invite-validating server route and
+identities with no active internal account or put link issuance behind an invite-validating server route and
 ensure the generic endpoint is not publicly usable. This is an enablement gate, not an assumption.
 
 ## Internal identity mapping
 
 Phase 3 will add an application-owned `users` row with a generated internal UUID. It will have a
 unique, immutable `neon_auth_user_id` external identifier plus a normalized email snapshot for
-display and invite matching. Product foreign keys, tenant scoping, audit records, and capture
-ownership reference the internal UUID only. Do not assume the provider identifier is a UUID, reuse
-it as a primary key, or put business attributes in `neon_auth` tables.
+display and invite matching. Personal-data foreign keys, `user_id` scoping, audit records, and
+capture ownership reference the internal UUID only. Do not assume the provider identifier is a
+UUID, reuse it as a primary key, or put business attributes in `neon_auth` tables.
 
 The mapping is created only after a verified session and is idempotent on the external identifier.
 Email changes require a verified provider email and an explicit conflict policy; they never merge
@@ -103,11 +109,11 @@ of at least 32 characters, HTTPS-only cookies, host-only cookie domain unless a 
 subdomain design is approved, and `SameSite=Lax` unless a future cross-site flow requires a
 different reviewed policy.
 
-The cache is an identity optimization, not authorization caching. Membership revocation and invite
-state are checked application-side on each protected request, so a removed member loses Distil
+The cache is an identity optimization, not authorization caching. Active-account status and invite
+state are checked application-side on each protected request, so a disabled account loses Distil
 access immediately even if a provider session is still cached. Provide device/session listing and
 individual/all-session revocation through the provider's session APIs, and revoke active provider
-sessions when an account is disabled or a high-risk membership change occurs. Keep the legacy
+sessions when an account is disabled or a high-risk account change occurs. Keep the legacy
 `DISTIL_SESSION_SECRET` path until the migration has a rollback plan; do not mix its cookie with
 Neon Auth's cookie names.
 
@@ -126,8 +132,8 @@ integration needs one, it gets a dedicated route with all of the following: raw-
 before parsing, provider-specified signature verification using a secret server variable,
 constant-time comparison, timestamp/replay-window validation, idempotency keys retained in the
 application database, strict event allowlisting, a small body limit, and no logged payload or
-secret. A webhook must never activate membership; it may only trigger a re-read of the authoritative
-session and membership state.
+secret. A webhook must never activate an account; it may only trigger a re-read of the
+authoritative session and account status.
 
 ## Preview environment and email contract
 
@@ -158,11 +164,11 @@ supported, and must not be included in logs, analytics, referrers, or support ti
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Feature disabled or config missing            | Keep current single-user auth unchanged; fail closed if an accidentally exposed Neon route is reached                                       |
 | Auth endpoint/network outage                  | No new login; existing authorized application requests follow a deliberately tested, short failure policy and never become anonymous access |
-| Expired/used/revoked invite                   | Generic failure, no account or workspace disclosure; owner can issue a replacement                                                          |
-| Verified user without membership              | Authenticated but denied from all tenant data; show an access-request/help state                                                            |
-| Wrong email or changed email                  | Do not consume the invite; require a matching verified email or owner-issued replacement                                                    |
+| Expired/used/revoked invite                   | Generic failure, no account disclosure; an audited operator can issue a replacement                                                         |
+| Verified identity without active account      | Authenticated but denied from all personal data; show an access-request/help state                                                          |
+| Wrong email or changed email                  | Do not consume the invite; require a matching verified email or operator-issued replacement                                                 |
 | Replay, redirect tampering, or webhook replay | Reject; consume links atomically and enforce exact redirect origins/signature/replay checks                                                 |
-| Membership revoked                            | Deny next protected request; revoke provider sessions for disable/high-risk cases                                                           |
+| Account disabled                              | Deny next protected request; revoke provider sessions for disable/high-risk cases                                                           |
 | Preview/production mix-up                     | Reject deployment readiness; endpoint, cookie secret, origins, database branch, and email sender must be environment-specific               |
 
 ## Enablement gates and test strategy
@@ -174,12 +180,12 @@ Before moving `FEATURE_NEON_AUTH` to true, complete all of these:
 2. Prove magic-link-only configuration and resolve the self-registration limitation above in a
    disposable Preview branch with no real user data.
 3. Add unit tests for disabled/misconfigured flags, invite hashing/expiry/atomic consumption,
-   email normalization, external-to-internal UUID mapping, role checks, generic errors, and redirect
+   email normalization, external-to-internal UUID mapping, active-account checks, generic errors, and redirect
    validation.
-4. Add route/proxy contract tests for unauthenticated, pending-invite, active-member, revoked,
+4. Add route/proxy contract tests for unauthenticated, pending-invite, active-account, disabled,
    and capture-token requests; assert legacy session behavior during the migration.
 5. Add browser tests covering request link, valid invite acceptance, wrong account, expired/reused
-   link, sign out, a second device, session revocation, and direct access to every tenant route.
+   link, sign out, a second device, session revocation, and direct access to every personal-data route.
 6. Exercise real Preview email delivery and callback origins with test inboxes. Test auth outage,
    provider timeout, database transaction retry, and a deploy with stable cookie secret.
 7. If a webhook is introduced, add adversarial signature, stale timestamp, duplicate delivery,
@@ -191,6 +197,6 @@ Before moving `FEATURE_NEON_AUTH` to true, complete all of these:
 
 Neon Auth is technically viable for Distil's current Next.js 16 stack and supports the desired
 magic-link primitive. The unaddressed decision is not SDK compatibility; it is the product policy
-for provider identities created before membership exists. The app-side authorization boundary makes
-that safe for tenant data, but a strict no-orphan-identity requirement needs an explicit provider
+for provider identities created before an active internal account exists. The app-side authorization boundary makes
+that safe for personal data, but a strict no-orphan-identity requirement needs an explicit provider
 configuration validation before activation.
