@@ -304,7 +304,9 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 - Distil uses Phase numbers **1 through 7**. There is no Phase 0 and no Phase 8 in this roadmap.
 - Baseline analysis and testing architecture are foundation work inside Phase 1.
-- Complete Phase 1 Preview and real-device validation before starting broad Phase 2 feature work.
+- Phase 2 implementation may proceed in isolated branches, worktrees, databases, and Preview
+  deployments while Phase 1 acceptance continues. Do not promote Phase 2 to the stable Preview or
+  Production until Phase 1 Preview and real-device validation are complete.
 - Do not add full Gmail or Slack hosting merely because code already exists; validate the source's
   user value and scope first in Phase 5.
 - Do not expose the application to additional users until Phase 3 tenant ownership and isolation are
@@ -356,7 +358,7 @@ of scope.
 - Initial handoff-document commit: `42fc454`
 - Current deployed implementation commit: `a8420a1`
 - Git remote: `git@github.com:amitsharmaak/distil.git`
-- The Phase 1 branch is local and has not yet been pushed to GitHub.
+- The Phase 1 branch is published to GitHub and tracks `origin/codex/phase-1-personal-capture`.
 - The original checkout at `/Users/amitsharma/Projects/distil` remains on `main` and has user-owned
   changes: a modified `package-lock.json` and an untracked `.nvmrc`. Do not stash, discard, overwrite,
   or include those changes in Phase 1 work.
@@ -626,3 +628,208 @@ plan is approved.
 
 For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/vercel-deployment.md`,
 `docs/sqlite-import.md`, `docs/iphone-shortcut.md`, and `docs/security-audit.md`.
+
+---
+
+## Phase 2 parallel implementation record
+
+Phase 2 development started on 2026-09-07 while Phase 1 acceptance continues. This is a development
+parallelism decision, not a release-gate waiver: the stable Phase 1 Preview database and alias and
+all Production resources remain out of scope until Phase 1 closes.
+
+### Approved product and architecture decisions
+
+- Optimize the first usable release for a daily reading and recall habit.
+- Build focused essentials: one editable item note, anchored highlights with comments, manual
+  collections, archive/restore, reading progress, and controlled resurfacing.
+- Deliver briefings and digests inside Distil only; email, push, and native notifications are out of
+  scope.
+- Build all new Phase 2 persistence on PostgreSQL. Existing SQLite compatibility paths remain, but
+  new Phase 2 features will not be duplicated in SQLite.
+- Keep Phase 2 single-user. Do not add `user_id`, workspaces, sharing, or other Phase 3 tenancy.
+- Define model/version-aware embedding contracts now, but do not create the indexed vector space
+  until the Phase 1 provider decision pins one embedding model and dimension. Search must work in
+  keyword-only mode before and during embedding backfill.
+- Use maximum safe implementation parallelism with isolated worktrees, exclusive ownership of
+  collision-prone files, and staged integration and rollout.
+
+### Git, worktree, and agent state
+
+- Phase 2 integration branch: `codex/phase-2-knowledge`
+- Phase 2 integration worktree: `/private/tmp/distil-phase2-root`
+- Phase 2 baseline: Phase 1 commit `7cf4925`
+- Wave 0 platform branch/worktree: `codex/p2-platform`, `/private/tmp/distil-p2-platform`
+- Wave 0 experience branch/worktree: `codex/p2-experience`, `/private/tmp/distil-p2-experience`
+- Wave 0 evaluation branch/worktree: `codex/p2-evals`, `/private/tmp/distil-p2-evals`
+- The platform task uses `gpt-5.6-sol` for the highest-risk schema and repository work; the
+  experience task uses `gpt-5.6-terra`; the bounded deterministic evaluation task uses the more
+  economical `gpt-5.6-luna`. Future tasks should continue to select model capability and reasoning
+  effort according to risk rather than use one model uniformly.
+
+The integration lead owns merges, shared configuration, package manifests, CI, navigation, feature
+flags, state-document updates, and Preview promotion. Sub-agents work on short-lived branches,
+commit their changes, and never merge their own work. Every handoff must include the commit SHA,
+tests run, API/schema assumptions, shared-file requests, migration/deployment implications, and
+known limitations.
+
+### Execution waves
+
+#### Wave 0 — Contracts and testable prototypes (active)
+
+1. **Platform contract:** add the PostgreSQL-only core migration, Drizzle schema, repository ports
+   and adapters, and tests for item lifecycle state, notes, annotations, collections, item events,
+   and digest snapshots. Keep `0001_phase1.sql` immutable.
+2. **Experience prototype:** build accessible fixture-backed components and tests for Priority
+   Reading, Worth Revisiting, reader knowledge controls, collections, archive, AI degradation, and
+   orphaned annotation states without editing shared persistence.
+3. **Evaluation foundation:** replace self-scoring dry evals with recorded predictions and add
+   deterministic retrieval, citation, abstention, summary-evidence, and ranking metrics. Keep live
+   provider calls opt-in.
+
+Wave 0 exits when contracts are frozen, migration from `0001_phase1.sql` passes in PostgreSQL CI,
+the fixture-backed product states are testable, and downstream work can compile against stable
+interfaces.
+
+#### Wave 1 — Core product streams
+
+Run three streams in parallel after the Wave 0 contract gate:
+
+1. **Reader and organization:** item note, quote annotations with context and content hashes,
+   collections and membership, archive/restore, mark unread, milestone-based reading progress, and
+   deterministic annotation re-anchoring.
+2. **Feed and engagement:** cursor-paginated server filtering, URL-backed state, deterministic
+   ranking and explanations, item events, Today sections, and resurfacing cooldown/dismissal.
+3. **Intelligence and retrieval:** immutable content versions, paragraph-aware chunks, versioned
+   summaries/claims and evidence, full-text search, vector search after model pinning, reciprocal
+   rank fusion, and durable AI jobs.
+
+#### Wave 2 — Trust, briefing, and integrated quality
+
+1. Upgrade chat and answers to passage-level retrieval, six-message conversation context, validated
+   citations, evidence-based abstention, and source excerpts when generation is unavailable.
+2. Add opt-in in-app daily digests, PostgreSQL-safe notifications, database-backed AI budgets,
+   trace propagation, operational metrics, and bounded queue jobs.
+3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
+   coverage across the integrated product.
+
+#### Wave 3 — Isolated Preview and acceptance
+
+Use a Phase 2-specific Neon branch/database and Vercel Preview. Apply additive migrations, verify
+dry-run backfill counts, enable knowledge features first, backfill chunks and embeddings in bounded
+idempotent batches, shadow retrieval and ranking, and then enable answers, personalization, and
+digests independently. Do not point the stable Preview alias at Phase 2 during this wave.
+
+### Persistence and behavior contract
+
+- Add item lifecycle fields for archive time, read time, last-opened time, milestone reading
+  progress, and manual priority.
+- Store one mutable main note per item, separate from source content and generated summaries.
+- Store annotations with exact quote, prefix/suffix context, normalized offsets, content version or
+  hash, optional comment, and `active` or `orphaned` state. Never silently attach a stale annotation
+  to different text.
+- Store collections separately from topics. Membership is idempotent and supports user ordering.
+- Store immutable, idempotent events for open, read/unread, completion, archive/restore, collection
+  changes, explicit feedback, citation clicks, and resurfacing actions. Raw dwell time is not a
+  Phase 2 ranking signal.
+- Store digest runs and selected items so historical digests remain reproducible after ranking
+  changes.
+- Add immutable content versions and stable 400–600-token chunks with source offsets. Existing
+  summaries migrate as `legacy_unverified`; existing whole-item embeddings are rebuilt rather than
+  mixed with chunk embeddings.
+- Artifacts use `pending`, `ready`, `degraded`, `failed`, and `stale` states. Regeneration enqueues an
+  idempotent job, retains the previous valid artifact, and appends history instead of overwriting it.
+- Capture readiness depends on durable usable source content, not successful AI completion.
+
+### Feed, ranking, and resurfacing contract
+
+- Provide cursor-paginated PostgreSQL feed queries with URL-backed filters for read/archive state,
+  topic, source, content type, priority, collection, and date range.
+- Support `for_you`, `recent`, and `priority` sorts with a default page size of 30 and maximum 100.
+  Use OR within a facet, AND across facets, and stable score/date plus item-ID ordering.
+- Manual priority is an absolute override and is never overwritten by learned ranking.
+- Personalization is deterministic and explainable. Use time-decayed topic, source, author, and
+  content-type affinities from explicit feedback, collection saves, completion, and archive events;
+  use a 60-day half-life and keep negative signals from permanently hiding content.
+- Reserve up to 20% of the top ten for relevant items outside the dominant source or topic when
+  alternatives exist. Always provide a chronological escape hatch plus personalization disable and
+  reset controls.
+- Today contains separate Priority Reading and Worth Revisiting sections. Resurfacing candidates
+  must be ready, unarchived, last opened at least 14 days ago, and either unread or deliberately
+  saved to a collection. Use a 30-day display cooldown and 90-day cooldown after dismissal.
+
+### Search, generation, and citations contract
+
+- Index title/topics and chunk text with PostgreSQL full-text search. After the embedding model is
+  pinned, add one model-versioned pgvector HNSW index and never mix incompatible vector spaces.
+- Apply filters in PostgreSQL before ranking and combine keyword and semantic lists with reciprocal
+  rank fusion. Return passage excerpts, scores, match reasons, retrieval mode, and degradation
+  reasons.
+- Specific questions with insufficient relevant evidence must abstain rather than retrieve unrelated
+  recent items. General brief/digest questions may retrieve recent unread and high-ranked items.
+- Structured model output must be validated. Every returned citation must map to a supplied item,
+  chunk, excerpt, and source URL; remove or retry malformed citations before responding.
+- Retry transient text-generation failures twice with jitter, then allow provider failover. Do not
+  fail embeddings over to a model with a different space. When generation is unavailable, return
+  ranked evidence excerpts; when summarization is unavailable, show an explicitly degraded
+  extractive summary and no fabricated claims.
+- Record artifact/prompt/schema version, provider/model, hashes, latency, cost, usage source, attempt,
+  result state, trace, and job identifiers without logging source content or secrets.
+
+### Versioned API plan
+
+- `GET /api/v1/feed`
+- `PATCH /api/v1/items/:id/state`
+- `GET|PUT|DELETE /api/v1/items/:id/note`
+- `GET|POST /api/v1/items/:id/annotations`
+- `PATCH|DELETE /api/v1/items/:id/annotations/:annotationId`
+- `GET|POST /api/v1/collections`
+- `GET|PATCH|DELETE /api/v1/collections/:id`
+- `PUT|DELETE /api/v1/collections/:id/items/:itemId`
+- `GET /api/v1/search`
+- `POST /api/v1/answers`
+- `GET /api/v1/items/:id/intelligence`
+- `POST /api/v1/items/:id/summaries/regenerate`
+- `GET|PUT /api/v1/preferences` and `POST /api/v1/preferences/reset`
+- `GET /api/v1/digests`, `POST /api/v1/digests/run`, and
+  `PATCH /api/v1/digests/preferences`
+
+All new writes require the signed web session, same-origin enforcement, Zod validation, an explicit
+field allowlist, and idempotency keys for retriable creates. Keep `GET /api/items?q=` as an item-only
+compatibility adapter and keep `ContentItem.priority` as the effective compatibility value while
+exposing manual priority, rank score/source, and explanation separately.
+
+### In-app digest contract
+
+- Generate at most one opt-in digest per user-local date with at most five items: up to three
+  priority/unread items and two resurfaced items, filling unused slots from the other group.
+- Persist selection reasons and support preview, Run Now, history, disable, and dismissal.
+- AI failure produces a deterministic digest from stored titles and summaries.
+- A once-daily Vercel Cron endpoint only enqueues the digest job. Schedule it at `02:00 UTC`; Hobby
+  timing may place execution within the following hour, which is acceptable for the morning brief.
+- Deduplicate and throttle immediate notifications and suppress them for archived, rejected,
+  processing, read, or already-digested items.
+
+### Quality gates
+
+- Main-content retention at least 95% with no more than 5% boilerplate on labeled fixtures.
+- Retrieval Recall@5 at least 85% and nDCG@10 at least 80%.
+- Citation support precision at least 95%, with no citation outside retrieved context.
+- Abstention accuracy at least 90%.
+- Summary supported-claim precision and evidence coverage at least 95%.
+- Ranking nDCG@10 at least 80% with diversity constraints enforced.
+- Keyword search p95 at most 300 ms; hybrid search p95 at most 1.5 seconds; cited answers p95 at
+  most 15 seconds; background jobs p95 at most 45 seconds.
+- Default configurable cost guards: at most USD 0.02 per processed item and USD 0.05 per cited
+  answer. No gated metric may regress more than 5% from the accepted provider/model baseline.
+- Preserve the Phase 1 full CI suite, at least 80% changed line/branch coverage, and at least 90%
+  coverage for critical auth, retrieval, mutation, migration, and job modules.
+- With every AI provider disabled, capture, reader, notes, collections, archive, manual priority,
+  source navigation, and keyword search must remain usable with visible degraded states.
+
+### Feature flags and rollout order
+
+Use independent server-side flags for Phase 2 knowledge UI, hybrid search, answers,
+personalization, and digests. In the isolated Phase 2 Preview, enable knowledge metadata and keyword
+search first, then hybrid retrieval after its backfill, cited answers, personalization after shadow
+evaluation, and digests last. Roll back with flags or application deployment while retaining
+additive migrations and resumable backfill state; do not use destructive down migrations.
