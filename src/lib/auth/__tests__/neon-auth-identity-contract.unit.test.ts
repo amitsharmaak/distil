@@ -5,6 +5,7 @@ const adr = readFileSync(
   resolve(process.cwd(), "docs/adr/0003-neon-auth-invitation-foundation.md"),
   "utf8"
 );
+const normalizedAdr = adr.replace(/\s+/gu, " ");
 
 describe("Phase 3 Neon Auth identity contract", () => {
   it("uses application-owned identity mapping instead of a provider subject on users", () => {
@@ -14,10 +15,16 @@ describe("Phase 3 Neon Auth identity contract", () => {
   });
 
   it("keeps access personal and denies verified identities without an active mapping", () => {
-    expect(adr).toContain("strictly personal `user_id` tenancy");
-    expect(adr).toContain("no workspace, membership, or workspace ownership tables or predicates");
-    expect(adr).toContain("Only the magic-link plugin is enabled for the first user-facing flow");
-    expect(adr).toContain("only after a verified email and successful invite consumption");
-    expect(adr).toContain("A verified identity with no mapped active user is\n   denied");
+    expect(normalizedAdr).toContain("strictly personal `user_id` tenancy");
+    expect(normalizedAdr).toContain(
+      "no workspace, membership, or workspace ownership tables or predicates"
+    );
+    expect(normalizedAdr).toContain(
+      "Only the magic-link plugin is enabled for the first user-facing flow"
+    );
+    expect(normalizedAdr).toContain(
+      "only after a verified email and successful invite consumption"
+    );
+    expect(normalizedAdr).toContain("A verified identity with no mapped active user is denied");
   });
 });
