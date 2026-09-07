@@ -576,90 +576,53 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 - [x] Test provider timeout/rate-limit behavior: safe retry, no duplicate, no leaked provider detail,
       no queue loop, and normal completion inside the 60-second worker budget.
 - [x] Run deterministic evals and an approved live eval; inspect Vercel logs for secrets.
-- [ ] **Task 4 complete:** append accepted quality threshold, results, cost, commit, and deployment ID.
+- [x] **Task 4 complete:** append accepted quality threshold, results, cost, commit, and deployment ID.
 
-Task 4 progress (2026-09-07, not yet accepted):
+Task 4 acceptance record (accepted 2026-09-07 23:09 IST):
 
-- **Provider decision:** Gemini is the only configured Preview AI provider because one Preview-scoped
-  key covers both generation and embeddings and matches the existing evaluation harness. Stable
-  assignments are `gemini-3.5-flash` for summaries/research/search,
-  `gemini-3.5-flash-lite` for classification/tagging/prioritization/preferences, and
-  `gemini-embedding-001` for embeddings. The configured in-application ceiling is
-  `DISTIL_DAILY_AI_BUDGET=1.00`; this is a per-process guardrail, not a Google billing hard limit.
-  Current public list prices recorded during selection were $1.50/$9.00 per million input/output
-  tokens for Flash and $0.30/$2.50 for Flash-Lite. Only `GEMINI_API_KEY` and the budget variable were
-  added to Preview; no provider secret value was printed or committed.
-- **Implementation and tests:** commits `279a31c` and `a042f3b` replace retired/preview model IDs,
-  add bounded retry/timeout coverage, and add live-release tests. Deterministic evaluation passed all
-  50 cases (100% on every recorded metric). Live evaluation with Flash scored topic precision 98.3%,
-  topic recall 98.0%, category accuracy 100%, duplicate precision/recall 100%, priority accuracy 54%,
-  and ROUGE-L 25.0%. Priority and ROUGE are Phase 2 calibration baselines, not acceptance evidence for
-  the live capture summary path. The ignored live result artifact has SHA-256
-  `d189c806e61a2f7ea727ba16070f38db35023bf40eaad688aead07181ba01273`.
-- **Production-only defect found and fixed:** the first live matrix exposed a `jsdom` 30 / ESM bundle
-  crash on normal HTML. Commit `acf888c` pins the compatible server runtime, refreshes audited
-  transitive dependencies, and adds a real-parser regression test. The full local gate then passed:
-  500 tests across 65 suites, changed-line coverage 82.3%, changed-branch coverage 85.5%, 24 web/mobile
-  E2E cases, 10 extension E2E cases, and a production build. The production audit has no High or
-  Critical findings; four Moderate development-only `drizzle-kit`/`esbuild` findings remain. Commit
-  `b2736b2` raises the bounded Gemini attempt timeout from five to eight seconds after live summaries
-  consistently exceeded the original allowance. Its complete GitHub quality gate passed in
-  `https://github.com/amitsharmaak/distil/actions/runs/34142625895`.
-- **Final live capture matrix on `b2736b2`, deployment
-  `dpl_HCXZDHXip1mcavokbzZZgjVNyDnA`:** short news ready in 12.336s, long analysis ready in 9.078s,
-  technical article ready in 9.047s, subscriber/paywall content ready in 10.417s with partial HTML,
-  and extraction-hostile content rejected correctly in 1.879s as `UNSUPPORTED_CONTENT`. All five
-  reached a terminal state on the first worker attempt inside 60 seconds. A duplicate short-news
-  submission returned HTTP 200, `duplicate=true`, and the same receipt. No queue loop or provider
-  secret appeared in inspected logs. Logged successful Flash-Lite tagging calls cost approximately
-  $0.000249-$0.001965 each; exact matrix total remains to be aggregated before acceptance.
-- **Quality result and remaining blocker:** topic generation was useful on all four ready items, and
-  the hostile-content rejection was correct. The user-facing summaries did not pass a reasonable
-  faithfulness/usefulness threshold: short news fell back to whitespace/date boilerplate, long and
-  technical articles fell back to truthful but truncated source openings, and the paywall case stored
-  HTML boilerplate. Cached deep summaries were absent. Therefore Task 4 remains incomplete even though
-  provider connectivity, durability, deduplication, retry bounds, and terminal timing passed.
-- **Only remaining Task 4 bug:** the `gemini-3.5-flash` summary and deep-summary path does not produce
-  a usable stored summary. The failure still needs to be isolated between request timeout and invalid
-  structured output. All other Task 4 functionality has passed; closing this bug and rerunning the
-  acceptance matrix are the only remaining implementation and verification work.
-- **Exact restart:** reproduce the Flash summary/deep-summary failure with one captured item;
-  distinguish timeout from malformed structured output; fix the summary path without weakening the
-  60-second worker bound; rerun the same five cases sequentially; require useful, source-grounded
-  summaries for the three public articles, graceful partial/rejection behavior for the paywall and
-  hostile cases, zero secret leakage, and all receipts terminal under 60 seconds; aggregate logged
-  cost; then record the accepted commit/deployment and mark Task 4 complete.
-
-Task 4 acceptance record (complete only after the repaired commit passes Preview):
-
-- **Release identity:** commit `[pending]`; immutable Preview deployment `[pending]`; deployment ID
-  `[pending]`; acceptance timestamp `[pending, IST]`. Keep the Task 3 deployment above as rollback
-  until every check below passes and the stable Preview alias has been deliberately repointed.
-- **Structured-model preflight:** record pass/fail for the configured primary summary model and its
-  summary-only quota fallback using native JSON response mode. Record model IDs, latency, and
-  normalized failure category only; do not paste prompts, responses, provider payloads, or keys.
-- **Fresh sequential matrix:** record one row each for short news, long analysis, technical article,
-  paywall/partial content, and extraction-hostile content. For each row record receipt/item ID,
-  terminal state, worker attempt count, processing time, successful model or extractive fallback,
-  feed-summary quality, cached-brief result, and any sanitized failure category. Use fresh canonical
-  URLs so an earlier deduplication result cannot bypass the repaired worker.
-- **Required outcomes:** all receipts terminate on their first worker attempt inside 60 seconds; the
-  three public articles have coherent plaintext 2-3 sentence feed summaries and cached briefs with
-  an overview plus 3-5 key points; paywall content is either faithfully summarized from substantive
-  visible prose or rejected; extraction-hostile content is rejected without a summary cache row.
-  No stored result may contain markup, whitespace/date/cookie boilerplate, or unsupported claims.
-- **Behavior checks:** force-regenerate one accepted article and verify the following non-force call
-  is a cache hit; resubmit one canonical URL and verify the same receipt/item returns with no new AI
-  call; exercise a controlled primary 429 and verify immediate summary-model fallback without a
-  duplicate capture, same-model quota retry, or queue loop.
-- **Cost and safety:** label the total as `application-estimated logged generation cost`; record call
-  count, input/output token estimates, total cost, median/max successful latency, and model mix.
-  Require the acceptance-window total below `$0.25` and the configured daily application guardrail
-  below `$1.00`. Record that application, queue, and build logs were scanned for secrets, connection
-  strings, provider payloads, prompts, and captured content, with findings `[pending]`.
-- **Decision:** `[pending: accepted or rejected]`. Mark **Task 4 complete** above only when all required
-  outcomes pass against the same commit and deployment. If rejected, leave the stable alias and
-  rollback position unchanged and record the failing checks plus the next restart step.
+- **Release identity:** implementation commit `c836eb4ca09a398d0fad7fa4cfea0df8f2175335`;
+  immutable Preview `https://project-evgf1-okmt9rap6-pv-1850.vercel.app`; deployment ID
+  `dpl_HwYfCVuKwEnQpFTjGYDstJQTGRTy`. The stable alias
+  `https://distil-preview-pv-1850.vercel.app` was deliberately repointed after all gates passed.
+  Task 3 deployment `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4` remains the rollback reference.
+- **Provider and implementation:** capture summaries use one native-JSON structured request with
+  `gemini-3.5-flash-lite` primary and summary-only quota fallback `gemini-3.1-flash-lite`.
+  `gemini-3.5-flash` remains restricted to research/search. Feed and cached brief summaries derive
+  from the same validated output; actual successful model and estimated cost are persisted. If both
+  candidates fail, a validated extractive feed summary may make the capture ready without creating an
+  AI cache row. Unreadable HTML/auth/challenge/paywall shells are rejected.
+- **Quality gates:** GitHub run `34147954025` passed static checks, unit/component/contract/security/
+  SQLite/PostgreSQL integration tests, 24 web/mobile E2E cases, 10 extension E2E cases, production
+  build, and coverage. The final local `test:ci` also passed. Across the complete Task 4 change,
+  changed-line coverage was 89.8% and changed-branch coverage was 80.9%. Deterministic evaluation
+  remained 50/50. Native structured-JSON live preflight passed for the primary in 1.277s and fallback
+  in 1.852s. A repeat of the broader live evaluation was blocked by the separate standard-Flash daily
+  quota; it does not exercise or invalidate the accepted summary route.
+- **Fresh Preview matrix:** short news receipt/item `89346afc-550a-45f9-aea0-8fe5fd1ed493`
+  became ready in 8.324s; long analysis `27e5678f-a369-488f-a3d1-52911911b517` in 7.770s;
+  technical article `0ba498b5-75d6-472e-9a12-029eb740d823` in 7.166s; and substantive
+  paywall/partial content `c00d5443-9f52-41c9-8cfa-d6373e3ed685` in 6.952s. Each used one worker
+  attempt, produced a coherent source-grounded 2-3 sentence plaintext feed summary and a cached brief
+  with four key points, initially using `gemini-3.5-flash-lite`. Fresh hostile-login receipt
+  `05cf2e82-cd71-4eaa-bf1b-1a9d13c371e6` was rejected in 3.707s as `CONTENT_REJECTED`, with no
+  item or cache. No stored result contained HTML or boilerplate.
+- **Fallback, regeneration, and deduplication:** forced regeneration of the short-news item received a
+  primary quota failure, immediately succeeded once on `gemini-3.1-flash-lite`, and updated the cache
+  with that actual model; the following non-force request was a cache hit. Resubmitting its canonical
+  URL returned `duplicate=true` with the same receipt/item and no new capture. Deterministic tests
+  additionally prove exactly two calls when both candidates return 429, bounded transient retries,
+  terminal invalid/auth/budget failures, sanitized typed errors, and extractive degradation.
+- **Cost and safety:** the acceptance window logged 19 successful generation calls (27,105 estimated
+  input tokens, 4,063 output tokens), 1.075s median and 3.008s maximum successful latency, and an
+  **application-estimated logged generation cost** of `$0.01784975`. Model mix was fourteen
+  `gemini-3.5-flash-lite` auto-tag calls, four primary summary calls, and one
+  `gemini-3.1-flash-lite` fallback summary call. This is below the `$0.25` acceptance threshold; the
+  Preview-only `$1.00` application guardrail remains configured. Application/queue/build logs were
+  scanned with no token values, connection strings, provider payloads, prompts, article bodies,
+  generated responses, or AI-key/session-secret names found.
+- **Decision:** accepted. Public capture and summary API shapes are unchanged, Production was not
+  deployed or modified, and all acceptance receipts terminated on their first worker attempt within
+  the 60-second ceiling.
 
 #### Task 5 — Provision and accept independent capture clients
 
