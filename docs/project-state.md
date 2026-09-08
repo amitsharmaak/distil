@@ -1315,3 +1315,55 @@ real-user data. The disposable Neon branch auto-expires on 2026-09-09. The two e
 are intentionally unpromoted. Next: retain the accepted SHA and flags-off posture until an operator
 separately approves rollout sequencing, Preview alias promotion, synthetic invitation rehearsal and
 eventual production migration; none is implied by Phase 3 implementation acceptance.
+
+### Phase 2 minimum acceptance completion — 2026-09-08
+
+The deferred Phase 2 release-blocking implementation is now completed and frozen at
+`933ad10aa94c35a72a8eb647f8170447f43d092e` on top of the accepted Phase 3 baseline. This does not
+rewrite the historical Phase 2 freeze at `2ade16b2347c2f50566cb3a67312855392fc8`; it is the reviewed
+forward-port required to exercise Phase 2 safely after Phase 3 tenancy landed. Stable Preview and
+Production were not promoted or mutated.
+
+The answers route now uses a tenant-bound provider-backed generator with an exact-excerpt citation
+contract, bounded timeout/token budget and fail-closed parsing. The accepted provider is Gemini
+`gemini-3.5-flash-lite`, matching the Phase 1 provider decision. The live two-case evaluation passed
+grounded answer usefulness and citations, unanswerable abstention, summary faithfulness and an
+injected provider-outage fallback. Maximum observed provider latency was 1,274 ms and maximum
+per-call cost was USD 0.0005405. Semantic/vector retrieval remains explicitly degraded to indexed
+keyword search until an embedding model and dimensions are pinned; pgvector/HNSW and sophisticated
+multi-provider failover remain independent Phase 2.x enhancements.
+
+A dry-run-by-default, bounded and resumable knowledge backfill CLI now covers content versions,
+chunks, legacy artifacts and degraded summaries for one explicit user at a time. Both synthetic
+users on disposable Neon branch `br-noisy-river-b3iyu8s0` completed every supported backfill, and an
+immediate replay performed zero additional batches. The branch uses a restricted non-bypass runtime
+role: base-table reads are denied, transaction-local tenant views reveal exactly the selected user,
+and the application never receives the migration/owner connection. The branch auto-expires on
+2026-09-09.
+
+The final unpromoted feature-enabled Preview is deployment
+`dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`, exposed only through the isolated alias
+`phase2-acceptance-20260908.vercel.app`. Live HTTP and desktop browser acceptance passed health,
+legacy login, Today, feed, persisted reading progress, notes, active highlights, keyword search,
+provider-grounded answer, unanswerable abstention, citation-to-reader navigation, cross-tenant
+exclusion, digest opt-in/run/item dismissal and deterministic digest degradation. The walkthrough
+found and fixed a release defect in the legacy login path: login rate-limit persistence is now bound
+to the configured tenant rather than requiring forbidden base-table access. It also confirmed that
+an isolated deployment must set `NEXT_PUBLIC_API_BASE_URL` to its own alias. Runtime log inspection
+found no error entries. Rollback deployment `dpl_FS37dY8AjGgr37VmRqXKZ2sAWEDF` remains Ready and its
+health endpoint returned HTTP 200.
+
+Local verification passed lint/format with the same 10 known warnings and zero errors, TypeScript,
+182 deterministic suites / 1,286 tests and production build. GitHub Actions run
+[34219562782](https://github.com/amitsharmaak/distil/actions/runs/34219562782) passed every quality
+job for exact SHA `933ad10`. The in-app browser completed the focused desktop walkthrough, and CI's
+responsive desktop/mobile browser suite is green. One acceptance item remains human-only: run the
+same focused walkthrough on a physical iPhone. Until that is recorded, Phase 2 implementation and
+automated acceptance are complete, but the strict minimum device acceptance gate is **pending**.
+
+The content-free private evidence summary is mode `0600` and gitignored at
+`artifacts/preview-clone-rehearsal/phase2-acceptance-20260908/summary.json`. It contains no secrets,
+connection strings, real-user data or captured content. Restart from code SHA `933ad10`, state
+checkpoint following this section, green CI run `34219562782`, disposable branch
+`br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. Complete the
+physical iPhone walkthrough before calling the strict Phase 2 acceptance gate closed.
