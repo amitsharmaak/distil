@@ -1180,3 +1180,35 @@ Restart on `codex/phase-3-tenancy`. Confirm implementation freeze `290817c`, sta
 `05e1751` and green run `34207634940`, then begin Wave 4 performance, failure, full-regression and
 independent adversarial acceptance. Keep every rollout flag false; Wave 3 completion authorizes
 Wave 4 work, not real-user linking, invitations, Preview promotion or Production migration.
+
+### Wave 4 execution start — 2026-09-08
+
+Wave 4 started on `codex/phase-3-tenancy` from state checkpoint
+`05e1751a0ee115b5fec09231a1a186c7b167987e`, whose only successor before this update is the
+CI-evidence commit `818cc5a8ba8bb2f25bcf3a91f01abb28dd02d8fd`. The implementation baseline remains frozen
+Wave 3 SHA `290817cc9d1124141ce18b3b0018e9e5345d63d3`; no Phase 3 feature flag, account, invitation,
+deployment alias, database branch, or Production resource was changed to start this wave.
+
+The acceptance contract is `docs/phase3-wave4-acceptance.md`. Execution is ordered: real
+PostgreSQL query-plan and concurrent runtime checks; deterministic failure/replay against production
+adapters; complete local regression; independent two-synthetic-user Preview-clone acceptance; then
+one-SHA evidence freeze and Phase 3 exit decision. Wall-clock performance measurements are recorded
+against a pinned environment and dataset, while CI enforces deterministic plan, isolation,
+idempotency, and bounded-work invariants.
+
+Current work is the first database/performance slice: replace Wave 3's self-test-only plan adapter
+with restricted-role PostgreSQL observations for feed, search, export, and deletion access, then use
+the measured plans to decide whether a new forward-only optimization migration is warranted. Keep
+all rollout flags false. This start authorizes tests and any reviewed Wave 4 fixes only; it does not
+authorize Preview promotion, real-user linking, invitations, or Production migration.
+
+Initial slice evidence: `P3-PERF-001` now runs against the real staged schema, restricted runtime
+role, transaction-local context, 20 tenants, 4,000 alpha/beta items and 40,000 lifecycle records.
+Both reviewed users receive only their own rows for recent feed, full-text search, export and
+deletion queries. Every plan enters through a visible `user_id` index condition and none performs a
+global sequential scan of `items` or `account_deletions`. A candidate ordering-index migration was
+measured and rejected before landing because PostgreSQL continued to use the existing tenant index
+through the security-barrier view; retaining it would have added write cost without changing the
+accepted plan. Focused deterministic tests passed 26/26 and the new PostgreSQL suite passed 2/2.
+Next: add concurrent bounded-load observations and wire deterministic failure/replay to the actual
+capture, durable queue, export and deletion adapters.
