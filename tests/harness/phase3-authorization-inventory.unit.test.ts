@@ -15,15 +15,15 @@ describe("Phase 3 durable authorization inventory", () => {
   it("matches every frozen Wave 2 route, page, and Drizzle table in both directions", () => {
     const inventory = loadPhase3AuthorizationInventory(matrixPath);
     expect(inventory.baselineCommit).toBe("428a0b023e2295b59fe864efeb2b26047b0ed6fa");
-    expect(inventory.tables).toHaveLength(45);
-    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 74);
-    expect(inventory.pageLoaders).toHaveLength(18);
+    expect(inventory.tables).toHaveLength(49);
+    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 83);
+    expect(inventory.pageLoaders).toHaveLength(20);
     expect(() => assertPhase3AuthorizationInventory(inventory)).not.toThrow();
   });
 
   it("turns every reviewed owner mutation into generated CSRF coverage", () => {
     const surfaces = reviewedOwnerMutationSurfaces(loadPhase3AuthorizationInventory(matrixPath));
-    expect(surfaces).toHaveLength(46);
+    expect(surfaces).toHaveLength(52);
     expect(surfaces).toEqual(
       expect.arrayContaining([
         "POST /api/agent/approvals",

@@ -42,6 +42,8 @@
   "GET /api/settings/email-intelligence",
   "GET /api/slack/status",
   "GET /api/v1/capture-tokens",
+  "GET /api/v1/account",
+  "GET /api/v1/account/sessions",
   "GET /api/v1/account/exports/:id",
   "GET /api/v1/account/exports/:id/download",
   "GET /api/v1/account/usage",
@@ -67,6 +69,7 @@
   "PATCH /api/items/:id",
   "PATCH /api/notifications/:id",
   "PATCH /api/v1/collections/:id",
+  "PATCH /api/v1/account",
   "PATCH /api/v1/digests/preferences",
   "PATCH /api/v1/items/:id/annotations/:annotationId",
   "PATCH /api/v1/items/:id/state",
@@ -94,6 +97,7 @@
   "POST /api/settings/email-intelligence",
   "POST /api/slack/sync",
   "POST /api/v1/answers",
+  "POST /api/v1/account/sessions/revoke-others",
   "POST /api/v1/account/deletion",
   "POST /api/v1/account/export",
   "POST /api/v1/capture-tokens",
@@ -108,5 +112,6 @@
   "PUT /api/notifications/preferences",
   "PUT /api/v1/collections/:id/items/:itemId",
   "PUT /api/v1/items/:id/note",
-  "PUT /api/v1/preferences"
+  "PUT /api/v1/preferences",
+  "DELETE /api/v1/account/sessions/:id"
 ]

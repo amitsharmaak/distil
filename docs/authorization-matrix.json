@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "updatedAt": "2026-09-08",
   "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
-  "status": "wave-2-freeze-reviewed-wave-3-additions-pending",
+  "status": "wave-3-integration-in-progress",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
   "sourceOfTruth": "docs/phase-3-ownership.md",
   "testProfiles": {
@@ -439,6 +439,36 @@
       "currentScope": "derived-user",
       "requiredScope": "derived-user",
       "ownerVia": "same-user composite references to research_suggestions and items"
+    },
+    {
+      "name": "user_quotas",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user",
+      "requiredScope": "direct-user-read-platform-write",
+      "ownerVia": "user_id"
+    },
+    {
+      "name": "connector_oauth_states",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id plus session, provider, PKCE verifier and redirect binding",
+      "sensitive": true
+    },
+    {
+      "name": "account_deletion_tombstones",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "operator-control-plane",
+      "requiredScope": "operator-control-plane",
+      "ownerVia": "content-free deletion id; no user identifier or tenant content"
+    },
+    {
+      "name": "operator_audit_events",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "operator-control-plane",
+      "requiredScope": "operator-control-plane",
+      "ownerVia": "irreversible target hash and allowlisted metadata only",
+      "sensitive": true
     }
   ],
   "repositoryFamilies": [
@@ -1369,6 +1399,104 @@
       ],
       "currentFeatureGate": "DISTIL_PHASE2_SEARCH",
       "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account",
+      "source": "src/app/api/v1/account/route.ts",
+      "methods": ["GET", "PATCH"],
+      "currentAuth": "legacy_or_provider_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["users", "user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/sessions",
+      "source": "src/app/api/v1/account/sessions/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/sessions/:id",
+      "source": "src/app/api/v1/account/sessions/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "fresh_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/sessions/revoke-others",
+      "source": "src/app/api/v1/account/sessions/revoke-others/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "fresh_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/export",
+      "source": "src/app/api/v1/account/export/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "disabled_feature_or_fresh_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["account_exports", "job_queue", "usage_counters", "user_quotas"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/exports/:id",
+      "source": "src/app/api/v1/account/exports/[id]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "disabled_feature_or_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["account_exports"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/exports/:id/download",
+      "source": "src/app/api/v1/account/exports/[id]/download/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "disabled_feature_or_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["account_exports", "future_object_store"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/deletion",
+      "source": "src/app/api/v1/account/deletion/route.ts",
+      "methods": ["POST", "DELETE"],
+      "currentAuth": "disabled_feature_or_fresh_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": [
+        "users",
+        "account_deletions",
+        "capture_tokens",
+        "session_metadata",
+        "oauth_tokens",
+        "connector_oauth_states",
+        "job_queue"
+      ],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/account/usage",
+      "source": "src/app/api/v1/account/usage/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "disabled_feature_or_provider_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["usage_counters", "user_quotas"],
+      "testProfile": "owner"
     }
   ],
   "pageLoaders": [
@@ -1521,6 +1649,22 @@
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
       "dataPath": "/api/items aggregate",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/account",
+      "source": "src/app/account/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "account, session, capture-token, usage, export and deletion APIs",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/onboarding",
+      "source": "src/app/onboarding/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/v1/account profile, timezone and privacy preferences",
       "testProfile": "owner"
     }
   ],
@@ -1754,6 +1898,32 @@
       "currentTenant": "global timers/settings/session files",
       "requiredTenant": "disabled in hosted mode or durable per-user connector jobs",
       "resources": ["user_settings", "publisher_queue", "publisher_session_storage", "items"]
+    },
+    {
+      "id": "worker:account-export",
+      "source": "src/lib/lifecycle/workers.ts",
+      "currentTenant": "versioned tenant job envelope",
+      "requiredTenant": "job userId plus owner-checked export row, tenant snapshot, quota and object key",
+      "resources": [
+        "account_exports",
+        "job_queue",
+        "usage_counters",
+        "user_quotas",
+        "future_object_store"
+      ]
+    },
+    {
+      "id": "worker:account-deletion",
+      "source": "src/lib/lifecycle/workers.ts",
+      "currentTenant": "versioned tenant job envelope plus narrow control-plane purge",
+      "requiredTenant": "job userId must match deletion row; purge verifies zero tenant rows and objects before tombstone",
+      "resources": [
+        "account_deletions",
+        "job_queue",
+        "account_deletion_tombstones",
+        "operator_audit_events",
+        "future_object_store"
+      ]
     }
   ],
   "searchAndAiPaths": [
@@ -2199,9 +2369,9 @@
     }
   ],
   "inventoryCoverage": {
-    "expectedDrizzleTableCount": 45,
-    "expectedApiRouteFileCount": 74,
-    "expectedPageFileCount": 18,
+    "expectedDrizzleTableCount": 49,
+    "expectedApiRouteFileCount": 83,
+    "expectedPageFileCount": 20,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }
