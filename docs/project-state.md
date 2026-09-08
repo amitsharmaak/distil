@@ -1068,6 +1068,11 @@ Integrated product behavior:
 
 Local candidate evidence, with all rollout flags explicitly false:
 
+- GitHub Actions run
+  [34200693078](https://github.com/amitsharmaak/distil/actions/runs/34200693078) passed on checkpoint
+  commit `ab3ce600fe342885e7f0c56914f0b7d8cc6aa440`: static checks, deterministic suites,
+  security, coverage, PostgreSQL integration, production build, extension E2E, and desktop/mobile
+  browser E2E all passed. This evidence-only state update follows that exact checkpoint.
 - Lint and formatting passed with the same 10 pre-existing warnings; TypeScript passed.
 - Full deterministic Jest passed 161 suites / 1,141 tests before the final coverage additions.
   The final coverage corpus passed 171 suites / 1,189 tests.
@@ -1096,7 +1101,7 @@ Wave 3 cannot freeze yet. Required remaining gates:
 3. Rehearse migration, backup/restore, export/deletion recovery and zero-row verification on an
    isolated disposable Preview clone using synthetic users, with all traffic/workers initially
    disabled. Record the Neon branch, migration ledger, object inventory and rollback evidence.
-4. Push this checkpoint, obtain green CI for one exact SHA, then run final Wave 4 performance,
+4. After the external gates and disposable-clone rehearsal clear, run final Wave 4 performance,
    failure, full regression and independent two-user adversarial acceptance. Do not enable
    invitations or link a real identity before those records exist.
 
