@@ -1,4 +1,5 @@
 import { createCaptureQueueConsumer } from "../consumer";
+import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 
 describe("capture queue consumer", () => {
   it("awaits the worker instead of starting fire-and-forget work", async () => {
@@ -8,10 +9,12 @@ describe("capture queue consumer", () => {
     });
     const handle = jest.fn().mockReturnValue(pending);
     let completed = false;
-    const processing = createCaptureQueueConsumer({ handle } as never)({
-      version: 1,
+    const message = createCaptureQueueMessageV2({
+      userId: "10000000-0000-4000-8000-000000000010",
       captureId: "10000000-0000-4000-8000-000000000001",
-    }).then(() => {
+      traceId: "10000000-0000-4000-8000-000000000011",
+    });
+    const processing = createCaptureQueueConsumer({ handle } as never)(message).then(() => {
       completed = true;
     });
     await Promise.resolve();
@@ -19,5 +22,6 @@ describe("capture queue consumer", () => {
     release();
     await processing;
     expect(handle).toHaveBeenCalledTimes(1);
+    expect(handle).toHaveBeenCalledWith(message);
   });
 });

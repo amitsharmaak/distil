@@ -1,4 +1,5 @@
 import type { CaptureRecord, CaptureTokenRecord } from "@/lib/repositories/ports";
+import { userIdSchema } from "@/lib/contracts/tenant-context";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
 type Row = Record<string, unknown>;
@@ -46,6 +47,9 @@ function ContentItemLinks(value: unknown): NonNullable<ContentItem["extractedLin
 
 export function mapCapture(row: Row): CaptureRecord {
   return {
+    userId: userIdSchema.parse(row.user_id),
+    originActorKind: String(row.origin_actor_kind) as CaptureRecord["originActorKind"],
+    originActorId: String(row.origin_actor_id),
     id: String(row.id),
     url: String(row.url),
     normalizedUrl: String(row.normalized_url),
@@ -71,6 +75,7 @@ export function mapCapture(row: Row): CaptureRecord {
 
 export function mapCaptureToken(row: Row): CaptureTokenRecord {
   return {
+    userId: userIdSchema.parse(row.user_id),
     id: String(row.id),
     name: String(row.name),
     tokenHash: String(row.token_hash),

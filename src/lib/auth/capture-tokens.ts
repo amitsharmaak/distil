@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { CAPTURE_TOKEN_PREFIX } from "@/lib/auth/constants";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { CaptureTokenRepository } from "@/lib/repositories/ports";
 
 export interface IssuedCaptureToken {
@@ -15,6 +16,7 @@ export function hashCaptureToken(token: string): string {
 }
 
 export async function issueCaptureToken(
+  context: AuthContext,
   repository: CaptureTokenRepository,
   name: string,
   options: { now?: Date; id?: string; random?: Uint8Array } = {}
@@ -26,6 +28,7 @@ export async function issueCaptureToken(
   const token = `${CAPTURE_TOKEN_PREFIX}${Buffer.from(options.random ?? randomBytes(32)).toString("base64url")}`;
   const createdAt = (options.now ?? new Date()).toISOString();
   const record = {
+    userId: context.userId,
     id: options.id ?? randomUUID(),
     name: trimmedName,
     tokenHash: hashCaptureToken(token),

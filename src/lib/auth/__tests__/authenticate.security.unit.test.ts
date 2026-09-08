@@ -5,19 +5,28 @@ import {
   verifyLegacyCaptureToken,
 } from "@/lib/auth";
 import { hashCaptureToken } from "@/lib/auth/capture-tokens";
-import { createSessionToken } from "@/lib/auth/session";
+import { AccessDeniedError } from "@/lib/auth/account";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { enforceRateLimit } from "@/lib/auth/rate-limit";
 import type { CaptureTokenRepository, RateLimitRepository } from "@/lib/repositories/ports";
 
-const secret = "a-secure-session-secret-with-more-than-32-bytes";
 const now = new Date("2026-03-01T00:00:00Z");
 const token = `dst_cap_${"a".repeat(43)}`;
+const userId = "10000000-0000-4000-8000-000000000010";
+const tokenId = "10000000-0000-4000-8000-000000000020";
+const sessionContext = createAuthContext({
+  userId,
+  actorKind: "user",
+  actorId: userId,
+  requestId: "10000000-0000-4000-8000-000000000030",
+});
 
 function dependencies() {
   const captureTokens: jest.Mocked<CaptureTokenRepository> = {
     create: jest.fn(),
     findActiveByHash: jest.fn().mockResolvedValue({
-      id: "token-id",
+      userId: sessionContext.userId,
+      id: tokenId,
       name: "iPhone",
       tokenHash: hashCaptureToken(token),
       tokenPrefix: "dst_cap_aaaaaaaa",
@@ -34,7 +43,19 @@ function dependencies() {
       resetAt: "2026-03-01T00:01:00Z",
     }),
   };
-  return { captureTokens, rateLimits, sessionSecret: secret };
+  const repositories = { captureTokens, rateLimits } as never;
+  return {
+    captureTokens,
+    rateLimits,
+    tokenIdentities: {
+      resolveActiveByHash: jest.fn().mockResolvedValue({
+        userId: sessionContext.userId,
+        tokenId,
+      }),
+    },
+    getTenantRepositories: jest.fn().mockResolvedValue(repositories),
+    resolveSessionContext: jest.fn().mockRejectedValue(new AccessDeniedError("unauthenticated")),
+  };
 }
 
 describe("capture authentication", () => {
@@ -53,18 +74,30 @@ describe("capture authentication", () => {
     });
     await expect(authenticateCaptureToken(request, deps, now)).resolves.toEqual({
       kind: "capture-token",
-      tokenId: "token-id",
+      context: expect.objectContaining({
+        userId: sessionContext.userId,
+        actorKind: "capture-token",
+        actorId: tokenId,
+      }),
+      userId: sessionContext.userId,
+      tokenId,
     });
     expect(deps.captureTokens.findActiveByHash).toHaveBeenCalledWith(hashCaptureToken(token));
     expect(deps.rateLimits.consume).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "capture-token:token-id", limit: 60, windowSeconds: 60 })
+      expect.objectContaining({
+        userId: sessionContext.userId,
+        principalId: tokenId,
+        key: `capture-token:${tokenId}`,
+        limit: 60,
+        windowSeconds: 60,
+      })
     );
-    expect(deps.captureTokens.touchLastUsed).toHaveBeenCalledWith("token-id", now.toISOString());
+    expect(deps.captureTokens.touchLastUsed).toHaveBeenCalledWith(tokenId, now.toISOString());
   });
 
   it("rejects malformed and revoked tokens without consuming a rate window", async () => {
     const deps = dependencies();
-    deps.captureTokens.findActiveByHash.mockResolvedValue(undefined);
+    deps.tokenIdentities.resolveActiveByHash.mockResolvedValue(undefined);
     await expect(
       authenticateCaptureToken(
         new Request("https://distil.example", { headers: { authorization: `Bearer ${token}` } }),
@@ -106,21 +139,21 @@ describe("capture authentication", () => {
 
   it("resolves a session without applying capture-token rate limits", async () => {
     const deps = dependencies();
-    const session = await createSessionToken(secret, now, "session-id");
-    const request = new Request("https://distil.example", {
-      headers: { cookie: `distil_session=${session}` },
+    deps.resolveSessionContext.mockResolvedValue(sessionContext);
+    const request = new Request("https://distil.example");
+    await expect(resolveCapturePrincipal(request, deps, now)).resolves.toEqual({
+      kind: "session",
+      context: sessionContext,
     });
-    await expect(resolveCapturePrincipal(request, deps, now)).resolves.toEqual({ kind: "session" });
     expect(deps.captureTokens.findActiveByHash).not.toHaveBeenCalled();
     expect(deps.rateLimits.consume).not.toHaveBeenCalled();
   });
 
   it("prefers an explicitly supplied bearer credential over a session", async () => {
     const deps = dependencies();
-    deps.captureTokens.findActiveByHash.mockResolvedValue(undefined);
-    const session = await createSessionToken(secret, now, "session-id");
+    deps.tokenIdentities.resolveActiveByHash.mockResolvedValue(undefined);
     const request = new Request("https://distil.example", {
-      headers: { cookie: `distil_session=${session}`, authorization: "Bearer invalid" },
+      headers: { authorization: "Bearer invalid" },
     });
     await expect(resolveCapturePrincipal(request, deps, now)).resolves.toBeUndefined();
   });
@@ -143,6 +176,14 @@ describe("capture authentication", () => {
     await expect(
       resolveCapturePrincipal(new Request("https://distil.example"), dependencies(), now)
     ).resolves.toBeUndefined();
+  });
+
+  it("propagates session storage failures", async () => {
+    const deps = dependencies();
+    deps.resolveSessionContext.mockRejectedValue(new Error("session storage unavailable"));
+    await expect(
+      resolveCapturePrincipal(new Request("https://distil.example"), deps, now)
+    ).rejects.toThrow("session storage unavailable");
   });
 
   it("uses the current time when rate-limit callers omit it", async () => {

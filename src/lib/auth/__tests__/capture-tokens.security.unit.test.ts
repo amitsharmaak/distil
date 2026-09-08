@@ -1,5 +1,14 @@
 import { hashCaptureToken, issueCaptureToken, safeTokenEqual } from "@/lib/auth/capture-tokens";
 import type { CaptureTokenRepository } from "@/lib/repositories/ports";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const userId = "10000000-0000-4000-8000-000000000010";
+const context = createAuthContext({
+  userId,
+  actorKind: "user",
+  actorId: userId,
+  requestId: "10000000-0000-4000-8000-000000000011",
+});
 
 function repository(): jest.Mocked<CaptureTokenRepository> {
   return {
@@ -14,7 +23,7 @@ function repository(): jest.Mocked<CaptureTokenRepository> {
 describe("capture token issuance", () => {
   it("returns the plaintext once and persists only its hash", async () => {
     const repo = repository();
-    const issued = await issueCaptureToken(repo, " iPhone ", {
+    const issued = await issueCaptureToken(context, repo, " iPhone ", {
       id: "token-id",
       now: new Date("2026-03-01T00:00:00Z"),
       random: Buffer.alloc(32, 5),
@@ -23,6 +32,7 @@ describe("capture token issuance", () => {
     expect(issued.token).toMatch(/^dst_cap_[A-Za-z0-9_-]{43}$/);
     expect(issued.name).toBe("iPhone");
     expect(repo.create).toHaveBeenCalledWith({
+      userId: context.userId,
       id: "token-id",
       name: "iPhone",
       tokenHash: hashCaptureToken(issued.token),
@@ -33,7 +43,7 @@ describe("capture token issuance", () => {
   });
 
   it.each(["", "   ", "x".repeat(81)])("rejects invalid token name", async (name) => {
-    await expect(issueCaptureToken(repository(), name)).rejects.toThrow(/1-80/);
+    await expect(issueCaptureToken(context, repository(), name)).rejects.toThrow(/1-80/);
   });
 
   it("compares legacy compatibility secrets without comparing plaintext bytes", () => {

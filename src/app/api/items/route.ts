@@ -18,8 +18,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
 import { getItems, getItemByNormalizedUrl } from "@/lib/database";
-import { verifyLegacyCaptureToken } from "@/lib/auth";
-import { readAuthEnvironment } from "@/lib/auth/environment";
 import { composeCaptureRoutes } from "@/lib/capture/composition";
 import { createCaptureCollectionHandlers } from "@/lib/capture/http";
 import { createCaptureSchema } from "@/lib/capture/schema";
@@ -215,14 +213,6 @@ export async function POST(request: NextRequest) {
           { error: { code: "INVALID_REQUEST", message: "The capture request is invalid" } },
           { status: 400, headers: CORS_HEADERS }
         );
-      }
-
-      if (verifyLegacyCaptureToken(request, readAuthEnvironment().legacyCaptureToken)) {
-        const result = await composition.service.create(capture.data);
-        return NextResponse.json(result, {
-          status: result.duplicate ? 200 : 202,
-          headers: CORS_HEADERS,
-        });
       }
 
       const durableRequest = new Request(request.url, {

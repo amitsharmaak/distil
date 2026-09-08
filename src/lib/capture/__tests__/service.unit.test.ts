@@ -1,6 +1,6 @@
 import { FakeCaptureDispatcher } from "@/lib/queue/dispatchers";
 import { CaptureService, QueueUnavailableError } from "../service";
-import { captureRecord, MemoryCaptureRepository, publicDns } from "./fixtures";
+import { captureRecord, context, MemoryCaptureRepository, publicDns } from "./fixtures";
 
 const input = { url: "https://example.com/article", source: "web" as const };
 
@@ -9,6 +9,7 @@ describe("CaptureService", () => {
     const captures = new MemoryCaptureRepository();
     const dispatcher = new FakeCaptureDispatcher();
     const service = new CaptureService({
+      context,
       captures,
       dispatcher,
       resolve: publicDns,
@@ -20,8 +21,13 @@ describe("CaptureService", () => {
     expect(captures.records.has(result.receipt.id)).toBe(true);
     expect(dispatcher.messages).toEqual([
       {
-        message: { version: 1, captureId: result.receipt.id },
-        idempotencyKey: result.receipt.id,
+        message: {
+          version: 2,
+          userId: context.userId,
+          captureId: result.receipt.id,
+          traceId: context.requestId,
+        },
+        idempotencyKey: `${context.userId}:${result.receipt.id}`,
       },
     ]);
   });
@@ -29,9 +35,12 @@ describe("CaptureService", () => {
   it("returns an active duplicate with 200 semantics without publishing", async () => {
     const captures = new MemoryCaptureRepository([captureRecord()]);
     const dispatcher = new FakeCaptureDispatcher();
-    const result = await new CaptureService({ captures, dispatcher, resolve: publicDns }).create(
-      input
-    );
+    const result = await new CaptureService({
+      context,
+      captures,
+      dispatcher,
+      resolve: publicDns,
+    }).create(input);
     expect(result.duplicate).toBe(true);
     expect(dispatcher.messages).toHaveLength(0);
   });
@@ -45,6 +54,7 @@ describe("CaptureService", () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(winner);
     const result = await new CaptureService({
+      context,
       captures,
       dispatcher: new FakeCaptureDispatcher(),
       resolve: publicDns,
@@ -60,6 +70,7 @@ describe("CaptureService", () => {
     const dispatcher = new FakeCaptureDispatcher();
     dispatcher.failure = new Error("queue offline");
     const service = new CaptureService({
+      context,
       captures,
       dispatcher,
       resolve: publicDns,
@@ -75,9 +86,9 @@ describe("CaptureService", () => {
     const failed = captureRecord({ status: "failed", retryable: true });
     const captures = new MemoryCaptureRepository([failed]);
     const dispatcher = new FakeCaptureDispatcher();
-    const receipt = await new CaptureService({ captures, dispatcher }).retry(failed.id);
+    const receipt = await new CaptureService({ context, captures, dispatcher }).retry(failed.id);
     expect(receipt.status).toBe("queued");
-    expect(dispatcher.messages[0].idempotencyKey).toBe(failed.id);
+    expect(dispatcher.messages[0].idempotencyKey).toBe(`${context.userId}:${failed.id}`);
   });
 
   it("preserves retryability when retry publication fails", async () => {
@@ -86,7 +97,7 @@ describe("CaptureService", () => {
     const dispatcher = new FakeCaptureDispatcher();
     dispatcher.failure = new Error("offline");
     await expect(
-      new CaptureService({ captures, dispatcher }).retry(failed.id)
+      new CaptureService({ context, captures, dispatcher }).retry(failed.id)
     ).rejects.toBeInstanceOf(QueueUnavailableError);
     expect((await captures.findById(failed.id))?.status).toBe("failed");
     expect((await captures.findById(failed.id))?.retryable).toBe(true);
@@ -97,6 +108,7 @@ describe("CaptureService", () => {
       const record = captureRecord({ status, retryable: false });
       await expect(
         new CaptureService({
+          context,
           captures: new MemoryCaptureRepository([record]),
           dispatcher: new FakeCaptureDispatcher(),
         }).retry(record.id)
@@ -108,7 +120,11 @@ describe("CaptureService", () => {
     const record = captureRecord();
     const captures = new MemoryCaptureRepository([record]);
     const list = jest.spyOn(captures, "list");
-    const service = new CaptureService({ captures, dispatcher: new FakeCaptureDispatcher() });
+    const service = new CaptureService({
+      context,
+      captures,
+      dispatcher: new FakeCaptureDispatcher(),
+    });
     await expect(service.get(record.id)).resolves.toMatchObject({ id: record.id });
     await expect(service.get("missing")).rejects.toMatchObject({ name: "CaptureNotFoundError" });
     await service.list(1_000);
@@ -125,6 +141,7 @@ describe("CaptureService", () => {
       lastErrorMessage: undefined,
     });
     const receipt = await new CaptureService({
+      context,
       captures: new MemoryCaptureRepository([record]),
       dispatcher: new FakeCaptureDispatcher(),
     }).get(record.id);
@@ -139,6 +156,7 @@ describe("CaptureService", () => {
     captures.failCreate = true;
     await expect(
       new CaptureService({
+        context,
         captures,
         dispatcher: new FakeCaptureDispatcher(),
         resolve: publicDns,
@@ -149,6 +167,7 @@ describe("CaptureService", () => {
   it("reports missing captures during retry", async () => {
     await expect(
       new CaptureService({
+        context,
         captures: new MemoryCaptureRepository(),
         dispatcher: new FakeCaptureDispatcher(),
       }).retry("missing")

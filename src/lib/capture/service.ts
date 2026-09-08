@@ -6,6 +6,8 @@ import type {
   CreateCaptureRequest,
   CreateCaptureResponse,
 } from "@/lib/contracts/capture";
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
+import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 import type { CaptureRecord, CaptureRepository } from "@/lib/repositories/ports";
 import type { DnsResolver } from "./url-safety";
 import { assertSafeUrl, normalizeCaptureUrl } from "./url-safety";
@@ -35,6 +37,7 @@ export class CaptureNotRetryableError extends Error {
 }
 
 export interface CaptureServiceDependencies {
+  context: AuthContext;
   captures: CaptureRepository;
   dispatcher: CaptureDispatcher;
   resolve?: DnsResolver;
@@ -66,8 +69,10 @@ export function toCaptureReceipt(record: CaptureRecord): CaptureReceipt {
 export class CaptureService {
   private readonly id: () => string;
   private readonly now: () => Date;
+  private readonly context: AuthContext;
 
   constructor(private readonly dependencies: CaptureServiceDependencies) {
+    this.context = parseAuthContext(dependencies.context);
     this.id = dependencies.id ?? randomUUID;
     this.now = dependencies.now ?? (() => new Date());
   }
@@ -84,6 +89,9 @@ export class CaptureService {
     let capture: CaptureRecord;
     try {
       capture = await this.dependencies.captures.create({
+        userId: this.context.userId,
+        originActorKind: this.context.actorKind,
+        originActorId: this.context.actorId,
         id,
         url: input.url.trim(),
         normalizedUrl,
@@ -104,8 +112,12 @@ export class CaptureService {
 
     try {
       await this.dependencies.dispatcher.dispatch(
-        { version: 1, captureId: capture.id },
-        { idempotencyKey: capture.id }
+        createCaptureQueueMessageV2({
+          userId: this.context.userId,
+          captureId: capture.id,
+          traceId: this.context.requestId,
+        }),
+        { idempotencyKey: `${this.context.userId}:${capture.id}` }
       );
     } catch (cause) {
       const failed = await this.dependencies.captures.transition(capture.id, ["queued"], {
@@ -146,8 +158,12 @@ export class CaptureService {
 
     try {
       await this.dependencies.dispatcher.dispatch(
-        { version: 1, captureId: id },
-        { idempotencyKey: id }
+        createCaptureQueueMessageV2({
+          userId: this.context.userId,
+          captureId: id,
+          traceId: this.context.requestId,
+        }),
+        { idempotencyKey: `${this.context.userId}:${id}` }
       );
     } catch (cause) {
       const failed = await this.dependencies.captures.transition(id, ["queued"], {

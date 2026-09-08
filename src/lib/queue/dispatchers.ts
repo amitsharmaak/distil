@@ -1,9 +1,10 @@
-import type { CaptureDispatcher, CaptureQueueMessage } from "@/lib/contracts/capture";
+import type { CaptureDispatcher } from "@/lib/contracts/capture";
+import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 
 export const CAPTURE_QUEUE_TOPIC = "capture-requests";
 
 export interface QueuedCaptureMessage {
-  message: CaptureQueueMessage;
+  message: CaptureQueueMessageV2;
   idempotencyKey: string;
 }
 
@@ -11,7 +12,10 @@ export class FakeCaptureDispatcher implements CaptureDispatcher {
   readonly messages: QueuedCaptureMessage[] = [];
   failure?: Error;
 
-  async dispatch(message: CaptureQueueMessage, options: { idempotencyKey: string }): Promise<void> {
+  async dispatch(
+    message: CaptureQueueMessageV2,
+    options: { idempotencyKey: string }
+  ): Promise<void> {
     if (this.failure) throw this.failure;
     if (this.messages.some((queued) => queued.idempotencyKey === options.idempotencyKey)) return;
     this.messages.push({
@@ -22,7 +26,7 @@ export class FakeCaptureDispatcher implements CaptureDispatcher {
 }
 
 export class LocalCaptureDispatcher extends FakeCaptureDispatcher {
-  async drain(handler: (message: CaptureQueueMessage) => Promise<void>): Promise<void> {
+  async drain(handler: (message: CaptureQueueMessageV2) => Promise<void>): Promise<void> {
     while (this.messages.length > 0) {
       const next = this.messages.shift()!;
       await handler(next.message);
@@ -44,7 +48,10 @@ export class VercelCaptureDispatcher implements CaptureDispatcher {
     private readonly region = "sin1"
   ) {}
 
-  async dispatch(message: CaptureQueueMessage, options: { idempotencyKey: string }): Promise<void> {
+  async dispatch(
+    message: CaptureQueueMessageV2,
+    options: { idempotencyKey: string }
+  ): Promise<void> {
     await this.sender(CAPTURE_QUEUE_TOPIC, message, {
       idempotencyKey: options.idempotencyKey,
       region: this.region,

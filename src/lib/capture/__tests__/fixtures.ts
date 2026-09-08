@@ -4,9 +4,26 @@ import type {
   CaptureTransition,
   NewCaptureRecord,
 } from "@/lib/repositories/ports";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
+
+export const TEST_USER_ID = "10000000-0000-4000-8000-000000000010";
+export const TEST_TRACE_ID = "10000000-0000-4000-8000-000000000011";
+export const context = createAuthContext({
+  userId: TEST_USER_ID,
+  actorKind: "user",
+  actorId: TEST_USER_ID,
+  requestId: TEST_TRACE_ID,
+});
+
+export const captureQueueMessage = (captureId: string) =>
+  createCaptureQueueMessageV2({ userId: context.userId, captureId, traceId: context.requestId });
 
 export function captureRecord(patch: Partial<CaptureRecord> = {}): CaptureRecord {
   return {
+    userId: context.userId,
+    originActorKind: "user",
+    originActorId: context.actorId,
     id: "10000000-0000-4000-8000-000000000001",
     url: "https://example.com/article",
     normalizedUrl: "https://example.com/article",

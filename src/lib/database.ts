@@ -3,12 +3,20 @@ import type { ContentItem, Priority } from "@/lib/types";
 import type * as Legacy from "@/lib/db";
 import { config } from "@/lib/config";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { SystemContext } from "@/lib/contracts/tenant-context";
+import type { ControlPlaneRepositorySet } from "@/lib/repositories/ports";
 
 type LegacyModule = typeof import("@/lib/db");
 
 let repositoriesPromise: Promise<RepositorySet> | undefined;
 let legacyPromise: Promise<LegacyModule> | undefined;
 let tenantAccessPromise:
+  | Promise<import("@/lib/postgres/tenant-repositories").PostgresRepositoryAccess>
+  | undefined;
+let captureTokenIdentityResolverPromise:
+  | Promise<import("@/lib/auth/capture-token-identity").CaptureTokenIdentityResolver>
+  | undefined;
+let controlPlaneAccessPromise:
   | Promise<import("@/lib/postgres/tenant-repositories").PostgresRepositoryAccess>
   | undefined;
 
@@ -46,6 +54,41 @@ export async function getTenantRepositories(context: AuthContext): Promise<Repos
     access.createPostgresRepositoryAccess(client.createPostgresClient({ url: config.databaseUrl }))
   );
   return (await tenantAccessPromise).getTenantRepositories(context);
+}
+
+/** Exact-key pre-context lookup; every subsequent token operation is tenant-scoped. */
+export async function getCaptureTokenIdentityResolver() {
+  if (!usesPostgres()) throw new Error("DATABASE_URL is required for capture token authentication");
+  captureTokenIdentityResolverPromise ??= Promise.all([
+    import("@/lib/postgres/client"),
+    import("@/lib/auth/capture-token-identity"),
+  ]).then(
+    ([client, identity]) =>
+      new identity.PostgresCaptureTokenIdentityResolver(
+        client.createPostgresClient({ url: config.databaseUrl })
+      )
+  );
+  return captureTokenIdentityResolverPromise;
+}
+
+/** Control-plane composition root; this role may enumerate opaque user ids only. */
+export async function getControlPlaneRepositories(
+  context: SystemContext
+): Promise<ControlPlaneRepositorySet> {
+  const controlUrl = process.env.DATABASE_CONTROL_URL;
+  if (!usesPostgres() || !controlUrl) {
+    throw new Error("DATABASE_URL and DATABASE_CONTROL_URL are required for control-plane work");
+  }
+  controlPlaneAccessPromise ??= Promise.all([
+    import("@/lib/postgres/client"),
+    import("@/lib/postgres/tenant-repositories"),
+  ]).then(([client, access]) =>
+    access.createPostgresRepositoryAccess(
+      client.createPostgresClient({ url: config.databaseUrl }),
+      client.createPostgresClient({ url: controlUrl })
+    )
+  );
+  return (await controlPlaneAccessPromise).getControlPlaneRepositories(context);
 }
 
 async function legacy(): Promise<LegacyModule> {

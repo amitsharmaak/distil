@@ -1,0 +1,92 @@
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { createTenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
+import { consumeTenantJobEnvelope, enqueueTenantJob } from "../tenant-runtime";
+
+const userId = "10000000-0000-4000-8000-000000000010";
+const otherUserId = "20000000-0000-4000-8000-000000000020";
+const jobId = "10000000-0000-4000-8000-000000000012";
+const traceId = "10000000-0000-4000-8000-000000000013";
+const context = createAuthContext({
+  userId,
+  actorKind: "user",
+  actorId: userId,
+  requestId: traceId,
+});
+
+function repositories(owner = userId) {
+  return {
+    jobs: {
+      enqueue: jest.fn(),
+      claim: jest.fn().mockResolvedValue({
+        user_id: owner,
+        id: jobId,
+        job_type: "capture.enrich",
+        idempotency_key: "one",
+        payload: { itemId: "item-1" },
+        status: "running",
+      }),
+      complete: jest.fn(),
+    },
+    agent: { insertAuditLog: jest.fn() },
+  };
+}
+
+describe("tenant job runtime", () => {
+  it("writes owner identity to columns and not the JSON payload", async () => {
+    const repos = repositories();
+    const envelope = await enqueueTenantJob(context, repos as never, {
+      jobId,
+      jobType: "capture.enrich",
+      idempotencyKey: "one",
+      payload: { itemId: "item-1" },
+    });
+    expect(envelope).toEqual({ version: 1, userId, jobId, jobType: "capture.enrich", traceId });
+    expect(repos.jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ userId, idempotencyKey: "one", payload: '{"itemId":"item-1"}' })
+    );
+    expect(JSON.parse(repos.jobs.enqueue.mock.calls[0][0].payload)).not.toHaveProperty("userId");
+  });
+
+  it("revalidates explicit owner columns before invoking a handler", async () => {
+    const repos = repositories();
+    const handler = jest.fn();
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId,
+      jobType: "capture.enrich",
+      traceId,
+    });
+    await expect(
+      consumeTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        handlers: new Map([["capture.enrich", handler]]),
+      })
+    ).resolves.toBe("completed");
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ userId }),
+      { itemId: "item-1" },
+      repos
+    );
+  });
+
+  it("audits and acknowledges a forged owner without revealing the target", async () => {
+    const repos = repositories(otherUserId);
+    const handler = jest.fn();
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId,
+      jobType: "capture.enrich",
+      traceId,
+    });
+    await expect(
+      consumeTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        handlers: new Map([["capture.enrich", handler]]),
+      })
+    ).resolves.toBe("rejected");
+    expect(handler).not.toHaveBeenCalled();
+    expect(repos.agent.insertAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "tenant_job_owner_mismatch_or_missing", traceId })
+    );
+  });
+});

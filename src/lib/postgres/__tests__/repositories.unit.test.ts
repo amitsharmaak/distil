@@ -3,6 +3,7 @@ import { sha256 } from "@/lib/knowledge/content-identity";
 import { createPostgresRepositories } from "../repositories";
 
 type Row = Record<string, unknown>;
+const userId = "10000000-0000-4000-8000-000000000010" as never;
 
 function sqlDouble(initial: unknown[][] = []) {
   const responses = [...initial];
@@ -39,6 +40,9 @@ const itemRow: Row = {
 };
 
 const captureRow: Row = {
+  user_id: userId,
+  origin_actor_kind: "user",
+  origin_actor_id: userId,
   id: "capture-1",
   url: "https://example.com/article",
   normalized_url: "https://example.com/article",
@@ -111,6 +115,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
 
   test("handles item insert, update, delete, and status mutations", async () => {
     const fake = sqlDouble([
+      [],
       [{ id: "item-1" }],
       [itemRow],
       [],
@@ -144,7 +149,10 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     await expect(items.delete("item-1")).resolves.toBe(true);
     await items.updateProcessingStatus("item-1", "rejected", "unsafe");
     await items.updatePriorityScore("item-1", 0.9, "high");
-    expect(fake.queries.some((query) => query.includes("ON CONFLICT (normalized_url)"))).toBe(true);
+    expect(fake.queries.some((query) => query.includes("INSERT INTO items"))).toBe(true);
+    expect(fake.queries.some((query) => query.includes("ON CONFLICT (normalized_url)"))).toBe(
+      false
+    );
   });
 
   test("maps capture records and enforces an empty transition precondition", async () => {
@@ -208,6 +216,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
 
   test("covers token lifecycle and deterministic rate-limit windows", async () => {
     const tokenRow = {
+      user_id: userId,
       id: "token-1",
       name: "Phone",
       token_hash: "hash",
@@ -229,6 +238,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ]);
     const repos = createPostgresRepositories(fake.sql);
     await repos.captureTokens.create({
+      userId,
       id: "token-1",
       name: "Phone",
       tokenHash: "hash",
@@ -349,6 +359,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     await r.rawContent.attachItem("raw", "item-1");
     await r.publisherQueue.enqueue("pub", "https://example.com");
     respond({
+      user_id: userId,
       publisher_id: "pub",
       url: "https://example.com",
       discovered_at: "2026-01-01Z",
@@ -377,7 +388,14 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     await r.jobs.enqueue({ id: "j2", jobType: "capture", payload: "not-json" });
     await expect(r.jobs.dequeue("worker")).resolves.toBeUndefined();
     respond({ id: "j1" });
-    respond({ id: "j1", status: "running" });
+    respond({
+      user_id: userId,
+      id: "j1",
+      job_type: "test",
+      idempotency_key: "j1",
+      payload: {},
+      status: "running",
+    });
     await expect(r.jobs.dequeue("worker")).resolves.toMatchObject({ status: "running" });
     await r.jobs.complete("j1");
     await r.jobs.complete("j2", "failed");
@@ -595,6 +613,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       information_density: 0.8,
     };
     const fake = sqlDouble([
+      [],
       [{ id: "item-1" }],
       [richRow],
       [richRow],
@@ -602,6 +621,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       [richRow],
       [{ count: 4 }],
       [richRow],
+      [],
     ]);
     const repos = createPostgresRepositories(fake.sql);
     const richItem = {
@@ -661,6 +681,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ).resolves.toMatchObject({ itemId: "item-1" });
 
     await repos.captureTokens.create({
+      userId,
       id: "token",
       name: "Phone",
       tokenHash: "hash",
@@ -671,6 +692,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     });
     fake.responses.push([
       {
+        user_id: userId,
         id: "token",
         name: "Phone",
         token_prefix: "dst_cap_",

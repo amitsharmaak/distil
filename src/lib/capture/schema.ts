@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CAPTURE_SOURCES, type CreateCaptureRequest } from "@/lib/contracts/capture";
+import { captureQueueMessageV2Schema } from "@/lib/contracts/tenant-jobs";
 
 export const createCaptureSchema = z
   .object({
@@ -13,6 +14,4 @@ export const createCaptureSchema = z
   })
   .strict() satisfies z.ZodType<CreateCaptureRequest>;
 
-export const captureQueueMessageSchema = z
-  .object({ version: z.literal(1), captureId: z.string().uuid() })
-  .strict();
+export const captureQueueMessageSchema = captureQueueMessageV2Schema;

@@ -4,10 +4,15 @@ import {
   LocalCaptureDispatcher,
   VercelCaptureDispatcher,
 } from "../dispatchers";
+import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 
 jest.mock("@vercel/queue", () => ({ send: jest.fn().mockResolvedValue({ messageId: "queue-1" }) }));
 
-const message = { version: 1 as const, captureId: "10000000-0000-4000-8000-000000000001" };
+const message = createCaptureQueueMessageV2({
+  userId: "10000000-0000-4000-8000-000000000010",
+  captureId: "10000000-0000-4000-8000-000000000001",
+  traceId: "10000000-0000-4000-8000-000000000011",
+});
 
 describe("capture dispatchers", () => {
   it("deduplicates fake and local messages by idempotency key", async () => {
@@ -35,7 +40,12 @@ describe("capture dispatchers", () => {
       idempotencyKey: message.captureId,
       region: "sin1",
     });
-    expect(Object.keys(sender.mock.calls[0][1])).toEqual(["version", "captureId"]);
+    expect(Object.keys(sender.mock.calls[0][1])).toEqual([
+      "version",
+      "userId",
+      "captureId",
+      "traceId",
+    ]);
   });
 
   it("creates the production dispatcher from the Vercel SDK", async () => {

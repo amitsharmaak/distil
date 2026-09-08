@@ -1,10 +1,17 @@
-import type { CaptureQueueMessage } from "@/lib/contracts/capture";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 import type { ProcessingResult, RawContent } from "@/lib/intelligence/types";
-import type { CaptureRecord, CaptureRepository, ItemRepository } from "@/lib/repositories/ports";
+import type {
+  CaptureRecord,
+  CaptureRepository,
+  ItemRepository,
+  RawContentRepository,
+} from "@/lib/repositories/ports";
 import { captureQueueMessageSchema } from "./schema";
 import { CaptureProcessingError, CaptureRetryScheduledError, processingError } from "./errors";
 import { fetchArticle, type SafeFetchOptions } from "./fetch";
 import { normalizeCaptureUrl } from "./url-safety";
+import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 
 export const MAX_CAPTURE_ATTEMPTS = 5;
 export const CAPTURE_PROCESSING_STALE_MS = 6 * 60 * 1000;
@@ -18,8 +25,10 @@ export interface CaptureProcessorResult {
 export type CaptureProcessor = (capture: CaptureRecord) => Promise<CaptureProcessorResult>;
 
 export interface CaptureWorkerDependencies {
+  context: AuthContext;
   captures: CaptureRepository;
   processor: CaptureProcessor;
+  audit?: (event: { action: string; traceId: string }) => Promise<void>;
   now?: () => Date;
   staleAfterMs?: number;
   maxAttempts?: number;
@@ -33,9 +42,16 @@ export class CaptureWorker {
   }
 
   async handle(untrustedMessage: unknown): Promise<CaptureRecord | undefined> {
-    const message: CaptureQueueMessage = captureQueueMessageSchema.parse(untrustedMessage);
+    const message: CaptureQueueMessageV2 = captureQueueMessageSchema.parse(untrustedMessage);
+    if (message.userId !== this.dependencies.context.userId) {
+      await this.auditMismatch(message.traceId);
+      return undefined;
+    }
     let capture = await this.dependencies.captures.findById(message.captureId);
-    if (!capture) return undefined;
+    if (!capture || capture.userId !== message.userId) {
+      await this.auditMismatch(message.traceId);
+      return undefined;
+    }
     if (
       capture.status === "ready" ||
       capture.status === "rejected" ||
@@ -111,12 +127,22 @@ export class CaptureWorker {
       return failed;
     }
   }
+
+  private async auditMismatch(traceId: string): Promise<void> {
+    await this.dependencies.audit?.({
+      action: "capture_queue_owner_mismatch_or_missing",
+      traceId,
+    });
+  }
 }
 
 export interface DefaultCaptureProcessorDependencies {
+  context: AuthContext;
   items: ItemRepository;
+  rawContent?: RawContentRepository;
   fetchOptions?: SafeFetchOptions;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
+  enqueueEnrichment?: (itemId: string) => Promise<void>;
   now?: () => Date;
 }
 
@@ -126,9 +152,7 @@ export function createDefaultCaptureProcessor(
   return async (capture) => {
     const article = await fetchArticle(capture.url, dependencies.fetchOptions);
     const fetchedAt = (dependencies.now ?? (() => new Date()))().toISOString();
-    const pipeline =
-      dependencies.pipeline ?? (await import("@/lib/intelligence/pipeline")).processContent;
-    const result = await pipeline({
+    const raw: RawContent = {
       id: capture.id,
       sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
       rawBody: article.body,
@@ -141,11 +165,54 @@ export function createDefaultCaptureProcessor(
         topics: capture.topics,
       },
       fetchedAt,
-    });
-    if (result.status === "rejected") {
-      return { status: "rejected", reason: result.rejectionReason };
+    };
+
+    if (dependencies.pipeline) {
+      const result = await dependencies.pipeline(raw);
+      if (result.status === "rejected") {
+        return { status: "rejected", reason: result.rejectionReason };
+      }
+      if (result.itemId) return { status: "ready", itemId: result.itemId };
+    } else {
+      const rawContent = dependencies.rawContent;
+      if (!rawContent) {
+        throw new Error("rawContent repository is required for durable capture ingestion");
+      }
+      await rawContent.insert({
+        userId: dependencies.context.userId,
+        id: capture.id,
+        sourceType: raw.sourceType,
+        rawBody: article.body,
+        metadata: raw.metadata as Record<string, unknown>,
+        fetchedAt,
+      });
+      const existing = await dependencies.items.findByNormalizedUrl(
+        normalizeCaptureUrl(article.url)
+      );
+      const item =
+        existing ??
+        (await dependencies.items.insert({
+          id: capture.id,
+          title: capture.title ?? new URL(article.url).hostname,
+          summary: capture.notes ?? capture.title ?? "Captured for later reading",
+          fullContent: sanitizeArticleHtml(article.body),
+          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+          contentType: "article",
+          topics: capture.topics,
+          url: article.url,
+          priority: capture.priority,
+          isRead: false,
+          createdAt: fetchedAt,
+          contentExtractedAt: fetchedAt,
+          processingStatus: "ready",
+        }));
+      await rawContent.attachItem(capture.id, item.id);
+      // Capture durability is independent of AI availability or quota. Enrichment
+      // is best-effort asynchronous work and never rolls the accepted item back.
+      await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
+      return { status: "ready", itemId: item.id };
     }
-    if (result.itemId) return { status: "ready", itemId: result.itemId };
+
     const item = await dependencies.items.findByNormalizedUrl(normalizeCaptureUrl(article.url));
     if (!item) {
       throw new CaptureProcessingError(

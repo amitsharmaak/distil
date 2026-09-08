@@ -1,8 +1,10 @@
 export { authenticateCaptureToken, resolveCapturePrincipal } from "@/lib/auth/authenticate";
+export type { CapturePrincipalDependencies } from "@/lib/auth/authenticate";
+export { PostgresCaptureTokenIdentityResolver } from "@/lib/auth/capture-token-identity";
 export type {
-  CaptureAuthRepositories,
-  CapturePrincipalDependencies,
-} from "@/lib/auth/authenticate";
+  CaptureTokenIdentity,
+  CaptureTokenIdentityResolver,
+} from "@/lib/auth/capture-token-identity";
 export { verifyLegacyCaptureToken } from "@/lib/auth/authenticate";
 export { AuthError } from "@/lib/auth/errors";
 export { AccessDeniedError } from "@/lib/auth/account";

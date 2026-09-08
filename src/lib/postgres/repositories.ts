@@ -26,6 +26,7 @@ import type {
   ItemNoteRepository,
   ItemRepository,
   IntelligenceArtifactRepository,
+  JobQueueRecord,
   JobQueueRepository,
   KnowledgeBackfillRepository,
   NewCaptureRecord,
@@ -52,6 +53,7 @@ import type {
   KnowledgeBackfillCheckpoint,
 } from "@/lib/knowledge/types";
 import type { ContentItem, Notification, Priority } from "@/lib/types";
+import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { normalizeUrl } from "@/lib/utils";
 import { mapCapture, mapCaptureToken, mapItem } from "./mappers";
 import { PostgresAuthRepository } from "./auth-repository";
@@ -62,6 +64,19 @@ const iso = (value: unknown): string =>
   value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 const nullableString = (value: unknown): string | null =>
   value === null || value === undefined ? null : String(value);
+
+const mapJobQueueRecord = (row: Row): JobQueueRecord => ({
+  ...row,
+  user_id: userIdSchema.parse(row.user_id),
+  id: String(row.id),
+  job_type: String(row.job_type),
+  idempotency_key: String(row.idempotency_key),
+  payload:
+    typeof row.payload === "string"
+      ? (JSON.parse(row.payload) as Record<string, unknown>)
+      : (row.payload as Record<string, unknown>),
+  status: String(row.status),
+});
 
 class PostgresItems implements ItemRepository {
   constructor(private readonly sql: Sql) {}
@@ -117,11 +132,25 @@ class PostgresItems implements ItemRepository {
     };
   }
   async insert(item: ContentItem): Promise<ContentItem> {
-    const rows = await this.sql<
-      Row[]
-    >`INSERT INTO items (id,title,summary,full_content,source_type,content_type,topics,author,publication,url,normalized_url,priority,is_read,archived_at,read_at,last_opened_at,reading_progress,manual_priority,created_at,duration,thumbnail_url,extracted_links,content_extracted_at,processing_status,rejection_reason,content_classification,detected_media,information_density)
-      VALUES (${item.id},${item.title},${item.summary},${item.fullContent ?? null},${item.sourceType},${item.contentType},${this.sql.json(item.topics)},${item.author ?? null},${item.publication ?? null},${item.url},${normalizeUrl(item.url)},${item.priority},${item.isRead},${item.archivedAt ?? null},${item.readAt ?? null},${item.lastOpenedAt ?? null},${item.readingProgress ?? 0},${item.manualPriority ?? null},${item.createdAt},${item.duration ?? null},${item.thumbnailUrl ?? null},${item.extractedLinks ? this.sql.json(item.extractedLinks as never) : null},${item.contentExtractedAt ?? null},${item.processingStatus ?? "ready"},${item.rejectionReason ?? null},${item.contentClassification ? this.sql.json(item.contentClassification as never) : null},${item.detectedMedia ? this.sql.json(item.detectedMedia as never) : null},${item.informationDensity ?? null})
-      ON CONFLICT (normalized_url) DO UPDATE SET normalized_url=EXCLUDED.normalized_url RETURNING id`;
+    const existing = await this.findByNormalizedUrl(item.url);
+    if (existing) return existing;
+    let rows: Row[];
+    try {
+      rows = await this.sql.begin(
+        async (tx) =>
+          await tx<
+            Row[]
+          >`INSERT INTO items (id,title,summary,full_content,source_type,content_type,topics,author,publication,url,normalized_url,priority,is_read,archived_at,read_at,last_opened_at,reading_progress,manual_priority,created_at,duration,thumbnail_url,extracted_links,content_extracted_at,processing_status,rejection_reason,content_classification,detected_media,information_density)
+          VALUES (${item.id},${item.title},${item.summary},${item.fullContent ?? null},${item.sourceType},${item.contentType},${tx.json(item.topics)},${item.author ?? null},${item.publication ?? null},${item.url},${normalizeUrl(item.url)},${item.priority},${item.isRead},${item.archivedAt ?? null},${item.readAt ?? null},${item.lastOpenedAt ?? null},${item.readingProgress ?? 0},${item.manualPriority ?? null},${item.createdAt},${item.duration ?? null},${item.thumbnailUrl ?? null},${item.extractedLinks ? tx.json(item.extractedLinks as never) : null},${item.contentExtractedAt ?? null},${item.processingStatus ?? "ready"},${item.rejectionReason ?? null},${item.contentClassification ? tx.json(item.contentClassification as never) : null},${item.detectedMedia ? tx.json(item.detectedMedia as never) : null},${item.informationDensity ?? null})
+          RETURNING id`
+      );
+    } catch (error) {
+      // Security-barrier tenant views cannot use INSERT ... ON CONFLICT. A
+      // savepoint contains the unique race, then the tenant-scoped lookup wins.
+      const concurrent = await this.findByNormalizedUrl(item.url);
+      if (concurrent) return concurrent;
+      throw error;
+    }
     return (await this.findById(String(rows[0].id)))!;
   }
   async update(id: string, patch: Partial<ContentItem>) {
@@ -403,10 +432,16 @@ class PostgresDigests implements DigestRepository {
 class PostgresCaptures implements CaptureRepository {
   constructor(private readonly sql: Sql) {}
   async create(v: NewCaptureRecord) {
-    const rows = await this.sql<
-      Row[]
-    >`INSERT INTO capture_requests (id,url,normalized_url,title,notes,topics,priority,source,status,created_at,updated_at)
-      VALUES (${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},'queued',${v.createdAt},${v.createdAt}) RETURNING *`;
+    const rows =
+      v.userId && v.originActorKind && v.originActorId
+        ? await this.sql<
+            Row[]
+          >`INSERT INTO capture_requests (user_id,id,url,normalized_url,title,notes,topics,priority,source,origin_actor_kind,origin_actor_id,status,created_at,updated_at)
+          VALUES (${v.userId},${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},${v.originActorKind},${v.originActorId},'queued',${v.createdAt},${v.createdAt}) RETURNING *`
+        : await this.sql<
+            Row[]
+          >`INSERT INTO capture_requests (id,url,normalized_url,title,notes,topics,priority,source,status,created_at,updated_at)
+          VALUES (${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},'queued',${v.createdAt},${v.createdAt}) RETURNING *`;
     return mapCapture(rows[0]);
   }
   async findById(id: string) {
@@ -437,7 +472,7 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
   constructor(private readonly sql: Sql) {}
   async create(v: Parameters<CaptureTokenRepository["create"]>[0]) {
     await this
-      .sql`INSERT INTO capture_tokens (id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
+      .sql`INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
   }
   async findActiveByHash(hash: string) {
     const r = await this.sql<
@@ -448,6 +483,7 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
   async list() {
     return (await this.sql<Row[]>`SELECT * FROM capture_tokens ORDER BY created_at DESC`).map(
       (row) => ({
+        userId: userIdSchema.parse(row.user_id),
         id: String(row.id),
         name: String(row.name),
         tokenPrefix: String(row.token_prefix),
@@ -478,9 +514,43 @@ class PostgresRateLimits implements RateLimitRepository {
     const start = new Date(
       Math.floor(now.getTime() / (v.windowSeconds * 1000)) * v.windowSeconds * 1000
     ).toISOString();
-    const rows = await this.sql<
-      { count: number }[]
-    >`INSERT INTO rate_limit_windows (key,window_start,window_seconds,count) VALUES (${v.key},${start},${v.windowSeconds},1) ON CONFLICT (key,window_start,window_seconds) DO UPDATE SET count=rate_limit_windows.count+1 RETURNING count`;
+    const environment = v.environment ?? "runtime";
+    const principalKind = v.principalKind ?? "system";
+    const principalId = v.principalId ?? "legacy";
+    const operation = v.operation ?? "rate-limit";
+    let rows = await this.sql<{ count: number }[]>`
+      UPDATE rate_limit_windows
+      SET count=count+1
+      WHERE key=${v.key} AND environment=${environment}
+        AND principal_kind=${principalKind} AND principal_id=${principalId}
+        AND operation=${operation} AND window_start=${start}
+        AND window_seconds=${v.windowSeconds}
+      RETURNING count`;
+    if (!rows[0]) {
+      try {
+        rows = await this.sql.begin(async (tx) =>
+          v.userId
+            ? await tx<{ count: number }[]>`
+                INSERT INTO rate_limit_windows (user_id,key,environment,principal_kind,principal_id,operation,window_start,window_seconds,count)
+                VALUES (${v.userId},${v.key},${environment},${principalKind},${principalId},${operation},${start},${v.windowSeconds},1)
+                RETURNING count`
+            : await tx<{ count: number }[]>`
+                INSERT INTO rate_limit_windows (key,environment,principal_kind,principal_id,operation,window_start,window_seconds,count)
+                VALUES (${v.key},${environment},${principalKind},${principalId},${operation},${start},${v.windowSeconds},1)
+                RETURNING count`
+        );
+      } catch (error) {
+        rows = await this.sql<{ count: number }[]>`
+          UPDATE rate_limit_windows
+          SET count=count+1
+          WHERE key=${v.key} AND environment=${environment}
+            AND principal_kind=${principalKind} AND principal_id=${principalId}
+            AND operation=${operation} AND window_start=${start}
+            AND window_seconds=${v.windowSeconds}
+          RETURNING count`;
+        if (!rows[0]) throw error;
+      }
+    }
     const count = rows[0].count;
     return {
       allowed: count <= v.limit,
@@ -787,13 +857,19 @@ class PostgresEmbeddings implements EmbeddingRepository {
 class PostgresRawContent implements RawContentRepository {
   constructor(private readonly sql: Sql) {}
   async insert(v: Parameters<RawContentRepository["insert"]>[0]) {
-    await this.sql`INSERT INTO raw_content(id,item_id,source_type,raw_body,metadata,fetched_at)
-           VALUES(${v.id},${v.itemId ?? null},${v.sourceType},${v.rawBody},${this.sql.json(v.metadata as never)},${v.fetchedAt})
-           ON CONFLICT(id) DO UPDATE SET
-             source_type=EXCLUDED.source_type,
-             raw_body=EXCLUDED.raw_body,
-             metadata=EXCLUDED.metadata,
-             fetched_at=EXCLUDED.fetched_at`;
+    const columns = v.userId
+      ? this.sql`(user_id,id,item_id,source_type,raw_body,metadata,fetched_at)`
+      : this.sql`(id,item_id,source_type,raw_body,metadata,fetched_at)`;
+    const values = v.userId
+      ? this
+          .sql`(${v.userId},${v.id},${v.itemId ?? null},${v.sourceType},${v.rawBody},${this.sql.json(v.metadata as never)},${v.fetchedAt})`
+      : this
+          .sql`(${v.id},${v.itemId ?? null},${v.sourceType},${v.rawBody},${this.sql.json(v.metadata as never)},${v.fetchedAt})`;
+    const updated = await this.sql`
+      UPDATE raw_content SET source_type=${v.sourceType},raw_body=${v.rawBody},
+        metadata=${this.sql.json(v.metadata as never)},fetched_at=${v.fetchedAt}
+      WHERE id=${v.id} RETURNING id`;
+    if (!updated[0]) await this.sql`INSERT INTO raw_content ${columns} VALUES ${values}`;
   }
   async attachItem(rawId: string, itemId: string) {
     await this.sql`UPDATE raw_content SET item_id=${itemId} WHERE id=${rawId}`;
@@ -1415,12 +1491,30 @@ class PostgresKnowledgeBackfills implements KnowledgeBackfillRepository {
 class PostgresPublisherQueue implements PublisherQueueRepository {
   constructor(private readonly sql: Sql) {}
 
-  async enqueue(publisherId: string, url: string) {
-    await this.sql`
-      INSERT INTO publisher_queue (publisher_id, url, discovered_at)
-      VALUES (${publisherId}, ${url}, now())
-      ON CONFLICT (publisher_id, url) DO NOTHING
-    `;
+  async enqueue(input: Parameters<PublisherQueueRepository["enqueue"]>[0], legacyUrl?: string) {
+    const publisherId = typeof input === "string" ? input : input.publisherId;
+    const url = typeof input === "string" ? legacyUrl! : input.url;
+    const userId = typeof input === "string" ? undefined : input.userId;
+    const exists = await this.sql`
+      SELECT 1 FROM publisher_queue WHERE publisher_id=${publisherId} AND url=${url} LIMIT 1`;
+    if (exists[0]) return;
+    try {
+      await this.sql.begin(async (tx) => {
+        if (userId) {
+          await tx`
+            INSERT INTO publisher_queue (user_id, publisher_id, url, discovered_at)
+            VALUES (${userId}, ${publisherId}, ${url}, now())`;
+        } else {
+          await tx`
+            INSERT INTO publisher_queue (publisher_id, url, discovered_at)
+            VALUES (${publisherId}, ${url}, now())`;
+        }
+      });
+    } catch (error) {
+      const concurrent = await this.sql`
+        SELECT 1 FROM publisher_queue WHERE publisher_id=${publisherId} AND url=${url} LIMIT 1`;
+      if (!concurrent[0]) throw error;
+    }
   }
 
   async listPending(publisherId: string, limit = 20) {
@@ -1431,6 +1525,7 @@ class PostgresPublisherQueue implements PublisherQueueRepository {
       LIMIT ${limit}
     `;
     return rows.map((row) => ({
+      userId: userIdSchema.parse(row.user_id),
       publisherId: String(row.publisher_id),
       url: String(row.url),
       discoveredAt: iso(row.discovered_at),
@@ -1483,15 +1578,29 @@ class PostgresJobs implements JobQueueRepository {
     } catch {
       payload = input.payload ?? {};
     }
-    await this.sql`
-      INSERT INTO job_queue
-        (id, job_type, payload, priority, max_retries, run_after, status, created_at, updated_at)
-      VALUES
-        (${input.id}, ${input.jobType}, ${this.sql.json(payload as never)},
-         ${input.priority ?? 0}, ${input.maxRetries ?? 3}, ${input.runAfter ?? null},
-         'pending', now(), now())
-      ON CONFLICT (id) DO NOTHING
-    `;
+    const columns = input.userId
+      ? this
+          .sql`(user_id,id,job_type,idempotency_key,payload,priority,max_retries,run_after,status,created_at,updated_at)`
+      : this
+          .sql`(id,job_type,idempotency_key,payload,priority,max_retries,run_after,status,created_at,updated_at)`;
+    const values = input.userId
+      ? this
+          .sql`(${input.userId},${input.id},${input.jobType},${input.idempotencyKey ?? input.id},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`
+      : this
+          .sql`(${input.id},${input.jobType},${input.idempotencyKey ?? input.id},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`;
+    const idempotencyKey = input.idempotencyKey ?? input.id;
+    const exists = await this.sql`
+      SELECT 1 FROM job_queue WHERE idempotency_key=${idempotencyKey} LIMIT 1`;
+    if (exists[0]) return;
+    try {
+      await this.sql.begin(async (tx) => {
+        await tx`INSERT INTO job_queue ${columns} VALUES ${values}`;
+      });
+    } catch (error) {
+      const concurrent = await this.sql`
+        SELECT 1 FROM job_queue WHERE idempotency_key=${idempotencyKey} LIMIT 1`;
+      if (!concurrent[0]) throw error;
+    }
   }
 
   async dequeue(workerId: string) {
@@ -1514,8 +1623,20 @@ class PostgresJobs implements JobQueueRepository {
         WHERE id=${String(job.id)}
         RETURNING *
       `;
-      return updated[0];
+      return updated[0] ? mapJobQueueRecord(updated[0]) : undefined;
     });
+  }
+
+  async claim(id: string, workerId: string) {
+    const rows = await this.sql<Row[]>`
+      UPDATE job_queue
+      SET locked_at=now(), locked_by=${workerId}, status='running', updated_at=now()
+      WHERE id=${id}
+        AND ((status='pending' AND (run_after IS NULL OR run_after <= now()))
+          OR (status='running' AND locked_at < now() - interval '5 minutes'))
+      RETURNING *
+    `;
+    return rows[0] ? mapJobQueueRecord(rows[0]) : undefined;
   }
 
   async complete(id: string, error?: string) {

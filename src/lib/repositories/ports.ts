@@ -192,6 +192,9 @@ export interface DigestRepository {
 }
 
 export interface CaptureRecord extends CaptureReceipt {
+  userId: UserId;
+  originActorKind: "user" | "capture-token" | "system";
+  originActorId: string;
   url: string;
   title?: string;
   notes?: string;
@@ -203,6 +206,9 @@ export interface CaptureRecord extends CaptureReceipt {
 }
 
 export interface NewCaptureRecord {
+  userId?: UserId;
+  originActorKind?: "user" | "capture-token" | "system";
+  originActorId?: string;
   id: string;
   url: string;
   normalizedUrl: string;
@@ -237,6 +243,7 @@ export interface CaptureRepository {
 }
 
 export interface CaptureTokenRecord {
+  userId: UserId;
   id: string;
   name: string;
   tokenHash: string;
@@ -256,6 +263,11 @@ export interface CaptureTokenRepository {
 
 export interface RateLimitRepository {
   consume(input: {
+    userId?: UserId;
+    environment?: string;
+    principalKind?: "user" | "capture-token" | "system";
+    principalId?: string;
+    operation?: string;
     key: string;
     limit: number;
     windowSeconds: number;
@@ -380,6 +392,7 @@ export interface EmbeddingRepository {
 
 export interface RawContentRepository {
   insert(input: {
+    userId?: UserId;
     id: string;
     itemId?: string;
     sourceType: string;
@@ -542,6 +555,7 @@ export interface KnowledgeBackfillRepository {
 }
 
 export interface PublisherQueueEntry {
+  userId: UserId;
   publisherId: string;
   url: string;
   discoveredAt: string;
@@ -551,7 +565,10 @@ export interface PublisherQueueEntry {
 }
 
 export interface PublisherQueueRepository {
-  enqueue(publisherId: string, url: string): Promise<void>;
+  enqueue(
+    input: { userId: UserId; publisherId: string; url: string } | string,
+    legacyUrl?: string
+  ): Promise<void>;
   listPending(publisherId: string, limit?: number): Promise<PublisherQueueEntry[]>;
   markFetched(publisherId: string, url: string): Promise<void>;
   markFailed(publisherId: string, url: string, error: string, maxAttempts?: number): Promise<void>;
@@ -560,16 +577,28 @@ export interface PublisherQueueRepository {
 
 export interface JobQueueRepository {
   enqueue(input: {
+    userId?: UserId;
     id: string;
     jobType: string;
+    idempotencyKey?: string;
     payload?: string;
     priority?: number;
     maxRetries?: number;
     runAfter?: string;
   }): Promise<void>;
-  dequeue(workerId: string): Promise<Record<string, unknown> | undefined>;
+  dequeue(workerId: string): Promise<JobQueueRecord | undefined>;
+  claim?(id: string, workerId: string): Promise<JobQueueRecord | undefined>;
   complete(id: string, error?: string): Promise<void>;
   getStats(): Promise<{ pending: number; running: number; completed: number; failed: number }>;
+}
+
+export interface JobQueueRecord extends Record<string, unknown> {
+  user_id: UserId;
+  id: string;
+  job_type: string;
+  idempotency_key: string;
+  payload: Record<string, unknown>;
+  status: string;
 }
 
 export interface AgentRepository {

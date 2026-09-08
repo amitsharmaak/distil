@@ -1,4 +1,6 @@
 import type { Priority } from "@/lib/types";
+import type { AuthContext, UserId } from "@/lib/contracts/tenant-context";
+import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 
 export const CAPTURE_SOURCES = ["web", "ios-shortcut", "browser-extension"] as const;
 
@@ -8,16 +10,18 @@ export const CAPTURE_STATUSES = ["queued", "processing", "ready", "rejected", "f
 
 export type CaptureStatus = (typeof CAPTURE_STATUSES)[number];
 
-export interface CaptureQueueMessage {
-  version: 1;
-  captureId: string;
-}
-
 export interface CaptureDispatcher {
-  dispatch(message: CaptureQueueMessage, options: { idempotencyKey: string }): Promise<void>;
+  dispatch(message: CaptureQueueMessageV2, options: { idempotencyKey: string }): Promise<void>;
 }
 
-export type AuthPrincipal = { kind: "session" } | { kind: "capture-token"; tokenId: string };
+export type AuthPrincipal =
+  | { kind: "session"; context: AuthContext }
+  | {
+      kind: "capture-token";
+      context: AuthContext;
+      userId: UserId;
+      tokenId: string;
+    };
 
 export interface CreateCaptureRequest {
   url: string;

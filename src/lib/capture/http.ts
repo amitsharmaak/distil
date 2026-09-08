@@ -1,11 +1,12 @@
 import type { AuthPrincipal } from "@/lib/contracts/capture";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { CaptureService } from "./service";
 import { CaptureNotFoundError, CaptureNotRetryableError, QueueUnavailableError } from "./service";
 import { CaptureProcessingError } from "./errors";
 import { createCaptureSchema } from "./schema";
 
 export interface CaptureHttpDependencies {
-  service: CaptureService;
+  service(context: AuthContext): Promise<CaptureService>;
   authenticate(request: Request): Promise<AuthPrincipal | undefined>;
 }
 
@@ -88,7 +89,7 @@ export function createCaptureCollectionHandlers(dependencies: CaptureHttpDepende
         );
       }
       try {
-        const result = await dependencies.service.create(parsed.data);
+        const result = await (await dependencies.service(principal.context)).create(parsed.data);
         return Response.json(result, { status: result.duplicate ? 200 : 202 });
       } catch (error) {
         const response = serviceError(error);
@@ -104,7 +105,9 @@ export function createCaptureCollectionHandlers(dependencies: CaptureHttpDepende
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         return apiError("INVALID_REQUEST", "limit must be an integer between 1 and 100", 400);
       }
-      return Response.json({ receipts: await dependencies.service.list(limit) });
+      return Response.json({
+        receipts: await (await dependencies.service(principal.context)).list(limit),
+      });
     },
   };
 }
@@ -119,7 +122,9 @@ export function createCaptureResourceHandlers(dependencies: CaptureHttpDependenc
       if (principal instanceof Response) return principal;
       try {
         return Response.json({
-          receipt: await dependencies.service.get((await context.params).id),
+          receipt: await (
+            await dependencies.service(principal.context)
+          ).get((await context.params).id),
         });
       } catch (error) {
         const response = serviceError(error);
@@ -140,7 +145,11 @@ export function createCaptureRetryHandlers(dependencies: CaptureHttpDependencies
       if (principal instanceof Response) return principal;
       try {
         return Response.json(
-          { receipt: await dependencies.service.retry((await context.params).id) },
+          {
+            receipt: await (
+              await dependencies.service(principal.context)
+            ).retry((await context.params).id),
+          },
           { status: 202 }
         );
       } catch (error) {
