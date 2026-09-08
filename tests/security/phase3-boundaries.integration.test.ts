@@ -1,82 +1,146 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { createTwoTenantFixture } from "../support/phase3-tenancy";
+jest.mock("@/lib/auth/tenant-route", () => ({ requireTenantRoute: jest.fn() }));
+
+import { requireTenantRoute } from "@/lib/auth/tenant-route";
+import { requireDormantConnectorRoute } from "@/lib/connectors/route-gate";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
 import {
-  assertCrossTenantNotFound,
-  assertForgedQueueEnvelopesRejected,
-  assertRepositoryIsolation,
-  assertTenantScopedCoexistence,
-  type TenantCoexistenceAdapter,
-  type TenantQueueIsolationAdapter,
-  type TenantRepositoryIsolationAdapter,
-  type TenantRouteIsolationAdapter,
-} from "../support/phase3-isolation";
+  createCaptureQueueMessageV2,
+  createTenantJobEnvelopeV1,
+} from "@/lib/contracts/tenant-jobs";
+import { CaptureWorker } from "@/lib/capture/worker";
+import { consumeTenantJobEnvelope } from "@/lib/jobs/tenant-runtime";
+import { withTenantTransaction } from "@/lib/postgres/tenant-repositories";
+import type { Sql } from "postgres";
 
-interface TenantBoundaryAdapters {
-  routes?: TenantRouteIsolationAdapter;
-  repositories?: TenantRepositoryIsolationAdapter;
-  queue?: TenantQueueIsolationAdapter;
-  coexistence?: TenantCoexistenceAdapter;
-}
+import { createTwoTenantFixture } from "../support/phase3-tenancy";
 
-const adapterModule = process.env.DISTIL_PHASE3_ISOLATION_ADAPTER;
-
-function loadAdapters(): TenantBoundaryAdapters | undefined {
-  if (!adapterModule) return undefined;
-  // This is intentionally a test adapter, never a production runtime setting.
-  // Resolve from the repository so CI cannot silently select a hosted dependency.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const loaded: unknown = require(resolve(process.cwd(), adapterModule));
-  if (typeof loaded !== "object" || loaded === null || !("phase3IsolationAdapters" in loaded)) {
-    throw new Error(
-      "DISTIL_PHASE3_ISOLATION_ADAPTER must export phase3IsolationAdapters, not an arbitrary module shape"
-    );
-  }
-  return (loaded as { phase3IsolationAdapters: TenantBoundaryAdapters }).phase3IsolationAdapters;
-}
-
-const adapters = loadAdapters();
 const fixture = createTwoTenantFixture();
-const testRoutes = adapters?.routes ? it : it.skip;
-const testRepositories = adapters?.repositories ? it : it.skip;
-const testQueue = adapters?.queue ? it : it.skip;
-const testCoexistence = adapters?.coexistence ? it : it.skip;
 
-describe("Phase 3 boundary adapter gates", () => {
-  testRoutes(
-    "P3-ROUTE-001: cross-user resource lookup is the same 404 as an unknown id",
-    async () => {
-      await assertCrossTenantNotFound(adapters!.routes!, fixture);
+function sessionContext(tenant: (typeof fixture)["alpha"]) {
+  return createAuthContext({
+    userId: tenant.user.id,
+    actorKind: "user",
+    actorId: tenant.user.id,
+    requestId: tenant.auth.session.requestId,
+  });
+}
+
+function sqlDouble(context = sessionContext(fixture.alpha)) {
+  const settings: unknown[][] = [];
+  const sql = jest.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const query = strings.join("?");
+    if (query.includes("set_config('app.user_id'")) settings.push(values);
+    if (query.includes("current_setting('app.user_id'")) {
+      return [
+        {
+          user_id: context.userId,
+          actor_id: context.actorId,
+          actor_kind: context.actorKind,
+          request_id: context.requestId,
+          environment: "runtime",
+          search_path: "tenant_api, pg_catalog",
+        },
+      ];
     }
-  );
+    return [];
+  }) as unknown as Sql;
+  Object.assign(sql, {
+    begin: jest.fn(async (operation: (transaction: Sql) => Promise<unknown>) => operation(sql)),
+    savepoint: jest.fn(async (operation: (transaction: Sql) => Promise<unknown>) => operation(sql)),
+  });
+  return { sql, settings };
+}
 
-  testRepositories(
-    "P3-REPO-001: tenant repository methods conceal and preserve cross-user data",
-    async () => {
-      await assertRepositoryIsolation(adapters!.repositories!, fixture);
-    }
-  );
+describe("Phase 3 boundary gates", () => {
+  beforeEach(() => jest.clearAllMocks());
 
-  testQueue(
-    "P3-QUEUE-001/P3-QUEUE-002: forged capture and job envelopes have no effects",
-    async () => {
-      await assertForgedQueueEnvelopesRejected(adapters!.queue!, fixture);
-    }
-  );
+  it("P3-ROUTE-001: authenticates every dormant connector request before returning the same 404", async () => {
+    jest.mocked(requireTenantRoute).mockResolvedValue({} as never);
 
-  testCoexistence("P3-DB-003: same URL, date, and key coexist for separate users", async () => {
-    await assertTenantScopedCoexistence(adapters!.coexistence!, fixture);
+    const crossTenant = await requireDormantConnectorRoute(
+      new Request("https://distil.example/api/auth/gmail/status")
+    );
+    const unknown = await requireDormantConnectorRoute(
+      new Request("https://distil.example/api/auth/unknown/status")
+    );
+
+    expect(crossTenant.status).toBe(404);
+    expect(await crossTenant.json()).toEqual(await unknown.json());
+    expect(requireTenantRoute).toHaveBeenCalledTimes(2);
   });
 
-  it("documents exact pending feature signals rather than broadly skipping the suite", () => {
-    if (!adapters) {
-      expect(adapterModule).toBeUndefined();
-      return;
-    }
-    expect(Object.keys(adapters)).toEqual(
-      expect.arrayContaining(
-        ["routes", "repositories", "queue", "coexistence"].filter((key) => key in adapters)
-      )
+  it("P3-REPO-001: establishes a fresh transaction-local identity for each tenant", async () => {
+    const alphaContext = sessionContext(fixture.alpha);
+    const betaContext = sessionContext(fixture.beta);
+    const alpha = sqlDouble(alphaContext);
+    const beta = sqlDouble(betaContext);
+
+    await withTenantTransaction(alpha.sql, alphaContext, async () => undefined);
+    await withTenantTransaction(beta.sql, betaContext, async () => undefined);
+
+    expect(alpha.settings).toEqual([
+      expect.arrayContaining([fixture.alpha.user.id, alphaContext.actorId, alphaContext.requestId]),
+    ]);
+    expect(beta.settings).toEqual([
+      expect.arrayContaining([fixture.beta.user.id, betaContext.actorId, betaContext.requestId]),
+    ]);
+    expect(alpha.settings[0]).not.toEqual(beta.settings[0]);
+  });
+
+  it("P3-QUEUE-001/P3-QUEUE-002: rejects forged capture and job owners before a handler runs", async () => {
+    const captureAudit = jest.fn();
+    const captures = { findById: jest.fn(), transition: jest.fn() };
+    const captureWorker = new CaptureWorker({
+      context: sessionContext(fixture.alpha),
+      captures: captures as never,
+      processor: jest.fn(),
+      audit: captureAudit,
+    });
+    const forgedCapture = createCaptureQueueMessageV2({
+      userId: fixture.beta.user.id,
+      captureId: fixture.alpha.resources.captureId,
+      traceId: fixture.alpha.auth.session.requestId,
+    });
+
+    await expect(captureWorker.handle(forgedCapture)).resolves.toBeUndefined();
+    expect(captures.findById).not.toHaveBeenCalled();
+    expect(captureAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "capture_queue_owner_mismatch_or_missing" })
     );
+
+    const handler = jest.fn();
+    const repositories = {
+      jobs: { claim: jest.fn().mockResolvedValue(undefined) },
+      agent: { insertAuditLog: jest.fn() },
+    };
+    const forgedJob = createTenantJobEnvelopeV1({
+      userId: fixture.beta.user.id,
+      jobId: fixture.alpha.resources.jobId,
+      jobType: "capture.enrich",
+      traceId: fixture.alpha.auth.system.requestId,
+    });
+
+    await expect(
+      consumeTenantJobEnvelope(forgedJob, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repositories),
+        handlers: new Map([["capture.enrich", handler]]),
+      })
+    ).resolves.toBe("rejected");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("P3-DB-003: tenant-relative unique keys permit the same public values for unrelated users", async () => {
+    const contract = await readFile(
+      resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0007_phase3_tenant_contract.sql"),
+      "utf8"
+    );
+
+    expect(contract).toContain("ON items(user_id, normalized_url)");
+    expect(contract).toContain("ON capture_requests(user_id, normalized_url)");
+    expect(contract).toContain("ON digest_runs(user_id, local_date)");
+    expect(contract).toContain("PRIMARY KEY (user_id, id)");
   });
 });

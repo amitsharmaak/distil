@@ -199,9 +199,68 @@ describe("CaptureWorker state machine", () => {
       traceId: context.requestId,
     });
   });
+
+  it("returns the current record when a stale-worker recovery loses its transition race", async () => {
+    const record = captureRecord({
+      status: "processing",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const captures = new MemoryCaptureRepository([record]);
+    jest.spyOn(captures, "transition").mockResolvedValueOnce(undefined);
+
+    await expect(
+      new CaptureWorker({
+        context,
+        captures,
+        processor: jest.fn(),
+        now,
+        staleAfterMs: 1,
+      }).handle(captureQueueMessage(record.id))
+    ).resolves.toMatchObject({ id: record.id, status: "processing" });
+  });
+
+  it("does not process a capture when another worker claims its queued transition", async () => {
+    const record = captureRecord();
+    const captures = new MemoryCaptureRepository([record]);
+    jest.spyOn(captures, "transition").mockResolvedValueOnce(undefined);
+    const processor = jest.fn();
+
+    await expect(
+      new CaptureWorker({ context, captures, processor, now }).handle(
+        captureQueueMessage(record.id)
+      )
+    ).resolves.toMatchObject({ id: record.id, status: "queued" });
+    expect(processor).not.toHaveBeenCalled();
+  });
+
+  it("uses the generic rejection reason when a processor deliberately withholds one", async () => {
+    const captures = new MemoryCaptureRepository([captureRecord()]);
+
+    await expect(
+      new CaptureWorker({
+        context,
+        captures,
+        processor: jest.fn().mockResolvedValue({ status: "rejected" }),
+        now,
+      }).handle(captureQueueMessage(captureRecord().id))
+    ).resolves.toMatchObject({
+      status: "rejected",
+      lastErrorMessage: "The source was not accepted as readable content",
+    });
+  });
 });
 
 describe("default capture processor", () => {
+  const fetchOptions = {
+    resolve: publicDns,
+    fetch: jest
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response("<article>Readable</article>", { headers: { "content-type": "text/html" } })
+      ),
+  };
+
   it("durably accepts raw content even when asynchronous AI enrichment is out of quota", async () => {
     const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
     const item = { id: captureRecord().id };
@@ -239,6 +298,60 @@ describe("default capture processor", () => {
       })
     );
     expect(rawContent.attachItem).toHaveBeenCalled();
+  });
+
+  it("requires a raw-content repository for the durable non-pipeline path", async () => {
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: { findByNormalizedUrl: jest.fn(), insert: jest.fn() } as never,
+      fetchOptions,
+    });
+
+    await expect(processor(captureRecord())).rejects.toThrow("rawContent repository is required");
+  });
+
+  it("preserves a browser-extension source and reuses an existing tenant item", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const existing = { id: "existing-item" };
+    const items = { findByNormalizedUrl: jest.fn().mockResolvedValue(existing), insert: jest.fn() };
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      fetchOptions,
+    });
+
+    await expect(processor(captureRecord({ source: "browser-extension" }))).resolves.toEqual({
+      status: "ready",
+      itemId: existing.id,
+    });
+    expect(rawContent.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceType: "browser-extension" })
+    );
+    expect(items.insert).not.toHaveBeenCalled();
+  });
+
+  it("uses the pipeline result when it returns an item and fails closed when it does not", async () => {
+    const items = { findByNormalizedUrl: jest.fn() };
+    const accepted = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      pipeline: jest.fn().mockResolvedValue({ status: "ready", itemId: "pipeline-item" }),
+      fetchOptions,
+    });
+    await expect(accepted(captureRecord())).resolves.toEqual({
+      status: "ready",
+      itemId: "pipeline-item",
+    });
+
+    items.findByNormalizedUrl.mockResolvedValue(undefined);
+    const incomplete = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      pipeline: jest.fn().mockResolvedValue({ status: "ready" }),
+      fetchOptions,
+    });
+    await expect(incomplete(captureRecord())).rejects.toMatchObject({ code: "PROCESSING_FAILED" });
   });
 
   it("awaits durable pipeline work and resolves the canonical item", async () => {
