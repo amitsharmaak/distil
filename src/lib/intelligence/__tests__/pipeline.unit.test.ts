@@ -8,9 +8,10 @@ jest.mock("../../database", () => ({
   updateItemPriorityScore: jest.fn(),
   updateRawContentItemId: jest.fn(),
 }));
+// These providers are tenant-bound now. Keep the mocks to prove this legacy
+// pipeline never reaches them without authenticated context and repositories.
 jest.mock("../../ai/summarize", () => ({ generateSummary: jest.fn() }));
 jest.mock("../../ai/embeddings", () => ({ embedItem: jest.fn() }));
-jest.mock("../../content-strategies", () => ({ detectStrategy: jest.fn() }));
 jest.mock("../../connectors/publishers/types", () => ({
   PublisherAuthRequired: class PublisherAuthRequired extends Error {},
 }));
@@ -32,7 +33,6 @@ import {
 } from "../../database";
 import { generateSummary } from "../../ai/summarize";
 import { embedItem } from "../../ai/embeddings";
-import { detectStrategy } from "../../content-strategies";
 import { classify } from "../classifier";
 import { checkRelevance } from "../relevance";
 import { extractContent } from "../extractor";
@@ -97,20 +97,12 @@ beforeEach(() => {
   jest.mocked(extractContent).mockResolvedValue(extracted);
   jest.mocked(analyzeContent).mockResolvedValue(analysis);
   jest.mocked(enrichContent).mockResolvedValue(enriched);
-  jest
-    .mocked(detectStrategy)
-    .mockReturnValue({ generateAISummary: false } as ReturnType<typeof detectStrategy>);
-  jest.mocked(generateSummary).mockResolvedValue({} as never);
-  jest.mocked(embedItem).mockResolvedValue(undefined);
 });
 
-it("persists every successful stage and waits for summary and embedding work", async () => {
+it("persists every successful stage without invoking legacy enrichment providers", async () => {
   jest
     .mocked(extractContent)
     .mockResolvedValue({ ...extracted, videoUrl: "https://video.test/v", isXArticle: true });
-  jest.mocked(generateSummary).mockRejectedValue(new Error("summary unavailable"));
-  jest.mocked(embedItem).mockRejectedValue(new Error("embedding unavailable"));
-
   const result = await processContent(raw());
 
   expect(result).toMatchObject({ status: "ready", itemId: "raw-1", classification, enriched });
@@ -121,8 +113,8 @@ it("persists every successful stage and waits for summary and embedding work", a
       processingStatus: "ready",
     })
   );
-  expect(generateSummary).toHaveBeenCalledWith("raw-1", { length: "brief" });
-  expect(embedItem).toHaveBeenCalledWith("raw-1", "Article", "Summary");
+  expect(generateSummary).not.toHaveBeenCalled();
+  expect(embedItem).not.toHaveBeenCalled();
 });
 
 it("returns an existing ready item without running intelligence stages", async () => {
@@ -189,6 +181,7 @@ it("degrades extraction, analysis, and enrichment failures to deterministic fall
     enriched: { summary: "Inbox title", priorityScore: 50, priority: "medium" },
   });
   expect(generateSummary).not.toHaveBeenCalled();
+  expect(embedItem).not.toHaveBeenCalled();
 });
 
 it("turns thrown and non-Error persistence failures into rejected results", async () => {
