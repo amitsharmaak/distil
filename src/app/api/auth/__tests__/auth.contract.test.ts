@@ -1,6 +1,14 @@
-jest.mock("@/lib/database", () => ({ getRepositorySet: jest.fn() }));
+jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
+jest.mock("@/lib/database", () => ({
+  getRepositorySet: jest.fn(),
+  getTenantRepositories: jest.fn(),
+}));
 
 import { getRepositorySet } from "@/lib/database";
+import { getTenantRepositories } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { AccessDeniedError } from "@/lib/auth/account";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { hashPassword } from "@/lib/auth/password";
 import { createSessionToken } from "@/lib/auth/session";
 import type {
@@ -17,9 +25,21 @@ import { DELETE as tokenDelete } from "@/app/api/v1/capture-tokens/[id]/route";
 const origin = "https://distil.example";
 const sessionSecret = "a-secure-session-secret-with-more-than-32-bytes";
 const mockGetRepositorySet = getRepositorySet as jest.MockedFunction<typeof getRepositorySet>;
+const mockGetTenantRepositories = getTenantRepositories as jest.MockedFunction<
+  typeof getTenantRepositories
+>;
+const mockResolveRequestAuthContext = resolveRequestAuthContext as jest.MockedFunction<
+  typeof resolveRequestAuthContext
+>;
 let passwordHash: string;
 let captureTokens: jest.Mocked<CaptureTokenRepository>;
 let rateLimits: jest.Mocked<RateLimitRepository>;
+const authContext = createAuthContext({
+  userId: "11111111-1111-4111-8111-111111111111",
+  actorKind: "user",
+  actorId: "11111111-1111-4111-8111-111111111111",
+  requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+});
 
 function request(path: string, init: RequestInit & { json?: unknown } = {}): Request {
   const { json, ...requestInit } = init;
@@ -66,6 +86,11 @@ beforeEach(() => {
     }),
   };
   mockGetRepositorySet.mockResolvedValue({ captureTokens, rateLimits } as unknown as RepositorySet);
+  mockResolveRequestAuthContext.mockImplementation(async (request) => {
+    if (!request.headers.get("cookie")) throw new AccessDeniedError("unauthenticated");
+    return authContext;
+  });
+  mockGetTenantRepositories.mockResolvedValue({ captureTokens } as unknown as RepositorySet);
 });
 
 afterAll(() => {

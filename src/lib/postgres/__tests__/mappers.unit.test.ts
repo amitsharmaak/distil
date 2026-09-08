@@ -47,6 +47,9 @@ describe("PostgreSQL row mappers", () => {
 
   it("maps capture errors and token lifecycle dates", () => {
     const capture = mapCapture({
+      user_id: "11111111-1111-4111-8111-111111111111",
+      origin_actor_kind: "user",
+      origin_actor_id: "11111111-1111-4111-8111-111111111111",
       id: "c",
       url: "https://e.test",
       normalized_url: "https://e.test/",
@@ -63,6 +66,7 @@ describe("PostgreSQL row mappers", () => {
     });
     expect(capture.error).toEqual({ code: "UPSTREAM", message: "retry" });
     const token = mapCaptureToken({
+      user_id: "11111111-1111-4111-8111-111111111111",
       id: "t",
       name: "phone",
       token_hash: "hash",

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
 import { AuthError } from "@/lib/auth/errors";
 import type { RepositorySet } from "@/lib/repositories/ports";
 import {
@@ -20,7 +21,11 @@ jest.mock("@/lib/auth/route-helpers", () => ({
   requireRequestSession: jest.fn(),
   requireSessionMutation: jest.fn(),
 }));
-jest.mock("@/lib/database", () => ({ getRepositorySet: jest.fn() }));
+jest.mock("@/lib/auth/origin", () => ({ requireAllowedOrigin: jest.fn() }));
+jest.mock("@/lib/database", () => ({
+  getRepositorySet: jest.fn(),
+  getTenantRepositories: jest.fn(),
+}));
 jest.mock("@/lib/postgres/client", () => ({ createPostgresClient: jest.fn() }));
 jest.mock("@/lib/feed/feed-query", () => {
   class FeedQueryError extends Error {
@@ -35,7 +40,9 @@ jest.mock("@/lib/feed/feed-query", () => {
 });
 
 import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { getRepositorySet } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getRepositorySet, getTenantRepositories } from "@/lib/database";
 import { createPostgresClient } from "@/lib/postgres/client";
 import { FeedQueryError, PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
@@ -61,9 +68,23 @@ import { PUT as putMembership } from "@/app/api/v1/collections/[id]/items/[itemI
 
 const mockSession = requireRequestSession as jest.MockedFunction<typeof requireRequestSession>;
 const mockMutation = requireSessionMutation as jest.MockedFunction<typeof requireSessionMutation>;
+const mockOrigin = requireAllowedOrigin as jest.MockedFunction<typeof requireAllowedOrigin>;
 const mockRepositories = getRepositorySet as jest.MockedFunction<typeof getRepositorySet>;
+const mockTenantRepositories = getTenantRepositories as jest.MockedFunction<
+  typeof getTenantRepositories
+>;
+const mockResolveRequestAuthContext = resolveRequestAuthContext as jest.MockedFunction<
+  typeof resolveRequestAuthContext
+>;
 const mockClient = createPostgresClient as jest.MockedFunction<typeof createPostgresClient>;
 const mockFeedQuery = PostgresFeedQuery as jest.MockedClass<typeof PostgresFeedQuery>;
+const authContext = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  actorKind: "user",
+  actorId: "11111111-1111-4111-8111-111111111111",
+  requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+} as never;
+const tenantFeedList = jest.fn();
 
 const item = {
   id: "item-1",
@@ -123,7 +144,11 @@ beforeEach(() => {
   process.env.DATABASE_URL = "postgres://test.example/distil";
   mockSession.mockResolvedValue(undefined);
   mockMutation.mockResolvedValue(undefined);
+  mockOrigin.mockImplementation(() => undefined);
+  mockResolveRequestAuthContext.mockResolvedValue(authContext);
   mockRepositories.mockResolvedValue(repositories() as unknown as RepositorySet);
+  tenantFeedList.mockResolvedValue({ items: [] });
+  mockTenantRepositories.mockResolvedValue({ feed: { list: tenantFeedList } } as never);
   mockClient.mockReturnValue({ end: jest.fn().mockResolvedValue(undefined) } as never);
   mockFeedQuery.mockImplementation(
     () => ({ list: jest.fn().mockResolvedValue({ items: [] }) }) as never
@@ -137,13 +162,19 @@ afterAll(() => {
 describe("Phase 2 reader API contract and security boundaries", () => {
   it("does not open storage when the session is missing", async () => {
     mockSession.mockRejectedValueOnce(new AuthError("UNAUTHORIZED", 401, "no session"));
+    mockResolveRequestAuthContext.mockRejectedValueOnce(
+      new AuthError("UNAUTHORIZED", 401, "no session")
+    );
     const response = await getFeed(new Request("https://distil.example/api/v1/feed"));
     expect(response.status).toBe(401);
     expect(mockClient).not.toHaveBeenCalled();
+    expect(mockTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("rejects cross-origin writes before parsing or opening repositories", async () => {
-    mockMutation.mockRejectedValue(new AuthError("ORIGIN_NOT_ALLOWED", 403, "blocked"));
+    mockOrigin.mockImplementation(() => {
+      throw new AuthError("ORIGIN_NOT_ALLOWED", 403, "blocked");
+    });
     const calls = [
       putNote(jsonRequest("http://localhost/api/v1/items/item-1/note", "PUT", { body: "note" }), {
         params: Promise.resolve({ id: "item-1" }),
@@ -173,7 +204,7 @@ describe("Phase 2 reader API contract and security boundaries", () => {
         error: { code: "ORIGIN_NOT_ALLOWED", message: "blocked" },
       });
     }
-    expect(mockRepositories).not.toHaveBeenCalled();
+    expect(mockTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("rejects unknown fields, invalid numbers, and oversized text strictly", () => {
@@ -220,7 +251,7 @@ describe("Phase 2 reader API contract and security boundaries", () => {
 
   it("keeps the feed default archive policy and maps invalid cursors to 400", async () => {
     const list = jest.fn().mockResolvedValue({ items: [], nextCursor: undefined });
-    mockFeedQuery.mockImplementation(() => ({ list }) as never);
+    mockTenantRepositories.mockResolvedValue({ feed: { list } } as never);
     await getFeed(new Request("https://distil.example/api/v1/feed?sort=recent"));
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ archive: undefined, sort: "recent" })
@@ -239,7 +270,7 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     repo.items.findById.mockRejectedValueOnce(
       new Error('SELECT body FROM item_notes; secret="abc"')
     );
-    mockRepositories.mockResolvedValue(repo as unknown as RepositorySet);
+    mockTenantRepositories.mockResolvedValue(repo as unknown as RepositorySet);
     const serverError = await putNote(
       jsonRequest("http://localhost/api/v1/items/item-1/note", "PUT", { body: "note" }),
       { params: Promise.resolve({ id: "item-1" }) }
@@ -350,7 +381,7 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     repo.collections.listItems.mockResolvedValue([]);
     repo.collections.update.mockResolvedValue({ id: "collection-1", name: "Updated" });
     repo.collections.delete.mockResolvedValue(true);
-    mockRepositories.mockResolvedValue(repo as unknown as RepositorySet);
+    mockTenantRepositories.mockResolvedValue(repo as unknown as RepositorySet);
 
     const annotationList = await listAnnotationsRoute(new Request("http://localhost"), {
       params: Promise.resolve({ id: "item-1" }),

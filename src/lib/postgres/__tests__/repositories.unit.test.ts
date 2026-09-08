@@ -87,6 +87,9 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       "publisherQueue",
       "jobs",
       "agent",
+      "feed",
+      "passages",
+      "digestExperience",
     ]);
 
     await expect(repos.items.list()).resolves.toHaveLength(1);
