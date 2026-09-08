@@ -10,10 +10,12 @@ function sqlDouble(initial: unknown[][] = []) {
   const queries: string[] = [];
   const sql = jest.fn((strings: TemplateStringsArray | unknown[], ...values: unknown[]) => {
     if (!("raw" in strings)) return { values: strings };
-    queries.push(strings.join("?"));
+    const query = strings.join("?");
+    queries.push(query);
     return {
       then(resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) {
-        return Promise.resolve(responses.shift() ?? []).then(resolve, reject);
+        const response = query.includes("pg_advisory_xact_lock") ? [] : (responses.shift() ?? []);
+        return Promise.resolve(response).then(resolve, reject);
       },
       values,
     };
@@ -188,7 +190,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
   });
 
   test("writes both digest dates for complete and pending legacy snapshots", async () => {
-    const fake = sqlDouble([[{ id: "digest-complete" }], [{ id: "digest-pending" }]]);
+    const fake = sqlDouble([[], [], [], []]);
     const digests = createPostgresRepositories(fake.sql).digests;
 
     await expect(
@@ -828,8 +830,9 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       [chunk],
       [],
       [chunk],
-      [chunk],
       [],
+      [],
+      [chunk],
       [chunk],
       [version],
     ]);
@@ -1112,7 +1115,15 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       ])
     ).rejects.toThrow("Claim hash does not match");
 
-    const validSql = sqlDouble([[], [{ content: "Durable content" }], [], [claim], [evidence]]);
+    const validSql = sqlDouble([
+      [],
+      [],
+      [{ content: "Durable content" }],
+      [],
+      [],
+      [claim],
+      [evidence],
+    ]);
     await expect(
       createPostgresRepositories(validSql.sql).claims.insertWithEvidence([
         {

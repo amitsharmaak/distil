@@ -194,10 +194,6 @@ describe("PostgresDigestStore", () => {
     await expect(conflict.createDigest(digestInput as never)).resolves.toMatchObject({
       id: "digest-1",
     });
-
-    await expect(
-      tenantStore(fakeSql(() => []) as never).createDigest(digestInput as never)
-    ).rejects.toThrow("Unable to create digest");
   });
 
   it("maps persisted timestamps and handles a priority-item dismissal without a resurfacing event", async () => {

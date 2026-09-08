@@ -61,6 +61,7 @@ import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
+import { tenantLockKey, withTenantLocks } from "./tenant-lock";
 
 type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
@@ -149,7 +150,7 @@ class PostgresItems implements ItemRepository {
           RETURNING id`
       );
     } catch (error) {
-      // Security-barrier tenant views cannot use INSERT ... ON CONFLICT. A
+      // Security-barrier tenant views cannot use insert conflict clauses. A
       // savepoint contains the unique race, then the tenant-scoped lookup wins.
       const concurrent = await this.findByNormalizedUrl(item.url);
       if (concurrent) return concurrent;
@@ -196,12 +197,20 @@ class PostgresItemNotes implements ItemNoteRepository {
     return rows[0] ? this.map(rows[0]) : undefined;
   }
   async upsert(record: ItemNoteRecord) {
-    const rows = await this.sql<Row[]>`
-      INSERT INTO item_notes(item_id,body,created_at,updated_at)
-      VALUES(${record.itemId},${record.body},${record.createdAt},${record.updatedAt})
-      ON CONFLICT (item_id) DO UPDATE SET body=EXCLUDED.body,updated_at=EXCLUDED.updated_at
-      RETURNING *`;
-    return this.map(rows[0]);
+    return withTenantLocks(this.sql, [tenantLockKey("item-note", record.itemId)], async (tx) => {
+      const updated = await tx<Row[]>`
+        UPDATE item_notes SET body=${record.body},updated_at=${record.updatedAt}
+        WHERE item_id=${record.itemId}
+        RETURNING *
+      `;
+      if (updated[0]) return this.map(updated[0]);
+      const inserted = await tx<Row[]>`
+        INSERT INTO item_notes(item_id,body,created_at,updated_at)
+        VALUES(${record.itemId},${record.body},${record.createdAt},${record.updatedAt})
+        RETURNING *
+      `;
+      return this.map(inserted[0]);
+    });
   }
   async delete(itemId: string) {
     return (
@@ -303,12 +312,24 @@ class PostgresCollections implements CollectionRepository {
     return (await this.sql`DELETE FROM collections WHERE id=${id} RETURNING id`).length > 0;
   }
   async addItem(record: CollectionItemRecord) {
-    const rows = await this.sql<Row[]>`
-      INSERT INTO collection_items(collection_id,item_id,position,added_at)
-      VALUES(${record.collectionId},${record.itemId},${record.position},${record.addedAt})
-      ON CONFLICT (collection_id,item_id) DO UPDATE SET position=EXCLUDED.position
-      RETURNING *`;
-    return this.mapItem(rows[0]);
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("collection-item", record.collectionId, record.itemId)],
+      async (tx) => {
+        const updated = await tx<Row[]>`
+          UPDATE collection_items SET position=${record.position}
+          WHERE collection_id=${record.collectionId} AND item_id=${record.itemId}
+          RETURNING *
+        `;
+        if (updated[0]) return this.mapItem(updated[0]);
+        const inserted = await tx<Row[]>`
+          INSERT INTO collection_items(collection_id,item_id,position,added_at)
+          VALUES(${record.collectionId},${record.itemId},${record.position},${record.addedAt})
+          RETURNING *
+        `;
+        return this.mapItem(inserted[0]);
+      }
+    );
   }
   async removeItem(collectionId: string, itemId: string) {
     return (
@@ -340,16 +361,22 @@ class PostgresItemEvents implements ItemEventRepository {
     };
   }
   async append(record: ItemEventRecord) {
-    const inserted = await this.sql<Row[]>`
-      INSERT INTO item_events(id,event_key,item_id,event_type,metadata,occurred_at)
-      VALUES(${record.id},${record.eventKey},${record.itemId},${record.eventType},${this.sql.json(record.metadata as never)},${record.occurredAt})
-      ON CONFLICT (event_key) DO NOTHING RETURNING *`;
-    if (inserted[0]) return this.map(inserted[0]);
-    const existing = first(
-      await this.sql<Row[]>`SELECT * FROM item_events WHERE event_key=${record.eventKey}`
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("item-event-id", record.id), tenantLockKey("item-event-key", record.eventKey)],
+      async (tx) => {
+        const existing = first(
+          await tx<Row[]>`SELECT * FROM item_events WHERE event_key=${record.eventKey}`
+        );
+        if (existing) return this.map(existing);
+        const inserted = await tx<Row[]>`
+          INSERT INTO item_events(id,event_key,item_id,event_type,metadata,occurred_at)
+          VALUES(${record.id},${record.eventKey},${record.itemId},${record.eventType},${tx.json(record.metadata as never)},${record.occurredAt})
+          RETURNING *
+        `;
+        return this.map(inserted[0]);
+      }
     );
-    if (!existing) throw new Error(`Unable to persist item event ${record.eventKey}`);
-    return this.map(existing);
   }
   async listForItem(itemId: string, limit = 100) {
     return (
@@ -381,8 +408,8 @@ class PostgresDigests implements DigestRepository {
       reason: String(row.reason),
     };
   }
-  private async hydrate(run: DigestRunRecord): Promise<DigestRunWithItems> {
-    const rows = await this.sql<Row[]>`
+  private async hydrate(run: DigestRunRecord, sql: Sql = this.sql): Promise<DigestRunWithItems> {
+    const rows = await sql<Row[]>`
       SELECT * FROM digest_items WHERE digest_run_id=${run.id} ORDER BY position ASC`;
     return { ...run, items: rows.map((row) => this.mapItem(row)) };
   }
@@ -390,25 +417,26 @@ class PostgresDigests implements DigestRepository {
     if (items.some((item) => item.digestRunId !== run.id)) {
       throw new Error("Digest item belongs to another run");
     }
-    const created = await this.sql.begin(async (tx) => {
-      const rows = await tx<Row[]>`
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("digest-id", run.id), tenantLockKey("digest-date", run.digestDate)],
+      async (tx) => {
+        const existing = first(
+          await tx<Row[]>`SELECT * FROM digest_runs WHERE digest_date=${run.digestDate}`
+        );
+        if (existing) return this.hydrate(this.mapRun(existing), tx);
+        await tx`
         INSERT INTO digest_runs(id,digest_date,local_date,status,created_at,completed_at,dismissed_at)
         VALUES(${run.id},${run.digestDate},${run.digestDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null})
-        ON CONFLICT (digest_date) DO NOTHING RETURNING id`;
-      if (!rows[0]) return false;
-      for (const item of items) {
-        await tx`
-          INSERT INTO digest_items(digest_run_id,item_id,category,position,reason)
-          VALUES(${item.digestRunId},${item.itemId},${item.category},${item.position},${item.reason})`;
+      `;
+        for (const item of items) {
+          await tx`
+            INSERT INTO digest_items(digest_run_id,item_id,category,position,reason)
+            VALUES(${item.digestRunId},${item.itemId},${item.category},${item.position},${item.reason})`;
+        }
+        return { ...run, items: [...items].sort((a, b) => a.position - b.position) };
       }
-      return true;
-    });
-    if (!created) {
-      const existing = await this.findByDate(run.digestDate);
-      if (!existing) throw new Error(`Unable to persist digest for ${run.digestDate}`);
-      return existing;
-    }
-    return { ...run, items: [...items].sort((a, b) => a.position - b.position) };
+    );
   }
   async findByDate(digestDate: string) {
     const row = first(
@@ -596,8 +624,27 @@ class PostgresOAuth implements OAuthTokenRepository {
     ).map((r) => this.map(r));
   }
   async upsert(v: OAuthTokenRecord) {
-    await this
-      .sql`INSERT INTO oauth_tokens (provider,team_id,access_token,refresh_token,expiry_date,email,updated_at) VALUES (${v.provider},${v.teamId},${v.accessToken},${v.refreshToken ?? null},${v.expiryDate ?? null},${v.email ?? null},${v.updatedAt}) ON CONFLICT (provider,team_id) DO UPDATE SET access_token=EXCLUDED.access_token,refresh_token=EXCLUDED.refresh_token,expiry_date=EXCLUDED.expiry_date,email=EXCLUDED.email,updated_at=EXCLUDED.updated_at`;
+    await withTenantLocks(
+      this.sql,
+      [tenantLockKey("oauth-token", v.provider, v.teamId)],
+      async (tx) => {
+        const updated = await tx`
+          UPDATE oauth_tokens
+          SET access_token=${v.accessToken},refresh_token=${v.refreshToken ?? null},
+              expiry_date=${v.expiryDate ?? null},email=${v.email ?? null},updated_at=${v.updatedAt}
+          WHERE provider=${v.provider} AND team_id=${v.teamId}
+          RETURNING provider
+        `;
+        if (updated[0]) return;
+        await tx`
+          INSERT INTO oauth_tokens
+            (provider,team_id,access_token,refresh_token,expiry_date,email,updated_at)
+          VALUES
+            (${v.provider},${v.teamId},${v.accessToken},${v.refreshToken ?? null},
+             ${v.expiryDate ?? null},${v.email ?? null},${v.updatedAt})
+        `;
+      }
+    );
   }
   async delete(provider: string, teamId?: string) {
     if (teamId === undefined) await this.sql`DELETE FROM oauth_tokens WHERE provider=${provider}`;
@@ -638,10 +685,28 @@ class PostgresSummaries implements SummaryRepository {
     return out;
   }
   async upsert(v: Omit<SummaryRecord, "createdAt">) {
-    const r = await this.sql<
-      Row[]
-    >`INSERT INTO ai_summaries (id,item_id,summary,model,prompt_type,created_at) VALUES (${v.id},${v.itemId},${v.summary},${v.model},${v.promptType},now()) ON CONFLICT (item_id,prompt_type) DO UPDATE SET id=EXCLUDED.id,summary=EXCLUDED.summary,model=EXCLUDED.model,created_at=EXCLUDED.created_at RETURNING *`;
-    return this.map(r[0]);
+    return withTenantLocks(
+      this.sql,
+      [
+        tenantLockKey("summary-id", v.id),
+        tenantLockKey("summary-item-prompt", v.itemId, v.promptType),
+      ],
+      async (tx) => {
+        const updated = await tx<Row[]>`
+          UPDATE ai_summaries
+          SET id=${v.id},summary=${v.summary},model=${v.model},created_at=now()
+          WHERE item_id=${v.itemId} AND prompt_type=${v.promptType}
+          RETURNING *
+        `;
+        if (updated[0]) return this.map(updated[0]);
+        const inserted = await tx<Row[]>`
+          INSERT INTO ai_summaries (id,item_id,summary,model,prompt_type,created_at)
+          VALUES (${v.id},${v.itemId},${v.summary},${v.model},${v.promptType},now())
+          RETURNING *
+        `;
+        return this.map(inserted[0]);
+      }
+    );
   }
   async deleteForItem(id: string) {
     await this.sql`DELETE FROM ai_summaries WHERE item_id=${id}`;
@@ -783,8 +848,15 @@ class PostgresSettings implements SettingsRepository {
     )?.value;
   }
   async set(key: string, value: string) {
-    await this
-      .sql`INSERT INTO user_settings(key,value,updated_at) VALUES(${key},${value},now()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`;
+    await withTenantLocks(this.sql, [tenantLockKey("user-setting", key)], async (tx) => {
+      const updated = await tx`
+        UPDATE user_settings SET value=${value},updated_at=now()
+        WHERE key=${key}
+        RETURNING key
+      `;
+      if (updated[0]) return;
+      await tx`INSERT INTO user_settings(key,value,updated_at) VALUES(${key},${value},now())`;
+    });
   }
 }
 class PostgresNotifications implements NotificationRepository {
@@ -848,8 +920,19 @@ class PostgresEmbeddings implements EmbeddingRepository {
       : undefined;
   }
   async upsert(id: string, e: number[], model: string) {
-    await this
-      .sql`INSERT INTO item_embeddings(item_id,embedding,model,created_at) VALUES(${id},${this.sql.json(e)},${model},now()) ON CONFLICT(item_id) DO UPDATE SET embedding=EXCLUDED.embedding,model=EXCLUDED.model,created_at=EXCLUDED.created_at`;
+    await withTenantLocks(this.sql, [tenantLockKey("item-embedding", id)], async (tx) => {
+      const updated = await tx`
+        UPDATE item_embeddings
+        SET embedding=${tx.json(e)},model=${model},created_at=now()
+        WHERE item_id=${id}
+        RETURNING item_id
+      `;
+      if (updated[0]) return;
+      await tx`
+        INSERT INTO item_embeddings(item_id,embedding,model,created_at)
+        VALUES(${id},${tx.json(e)},${model},now())
+      `;
+    });
   }
   async listRecent(days = 30) {
     const r = await this.sql<
@@ -1010,10 +1093,26 @@ class PostgresContentChunks implements ContentChunkRepository {
 
   async insertMany(records: ContentChunkRecord[]) {
     if (records.length === 0) return { records: [], insertedCount: 0 };
-    return this.sql.begin(async (tx) => {
+    const lockKeys = records.flatMap((record) => [
+      tenantLockKey("content-chunk-id", record.id),
+      tenantLockKey("content-chunk-ordinal", record.contentVersionId, record.ordinal),
+    ]);
+    return withTenantLocks(this.sql, lockKeys, async (tx) => {
       let insertedCount = 0;
       const stored: ContentChunkRecord[] = [];
       for (const record of records) {
+        const existing = first(await tx<Row[]>`SELECT * FROM content_chunks WHERE id=${record.id}`);
+        if (existing) {
+          stored.push(mapContentChunk(existing));
+          continue;
+        }
+        const ordinalConflict = first(
+          await tx<Row[]>`
+            SELECT id FROM content_chunks
+            WHERE content_version_id=${record.contentVersionId} AND ordinal=${record.ordinal}
+          `
+        );
+        if (ordinalConflict) throw new Error(`Chunk identity conflict for ${record.id}`);
         const inserted = await tx<Row[]>`
           INSERT INTO content_chunks
             (id,content_version_id,item_id,ordinal,content,content_hash,start_offset,end_offset,
@@ -1026,19 +1125,10 @@ class PostgresContentChunks implements ContentChunkRepository {
              ${record.embeddingDimensions ?? null},${record.embeddingStatus},
              ${record.embeddingError ?? null},${record.embeddingUpdatedAt ?? null},
              ${record.embeddedAt ?? null},${record.createdAt})
-          ON CONFLICT DO NOTHING
           RETURNING *
         `;
-        if (inserted[0]) {
-          insertedCount += 1;
-          stored.push(mapContentChunk(inserted[0]));
-          continue;
-        }
-        const existing = first(await tx<Row[]>`SELECT * FROM content_chunks WHERE id=${record.id}`);
-        if (!existing) {
-          throw new Error(`Chunk identity conflict for ${record.id}`);
-        }
-        stored.push(mapContentChunk(existing));
+        insertedCount += 1;
+        stored.push(mapContentChunk(inserted[0]));
       }
       return { records: stored, insertedCount };
     });
@@ -1345,19 +1435,36 @@ class PostgresClaims implements ClaimRepository {
     const artifactIds = new Set(claims.map((claim) => claim.artifactId));
     if (artifactIds.size !== 1) throw new Error("Claims in one batch must share an artifact");
 
-    await this.sql.begin(async (tx) => {
+    const lockKeys = claims.flatMap((claim) => [
+      tenantLockKey("claim-id", claim.id),
+      tenantLockKey("claim-ordinal", claim.artifactId, claim.ordinal),
+      ...claim.evidence.map((evidence) =>
+        tenantLockKey(
+          "claim-evidence",
+          evidence.claimId,
+          evidence.chunkId,
+          evidence.startOffset,
+          evidence.endOffset
+        )
+      ),
+    ]);
+    await withTenantLocks(this.sql, lockKeys, async (tx) => {
       for (const claim of claims) {
         if (claim.claimHash !== sha256(claim.claim)) {
           throw new Error(`Claim hash does not match claim text for ${claim.id}`);
         }
-        await tx`
-          INSERT INTO intelligence_claims
-            (id,artifact_id,ordinal,claim,claim_hash,confidence)
-          VALUES
-            (${claim.id},${claim.artifactId},${claim.ordinal},${claim.claim},
-             ${claim.claimHash},${claim.confidence ?? null})
-          ON CONFLICT (id) DO NOTHING
-        `;
+        const existingClaim = first(
+          await tx<Row[]>`SELECT id FROM intelligence_claims WHERE id=${claim.id}`
+        );
+        if (!existingClaim) {
+          await tx`
+            INSERT INTO intelligence_claims
+              (id,artifact_id,ordinal,claim,claim_hash,confidence)
+            VALUES
+              (${claim.id},${claim.artifactId},${claim.ordinal},${claim.claim},
+               ${claim.claimHash},${claim.confidence ?? null})
+          `;
+        }
         for (const evidence of claim.evidence) {
           if (evidence.claimId !== claim.id) {
             throw new Error(`Evidence ${evidence.chunkId} belongs to a different claim`);
@@ -1370,14 +1477,22 @@ class PostgresClaims implements ClaimRepository {
           if (excerpt !== evidence.exactExcerpt || sha256(excerpt) !== evidence.evidenceHash) {
             throw new Error(`Evidence does not match chunk ${evidence.chunkId}`);
           }
-          await tx`
-            INSERT INTO claim_evidence
-              (claim_id,chunk_id,start_offset,end_offset,exact_excerpt,evidence_hash)
-            VALUES
-              (${evidence.claimId},${evidence.chunkId},${evidence.startOffset},
-               ${evidence.endOffset},${evidence.exactExcerpt},${evidence.evidenceHash})
-            ON CONFLICT DO NOTHING
-          `;
+          const existingEvidence = first(
+            await tx<Row[]>`
+              SELECT claim_id FROM claim_evidence
+              WHERE claim_id=${evidence.claimId} AND chunk_id=${evidence.chunkId}
+                AND start_offset=${evidence.startOffset} AND end_offset=${evidence.endOffset}
+            `
+          );
+          if (!existingEvidence) {
+            await tx`
+              INSERT INTO claim_evidence
+                (claim_id,chunk_id,start_offset,end_offset,exact_excerpt,evidence_hash)
+              VALUES
+                (${evidence.claimId},${evidence.chunkId},${evidence.startOffset},
+                 ${evidence.endOffset},${evidence.exactExcerpt},${evidence.evidenceHash})
+            `;
+          }
         }
       }
     });
@@ -1414,21 +1529,31 @@ class PostgresKnowledgeBackfills implements KnowledgeBackfillRepository {
   }
 
   async create(checkpoint: KnowledgeBackfillCheckpoint) {
-    const rows = await this.sql<Row[]>`
-      INSERT INTO knowledge_backfill_checkpoints
-        (job_key,job_type,status,cursor,checkpoint,processed_count,failed_count,attempt,
-         last_error,started_at,completed_at,updated_at)
-      VALUES
-        (${checkpoint.jobKey},${checkpoint.jobType},${checkpoint.status},
-         ${checkpoint.cursor ?? null},${this.sql.json(checkpoint.checkpoint as never)},
-         ${checkpoint.processedCount},${checkpoint.failedCount},${checkpoint.attempt},
-         ${checkpoint.lastError ?? null},${checkpoint.startedAt ?? null},
-         ${checkpoint.completedAt ?? null},${checkpoint.updatedAt})
-      ON CONFLICT (job_key) DO NOTHING
-      RETURNING *
-    `;
-    if (rows[0]) return mapBackfillCheckpoint(rows[0]);
-    return (await this.find(checkpoint.jobKey))!;
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("knowledge-backfill", checkpoint.jobKey)],
+      async (tx) => {
+        const existing = first(
+          await tx<Row[]>`
+            SELECT * FROM knowledge_backfill_checkpoints WHERE job_key=${checkpoint.jobKey}
+          `
+        );
+        if (existing) return mapBackfillCheckpoint(existing);
+        const inserted = await tx<Row[]>`
+          INSERT INTO knowledge_backfill_checkpoints
+            (job_key,job_type,status,cursor,checkpoint,processed_count,failed_count,attempt,
+             last_error,started_at,completed_at,updated_at)
+          VALUES
+            (${checkpoint.jobKey},${checkpoint.jobType},${checkpoint.status},
+             ${checkpoint.cursor ?? null},${tx.json(checkpoint.checkpoint as never)},
+             ${checkpoint.processedCount},${checkpoint.failedCount},${checkpoint.attempt},
+             ${checkpoint.lastError ?? null},${checkpoint.startedAt ?? null},
+             ${checkpoint.completedAt ?? null},${checkpoint.updatedAt})
+          RETURNING *
+        `;
+        return mapBackfillCheckpoint(inserted[0]);
+      }
+    );
   }
 
   async start(jobKey: string, at: string) {

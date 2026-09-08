@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Sql } from "postgres";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
+import { tenantLockKey, withTenantLocks } from "@/lib/postgres/tenant-lock";
 
 import type {
   DigestCandidate,
@@ -12,6 +13,7 @@ import type {
 } from "./types";
 
 type Row = Record<string, unknown>;
+const first = <T>(rows: T[]): T | undefined => rows[0];
 const iso = (value: unknown): string =>
   value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 
@@ -72,8 +74,8 @@ export class PostgresDigestStore implements DigestStore {
     };
   }
 
-  private async hydrate(row: Row): Promise<DigestRun> {
-    const items = await this.sql<Row[]>`
+  private async hydrate(row: Row, sql: Sql = this.sql): Promise<DigestRun> {
+    const items = await sql<Row[]>`
       SELECT * FROM digest_items
       WHERE user_id=${this.context.userId}::uuid AND digest_run_id=${String(row.id)}
       ORDER BY position ASC`;
@@ -84,13 +86,24 @@ export class PostgresDigestStore implements DigestStore {
   }
 
   async getPreferences(): Promise<PersonalPreferences> {
-    await this
-      .sql`INSERT INTO personal_preferences(id,user_id) VALUES ('default',${this.context.userId}::uuid)
-        ON CONFLICT (user_id,id) DO NOTHING`;
-    const rows = await this.sql<Row[]>`
-      SELECT * FROM personal_preferences
-      WHERE user_id=${this.context.userId}::uuid AND id='default'`;
-    return this.mapPreferences(rows[0]);
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("digest-preferences", "default")],
+      async (tx) => {
+        let rows = await tx<Row[]>`
+          SELECT * FROM personal_preferences
+          WHERE user_id=${this.context.userId}::uuid AND id='default'
+        `;
+        if (!rows[0]) {
+          rows = await tx<Row[]>`
+            INSERT INTO personal_preferences(id,user_id)
+            VALUES ('default',${this.context.userId}::uuid)
+            RETURNING *
+          `;
+        }
+        return this.mapPreferences(rows[0]);
+      }
+    );
   }
 
   async updatePreferences(
@@ -132,23 +145,29 @@ export class PostgresDigestStore implements DigestStore {
   }
 
   async createDigest(run: DigestRun): Promise<DigestRun> {
-    const inserted = await this.sql.begin(async (tx) => {
-      const rows = await tx<Row[]>`
-        INSERT INTO digest_runs(id,user_id,digest_date,local_date,status,created_at,completed_at,dismissed_at,timezone,selection_version,content_mode,selection_metadata,title_text,summary_text,updated_at)
-        VALUES(${run.id},${this.context.userId}::uuid,${run.localDate},${run.localDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null},${run.timezone},${run.selectionVersion},${run.contentMode},${tx.json(run.selectionMetadata as never)},${run.title},${run.summary},${run.createdAt})
-        ON CONFLICT (user_id,local_date) DO NOTHING RETURNING id`;
-      if (!rows[0]) return false;
-      for (const item of run.items) {
+    return withTenantLocks(
+      this.sql,
+      [tenantLockKey("digest-id", run.id), tenantLockKey("digest-date", run.localDate)],
+      async (tx) => {
+        const existing = first(
+          await tx<Row[]>`
+            SELECT * FROM digest_runs
+            WHERE user_id=${this.context.userId}::uuid AND local_date=${run.localDate}
+          `
+        );
+        if (existing) return this.hydrate(existing, tx);
         await tx`
-          INSERT INTO digest_items(user_id,digest_run_id,item_id,category,position,reason,title_snapshot,summary_snapshot,selection_metadata,dismissed_at)
-          VALUES(${this.context.userId}::uuid,${run.id},${item.itemId},${item.category},${item.position},${item.reason},${item.title},${item.summary},${tx.json(item.selectionMetadata as never)},${item.dismissedAt ?? null})`;
+          INSERT INTO digest_runs(id,user_id,digest_date,local_date,status,created_at,completed_at,dismissed_at,timezone,selection_version,content_mode,selection_metadata,title_text,summary_text,updated_at)
+          VALUES(${run.id},${this.context.userId}::uuid,${run.localDate},${run.localDate},${run.status},${run.createdAt},${run.completedAt ?? null},${run.dismissedAt ?? null},${run.timezone},${run.selectionVersion},${run.contentMode},${tx.json(run.selectionMetadata as never)},${run.title},${run.summary},${run.createdAt})
+        `;
+        for (const item of run.items) {
+          await tx`
+            INSERT INTO digest_items(user_id,digest_run_id,item_id,category,position,reason,title_snapshot,summary_snapshot,selection_metadata,dismissed_at)
+            VALUES(${this.context.userId}::uuid,${run.id},${item.itemId},${item.category},${item.position},${item.reason},${item.title},${item.summary},${tx.json(item.selectionMetadata as never)},${item.dismissedAt ?? null})`;
+        }
+        return run;
       }
-      return true;
-    });
-    if (inserted) return run;
-    const existing = await this.findDigest(run.localDate);
-    if (!existing) throw new Error(`Unable to create digest for ${run.localDate}`);
-    return existing;
+    );
   }
 
   async dismissDigest(id: string, at: string): Promise<DigestRun | undefined> {
@@ -163,7 +182,10 @@ export class PostgresDigestStore implements DigestStore {
     itemId: string,
     at: string
   ): Promise<DigestItem | undefined> {
-    return this.sql.begin(async (tx) => {
+    const eventKey = `digest-dismiss:${createHash("sha256")
+      .update(`${digestRunId}:${itemId}`)
+      .digest("hex")}`;
+    return withTenantLocks(this.sql, [tenantLockKey("item-event-key", eventKey)], async (tx) => {
       const rows = await tx<Row[]>`
         UPDATE digest_items
         SET dismissed_at=COALESCE(dismissed_at,${at})
@@ -173,13 +195,16 @@ export class PostgresDigestStore implements DigestStore {
       const row = rows[0];
       if (!row) return undefined;
       if (row.category === "resurfaced") {
-        const eventKey = `digest-dismiss:${createHash("sha256")
-          .update(`${digestRunId}:${itemId}`)
-          .digest("hex")}`;
-        await tx`
-          INSERT INTO item_events(id,user_id,event_key,item_id,event_type,metadata,occurred_at)
-          VALUES(${randomUUID()},${this.context.userId}::uuid,${eventKey},${itemId},'resurfacing_dismissed',${tx.json({ digestRunId } as never)},${at})
-          ON CONFLICT (user_id,event_key) DO NOTHING`;
+        const existing = await tx`
+          SELECT id FROM item_events
+          WHERE user_id=${this.context.userId}::uuid AND event_key=${eventKey}
+        `;
+        if (!existing[0]) {
+          await tx`
+            INSERT INTO item_events(id,user_id,event_key,item_id,event_type,metadata,occurred_at)
+            VALUES(${randomUUID()},${this.context.userId}::uuid,${eventKey},${itemId},'resurfacing_dismissed',${tx.json({ digestRunId } as never)},${at})
+          `;
+        }
       }
       return this.mapItem(row);
     });
@@ -237,19 +262,36 @@ export class PostgresDigestStore implements DigestStore {
   }
 
   async enqueue(job: DigestJob): Promise<DigestJob> {
-    const rows = await this.sql<Row[]>`
-      INSERT INTO digest_jobs(id,user_id,local_date,idempotency_key,status,requested_by,created_at,updated_at)
-      VALUES(${job.id},${this.context.userId}::uuid,${job.localDate},${job.idempotencyKey},${job.status},${job.requestedBy},${job.createdAt},${job.createdAt})
-      ON CONFLICT (user_id,local_date) DO UPDATE SET updated_at=EXCLUDED.updated_at
-      RETURNING *`;
-    const row = rows[0];
-    return {
-      id: String(row.id),
-      localDate: String(row.local_date),
-      idempotencyKey: String(row.idempotency_key),
-      status: row.status as DigestJob["status"],
-      requestedBy: row.requested_by as DigestJob["requestedBy"],
-      createdAt: iso(row.created_at),
-    };
+    return withTenantLocks(
+      this.sql,
+      [
+        tenantLockKey("digest-job-id", job.id),
+        tenantLockKey("digest-job-date", job.localDate),
+        tenantLockKey("digest-job-idempotency", job.idempotencyKey),
+      ],
+      async (tx) => {
+        let rows = await tx<Row[]>`
+          UPDATE digest_jobs SET updated_at=${job.createdAt}
+          WHERE user_id=${this.context.userId}::uuid AND local_date=${job.localDate}
+          RETURNING *
+        `;
+        if (!rows[0]) {
+          rows = await tx<Row[]>`
+            INSERT INTO digest_jobs(id,user_id,local_date,idempotency_key,status,requested_by,created_at,updated_at)
+            VALUES(${job.id},${this.context.userId}::uuid,${job.localDate},${job.idempotencyKey},${job.status},${job.requestedBy},${job.createdAt},${job.createdAt})
+            RETURNING *
+          `;
+        }
+        const row = rows[0];
+        return {
+          id: String(row.id),
+          localDate: String(row.local_date),
+          idempotencyKey: String(row.idempotency_key),
+          status: row.status as DigestJob["status"],
+          requestedBy: row.requested_by as DigestJob["requestedBy"],
+          createdAt: iso(row.created_at),
+        };
+      }
+    );
   }
 }
