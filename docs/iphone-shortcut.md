@@ -15,25 +15,39 @@ Treat the token like a password. Do not put it in screenshots, notes shared with
 
 In Apple's Shortcuts app, create a shortcut named **Save to Distil**:
 
-1. Open the shortcut details, enable **Show in Share Sheet**, and limit accepted input to **URLs** and **Text**.
-2. Add **Get URLs from Shortcut Input**.
-3. Add **Get Item from List**, select **First Item**. This extracts the first HTTP(S) URL when an app shares both a title and a link.
-4. Add **If** and verify the selected item has a value. In the Otherwise branch, show the notification `No web link found` and stop the shortcut.
-5. Add **Get Contents of URL** with:
+1. Open the shortcut details, enable **Show in Share Sheet**, and accept **Anything**. Current
+   iOS versions can expose the same Chrome page as a file, article, rich-text, or URL
+   representation; accepting Anything lets the Content Graph choose the URL representation while
+   the explicit no-URL branch below still rejects unsupported shares safely.
+2. Add **Get URLs from Shortcut Input**. Tap the **Shortcut Input** variable, set its type to
+   **URL**, and keep the complete URL rather than a component such as host or path.
+3. Add **Count**, configured as **Count Items in URLs**.
+4. Add **Get Item from List**, select **First Item**. This extracts the first HTTP(S) URL when an
+   app shares both a title and a link.
+5. Add **If**, configured as **If Count is greater than 0**. In the Otherwise branch, show the
+   notification `No web link found` and stop the shortcut. Counting avoids unreliable object-type
+   inference in Shortcuts' `is anything` condition.
+6. In the positive branch, add **Get Contents of URL** with:
    - URL: `https://YOUR-DISTIL-HOST/api/v1/captures`
    - Method: `POST`
    - Headers: `Authorization` = `Bearer YOUR_CAPTURE_TOKEN`
    - Request body: JSON
-   - `url`: the first URL from step 3
+   - `url`: the first URL from step 4
    - `source`: `ios-shortcut`
-6. Add **Get Dictionary from Input**, using the result of **Get Contents of URL**.
-7. Add **Get Dictionary Value** for the key `receipt`, then an **If** action checking whether that
+7. After the first **End If**, add **Get Dictionary from Input**, using the first **If Result**. The
+   successful path's result is the response from **Get Contents of URL**; the no-URL path stops
+   before reaching this action.
+8. Add **Get Dictionary Value** for the key `receipt`, then an **If** action checking whether that
    value exists. In this branch, show `Saved to Distil` and stop the shortcut. Both new (`202`) and
    duplicate (`200`) saves contain `receipt`.
-8. In the Otherwise branch, add **Get Dictionary Value** for `error`, then another **Get Dictionary
+9. In the Otherwise branch, add **Get Dictionary Value** for `error`, then another **Get Dictionary
    Value** for `code` within that error dictionary.
-9. If `code` is `UNAUTHORIZED`, show `Distil authorization failed. Replace the Shortcut token.`
-   Otherwise show `Distil could not save this link. Try again.`
+10. If `code` is `UNAUTHORIZED`, show `Distil authorization failed. Replace the Shortcut token.`
+    Otherwise show `Distil could not save this link. Try again.`
+
+Do not leave **View Content Graph**, **Quick Look**, or other diagnostic actions in the finished
+Shortcut. They are useful for inspecting an app's Share Sheet payload but can consume, convert, or
+pause the workflow during normal capture.
 
 Shortcuts does not expose a stable HTTP-status field for **Get Contents of URL**, so the recipe
 branches on Distil's JSON envelope instead. Disable any option that automatically opens a failed

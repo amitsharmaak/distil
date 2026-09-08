@@ -626,16 +626,38 @@ Task 4 acceptance record (accepted 2026-09-07 23:09 IST):
 
 #### Task 5 — Provision and accept independent capture clients
 
-- [ ] Create a `Browser Extension` capture token; store it only in the extension and record only its
+- [x] Create a `Browser Extension` capture token; store it only in the extension and record only its
       masked identifier here.
-- [ ] Point the extension at `https://distil-preview-pv-1850.vercel.app`.
-- [ ] Test new capture, duplicate capture, temporary network failure/offline replay, restart recovery,
+- [x] Point the extension at `https://distil-preview-pv-1850.vercel.app`.
+- [x] Test new capture, duplicate capture, temporary network failure/offline replay, restart recovery,
       and extension-token revocation.
-- [ ] Create a separate `iPhone Shortcut` token; store it only in the Shortcut and record only its
+- [x] Create a separate `iPhone Shortcut` token; store it only in the Shortcut and record only its
       masked identifier here. Never reuse the extension token.
-- [ ] Build **Save to Distil** exactly as documented in `docs/iphone-shortcut.md`.
-- [ ] **Task 5 complete:** append both masked token identifiers and browser-extension acceptance
+- [x] Build **Save to Distil** exactly as documented in `docs/iphone-shortcut.md`.
+- [x] **Task 5 complete:** append both masked token identifiers and browser-extension acceptance
       evidence here; do not record either token value.
+
+Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview deployment
+`dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`, and stable alias
+`https://distil-preview-pv-1850.vercel.app`. Production was not deployed or modified.
+
+- **Browser Extension:** extension ID `njllmldjdjdleenhphaoecgbnepfkjlf`; active token identifier
+  `dst_cap_XyAMs4a3…`, stored only in the extension. The Preview allowlist includes only that exact
+  extension origin in addition to the stable web origin. A fresh NASA article became ready as
+  receipt `6597d122-c9ff-4ac8-abd8-a00057b33c14` in one attempt; resubmission returned the same
+  capture with no second receipt. A unique capture queued against a deliberately unreachable host
+  survived a full Chrome restart and replayed exactly once as ready receipt
+  `fe3cceb1-3627-4181-9822-5719ca1d0a5e`. Revoking the then-current extension token produced
+  `Capture token needs attention`; installing the replacement token replayed the queued request
+  exactly once.
+- **iPhone Shortcut:** active token identifier `dst_cap_ceWsAhyB…`, stored only in **Save to Distil**
+  and distinct from the extension token. On the physical iPhone, Chrome's Share Sheet payload was
+  proven to contain a URL through Apple's Content Graph. The final Shortcut accepts the complete
+  shared object, explicitly selects its URL representation, and gates the request on a numeric URL
+  count to avoid iOS object-type inference errors. A MacRumors article became ready as receipt
+  `42c1e0fb-f61a-4b7b-9029-f124fe1e3c09` in one attempt; a non-URL share correctly reported
+  `No Web link found` and sent no request. The full multi-app, revocation, Airplane Mode, and Home
+  Screen matrix remains Task 6.
 
 #### Task 6 — Complete real-device and Preview acceptance
 
@@ -669,14 +691,15 @@ Task 4 acceptance record (accepted 2026-09-07 23:09 IST):
 ### Known blockers and decisions
 
 - The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. The stable Preview alias
-  currently points to Task 4 candidate `b2736b2`, deployment
-  `dpl_HCXZDHXip1mcavokbzZZgjVNyDnA`; Task 4 is not yet accepted because summary quality failed.
-- Tasks 1 through 3 are complete. Task 4 provider/runtime work is implemented but acceptance remains
-  blocked on the live summary path. Task 2's accepted commit
+  points to accepted application SHA `f4437bf`, deployment
+  `dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`; its Preview-only origin allowlist includes the accepted Chrome
+  extension ID.
+- Tasks 1 through 5 are complete. Task 2's accepted commit
   `6714a1c6cd84a3cae925860b84409ed56de3824c` passed all eight prerequisite jobs and the aggregate
   quality gate in run `34126389699`. Task 3's accepted commit
   `020944a7f8331d47cbc1691768dc404b6ae0fb9f` is deployed as
-  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume at Task 4's summary-quality blocker described above.
+  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume with the physical-device and full Preview matrix in
+  Task 6.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - Gemini is selected and its key plus the `$1.00` application budget guardrail are Preview-scoped.
@@ -689,17 +712,18 @@ Task 4 acceptance record (accepted 2026-09-07 23:09 IST):
   original findings and reviewed upgrades are recorded in `docs/security-audit.md`; `npm audit fix
 --force` was not used.
 - No production migration, production import, or production deployment has occurred.
-- Real iPhone Share Sheet behavior remains a manual device test.
+- The iPhone Chrome Share Sheet success and no-URL paths are verified manually. Safari, Apple News,
+  plain-text URL, revocation, Airplane Mode, and Home Screen behavior remain Task 6 device tests.
 
 ### Safety and rollback position
 
 There is no successful Production deployment, and Production has no database or application
 secrets. The Neon resource and all configured project variables are connected only to Preview; its
 schema and imported user data are populated. The source SQLite database remains unchanged. The
-stable Preview alias points to Task 4 candidate `b2736b2`. The last accepted rollback target is the
-Task 3 deployment `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`; repointing the alias does not require a database
-rollback. Leave additive PostgreSQL migrations/imported rows intact unless a separate, explicit
-database recovery plan is approved.
+stable Preview alias points to accepted SHA `f4437bf`, deployment
+`dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`. Repointing the alias to an earlier accepted deployment does not
+require a database rollback. Leave additive PostgreSQL migrations/imported rows intact unless a
+separate, explicit database recovery plan is approved.
 
 For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/vercel-deployment.md`,
 `docs/sqlite-import.md`, `docs/iphone-shortcut.md`, and `docs/security-audit.md`.
