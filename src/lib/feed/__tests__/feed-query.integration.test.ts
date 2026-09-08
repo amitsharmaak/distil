@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { PostgresFeedQuery } from "../feed-query";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
+import { createPostgresRepositoryAccess } from "@/lib/postgres/tenant-repositories";
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
@@ -12,7 +12,6 @@ const context = createAuthContext({
   actorId: "10000000-0000-4000-8000-000000000001",
   requestId: "30000000-0000-4000-8000-000000000001",
 });
-import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
 
@@ -76,7 +75,7 @@ afterAll(async () => harness.stop());
 
 describe("PostgresFeedQuery", () => {
   it("applies OR within facets, AND across facets, excludes archive by default, and keyset-paginates", async () => {
-    const repos = createPostgresRepositories(harness.sql);
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     await repos.items.insert(item("match-a", { topics: ["engineering", "ai"], priority: "high" }));
     await repos.items.insert(
       item("match-b", { sourceType: "publisher", topics: ["product"], priority: "high" })
@@ -105,7 +104,7 @@ describe("PostgresFeedQuery", () => {
       addedAt: "2026-09-06T00:00:00Z",
     });
 
-    const feed = new PostgresFeedQuery(harness.sql, context);
+    const feed = repos.feed;
     const first = await feed.list({
       sources: ["manual", "publisher"],
       topics: ["ai", "product"],
@@ -136,13 +135,13 @@ describe("PostgresFeedQuery", () => {
   });
 
   it("honors manual priority and supports chronological and archive escape hatches", async () => {
-    const repos = createPostgresRepositories(harness.sql);
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     await repos.items.insert(item("manual-low", { manualPriority: "low", priority: "low" }));
     await repos.items.insert(item("learned-high", { priority: "high" }));
     await repos.items.insert(
       item("old", { createdAt: "2026-09-01T00:00:00Z", archivedAt: "2026-09-02T00:00:00Z" })
     );
-    const feed = new PostgresFeedQuery(harness.sql, context);
+    const feed = repos.feed;
     expect(
       (await feed.list({ sort: "for_you", now: new Date("2026-09-07T00:00:00Z") })).items.map(
         (entry) => entry.id

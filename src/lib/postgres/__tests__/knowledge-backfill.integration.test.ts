@@ -7,10 +7,10 @@ import {
 } from "@/lib/knowledge/jobs";
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
-import { createPostgresRepositories } from "../repositories";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { applyTenantMigrationStage } from "../tenant-migration/migrator";
 import { buildTenantMigrationReport } from "../tenant-migration/verifier";
+import { createPostgresRepositoryAccess } from "../tenant-repositories";
 
 jest.setTimeout(120_000);
 const harness = new PostgresTestHarness();
@@ -63,7 +63,7 @@ describe("Phase 2 migration and durable intelligence backfill", () => {
     await harness.sql`
       INSERT INTO users (id, status) VALUES (${context.userId}::uuid, 'active')
     `;
-    const repositories = createPostgresRepositories(harness.sql);
+    const repositories = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     const base: Omit<ContentItem, "id" | "title" | "url" | "summary"> = {
       sourceType: "manual",
       contentType: "article",

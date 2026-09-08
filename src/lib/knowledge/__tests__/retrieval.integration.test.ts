@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 
 import { chunkContent, estimateTokenCount } from "../chunking";
 import { createContentVersionIdentity } from "../content-identity";
-import { PostgresPassageSearchStore } from "../retrieval";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
+import { createPostgresRepositoryAccess } from "@/lib/postgres/tenant-repositories";
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
@@ -14,7 +14,6 @@ const context = createAuthContext({
   actorId: "10000000-0000-4000-8000-000000000001",
   requestId: "30000000-0000-4000-8000-000000000001",
 });
-import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
 
@@ -62,7 +61,7 @@ afterAll(async () => harness.stop());
 
 describe("PostgreSQL passage retrieval", () => {
   it("filters before ranking and searches latest chunk text plus item metadata", async () => {
-    const repositories = createPostgresRepositories(harness.sql);
+    const repositories = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     async function seed(id: string, content: string, patch: Partial<ContentItem> = {}) {
       const item: ContentItem = {
         id,
@@ -115,7 +114,7 @@ describe("PostgreSQL passage retrieval", () => {
       archivedAt: "2026-09-07T01:00:00Z",
     });
 
-    const store = new PostgresPassageSearchStore(harness.sql, context);
+    const store = repositories.passages;
     const results = await store.searchKeyword({ query: "PostgreSQL", limit: 10 });
     expect(results.map((result) => result.itemId)).toEqual(["chunk-match", "metadata-match"]);
     expect(results[0]).toMatchObject({
