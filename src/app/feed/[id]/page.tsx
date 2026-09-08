@@ -7,10 +7,12 @@
  */
 
 import Link from "next/link";
+import { headers } from "next/headers";
 import { ArrowLeft, Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getItemById, getItems, getFeedback, getAISummaries } from "@/lib/database";
+import { getTenantRepositories } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
 import { priorityColors } from "@/lib/constants";
@@ -147,8 +149,13 @@ export default async function ItemDetailPage({
   const { id } = await params;
   const { filter } = await searchParams;
   const knowledgeUiEnabled = readPhase2FeatureFlags().knowledgeUi;
+  const requestHeaders = await headers();
+  const auth = await resolveRequestAuthContext(
+    new Request("http://distil.local/feed/reader", { headers: requestHeaders })
+  );
+  const repositories = await getTenantRepositories(auth);
 
-  const item = await getItemById(id);
+  const item = await repositories.items.findById(id);
 
   if (!item) {
     return (
@@ -173,9 +180,9 @@ export default async function ItemDetailPage({
       }
     : baseStrategy;
   const [aiSummaries, existingFeedback, allItems] = await Promise.all([
-    getAISummaries(item.id),
-    getFeedback(item.id),
-    getItems(),
+    repositories.summaries.findAll(item.id),
+    repositories.feedback.findForItem(item.id),
+    repositories.items.list(),
   ]);
 
   const navItems =
@@ -364,7 +371,7 @@ export default async function ItemDetailPage({
           existingFeedback
             ? {
                 rating: existingFeedback.rating,
-                reason: existingFeedback.reason,
+                reason: existingFeedback.reason ?? null,
               }
             : null
         }

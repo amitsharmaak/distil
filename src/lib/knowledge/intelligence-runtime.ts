@@ -1,11 +1,17 @@
 import { z } from "zod";
 
-import { generateJSON, getEffectiveModel } from "@/lib/ai/router";
+import {
+  AIQuotaExceededError,
+  assertTenantAIBudget,
+  createTenantAIRouter,
+  getEffectiveModel,
+} from "@/lib/ai/router";
 import { aiLogger } from "@/lib/logger";
 import { createClaimEvidence } from "@/lib/knowledge/grounding";
 import { createDegradedSummary } from "@/lib/knowledge/artifacts";
 import { sha256 } from "@/lib/knowledge/content-identity";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import { parseAuthContext, userIdSchema, type AuthContext } from "@/lib/contracts/tenant-context";
 import type { ContentChunkRecord } from "./types";
 
 export const GROUNDED_SUMMARY_PROMPT_VERSION = "grounded-summary-v1";
@@ -14,6 +20,7 @@ export const SUMMARY_GENERATION_RETRIES = 2;
 
 const payloadSchema = z
   .object({
+    userId: userIdSchema,
     itemId: z.string().min(1).max(200),
     contentVersionId: z.string().min(1).max(200),
     artifactId: z.string().min(1).max(200),
@@ -82,12 +89,16 @@ class RuntimeFailure extends Error {
   }
 }
 
-export function createRouterStructuredSummaryGenerator(): StructuredSummaryGenerator {
+export function createRouterStructuredSummaryGenerator(
+  context: AuthContext,
+  repositories: RepositorySet
+): StructuredSummaryGenerator {
+  const router = createTenantAIRouter(context, repositories);
   return {
     async generate(prompt) {
       const assignment = getEffectiveModel("summarize");
       return {
-        output: await generateJSON<unknown>(prompt, "summarize", {
+        output: await router.generateJSON<unknown>(prompt, "summarize", {
           temperature: 0,
           maxTokens: 4_096,
         }),
@@ -154,17 +165,6 @@ function isTransient(error: unknown): boolean {
   );
 }
 
-async function assertDatabaseBudget(repositories: RepositorySet): Promise<void> {
-  const configured = process.env.DISTIL_DAILY_AI_BUDGET;
-  if (!configured) return;
-  const budget = Number(configured);
-  if (!Number.isFinite(budget) || budget <= 0) return;
-  const usage = await repositories.agent.getDailyAuditStats();
-  if (usage.totalCost >= budget) {
-    throw new RuntimeFailure("budget_exceeded", "The database-backed daily AI budget is exhausted");
-  }
-}
-
 async function generateValidated(input: {
   generator: StructuredSummaryGenerator;
   prompt: string;
@@ -177,7 +177,7 @@ async function generateValidated(input: {
   let attempts = 0;
   for (let attempt = 1; attempt <= SUMMARY_GENERATION_RETRIES + 1; attempt += 1) {
     try {
-      await assertDatabaseBudget(input.repositories);
+      await assertTenantAIBudget(input.repositories);
       attempts = attempt;
       const generated = await input.generator.generate(input.prompt);
       return {
@@ -187,6 +187,10 @@ async function generateValidated(input: {
         attempts: attempt,
       };
     } catch (error) {
+      if (error instanceof AIQuotaExceededError) {
+        lastError = new RuntimeFailure("budget_exceeded", error.message, attempt - 1);
+        break;
+      }
       lastError = error;
       if (attempt > SUMMARY_GENERATION_RETRIES || !isTransient(error)) break;
       const delay = 100 * 2 ** (attempt - 1) + Math.floor(input.random() * 100);
@@ -220,11 +224,14 @@ function usageDelta(
 
 /** Executes one idempotent, durable summary job; provider failure never replaces a valid current. */
 export async function runIntelligenceSummaryJob(
+  context: AuthContext,
   untrustedPayload: unknown,
   repositories: RepositorySet,
   options: IntelligenceRuntimeOptions = {}
 ) {
+  const tenant = parseAuthContext(context);
   const payload = payloadSchema.parse(untrustedPayload);
+  if (payload.userId !== tenant.userId) throw new Error("Summary job tenant mismatch");
   const now = options.now ?? (() => new Date());
   const artifact = await repositories.intelligenceArtifacts.findById(payload.artifactId);
   if (!artifact) throw new Error(`Summary artifact ${payload.artifactId} does not exist`);
@@ -289,7 +296,7 @@ export async function runIntelligenceSummaryJob(
       throw new RuntimeFailure("insufficient_content", "No source chunks are available");
     }
     generated = await generateValidated({
-      generator: options.generator ?? createRouterStructuredSummaryGenerator(),
+      generator: options.generator ?? createRouterStructuredSummaryGenerator(tenant, repositories),
       prompt,
       chunks,
       repositories,
@@ -447,10 +454,12 @@ export async function runIntelligenceSummaryJob(
 }
 
 export function createIntelligenceSummaryJobHandler(
+  context: AuthContext,
   repositories: RepositorySet,
   options: IntelligenceRuntimeOptions = {}
 ) {
+  const tenant = parseAuthContext(context);
   return async (payload: Record<string, unknown>): Promise<void> => {
-    await runIntelligenceSummaryJob(payload, repositories, options);
+    await runIntelligenceSummaryJob(tenant, payload, repositories, options);
   };
 }

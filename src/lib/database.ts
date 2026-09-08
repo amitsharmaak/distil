@@ -71,13 +71,14 @@ export async function getCaptureTokenIdentityResolver() {
   return captureTokenIdentityResolverPromise;
 }
 
-/** Control-plane composition root; this role may enumerate opaque user ids only. */
+/** Control-plane composition root. Its client is never reused for tenant content reads. */
 export async function getControlPlaneRepositories(
   context: SystemContext
 ): Promise<ControlPlaneRepositorySet> {
-  const controlUrl = process.env.DATABASE_CONTROL_URL;
-  if (!usesPostgres() || !controlUrl) {
-    throw new Error("DATABASE_URL and DATABASE_CONTROL_URL are required for control-plane work");
+  if (!config.databaseUrl || !config.databaseControlPlaneUrl) {
+    throw new Error(
+      "DATABASE_URL and DATABASE_CONTROL_PLANE_URL are required for control-plane work"
+    );
   }
   controlPlaneAccessPromise ??= Promise.all([
     import("@/lib/postgres/client"),
@@ -85,7 +86,7 @@ export async function getControlPlaneRepositories(
   ]).then(([client, access]) =>
     access.createPostgresRepositoryAccess(
       client.createPostgresClient({ url: config.databaseUrl }),
-      client.createPostgresClient({ url: controlUrl })
+      client.createPostgresClient({ url: config.databaseControlPlaneUrl })
     )
   );
   return (await controlPlaneAccessPromise).getControlPlaneRepositories(context);

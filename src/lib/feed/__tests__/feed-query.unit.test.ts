@@ -8,6 +8,14 @@ import {
   reserveTopTenDiversity,
   resurfacingEligibility,
 } from "../feed-query";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 function fakeFeedSql(rows: Record<string, unknown>[]) {
   const sql = ((strings: TemplateStringsArray) => {
@@ -180,7 +188,8 @@ describe("feed ranking contracts", () => {
 
   it("builds deterministic PostgreSQL keyset pages for personalized, priority, and chronological sorts", async () => {
     const personalized = new PostgresFeedQuery(
-      fakeFeedSql([feedRow("item-2"), feedRow("item-1", 60.123456)]) as never
+      fakeFeedSql([feedRow("item-2"), feedRow("item-1", 60.123456)]) as never,
+      context
     );
     const first = await personalized.list({
       sort: "for_you",
@@ -200,7 +209,7 @@ describe("feed ranking contracts", () => {
     expect(first).toMatchObject({ items: [{ id: "item-2", rank: { score: 61.234567 } }] });
     expect(first.nextCursor).toEqual(expect.any(String));
 
-    const priority = new PostgresFeedQuery(fakeFeedSql([feedRow("priority")]) as never);
+    const priority = new PostgresFeedQuery(fakeFeedSql([feedRow("priority")]) as never, context);
     await expect(
       priority.list({
         sort: "priority",
@@ -215,7 +224,7 @@ describe("feed ranking contracts", () => {
       })
     ).resolves.toMatchObject({ items: [{ id: "priority" }] });
 
-    const recent = new PostgresFeedQuery(fakeFeedSql([feedRow("recent")]) as never);
+    const recent = new PostgresFeedQuery(fakeFeedSql([feedRow("recent")]) as never, context);
     await expect(
       recent.list({
         sort: "recent",
@@ -226,18 +235,19 @@ describe("feed ranking contracts", () => {
     ).resolves.toMatchObject({ items: [{ id: "recent", rank: { sort: "recent" } }] });
 
     const complete = new PostgresFeedQuery(
-      fakeFeedSql([{ ...feedRow("complete"), ai_priority_score: 77 }]) as never
+      fakeFeedSql([{ ...feedRow("complete"), ai_priority_score: 77 }]) as never,
+      context
     );
     await expect(
       complete.list({ sort: "for_you", archive: "include", personalizationEnabled: true, now })
     ).resolves.toMatchObject({ items: [{ id: "complete" }] });
-    await expect(new PostgresFeedQuery(fakeFeedSql([]) as never).list()).resolves.toEqual({
+    await expect(new PostgresFeedQuery(fakeFeedSql([]) as never, context).list()).resolves.toEqual({
       items: [],
     });
   });
 
   it("fails closed for malformed keyset cursors before querying PostgreSQL", async () => {
-    const query = new PostgresFeedQuery(fakeFeedSql([]) as never);
+    const query = new PostgresFeedQuery(fakeFeedSql([]) as never, context);
     await expect(query.list({ cursor: "invalid" })).rejects.toMatchObject({
       code: "INVALID_CURSOR",
     } satisfies Partial<FeedQueryError>);

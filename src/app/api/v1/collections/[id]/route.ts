@@ -1,6 +1,7 @@
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { getRepositorySet } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getTenantRepositories } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
 import {
   collectionUpdateSchema,
@@ -14,8 +15,10 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
-    return Response.json(await getCollection(await getRepositorySet(), (await context.params).id));
+    const auth = await resolveRequestAuthContext(request);
+    return Response.json(
+      await getCollection(await getTenantRepositories(auth), (await context.params).id)
+    );
   } catch (error) {
     return readerErrorResponse(error);
   }
@@ -23,10 +26,11 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 
 export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const auth = await resolveRequestAuthContext(request);
     const input = parseBody(await readJson(request), collectionUpdateSchema);
     const collection = await updateCollection(
-      await getRepositorySet(),
+      await getTenantRepositories(auth),
       (await context.params).id,
       input
     );
@@ -38,8 +42,9 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
 
 export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
-    await deleteCollection(await getRepositorySet(), (await context.params).id);
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const auth = await resolveRequestAuthContext(request);
+    await deleteCollection(await getTenantRepositories(auth), (await context.params).id);
     return new Response(null, { status: 204 });
   } catch (error) {
     return readerErrorResponse(error);

@@ -1,5 +1,6 @@
 import type { RepositorySet } from "@/lib/repositories/ports";
 import type { PassageSearchResult, PassageSearchStore } from "../retrieval";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
 import {
   answerFromKnowledge,
   assertDateRange,
@@ -8,6 +9,13 @@ import {
   getItemIntelligence,
   validateGeneratedCitations,
 } from "../service";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 const passage = (patch: Partial<PassageSearchResult> = {}): PassageSearchResult => ({
   itemId: "item-1",
@@ -46,6 +54,7 @@ describe("grounded answer service", () => {
   it("abstains on insufficient specific evidence without retrieving unrelated recent items", async () => {
     const repository = store([]);
     const result = await answerFromKnowledge({
+      context,
       request: { query: "What did the article say about Mars?", messages: [] },
       store: repository,
     });
@@ -59,6 +68,7 @@ describe("grounded answer service", () => {
       .mocked(repository.listRecent)
       .mockResolvedValue([passage({ retrievalMode: "recent_fallback" })]);
     const result = await answerFromKnowledge({
+      context,
       request: { query: "Give me a brief of my library", messages: [] },
       store: repository,
     });
@@ -124,6 +134,7 @@ describe("grounded answer service", () => {
       content: `message ${index}`,
     }));
     const result = await answerFromKnowledge({
+      context,
       request: { query: "How does the queue work?", messages },
       store: store([passage()]),
       generator,
@@ -140,6 +151,7 @@ describe("grounded answer service", () => {
     });
     await expect(
       answerFromKnowledge({
+        context,
         request: { query: "How does the queue work?", messages: [], intent: "specific" },
         store: store([passage()]),
         generator,
@@ -156,6 +168,7 @@ describe("grounded answer service", () => {
     const repository = store([passage()]);
     await expect(
       answerFromKnowledge({
+        context,
         request: { query: "How does the queue work?", messages: [] },
         store: repository,
         generator: jest.fn().mockResolvedValue({ answer: "missing citations" }),
@@ -163,6 +176,7 @@ describe("grounded answer service", () => {
     ).resolves.toMatchObject({ status: "degraded" });
     await expect(
       answerFromKnowledge({
+        context,
         request: { query: "How does the queue work?", messages: [] },
         store: repository,
         generator: jest.fn().mockRejectedValue(new Error("provider unavailable")),
@@ -173,12 +187,14 @@ describe("grounded answer service", () => {
   it("rejects low-score specific evidence and abstains when general fallback is empty", async () => {
     await expect(
       answerFromKnowledge({
+        context,
         request: { query: "Exact fact?", messages: [] },
         store: store([passage({ score: 0.001 })]),
       })
     ).resolves.toMatchObject({ status: "abstained", intent: "specific" });
     await expect(
       answerFromKnowledge({
+        context,
         request: { query: "Brief my library", messages: [] },
         store: store([]),
       })
@@ -202,6 +218,7 @@ describe("summary regeneration", () => {
       jobs: { enqueue: jest.fn() },
     } as unknown as RepositorySet;
     const result = await enqueueSummaryRegeneration(
+      context,
       repositories,
       "item-1",
       { length: "brief", idempotencyKey: "retry-key" },
@@ -222,7 +239,7 @@ describe("summary regeneration", () => {
       items: { findById: jest.fn().mockResolvedValue(undefined) },
     } as unknown as RepositorySet;
     await expect(
-      enqueueSummaryRegeneration(missing, "missing", {
+      enqueueSummaryRegeneration(context, missing, "missing", {
         length: "brief",
         idempotencyKey: "key",
       })
@@ -233,7 +250,7 @@ describe("summary regeneration", () => {
       contentVersions: { findLatestForItem: jest.fn().mockResolvedValue(undefined) },
     } as unknown as RepositorySet;
     await expect(
-      enqueueSummaryRegeneration(unversioned, "item-1", {
+      enqueueSummaryRegeneration(context, unversioned, "item-1", {
         length: "brief",
         idempotencyKey: "key",
       })
@@ -283,7 +300,7 @@ describe("item intelligence", () => {
       },
       claims: { listForArtifact: jest.fn().mockResolvedValue([{ id: "claim-1" }]) },
     } as unknown as RepositorySet;
-    const intelligence = await getItemIntelligence(repositories, "item-1");
+    const intelligence = await getItemIntelligence(context, repositories, "item-1");
     expect(intelligence).toMatchObject({
       item: { id: "item-1" },
       contentVersion: { id: "version-1", version: 1 },
@@ -307,7 +324,7 @@ describe("item intelligence", () => {
       intelligenceArtifacts: { listForItem: jest.fn().mockResolvedValue([]) },
       claims: { listForArtifact: jest.fn() },
     } as unknown as RepositorySet;
-    await expect(getItemIntelligence(repositories, "item-1")).resolves.toMatchObject({
+    await expect(getItemIntelligence(context, repositories, "item-1")).resolves.toMatchObject({
       contentVersion: null,
       chunks: [],
       artifacts: [],
@@ -321,7 +338,7 @@ describe("item intelligence", () => {
     const repositories = {
       items: { findById: jest.fn().mockResolvedValue(undefined) },
     } as unknown as RepositorySet;
-    await expect(getItemIntelligence(repositories, "missing")).rejects.toMatchObject({
+    await expect(getItemIntelligence(context, repositories, "missing")).rejects.toMatchObject({
       code: "ITEM_NOT_FOUND",
       status: 404,
     });

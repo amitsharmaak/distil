@@ -9,6 +9,14 @@ import {
   runIntelligenceSummaryJob,
   type StructuredSummaryGenerator,
 } from "../intelligence-runtime";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "system",
+  actorId: "20000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 const timestamp = "2026-09-07T12:00:00.000Z";
 const source = "A durable queue persists accepted work before processing.";
@@ -83,12 +91,16 @@ function repositories(
       getDailyAuditStats: jest
         .fn()
         .mockResolvedValue({ totalCalls: 0, totalTokens: 0, totalCost: 0 }),
+      getAuditStatsSince: jest
+        .fn()
+        .mockResolvedValue({ totalCalls: 0, totalTokens: 0, totalCost: 0 }),
     },
   } as unknown as RepositorySet;
   return { result, intelligenceArtifacts };
 }
 
 const payload = {
+  userId: context.userId,
   itemId: "item-1",
   contentVersionId: "version-1",
   artifactId: "artifact-1",
@@ -127,12 +139,15 @@ function validGenerator(): StructuredSummaryGenerator {
 
 describe("durable intelligence summary runtime", () => {
   beforeEach(() => jest.clearAllMocks());
-  afterEach(() => delete process.env.DISTIL_DAILY_AI_BUDGET);
+  afterEach(() => {
+    delete process.env.DISTIL_DAILY_AI_BUDGET;
+    delete process.env.DISTIL_ROLLING_30D_AI_BUDGET;
+  });
 
   it("validates citations and publishes claims before promoting the summary", async () => {
     const { result, intelligenceArtifacts } = repositories();
     const generator = validGenerator();
-    await runIntelligenceSummaryJob(payload, result, {
+    await runIntelligenceSummaryJob(context, payload, result, {
       generator,
       now: () => new Date(timestamp),
     });
@@ -161,7 +176,9 @@ describe("durable intelligence summary runtime", () => {
   it("returns an already completed artifact without touching sources or the provider", async () => {
     const { result } = repositories(undefined, { status: "ready", isCurrent: true });
     const generator = validGenerator();
-    await expect(runIntelligenceSummaryJob(payload, result, { generator })).resolves.toMatchObject({
+    await expect(
+      runIntelligenceSummaryJob(context, payload, result, { generator })
+    ).resolves.toMatchObject({
       id: "artifact-1",
       status: "ready",
     });
@@ -190,7 +207,7 @@ describe("durable intelligence summary runtime", () => {
       }),
     };
 
-    await runIntelligenceSummaryJob(payload, result, {
+    await runIntelligenceSummaryJob(context, payload, result, {
       generator,
       sleep: jest.fn().mockResolvedValue(undefined),
       random: () => 0,
@@ -212,7 +229,7 @@ describe("durable intelligence summary runtime", () => {
     const generator = {
       generate: jest.fn().mockRejectedValue(new Error("credentials are not configured")),
     };
-    await runIntelligenceSummaryJob(payload, result, { generator });
+    await runIntelligenceSummaryJob(context, payload, result, { generator });
     expect(generator.generate).toHaveBeenCalledTimes(1);
     expect(intelligenceArtifacts.complete).toHaveBeenCalledWith(
       "artifact-1",
@@ -229,7 +246,7 @@ describe("durable intelligence summary runtime", () => {
     const { result, intelligenceArtifacts } = repositories();
     intelligenceArtifacts.updatePending.mockRejectedValueOnce(new Error("database unavailable"));
     await expect(
-      runIntelligenceSummaryJob(payload, result, { generator: validGenerator() })
+      runIntelligenceSummaryJob(context, payload, result, { generator: validGenerator() })
     ).rejects.toThrow("database unavailable");
     expect(intelligenceArtifacts.complete).not.toHaveBeenCalled();
   });
@@ -243,7 +260,27 @@ describe("durable intelligence summary runtime", () => {
       totalCost: 1,
     });
     const generator = validGenerator();
-    await runIntelligenceSummaryJob(payload, result, { generator });
+    await runIntelligenceSummaryJob(context, payload, result, { generator });
+    expect(generator.generate).not.toHaveBeenCalled();
+    expect(intelligenceArtifacts.complete).toHaveBeenCalledWith(
+      "artifact-1",
+      expect.objectContaining({ status: "degraded", errorCode: "budget_exceeded" })
+    );
+  });
+
+  it("degrades without provider work when the tenant rolling budget is exhausted", async () => {
+    process.env.DISTIL_ROLLING_30D_AI_BUDGET = "10";
+    const { result, intelligenceArtifacts } = repositories();
+    jest.mocked(result.agent.getAuditStatsSince).mockResolvedValue({
+      totalCalls: 20,
+      totalTokens: 5_000,
+      totalCost: 10,
+    });
+    const generator = validGenerator();
+
+    await runIntelligenceSummaryJob(context, payload, result, { generator });
+
+    expect(result.agent.getAuditStatsSince).toHaveBeenCalledWith(expect.any(String));
     expect(generator.generate).not.toHaveBeenCalled();
     expect(intelligenceArtifacts.complete).toHaveBeenCalledWith(
       "artifact-1",

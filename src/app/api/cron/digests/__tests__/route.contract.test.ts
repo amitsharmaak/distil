@@ -1,30 +1,19 @@
-jest.mock("@/lib/postgres/client", () => ({ createPostgresClient: jest.fn() }));
-jest.mock("@/lib/digests/postgres-store", () => ({ PostgresDigestStore: jest.fn() }));
-jest.mock("@/lib/database", () => ({ getRepositorySet: jest.fn() }));
+jest.mock("@/lib/database", () => ({
+  getControlPlaneRepositories: jest.fn(),
+  getTenantRepositories: jest.fn(),
+}));
 jest.mock("@/lib/digests/runtime", () => ({ enqueueDigestRuntimeJob: jest.fn() }));
 
-import { getRepositorySet } from "@/lib/database";
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { getControlPlaneRepositories, getTenantRepositories } from "@/lib/database";
 import { enqueueDigestRuntimeJob } from "@/lib/digests/runtime";
-import { createPostgresClient } from "@/lib/postgres/client";
 
 import { GET } from "../route";
 
-const sql = { end: jest.fn() };
-const job = {
-  id: "ledger-id",
-  localDate: "2026-09-07",
-  idempotencyKey: "digest:2026-09-07",
-  status: "queued" as const,
-  requestedBy: "cron" as const,
-  createdAt: "2026-09-07T02:00:00.000Z",
-};
-const mockClient = createPostgresClient as jest.MockedFunction<typeof createPostgresClient>;
-const mockStore = PostgresDigestStore as jest.MockedClass<typeof PostgresDigestStore>;
-const mockRepositories = getRepositorySet as jest.MockedFunction<typeof getRepositorySet>;
-const mockRuntimeEnqueue = enqueueDigestRuntimeJob as jest.MockedFunction<
-  typeof enqueueDigestRuntimeJob
->;
+const alphaUserId = "11111111-1111-4111-8111-111111111111";
+const betaUserId = "22222222-2222-4222-8222-222222222222";
+const enqueue = jest.fn();
+const getPreferences = jest.fn();
+const jobs = { enqueue: jest.fn() };
 
 function request(): Request {
   return new Request("https://distil.example/api/cron/digests", {
@@ -36,52 +25,63 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.env.CRON_SECRET = "cron-test-secret";
   process.env.DATABASE_URL = "postgres://test.example/distil";
+  process.env.DATABASE_CONTROL_PLANE_URL = "postgres://control.example/distil";
+  process.env.DISTIL_SYSTEM_ACTOR_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   process.env.FEATURE_DIGESTS = "true";
-  mockClient.mockReturnValue(sql as never);
-  mockStore.mockImplementation(
-    () =>
-      ({
-        getPreferences: jest.fn().mockResolvedValue({
-          digestEnabled: true,
-          digestTimezone: "UTC",
-          personalizationEnabled: true,
-          updatedAt: "2026-09-07T00:00:00.000Z",
-        }),
-        enqueue: jest.fn().mockResolvedValue(job),
-      }) as never
-  );
-  mockRepositories.mockResolvedValue({ jobs: { enqueue: jest.fn() } } as never);
-  mockRuntimeEnqueue.mockResolvedValue();
+  jest.mocked(getControlPlaneRepositories).mockResolvedValue({
+    accounts: {
+      listActiveUserIds: jest
+        .fn()
+        .mockResolvedValueOnce([alphaUserId, betaUserId])
+        .mockResolvedValue([]),
+    },
+  } as never);
+  getPreferences.mockResolvedValue({
+    digestEnabled: true,
+    digestTimezone: "UTC",
+    personalizationEnabled: true,
+    updatedAt: "2026-09-07T00:00:00.000Z",
+  });
+  enqueue.mockImplementation(async (job) => job);
+  jest.mocked(getTenantRepositories).mockResolvedValue({
+    digestExperience: { getPreferences, enqueue },
+    jobs,
+  } as never);
+  jest.mocked(enqueueDigestRuntimeJob).mockResolvedValue();
 });
 
 afterAll(() => {
   delete process.env.CRON_SECRET;
   delete process.env.DATABASE_URL;
+  delete process.env.DATABASE_CONTROL_PLANE_URL;
+  delete process.env.DISTIL_SYSTEM_ACTOR_ID;
   delete process.env.FEATURE_DIGESTS;
 });
 
-describe("digest cron contract", () => {
-  it("rejects unauthenticated requests before opening PostgreSQL", async () => {
+describe("digest cron tenant contract", () => {
+  it("rejects unauthenticated requests before control-plane access", async () => {
     const response = await GET(new Request("https://distil.example/api/cron/digests"));
 
     expect(response.status).toBe(401);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getControlPlaneRepositories).not.toHaveBeenCalled();
   });
 
-  it("keeps concurrent cron retries on the same durable local-date job", async () => {
-    const [first, second] = await Promise.all([GET(request()), GET(request())]);
+  it("fans out opaque user ids and creates tenant-distinct local-date jobs", async () => {
+    const response = await GET(request());
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(mockRuntimeEnqueue).toHaveBeenCalledTimes(2);
-    expect(mockRuntimeEnqueue.mock.calls[0][1]).toMatchObject({
-      localDate: job.localDate,
-      idempotencyKey: job.idempotencyKey,
-    });
-    expect(mockRuntimeEnqueue.mock.calls[1][1]).toEqual(mockRuntimeEnqueue.mock.calls[0][1]);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ enqueued: 2, scanned: 2 });
+    const contexts = jest.mocked(getTenantRepositories).mock.calls.map(([context]) => context);
+    expect(contexts.map((context) => context.userId)).toEqual([alphaUserId, betaUserId]);
+    expect(enqueueDigestRuntimeJob).toHaveBeenCalledTimes(2);
+    const runtimeCalls = jest.mocked(enqueueDigestRuntimeJob).mock.calls;
+    expect(runtimeCalls[0]?.[0].userId).toBe(alphaUserId);
+    expect(runtimeCalls[1]?.[0].userId).toBe(betaUserId);
+    expect(runtimeCalls[0]?.[2].localDate).toBe(runtimeCalls[1]?.[2].localDate);
+    expect(runtimeCalls[0]?.[2].idempotencyKey).not.toBe(runtimeCalls[1]?.[2].idempotencyKey);
   });
 
-  it("does not open PostgreSQL while disabled or unconfigured", async () => {
+  it("does not access storage while disabled or unconfigured", async () => {
     delete process.env.FEATURE_DIGESTS;
     const disabled = await GET(request());
     expect(disabled.status).toBe(200);
@@ -89,26 +89,20 @@ describe("digest cron contract", () => {
       enqueued: false,
       reason: "FEATURE_DISABLED",
     });
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getControlPlaneRepositories).not.toHaveBeenCalled();
 
     process.env.FEATURE_DIGESTS = "true";
     delete process.env.DATABASE_URL;
     const unconfigured = await GET(request());
     expect(unconfigured.status).toBe(503);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getControlPlaneRepositories).not.toHaveBeenCalled();
   });
 
-  it("returns a safe failure while closing PostgreSQL when enqueueing fails", async () => {
-    mockStore.mockImplementation(
-      () =>
-        ({
-          getPreferences: jest.fn().mockRejectedValue(new Error("database unavailable")),
-        }) as never
-    );
+  it("returns a safe failure when one tenant enqueue fails", async () => {
+    getPreferences.mockRejectedValueOnce(new Error("database unavailable"));
 
     const response = await GET(request());
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ error: { code: "PROCESSING_FAILED" } });
-    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
   });
 });

@@ -1,5 +1,6 @@
 import type { Sql } from "postgres";
 
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 import type { Priority } from "@/lib/types";
 
 export type RetrievalMode = "keyword" | "semantic" | "hybrid" | "recent_fallback";
@@ -103,7 +104,10 @@ function boundedLimit(value: number | undefined): number {
   return Math.min(Math.max(Math.floor(value ?? DEFAULT_LIMIT), 1), MAX_LIMIT);
 }
 
-function mapPassage(row: Row, mode: RetrievalMode): PassageSearchResult {
+function mapPassage(row: Row, mode: RetrievalMode, expectedUserId: string): PassageSearchResult {
+  if (String(row.user_id) !== expectedUserId) {
+    throw new Error("Tenant passage invariant failed");
+  }
   const excerpt = String(row.excerpt);
   const chunkMatch = Boolean(row.chunk_match);
   const metadataMatch = Boolean(row.metadata_match);
@@ -133,10 +137,20 @@ function mapPassage(row: Row, mode: RetrievalMode): PassageSearchResult {
 
 /** PostgreSQL-only latest-version passage retrieval with filters applied before ranking. */
 export class PostgresPassageSearchStore implements PassageSearchStore {
-  constructor(private readonly sql: Sql) {}
+  private readonly context: AuthContext;
+
+  constructor(
+    private readonly sql: Sql,
+    context: AuthContext
+  ) {
+    this.context = parseAuthContext(context);
+  }
 
   private filters(filters: PassageFilters) {
-    const conditions = [this.sql`i.processing_status='ready'`];
+    const conditions = [
+      this.sql`i.user_id=${this.context.userId}::uuid`,
+      this.sql`i.processing_status='ready'`,
+    ];
     if (filters.read !== undefined) conditions.push(this.sql`i.is_read=${filters.read}`);
     if (filters.archive === "only") conditions.push(this.sql`i.archived_at IS NOT NULL`);
     else if (filters.archive !== "include") conditions.push(this.sql`i.archived_at IS NULL`);
@@ -154,7 +168,8 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
     if (filters.collectionIds?.length)
       conditions.push(this.sql`EXISTS (
         SELECT 1 FROM collection_items ci
-        WHERE ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(filters.collectionIds)})
+        WHERE ci.user_id=${this.context.userId}::uuid
+          AND ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(filters.collectionIds)})
       )`);
     if (filters.dateFrom) conditions.push(this.sql`i.created_at >= ${filters.dateFrom}`);
     if (filters.dateTo) conditions.push(this.sql`i.created_at <= ${filters.dateTo}`);
@@ -173,10 +188,11 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
       ), latest_versions AS (
         SELECT DISTINCT ON (v.item_id) v.id,v.item_id
         FROM item_content_versions v
-        JOIN filtered_items i ON i.id=v.item_id
+        JOIN filtered_items i ON i.user_id=v.user_id AND i.id=v.item_id
+        WHERE v.user_id=${this.context.userId}::uuid
         ORDER BY v.item_id,v.version DESC
       ), ranked AS (
-        SELECT i.id AS item_id,c.id AS chunk_id,c.content_version_id,i.title,i.url,i.source_type,
+        SELECT i.user_id,i.id AS item_id,c.id AS chunk_id,c.content_version_id,i.title,i.url,i.source_type,
                i.created_at,i.is_read,c.ordinal,
                left(c.content,${MAX_EXCERPT_CHARACTERS}) AS excerpt,
                c.search_vector @@ q.value AS chunk_match,
@@ -185,7 +201,8 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
                  + 0.35 * ts_rank_cd(i.search_vector,q.value) AS score
         FROM filtered_items i
         JOIN latest_versions v ON v.item_id=i.id
-        JOIN content_chunks c ON c.content_version_id=v.id
+        JOIN content_chunks c ON c.user_id=${this.context.userId}::uuid
+          AND c.content_version_id=v.id
         CROSS JOIN search_query q
         WHERE c.search_vector @@ q.value OR i.search_vector @@ q.value
       )
@@ -193,7 +210,7 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
       ORDER BY score DESC,created_at DESC,item_id ASC,ordinal ASC,chunk_id ASC
       LIMIT ${boundedLimit(query.limit)}
     `;
-    return rows.map((row) => mapPassage(row, "keyword"));
+    return rows.map((row) => mapPassage(row, "keyword", this.context.userId));
   }
 
   async listRecent(query: PassageFilters & { limit?: number }) {
@@ -206,10 +223,11 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
       ), latest_versions AS (
         SELECT DISTINCT ON (v.item_id) v.id,v.item_id
         FROM item_content_versions v
-        JOIN filtered_items i ON i.id=v.item_id
+        JOIN filtered_items i ON i.user_id=v.user_id AND i.id=v.item_id
+        WHERE v.user_id=${this.context.userId}::uuid
         ORDER BY v.item_id,v.version DESC
       )
-      SELECT i.id AS item_id,c.id AS chunk_id,c.content_version_id,i.title,i.url,i.source_type,
+      SELECT i.user_id,i.id AS item_id,c.id AS chunk_id,c.content_version_id,i.title,i.url,i.source_type,
              i.created_at,i.is_read,c.ordinal,left(c.content,${MAX_EXCERPT_CHARACTERS}) AS excerpt,
              false AS chunk_match,false AS metadata_match,
              CASE WHEN COALESCE(i.manual_priority,i.priority)='high' THEN 2 ELSE 1 END AS score
@@ -217,14 +235,15 @@ export class PostgresPassageSearchStore implements PassageSearchStore {
       JOIN latest_versions v ON v.item_id=i.id
       JOIN LATERAL (
         SELECT * FROM content_chunks candidate
-        WHERE candidate.content_version_id=v.id
+        WHERE candidate.user_id=${this.context.userId}::uuid
+          AND candidate.content_version_id=v.id
         ORDER BY candidate.ordinal ASC
         LIMIT 1
       ) c ON true
       ORDER BY score DESC,i.created_at DESC,i.id ASC,c.ordinal ASC
       LIMIT ${boundedLimit(query.limit)}
     `;
-    return rows.map((row) => mapPassage(row, "recent_fallback"));
+    return rows.map((row) => mapPassage(row, "recent_fallback", this.context.userId));
   }
 }
 

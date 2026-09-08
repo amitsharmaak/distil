@@ -10,6 +10,21 @@
 import { dequeueJob, completeJob, enqueueJob } from "@/lib/database";
 import { aiLogger } from "@/lib/logger";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+import {
+  actorIdSchema,
+  createAuthContext,
+  requestIdSchema,
+  userIdSchema,
+} from "@/lib/contracts/tenant-context";
+
+function tenantJobContext(payload: Record<string, unknown>) {
+  return createAuthContext({
+    userId: userIdSchema.parse(payload.userId),
+    actorKind: "system",
+    actorId: actorIdSchema.parse(process.env.DISTIL_SYSTEM_ACTOR_ID ?? ""),
+    requestId: requestIdSchema.parse(payload.traceId),
+  });
+}
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -59,35 +74,32 @@ jobHandlers.set("cross_source_insight", async (payload) => {
 // workflows. Imports stay inside handlers so disabled features add no startup
 // work and never trigger a provider call.
 jobHandlers.set("knowledge_backfill", async (payload) => {
-  const [{ getRepositorySet }, { createKnowledgeBackfillJobHandler }] = await Promise.all([
+  const [{ getTenantRepositories }, { createKnowledgeBackfillJobHandler }] = await Promise.all([
     import("@/lib/database"),
     import("@/lib/knowledge/jobs"),
   ]);
-  await createKnowledgeBackfillJobHandler(await getRepositorySet())(payload);
+  const context = tenantJobContext(payload);
+  await createKnowledgeBackfillJobHandler(context, await getTenantRepositories(context))(payload);
 });
 
 jobHandlers.set("regenerate_intelligence_summary", async (payload) => {
-  const [{ getRepositorySet }, { createIntelligenceSummaryJobHandler }] = await Promise.all([
+  const [{ getTenantRepositories }, { createIntelligenceSummaryJobHandler }] = await Promise.all([
     import("@/lib/database"),
     import("@/lib/knowledge/intelligence-runtime"),
   ]);
-  await createIntelligenceSummaryJobHandler(await getRepositorySet())(payload);
+  const context = tenantJobContext(payload);
+  await createIntelligenceSummaryJobHandler(context, await getTenantRepositories(context))(payload);
 });
 
 jobHandlers.set("digest_run", async (payload) => {
   if (!readPhase2FeatureFlags().digests) return;
-  const [{ createPostgresClient }, { PostgresDigestStore }, { createDigestJobHandler }] =
-    await Promise.all([
-      import("@/lib/postgres/client"),
-      import("@/lib/digests/postgres-store"),
-      import("@/lib/digests/runtime"),
-    ]);
-  const sql = createPostgresClient();
-  try {
-    await createDigestJobHandler(new PostgresDigestStore(sql))(payload);
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
+  const [{ getTenantRepositories }, { createDigestJobHandler }] = await Promise.all([
+    import("@/lib/database"),
+    import("@/lib/digests/runtime"),
+  ]);
+  const context = tenantJobContext(payload);
+  const repositories = await getTenantRepositories(context);
+  await createDigestJobHandler(context, repositories.digestExperience)(payload);
 });
 
 /**

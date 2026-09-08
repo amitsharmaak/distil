@@ -1,14 +1,15 @@
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireSessionMutation } from "@/lib/auth/route-helpers";
+import { getTenantRepositories } from "@/lib/database";
 import { knowledgeErrorResponse, parseKnowledgeBody } from "@/lib/knowledge/http";
-import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
 import { answerFromKnowledge, answerRequestSchema, assertDateRange } from "@/lib/knowledge/service";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
-import { createPostgresClient } from "@/lib/postgres/client";
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const context = await resolveRequestAuthContext(request);
     const input = await parseKnowledgeBody(request, answerRequestSchema);
     assertDateRange(input.filters ?? {});
     if (!readPhase2FeatureFlags().answers) {
@@ -23,18 +24,15 @@ export async function POST(request: Request): Promise<Response> {
         { status: 503 }
       );
     }
-    const sql = createPostgresClient();
-    try {
-      // No generator is wired until provider selection and its evaluation gate are complete.
-      return Response.json(
-        await answerFromKnowledge({
-          request: input,
-          store: new PostgresPassageSearchStore(sql),
-        })
-      );
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    const repositories = await getTenantRepositories(context);
+    // No generator is wired until provider selection and its evaluation gate are complete.
+    return Response.json(
+      await answerFromKnowledge({
+        context,
+        request: input,
+        store: repositories.passages,
+      })
+    );
   } catch (error) {
     return knowledgeErrorResponse(error);
   }

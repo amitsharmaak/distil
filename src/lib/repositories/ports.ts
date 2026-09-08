@@ -12,6 +12,9 @@ import type {
 import type { ContentItem, Notification, Priority } from "@/lib/types";
 import type { UserId } from "@/lib/contracts/tenant-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import type { DigestStore } from "@/lib/digests/types";
+import type { FeedPage, FeedQuery } from "@/lib/feed/feed-query";
+import type { PassageSearchStore } from "@/lib/knowledge/retrieval";
 
 export interface ItemFilters {
   sourceType?: string;
@@ -605,6 +608,11 @@ export interface AgentRepository {
   insertAuditLog(data: Record<string, unknown> & { id: string; action: string }): Promise<void>;
   listAuditLogs(limit?: number): Promise<Array<Record<string, unknown>>>;
   getDailyAuditStats(): Promise<{ totalCost: number; totalCalls: number; totalTokens: number }>;
+  getAuditStatsSince(since: string): Promise<{
+    totalCost: number;
+    totalCalls: number;
+    totalTokens: number;
+  }>;
   insertWorkflow(
     data: Record<string, unknown> & { id: string; workflowType: string }
   ): Promise<void>;
@@ -651,6 +659,12 @@ export interface RepositorySet {
   publisherQueue: PublisherQueueRepository;
   jobs: JobQueueRepository;
   agent: AgentRepository;
+  /** Tenant-only PostgreSQL feed query surface. */
+  feed: { list(query?: FeedQuery): Promise<FeedPage> };
+  /** Tenant-only retrieval surface used before any answer prompt is assembled. */
+  passages: PassageSearchStore;
+  /** Tenant-only preference, scheduling, and digest persistence surface. */
+  digestExperience: DigestStore;
 }
 
 export interface ControlPlaneAccountRepository {

@@ -1,6 +1,7 @@
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { getRepositorySet } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getTenantRepositories } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
 import {
   annotationCreateSchema,
@@ -13,8 +14,11 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
-    const annotations = await listAnnotations(await getRepositorySet(), (await context.params).id);
+    const auth = await resolveRequestAuthContext(request);
+    const annotations = await listAnnotations(
+      await getTenantRepositories(auth),
+      (await context.params).id
+    );
     return Response.json({ annotations });
   } catch (error) {
     return readerErrorResponse(error);
@@ -23,10 +27,11 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const auth = await resolveRequestAuthContext(request);
     const input = parseBody(await readJson(request), annotationCreateSchema);
     const annotation = await createAnnotation(
-      await getRepositorySet(),
+      await getTenantRepositories(auth),
       (await context.params).id,
       input
     );

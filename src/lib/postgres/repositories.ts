@@ -57,6 +57,10 @@ import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { normalizeUrl } from "@/lib/utils";
 import { mapCapture, mapCaptureToken, mapItem } from "./mappers";
 import { PostgresAuthRepository } from "./auth-repository";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { PostgresFeedQuery } from "@/lib/feed/feed-query";
+import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
 
 type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
@@ -1692,6 +1696,16 @@ class PostgresAgent implements AgentRepository {
     );
     return r ?? { totalCost: 0, totalCalls: 0, totalTokens: 0 };
   }
+  async getAuditStatsSince(since: string) {
+    const parsed = new Date(since);
+    if (Number.isNaN(parsed.valueOf())) throw new Error("since must be an ISO timestamp");
+    const r = first(
+      await this.sql<
+        { totalCost: number; totalCalls: number; totalTokens: number }[]
+      >`SELECT coalesce(sum(cost),0)::float8 "totalCost",count(*)::int "totalCalls",coalesce(sum(coalesce(tokens_in,0)+coalesce(tokens_out,0)),0)::int "totalTokens" FROM audit_log WHERE created_at>=${parsed.toISOString()}::timestamptz`
+    );
+    return r ?? { totalCost: 0, totalCalls: 0, totalTokens: 0 };
+  }
   async insertWorkflow(d: Record<string, unknown> & { id: string; workflowType: string }) {
     const n = this.now();
     await this
@@ -1776,7 +1790,19 @@ class PostgresAgent implements AgentRepository {
   }
 }
 
-export function createPostgresRepositories(sql: Sql): RepositorySet {
+function tenantOnly<T>(name: string): T {
+  return new Proxy(
+    {},
+    {
+      get(_target, property) {
+        if (property === "then") return undefined;
+        return () => Promise.reject(new Error(`${name} requires an AuthContext`));
+      },
+    }
+  ) as T;
+}
+
+export function createPostgresRepositories(sql: Sql, context?: AuthContext): RepositorySet {
   return {
     auth: new PostgresAuthRepository(sql),
     items: new PostgresItems(sql),
@@ -1804,5 +1830,14 @@ export function createPostgresRepositories(sql: Sql): RepositorySet {
     publisherQueue: new PostgresPublisherQueue(sql),
     jobs: new PostgresJobs(sql),
     agent: new PostgresAgent(sql),
+    feed: context
+      ? new PostgresFeedQuery(sql, context)
+      : tenantOnly<RepositorySet["feed"]>("Feed queries"),
+    passages: context
+      ? new PostgresPassageSearchStore(sql, context)
+      : tenantOnly<RepositorySet["passages"]>("Passage retrieval"),
+    digestExperience: context
+      ? new PostgresDigestStore(sql, context)
+      : tenantOnly<RepositorySet["digestExperience"]>("Digest experience"),
   };
 }

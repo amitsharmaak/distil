@@ -6,6 +6,9 @@ import { render, screen } from "@testing-library/react";
 import type { ContentItem } from "@/lib/types";
 import ItemDetailPage from "../page";
 
+jest.mock("next/headers", () => ({ headers: jest.fn().mockResolvedValue(new Headers()) }));
+jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
+
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
@@ -16,10 +19,7 @@ jest.mock("next/link", () => ({
 }));
 
 jest.mock("@/lib/database", () => ({
-  getAISummaries: jest.fn().mockResolvedValue({ brief: null, detailed: null }),
-  getFeedback: jest.fn().mockResolvedValue(null),
-  getItemById: jest.fn(),
-  getItems: jest.fn(),
+  getTenantRepositories: jest.fn(),
 }));
 
 jest.mock("@/lib/phase2/feature-flags", () => ({
@@ -92,8 +92,25 @@ jest.mock("@/components/feed/ai-summary", () => ({
   AISummary: ({ ogSummary }: { ogSummary: string }) => <p>{ogSummary}</p>,
 }));
 
-import { getItemById, getItems } from "@/lib/database";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { getTenantRepositories } from "@/lib/database";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+
+const auth = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  actorKind: "user",
+  actorId: "11111111-1111-4111-8111-111111111111",
+  requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+} as never;
+const repositories = {
+  items: { findById: jest.fn(), list: jest.fn() },
+  summaries: { findAll: jest.fn() },
+  feedback: { findForItem: jest.fn() },
+};
+
+beforeAll(() => {
+  Object.defineProperty(globalThis, "Request", { configurable: true, value: jest.fn() });
+});
 
 function item(overrides: Partial<ContentItem> = {}): ContentItem {
   return {
@@ -116,8 +133,12 @@ function item(overrides: Partial<ContentItem> = {}): ContentItem {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(getItems).mockResolvedValue([]);
-  jest.mocked(getItemById).mockResolvedValue(undefined);
+  jest.mocked(resolveRequestAuthContext).mockResolvedValue(auth);
+  jest.mocked(getTenantRepositories).mockResolvedValue(repositories as never);
+  repositories.items.list.mockResolvedValue([]);
+  repositories.items.findById.mockResolvedValue(undefined);
+  repositories.summaries.findAll.mockResolvedValue({ brief: undefined, detailed: undefined });
+  repositories.feedback.findForItem.mockResolvedValue(undefined);
   jest.mocked(readPhase2FeatureFlags).mockReturnValue({ knowledgeUi: true } as never);
 });
 
@@ -137,8 +158,8 @@ describe("feed item detail page", () => {
     const current = item({ id: "current", title: "https://example.test/raw" });
     const previous = item({ id: "previous", title: "Previous" });
     const next = item({ id: "next", title: "Next", isRead: true });
-    jest.mocked(getItemById).mockResolvedValue(current);
-    jest.mocked(getItems).mockResolvedValue([previous, current, next]);
+    repositories.items.findById.mockResolvedValue(current);
+    repositories.items.list.mockResolvedValue([previous, current, next]);
 
     render(
       await ItemDetailPage({
@@ -183,7 +204,7 @@ describe("feed item detail page", () => {
       }),
     ];
     for (const current of variants) {
-      jest.mocked(getItemById).mockResolvedValueOnce(current);
+      repositories.items.findById.mockResolvedValueOnce(current);
       const result = await ItemDetailPage({
         params: Promise.resolve({ id: current.id }),
         searchParams: Promise.resolve({}),

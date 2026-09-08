@@ -8,6 +8,14 @@ import {
   selectDigestItems,
 } from "../service";
 import type { DigestStore, PersonalPreferences } from "../types";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 const preferences: PersonalPreferences = {
   digestEnabled: true,
@@ -135,19 +143,20 @@ describe("digest selection", () => {
     const disabled = store({
       getPreferences: jest.fn().mockResolvedValue({ ...preferences, digestEnabled: false }),
     });
-    await expect(runDigest(disabled, { idempotencyKey: "one" })).rejects.toMatchObject({
+    await expect(runDigest(context, disabled, { idempotencyKey: "one" })).rejects.toMatchObject({
       code: "DIGEST_DISABLED",
     });
     const existing = { id: "old", localDate: "2026-09-07" };
     const existingStore = store({ findDigest: jest.fn().mockResolvedValue(existing) });
     await expect(
-      runDigest(existingStore, { idempotencyKey: "one", localDate: "2026-09-07" })
+      runDigest(context, existingStore, { idempotencyKey: "one", localDate: "2026-09-07" })
     ).resolves.toBe(existing);
   });
 
   it("stores deterministic degraded results and only enqueues opted-in cron work", async () => {
     const repository = store();
     const digest = await runDigest(
+      context,
       repository,
       { idempotencyKey: "one", localDate: "2026-09-07" },
       new Date("2026-09-07T01:00:00.000Z")
@@ -157,10 +166,10 @@ describe("digest selection", () => {
     expect(digest.title).toBe("Your digest for 2026-09-07");
     expect(digest.items).toHaveLength(5);
     await expect(
-      enqueueDigest(repository, preferences, "cron", new Date("2026-09-07T01:00:00.000Z"))
+      enqueueDigest(context, repository, preferences, "cron", new Date("2026-09-07T01:00:00.000Z"))
     ).resolves.toMatchObject({ requestedBy: "cron" });
     await expect(
-      enqueueDigest(repository, { ...preferences, digestEnabled: false }, "cron")
+      enqueueDigest(context, repository, { ...preferences, digestEnabled: false }, "cron")
     ).resolves.toBeUndefined();
   });
 
@@ -175,11 +184,11 @@ describe("digest selection", () => {
         .fn()
         .mockResolvedValue({ itemId: "r1", dismissedAt: "2026-09-07T01:00:00.000Z" }),
     });
-    await expect(dismissDigestItem(repository, "digest-1", "r1")).resolves.toMatchObject({
+    await expect(dismissDigestItem(context, repository, "digest-1", "r1")).resolves.toMatchObject({
       itemId: "r1",
     });
     expect(repository.dismissDigestItem).toHaveBeenCalledWith("digest-1", "r1", expect.any(String));
-    await expect(dismissDigestItem(store(), "digest-1", "missing")).rejects.toMatchObject({
+    await expect(dismissDigestItem(context, store(), "digest-1", "missing")).rejects.toMatchObject({
       code: "DIGEST_ITEM_NOT_FOUND",
     });
   });
@@ -228,7 +237,7 @@ describe("digest selection", () => {
       listResurfacedCandidates: jest.fn().mockResolvedValue([]),
     });
     await expect(
-      runDigest(repository, { idempotencyKey: "one", localDate: "2026-09-07" })
+      runDigest(context, repository, { idempotencyKey: "one", localDate: "2026-09-07" })
     ).resolves.toMatchObject({ summary: "A deterministic selection of 1 item for today." });
   });
 
@@ -237,14 +246,17 @@ describe("digest selection", () => {
       dismissDigest: jest.fn().mockResolvedValue({ id: "digest-1", dismissedAt: "already" }),
     });
     const digest = await runDigest(
+      context,
       repository,
       { idempotencyKey: "one" },
       new Date("2026-09-06T20:00:00.000Z")
     );
 
     expect(digest.localDate).toBe("2026-09-07");
-    await expect(dismissDigest(repository, "digest-1")).resolves.toMatchObject({ id: "digest-1" });
-    await expect(dismissDigest(store(), "missing")).rejects.toMatchObject({
+    await expect(dismissDigest(context, repository, "digest-1")).resolves.toMatchObject({
+      id: "digest-1",
+    });
+    await expect(dismissDigest(context, store(), "missing")).rejects.toMatchObject({
       code: "DIGEST_NOT_FOUND",
     });
   });
@@ -256,6 +268,7 @@ describe("digest selection", () => {
     });
     await expect(
       runDigest(
+        context,
         repository,
         { idempotencyKey: "empty", localDate: "2026-09-07" },
         new Date("2026-09-07T00:00:00.000Z")

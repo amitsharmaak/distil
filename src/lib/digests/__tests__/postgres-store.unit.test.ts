@@ -1,4 +1,14 @@
 import { PostgresDigestStore } from "../postgres-store";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
+
+const tenantStore = (sql: never) => new PostgresDigestStore(sql, context);
 
 type Query = { text: string; values: unknown[] };
 type Row = Record<string, unknown>;
@@ -93,7 +103,7 @@ describe("PostgresDigestStore", () => {
       }
       return [];
     });
-    const store = new PostgresDigestStore(sql as never);
+    const store = tenantStore(sql as never);
 
     await expect(store.getPreferences()).resolves.toMatchObject({
       digestEnabled: true,
@@ -135,8 +145,8 @@ describe("PostgresDigestStore", () => {
       manual_priority: null,
       created_at: new Date("2026-09-01T00:00:00.000Z"),
     };
-    const priorityStore = new PostgresDigestStore(fakeSql(() => [candidate]) as never);
-    const resurfacedStore = new PostgresDigestStore(fakeSql(() => [candidate]) as never);
+    const priorityStore = tenantStore(fakeSql(() => [candidate]) as never);
+    const resurfacedStore = tenantStore(fakeSql(() => [candidate]) as never);
 
     await expect(priorityStore.listPriorityCandidates()).resolves.toEqual([
       expect.objectContaining({
@@ -149,7 +159,7 @@ describe("PostgresDigestStore", () => {
       expect.objectContaining({ id: "candidate-1", createdAt: "2026-09-01T00:00:00.000Z" }),
     ]);
 
-    const fallbackStore = new PostgresDigestStore(
+    const fallbackStore = tenantStore(
       fakeSql(() => [{ ...candidate, summary: null, manual_priority: "high" }]) as never
     );
     await expect(fallbackStore.listPriorityCandidates()).resolves.toEqual([
@@ -158,7 +168,7 @@ describe("PostgresDigestStore", () => {
   });
 
   it("creates a new digest or returns the unique local-date winner after a concurrent conflict", async () => {
-    const inserted = new PostgresDigestStore(
+    const inserted = tenantStore(
       fakeSql(({ text }) =>
         text.includes("INSERT INTO digest_runs") ? [{ id: "digest-1" }] : []
       ) as never
@@ -173,7 +183,7 @@ describe("PostgresDigestStore", () => {
       } as never)
     ).resolves.toMatchObject({ dismissedAt: "2026-09-07T02:00:00.000Z" });
 
-    const conflict = new PostgresDigestStore(
+    const conflict = tenantStore(
       fakeSql(({ text }) => {
         if (text.includes("INSERT INTO digest_runs")) return [];
         if (text.includes("FROM digest_items")) return [item];
@@ -186,7 +196,7 @@ describe("PostgresDigestStore", () => {
     });
 
     await expect(
-      new PostgresDigestStore(fakeSql(() => []) as never).createDigest(digestInput as never)
+      tenantStore(fakeSql(() => []) as never).createDigest(digestInput as never)
     ).rejects.toThrow("Unable to create digest");
   });
 
@@ -203,7 +213,7 @@ describe("PostgresDigestStore", () => {
       dismissed_at: "2026-09-07T02:00:00.000Z",
       selection_metadata: null,
     };
-    const store = new PostgresDigestStore(
+    const store = tenantStore(
       fakeSql(({ text }) => {
         if (text.includes("UPDATE digest_runs")) return [dismissedRun];
         if (text.includes("UPDATE digest_items")) return [dismissedItem];
@@ -224,7 +234,7 @@ describe("PostgresDigestStore", () => {
   });
 
   it("maps nullable run timestamps and supports the empty hydration default", () => {
-    const store = new PostgresDigestStore(fakeSql(() => []) as never) as unknown as {
+    const store = tenantStore(fakeSql(() => []) as never) as unknown as {
       mapRun(
         row: Row,
         items?: never[]
@@ -241,7 +251,7 @@ describe("PostgresDigestStore", () => {
       if (text.includes("UPDATE digest_items")) return [item];
       return [];
     });
-    const store = new PostgresDigestStore(sql as never);
+    const store = tenantStore(sql as never);
 
     await expect(
       store.dismissDigestItem("digest-1", "item-1", "2026-09-07T01:00:00.000Z")
@@ -249,7 +259,7 @@ describe("PostgresDigestStore", () => {
   });
 
   it("returns no record for unknown digest dismissal targets", async () => {
-    const store = new PostgresDigestStore(fakeSql(() => []) as never);
+    const store = tenantStore(fakeSql(() => []) as never);
     await expect(
       store.dismissDigest("missing", "2026-09-07T01:00:00.000Z")
     ).resolves.toBeUndefined();

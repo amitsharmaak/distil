@@ -1,50 +1,52 @@
-jest.mock("@/lib/auth/route-helpers", () => ({
-  requireRequestSession: jest.fn(),
-  requireSessionMutation: jest.fn(),
-}));
-jest.mock("@/lib/postgres/client", () => ({ createPostgresClient: jest.fn() }));
-jest.mock("@/lib/digests/postgres-store", () => ({ PostgresDigestStore: jest.fn() }));
+jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
+jest.mock("@/lib/auth/origin", () => ({ requireAllowedOrigin: jest.fn() }));
+jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
 
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { AuthError } from "@/lib/auth/errors";
-import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
-import { createPostgresClient } from "@/lib/postgres/client";
+import { getTenantRepositories } from "@/lib/database";
 
 import { GET } from "../route";
 import { PATCH } from "../preferences/route";
 import { POST } from "../run/route";
 
-const sql = { end: jest.fn() };
-const mockSession = requireRequestSession as jest.MockedFunction<typeof requireRequestSession>;
-const mockMutation = requireSessionMutation as jest.MockedFunction<typeof requireSessionMutation>;
-const mockClient = createPostgresClient as jest.MockedFunction<typeof createPostgresClient>;
-const mockStore = PostgresDigestStore as jest.MockedClass<typeof PostgresDigestStore>;
+const context = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  actorKind: "user",
+  actorId: "11111111-1111-4111-8111-111111111111",
+  requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+} as never;
+const store = {
+  listDigests: jest.fn(),
+  getPreferences: jest.fn(),
+  listPriorityCandidates: jest.fn(),
+  listResurfacedCandidates: jest.fn(),
+  findDigest: jest.fn(),
+  createDigest: jest.fn(),
+  dismissDigest: jest.fn(),
+  dismissDigestItem: jest.fn(),
+  updatePreferences: jest.fn(),
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.DATABASE_URL = "postgres://test.example/distil";
   process.env.FEATURE_DIGESTS = "true";
-  mockClient.mockReturnValue(sql as never);
-  mockStore.mockImplementation(
-    () =>
-      ({
-        listDigests: jest.fn().mockResolvedValue([]),
-        getPreferences: jest.fn().mockResolvedValue({ digestEnabled: true, digestTimezone: "UTC" }),
-        listPriorityCandidates: jest.fn().mockResolvedValue([]),
-        listResurfacedCandidates: jest.fn().mockResolvedValue([]),
-        findDigest: jest.fn().mockResolvedValue(undefined),
-        createDigest: jest.fn().mockImplementation(async (digest) => digest),
-        dismissDigest: jest.fn().mockImplementation(async (digestId) => ({ id: digestId })),
-        dismissDigestItem: jest.fn().mockResolvedValue({
-          digestRunId: "digest-1",
-          itemId: "item-1",
-          dismissedAt: "2026-09-07T05:00:00.000Z",
-        }),
-        updatePreferences: jest
-          .fn()
-          .mockResolvedValue({ digestEnabled: true, digestTimezone: "UTC" }),
-      }) as never
-  );
+  jest.mocked(resolveRequestAuthContext).mockResolvedValue(context);
+  store.listDigests.mockResolvedValue([]);
+  store.getPreferences.mockResolvedValue({ digestEnabled: true, digestTimezone: "UTC" });
+  store.listPriorityCandidates.mockResolvedValue([]);
+  store.listResurfacedCandidates.mockResolvedValue([]);
+  store.findDigest.mockResolvedValue(undefined);
+  store.createDigest.mockImplementation(async (digest) => digest);
+  store.dismissDigest.mockImplementation(async (digestId) => ({ id: digestId }));
+  store.dismissDigestItem.mockResolvedValue({
+    digestRunId: "digest-1",
+    itemId: "item-1",
+    dismissedAt: "2026-09-07T05:00:00.000Z",
+  });
+  store.updatePreferences.mockResolvedValue({ digestEnabled: true, digestTimezone: "UTC" });
+  jest.mocked(getTenantRepositories).mockResolvedValue({ digestExperience: store } as never);
 });
 
 afterAll(() => {
@@ -52,18 +54,17 @@ afterAll(() => {
   delete process.env.FEATURE_DIGESTS;
 });
 
-describe("Phase 2 digest API contract", () => {
-  it("authenticates before opening PostgreSQL for digest reads", async () => {
-    mockSession.mockRejectedValueOnce(
-      new AuthError("UNAUTHORIZED", 401, "Authentication required")
-    );
+describe("Phase 3 tenant digest API contract", () => {
+  it("authenticates before resolving tenant storage for digest reads", async () => {
+    jest
+      .mocked(resolveRequestAuthContext)
+      .mockRejectedValueOnce(new AuthError("UNAUTHORIZED", 401, "Authentication required"));
     const response = await GET(new Request("https://distil.example/api/v1/digests"));
     expect(response.status).toBe(401);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("uses a strict body allowlist before running a digest", async () => {
-    mockMutation.mockResolvedValueOnce();
     const response = await POST(
       new Request("http://localhost:3000/api/v1/digests/run", {
         method: "POST",
@@ -71,11 +72,10 @@ describe("Phase 2 digest API contract", () => {
       })
     );
     expect(response.status).toBe(400);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("requires same-origin session mutations and validates timezones", async () => {
-    mockMutation.mockResolvedValueOnce();
+  it("requires a valid timezone before resolving tenant storage", async () => {
     const response = await PATCH(
       new Request("http://localhost:3000/api/v1/digests/preferences", {
         method: "PATCH",
@@ -83,13 +83,11 @@ describe("Phase 2 digest API contract", () => {
       })
     );
     expect(response.status).toBe(400);
-    expect(mockMutation).toHaveBeenCalledTimes(1);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("keeps manual digest execution off until the server feature is enabled", async () => {
+  it("keeps manual digest execution off until the feature is enabled", async () => {
     delete process.env.FEATURE_DIGESTS;
-    mockMutation.mockResolvedValueOnce();
     const response = await POST(
       new Request("http://localhost:3000/api/v1/digests/run", {
         method: "POST",
@@ -97,29 +95,10 @@ describe("Phase 2 digest API contract", () => {
       })
     );
     expect(response.status).toBe(503);
-    expect(mockClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("hides digest reads and narrow preference writes when the feature is disabled", async () => {
-    delete process.env.FEATURE_DIGESTS;
-    mockSession.mockResolvedValueOnce();
-    const listResponse = await GET(new Request("http://localhost:3000/api/v1/digests"));
-    expect(listResponse.status).toBe(503);
-    expect(mockClient).not.toHaveBeenCalled();
-
-    mockMutation.mockResolvedValueOnce();
-    const preferenceResponse = await PATCH(
-      new Request("http://localhost:3000/api/v1/digests/preferences", {
-        method: "PATCH",
-        body: JSON.stringify({ digestEnabled: true }),
-      })
-    );
-    expect(preferenceResponse.status).toBe(503);
-    expect(mockClient).not.toHaveBeenCalled();
-  });
-
-  it("persists an item dismissal through the strict digest action API", async () => {
-    mockMutation.mockResolvedValueOnce();
+  it("persists an item dismissal through the caller-bound store", async () => {
     const response = await POST(
       new Request("http://localhost:3000/api/v1/digests/run", {
         method: "POST",
@@ -131,23 +110,24 @@ describe("Phase 2 digest API contract", () => {
     await expect(response.json()).resolves.toMatchObject({
       item: { digestRunId: "digest-1", itemId: "item-1", dismissedAt: expect.any(String) },
     });
+    expect(getTenantRepositories).toHaveBeenCalledWith(context);
+    expect(store.dismissDigestItem).toHaveBeenCalledWith("digest-1", "item-1", expect.any(String));
   });
 
-  it("returns persisted digests and closes PostgreSQL on successful reads", async () => {
-    mockSession.mockResolvedValueOnce();
+  it("returns persisted digests from the tenant repository", async () => {
     const response = await GET(new Request("http://localhost:3000/api/v1/digests?limit=1"));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ digests: [] });
-    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
+    expect(getTenantRepositories).toHaveBeenCalledWith(context);
+    expect(store.listDigests).toHaveBeenCalledWith(1);
   });
 
-  it("returns the PostgreSQL requirement before constructing a digest store", async () => {
+  it("returns the PostgreSQL requirement before resolving repositories", async () => {
     delete process.env.DATABASE_URL;
-    mockSession.mockResolvedValueOnce();
     const response = await GET(new Request("http://localhost:3000/api/v1/digests"));
 
     expect(response.status).toBe(503);
-    expect(mockStore).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 });

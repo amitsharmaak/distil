@@ -1,24 +1,27 @@
-jest.mock("@/lib/auth/route-helpers", () => ({ requireRequestSession: jest.fn() }));
-jest.mock("@/lib/postgres/client", () => ({ createPostgresClient: jest.fn() }));
-jest.mock("@/lib/knowledge/retrieval", () => ({
-  PostgresPassageSearchStore: jest.fn(),
-  searchPassages: jest.fn(),
-}));
+jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
+jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
+jest.mock("@/lib/knowledge/retrieval", () => ({ searchPassages: jest.fn() }));
 
-import { requireRequestSession } from "@/lib/auth/route-helpers";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { AuthError } from "@/lib/auth/errors";
+import { getTenantRepositories } from "@/lib/database";
 import { searchPassages } from "@/lib/knowledge/retrieval";
-import { createPostgresClient } from "@/lib/postgres/client";
 import { GET } from "../route";
 
-const sql = { end: jest.fn() };
+const context = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  actorKind: "user",
+  actorId: "11111111-1111-4111-8111-111111111111",
+  requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+} as never;
+const passages = { search: jest.fn() };
 
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.DATABASE_URL = "postgres://test.example/distil";
   process.env.FEATURE_SEARCH = "true";
-  jest.mocked(requireRequestSession).mockResolvedValue();
-  jest.mocked(createPostgresClient).mockReturnValue(sql as never);
+  jest.mocked(resolveRequestAuthContext).mockResolvedValue(context);
+  jest.mocked(getTenantRepositories).mockResolvedValue({ passages } as never);
   jest.mocked(searchPassages).mockResolvedValue({
     query: "durable queue",
     results: [],
@@ -33,20 +36,20 @@ afterAll(() => {
 });
 
 describe("GET /api/v1/search", () => {
-  it("authenticates before opening PostgreSQL", async () => {
+  it("authenticates before resolving tenant repositories", async () => {
     jest
-      .mocked(requireRequestSession)
+      .mocked(resolveRequestAuthContext)
       .mockRejectedValueOnce(new AuthError("UNAUTHORIZED", 401, "unauthorized"));
     const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
     expect(response.status).toBe(401);
-    expect(createPostgresClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("stops before opening PostgreSQL when search is disabled", async () => {
+  it("stops before resolving tenant repositories when search is disabled", async () => {
     delete process.env.FEATURE_SEARCH;
     const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
     expect(response.status).toBe(503);
-    expect(createPostgresClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("rejects unknown parameters before querying", async () => {
@@ -54,18 +57,19 @@ describe("GET /api/v1/search", () => {
       new Request("https://distil.example/api/v1/search?q=durable&unexpected=true")
     );
     expect(response.status).toBe(400);
-    expect(createPostgresClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("passes repeated facets to passage retrieval and closes the client", async () => {
+  it("passes repeated facets to tenant passage retrieval", async () => {
     const response = await GET(
       new Request(
         "https://distil.example/api/v1/search?q=durable+queue&topic=ai,systems&source=manual&priority=high&limit=5"
       )
     );
     expect(response.status).toBe(200);
+    expect(getTenantRepositories).toHaveBeenCalledWith(context);
     expect(searchPassages).toHaveBeenCalledWith(
-      expect.anything(),
+      passages,
       expect.objectContaining({
         query: "durable queue",
         topics: ["ai", "systems"],
@@ -74,7 +78,6 @@ describe("GET /api/v1/search", () => {
         limit: 5,
       })
     );
-    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
   });
 
   it.each([
@@ -84,20 +87,19 @@ describe("GET /api/v1/search", () => {
   ])("rejects invalid query: %s", async (query) => {
     const response = await GET(new Request(`https://distil.example/api/v1/search?${query}`));
     expect(response.status).toBe(400);
-    expect(createPostgresClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("stops before querying when PostgreSQL is unavailable", async () => {
     delete process.env.DATABASE_URL;
     const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
     expect(response.status).toBe(503);
-    expect(createPostgresClient).not.toHaveBeenCalled();
+    expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("closes PostgreSQL when retrieval fails", async () => {
+  it("returns a safe failure when tenant retrieval fails", async () => {
     jest.mocked(searchPassages).mockRejectedValueOnce(new Error("database unavailable"));
     const response = await GET(new Request("https://distil.example/api/v1/search?q=durable"));
     expect(response.status).toBe(500);
-    expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
   });
 });

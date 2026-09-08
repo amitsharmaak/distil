@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   enqueueKnowledgeBackfill,
@@ -7,21 +8,61 @@ import {
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
 import { createPostgresRepositories } from "../repositories";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { applyTenantMigrationStage } from "../tenant-migration/migrator";
+import { buildTenantMigrationReport } from "../tenant-migration/verifier";
 
 jest.setTimeout(120_000);
 const harness = new PostgresTestHarness();
 const migrations = resolve(process.cwd(), "src/lib/postgres/migrations");
+const tenantMigrations = resolve(process.cwd(), "src/lib/postgres/tenant-migrations");
+const rolesSql = resolve(process.cwd(), "src/lib/postgres/roles/phase3_roles.sql");
 const now = () => new Date("2026-09-07T12:00:00.000Z");
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "system",
+  actorId: "20000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 beforeAll(async () => {
   await harness.start();
   await harness.migrate(migrations);
+  await harness.sql.unsafe("DROP TABLE __distil_test_migrations");
+  await harness.sql.unsafe(await readFile(rolesSql, "utf8"));
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "expand",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  const baseline = await buildTenantMigrationReport({
+    client: harness.sql,
+    stage: "before",
+    ownerId: context.userId,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "backfill",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "contract",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+    baseline,
+  });
 });
 afterAll(async () => harness.stop());
 
 describe("Phase 2 migration and durable intelligence backfill", () => {
   it("resumes bounded queued batches from legacy rows through degraded artifacts", async () => {
     await harness.reset();
+    await harness.sql`
+      INSERT INTO users (id, status) VALUES (${context.userId}::uuid, 'active')
+    `;
     const repositories = createPostgresRepositories(harness.sql);
     const base: Omit<ContentItem, "id" | "title" | "url" | "summary"> = {
       sourceType: "manual",
@@ -58,6 +99,7 @@ describe("Phase 2 migration and durable intelligence backfill", () => {
 
     async function run(kind: KnowledgeBackfillKind) {
       const initial = await enqueueKnowledgeBackfill({
+        context,
         repositories,
         kind,
         batchSize: 1,
@@ -68,7 +110,7 @@ describe("Phase 2 migration and durable intelligence backfill", () => {
         const job = await repositories.jobs.dequeue(`worker-${kind}`);
         expect(job).toBeDefined();
         const payload = job!.payload;
-        current = await runKnowledgeBackfillBatch(payload, { ...repositories, now });
+        current = await runKnowledgeBackfillBatch(context, payload, { ...repositories, now });
         await repositories.jobs.complete(String(job!.id));
       }
       return current;

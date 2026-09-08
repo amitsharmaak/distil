@@ -1,8 +1,19 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { chunkContent, estimateTokenCount } from "../chunking";
 import { createContentVersionIdentity } from "../content-identity";
 import { PostgresPassageSearchStore } from "../retrieval";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
+import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
@@ -10,10 +21,42 @@ import { PostgresTestHarness } from "../../../../tests/support/postgres";
 jest.setTimeout(120_000);
 const harness = new PostgresTestHarness();
 const migrations = resolve(process.cwd(), "src/lib/postgres/migrations");
+const tenantMigrations = resolve(process.cwd(), "src/lib/postgres/tenant-migrations");
+const rolesSql = resolve(process.cwd(), "src/lib/postgres/roles/phase3_roles.sql");
 
 beforeAll(async () => {
   await harness.start();
   await harness.migrate(migrations);
+  await harness.sql.unsafe("DROP TABLE __distil_test_migrations");
+  await harness.sql.unsafe(await readFile(rolesSql, "utf8"));
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "expand",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  const baseline = await buildTenantMigrationReport({
+    client: harness.sql,
+    stage: "before",
+    ownerId: context.userId,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "backfill",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "contract",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+    baseline,
+  });
+  await harness.sql`
+    INSERT INTO users (id, status) VALUES (${context.userId}::uuid, 'active')
+    ON CONFLICT (id) DO UPDATE SET status='active'
+  `;
 });
 afterAll(async () => harness.stop());
 
@@ -72,7 +115,7 @@ describe("PostgreSQL passage retrieval", () => {
       archivedAt: "2026-09-07T01:00:00Z",
     });
 
-    const store = new PostgresPassageSearchStore(harness.sql);
+    const store = new PostgresPassageSearchStore(harness.sql, context);
     const results = await store.searchKeyword({ query: "PostgreSQL", limit: 10 });
     expect(results.map((result) => result.itemId)).toEqual(["chunk-match", "metadata-match"]);
     expect(results[0]).toMatchObject({

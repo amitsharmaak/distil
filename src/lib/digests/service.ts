@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 import type {
   DigestCandidate,
@@ -161,10 +162,12 @@ export function selectDigestItems(
 }
 
 export async function runDigest(
+  context: AuthContext,
   store: DigestStore,
   input: z.infer<typeof runDigestSchema>,
   now = new Date()
 ): Promise<DigestRun> {
+  const tenant = parseAuthContext(context);
   const preferences = await store.getPreferences();
   if (!preferences.digestEnabled) {
     throw new DigestError("DIGEST_DISABLED", 409, "Enable in-app digests before running one");
@@ -176,7 +179,7 @@ export async function runDigest(
     store.listPriorityCandidates(),
     store.listResurfacedCandidates(),
   ]);
-  const id = stableId("digest", `${localDate}:${input.idempotencyKey}`);
+  const id = stableId("digest", `${tenant.userId}:${localDate}:${input.idempotencyKey}`);
   const items = selectDigestItems(priority, resurfaced).map((item) => ({
     ...item,
     digestRunId: id,
@@ -206,21 +209,25 @@ export async function runDigest(
 }
 
 export async function dismissDigest(
+  context: AuthContext,
   store: DigestStore,
   digestId: string,
   now = new Date()
 ): Promise<DigestRun> {
+  parseAuthContext(context);
   const digest = await store.dismissDigest(digestId, now.toISOString());
   if (!digest) throw new DigestError("DIGEST_NOT_FOUND", 404, "Digest was not found");
   return digest;
 }
 
 export async function dismissDigestItem(
+  context: AuthContext,
   store: DigestStore,
   digestId: string,
   itemId: string,
   now = new Date()
 ): Promise<DigestItem> {
+  parseAuthContext(context);
   const item = await store.dismissDigestItem(digestId, itemId, now.toISOString());
   if (!item) {
     throw new DigestError("DIGEST_ITEM_NOT_FOUND", 404, "Digest item was not found");
@@ -229,17 +236,19 @@ export async function dismissDigestItem(
 }
 
 export async function enqueueDigest(
+  context: AuthContext,
   store: DigestStore,
   preferences: PersonalPreferences,
   requestedBy: DigestJob["requestedBy"],
   now = new Date()
 ): Promise<DigestJob | undefined> {
+  const tenant = parseAuthContext(context);
   if (!preferences.digestEnabled) return undefined;
   const localDate = localDateFor(preferences.digestTimezone, now);
   return store.enqueue({
     id: randomUUID(),
     localDate,
-    idempotencyKey: `digest:${localDate}`,
+    idempotencyKey: `digest:${tenant.userId}:${localDate}`,
     status: "queued",
     requestedBy,
     createdAt: now.toISOString(),

@@ -1,10 +1,8 @@
 import { z } from "zod";
 
-import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession } from "@/lib/auth/route-helpers";
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { getTenantRepositories } from "@/lib/database";
 import { digestErrorResponse, parse } from "@/lib/digests/http";
-import { createPostgresClient } from "@/lib/postgres/client";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 const querySchema = z
@@ -13,7 +11,7 @@ const querySchema = z
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
+    const context = await resolveRequestAuthContext(request);
     const input = parse(
       { limit: new URL(request.url).searchParams.get("limit") ?? undefined },
       querySchema
@@ -30,14 +28,11 @@ export async function GET(request: Request): Promise<Response> {
         { status: 503 }
       );
     }
-    const sql = createPostgresClient();
-    try {
-      return Response.json({
-        digests: await new PostgresDigestStore(sql).listDigests(input.limit),
-      });
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    return Response.json({
+      digests: await (
+        await getTenantRepositories(context)
+      ).digestExperience.listDigests(input.limit),
+    });
   } catch (error) {
     return digestErrorResponse(error);
   }

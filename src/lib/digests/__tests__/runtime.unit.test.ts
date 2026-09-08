@@ -1,5 +1,13 @@
 import { createDigestJobHandler, DIGEST_QUEUE_JOB, enqueueDigestRuntimeJob } from "../runtime";
 import type { DigestStore } from "../types";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "system",
+  actorId: "20000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 
 const store = (): DigestStore =>
   ({
@@ -32,24 +40,39 @@ describe("digest durable job runtime", () => {
       createdAt: "2026-09-07T02:00:00.000Z",
     };
     await Promise.all([
-      enqueueDigestRuntimeJob({ enqueue } as never, job),
-      enqueueDigestRuntimeJob({ enqueue } as never, job),
+      enqueueDigestRuntimeJob(context, { enqueue } as never, job),
+      enqueueDigestRuntimeJob(context, { enqueue } as never, job),
     ]);
     expect(enqueue).toHaveBeenCalledTimes(2);
     expect(enqueue.mock.calls[0][0]).toMatchObject({
       jobType: DIGEST_QUEUE_JOB,
       id: enqueue.mock.calls[1][0].id,
-      payload: JSON.stringify({ localDate: job.localDate, idempotencyKey: job.idempotencyKey }),
+      payload: JSON.stringify({
+        userId: context.userId,
+        traceId: context.requestId,
+        localDate: job.localDate,
+        idempotencyKey: job.idempotencyKey,
+      }),
     });
   });
 
   it("validates job messages before producing an idempotent digest", async () => {
-    const handler = createDigestJobHandler(store());
+    const handler = createDigestJobHandler(context, store());
     await expect(
-      handler({ localDate: "2026-09-07", idempotencyKey: "digest:2026-09-07" })
+      handler({
+        userId: context.userId,
+        traceId: context.requestId,
+        localDate: "2026-09-07",
+        idempotencyKey: "digest:2026-09-07",
+      })
     ).resolves.toBeUndefined();
     await expect(
-      handler({ localDate: "bad", idempotencyKey: "digest:2026-09-07" })
+      handler({
+        userId: context.userId,
+        traceId: context.requestId,
+        localDate: "bad",
+        idempotencyKey: "digest:2026-09-07",
+      })
     ).rejects.toBeDefined();
   });
 
@@ -62,7 +85,12 @@ describe("digest durable job runtime", () => {
       updatedAt: "2026-09-07T00:00:00.000Z",
     });
     await expect(
-      createDigestJobHandler(disabled)({
+      createDigestJobHandler(
+        context,
+        disabled
+      )({
+        userId: context.userId,
+        traceId: context.requestId,
         localDate: "2026-09-07",
         idempotencyKey: "digest:2026-09-07",
       })

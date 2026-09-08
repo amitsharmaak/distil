@@ -1,12 +1,11 @@
 import { z } from "zod";
 
-import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession } from "@/lib/auth/route-helpers";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { getTenantRepositories } from "@/lib/database";
 import { KnowledgeServiceError } from "@/lib/knowledge/service";
 import { knowledgeErrorResponse } from "@/lib/knowledge/http";
-import { PostgresPassageSearchStore, searchPassages } from "@/lib/knowledge/retrieval";
+import { searchPassages } from "@/lib/knowledge/retrieval";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
-import { createPostgresClient } from "@/lib/postgres/client";
 
 const schema = z.object({
   q: z.string().trim().min(2).max(2_000),
@@ -50,7 +49,7 @@ function multi(params: URLSearchParams, key: string): string[] | undefined {
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
+    const context = await resolveRequestAuthContext(request);
     if (!readPhase2FeatureFlags().search) {
       return Response.json(
         { error: { code: "FEATURE_DISABLED", message: "Knowledge search is not enabled" } },
@@ -90,26 +89,22 @@ export async function GET(request: Request): Promise<Response> {
     if (parsed.data.dateFrom && parsed.data.dateTo && parsed.data.dateFrom > parsed.data.dateTo) {
       throw new KnowledgeServiceError("INVALID_REQUEST", 400, "dateFrom must not be after dateTo");
     }
-    const sql = createPostgresClient();
-    try {
-      return Response.json(
-        await searchPassages(new PostgresPassageSearchStore(sql), {
-          query: parsed.data.q,
-          read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
-          archive: parsed.data.archive,
-          topics: parsed.data.topics,
-          sources: parsed.data.sources,
-          contentTypes: parsed.data.contentTypes,
-          priorities: parsed.data.priorities,
-          collectionIds: parsed.data.collectionIds,
-          dateFrom: parsed.data.dateFrom,
-          dateTo: parsed.data.dateTo,
-          limit: parsed.data.limit,
-        })
-      );
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    const repositories = await getTenantRepositories(context);
+    return Response.json(
+      await searchPassages(repositories.passages, {
+        query: parsed.data.q,
+        read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
+        archive: parsed.data.archive,
+        topics: parsed.data.topics,
+        sources: parsed.data.sources,
+        contentTypes: parsed.data.contentTypes,
+        priorities: parsed.data.priorities,
+        collectionIds: parsed.data.collectionIds,
+        dateFrom: parsed.data.dateFrom,
+        dateTo: parsed.data.dateTo,
+        limit: parsed.data.limit,
+      })
+    );
   } catch (error) {
     return knowledgeErrorResponse(error);
   }

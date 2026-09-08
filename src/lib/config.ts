@@ -19,6 +19,9 @@ export const config = {
   /** Unpooled PostgreSQL URL used only by explicit migrations and imports. */
   databaseMigrationUrl: process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL ?? "",
 
+  /** Separately privileged account-enumeration URL used only by signed control-plane jobs. */
+  databaseControlPlaneUrl: process.env.DATABASE_CONTROL_PLANE_URL ?? "",
+
   /** Source connectors stay off in hosted Phase 1 deployments. */
   featureConnectors: process.env.FEATURE_CONNECTORS !== "false",
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { sha256 } from "@/lib/knowledge/content-identity";
 import type { RepositorySet } from "@/lib/repositories/ports";
-import { getTraceId } from "@/lib/middleware/trace";
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 import type { ArtifactType } from "./artifacts";
 import {
   type PassageFilters,
@@ -187,10 +187,12 @@ function fallbackAnswer(
 }
 
 export async function answerFromKnowledge(input: {
+  context: AuthContext;
   request: AnswerRequest;
   store: PassageSearchStore;
   generator?: AnswerGenerator;
 }): Promise<GroundedAnswerResponse> {
+  parseAuthContext(input.context);
   const query = input.request.query.trim();
   const intent = input.request.intent ?? classifyAnswerIntent(query);
   const filters = input.request.filters ?? {};
@@ -257,7 +259,12 @@ export async function answerFromKnowledge(input: {
   }
 }
 
-export async function getItemIntelligence(repositories: RepositorySet, itemId: string) {
+export async function getItemIntelligence(
+  context: AuthContext,
+  repositories: RepositorySet,
+  itemId: string
+) {
+  parseAuthContext(context);
   const item = await repositories.items.findById(itemId);
   if (!item) throw new KnowledgeServiceError("ITEM_NOT_FOUND", 404, "Item was not found");
   const contentVersion = await repositories.contentVersions.findLatestForItem(itemId);
@@ -299,11 +306,13 @@ export async function getItemIntelligence(repositories: RepositorySet, itemId: s
 }
 
 export async function enqueueSummaryRegeneration(
+  context: AuthContext,
   repositories: RepositorySet,
   itemId: string,
   input: z.infer<typeof regenerateSummarySchema>,
   now = new Date()
 ) {
+  const tenant = parseAuthContext(context);
   const item = await repositories.items.findById(itemId);
   if (!item) throw new KnowledgeServiceError("ITEM_NOT_FOUND", 404, "Item was not found");
   const contentVersion = await repositories.contentVersions.findLatestForItem(itemId);
@@ -317,11 +326,17 @@ export async function enqueueSummaryRegeneration(
   const artifactType: ArtifactType =
     input.length === "detailed" ? "detailed_summary" : "brief_summary";
   const identity = sha256(
-    JSON.stringify(["summary-regeneration", itemId, artifactType, input.idempotencyKey])
+    JSON.stringify([
+      "summary-regeneration",
+      tenant.userId,
+      itemId,
+      artifactType,
+      input.idempotencyKey,
+    ])
   ).slice("sha256:".length, 39);
   const artifactId = `art_${identity}`;
   const jobId = `ksj_${identity}`;
-  const traceId = getTraceId();
+  const traceId = tenant.requestId;
   const at = now.toISOString();
   const artifact = (
     await repositories.intelligenceArtifacts.publish({
@@ -342,6 +357,7 @@ export async function enqueueSummaryRegeneration(
     id: jobId,
     jobType: "regenerate_intelligence_summary",
     payload: JSON.stringify({
+      userId: tenant.userId,
       itemId,
       contentVersionId: contentVersion.id,
       artifactId,

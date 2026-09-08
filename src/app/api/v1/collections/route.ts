@@ -1,6 +1,7 @@
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { getRepositorySet } from "@/lib/database";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getTenantRepositories } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
 import {
   collectionCreateSchema,
@@ -11,8 +12,10 @@ import {
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
-    return Response.json({ collections: await listCollections(await getRepositorySet()) });
+    const context = await resolveRequestAuthContext(request);
+    return Response.json({
+      collections: await listCollections(await getTenantRepositories(context)),
+    });
   } catch (error) {
     return readerErrorResponse(error);
   }
@@ -20,9 +23,10 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const context = await resolveRequestAuthContext(request);
     const input = parseBody(await readJson(request), collectionCreateSchema);
-    const collection = await createCollection(await getRepositorySet(), input);
+    const collection = await createCollection(await getTenantRepositories(context), input);
     return Response.json({ collection }, { status: 201 });
   } catch (error) {
     return readerErrorResponse(error);

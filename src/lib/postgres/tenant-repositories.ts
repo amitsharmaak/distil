@@ -113,7 +113,7 @@ function bindRepositorySet(sql: Sql, context: AuthContext): RepositorySet {
         if (typeof method !== "function") return undefined;
         return (...args: unknown[]) =>
           withTenantTransaction(sql, trusted, async (transaction) => {
-            const transactionRepositories = createPostgresRepositories(transaction);
+            const transactionRepositories = createPostgresRepositories(transaction, trusted);
             const transactionRepository = transactionRepositories[key] as unknown as Record<
               string,
               RepositoryMethod

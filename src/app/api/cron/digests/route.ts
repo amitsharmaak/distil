@@ -1,11 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { enqueueDigestRuntimeJob } from "@/lib/digests/runtime";
 import { enqueueDigest } from "@/lib/digests/service";
-import { getRepositorySet } from "@/lib/database";
+import { getControlPlaneRepositories, getTenantRepositories } from "@/lib/database";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
-import { createPostgresClient } from "@/lib/postgres/client";
+import {
+  createAuthContext,
+  createSystemContext,
+  requestIdSchema,
+  actorIdSchema,
+} from "@/lib/contracts/tenant-context";
 
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
@@ -31,19 +35,43 @@ async function enqueue(request: Request): Promise<Response> {
   if (!readPhase2FeatureFlags().digests) {
     return Response.json({ enqueued: false, reason: "FEATURE_DISABLED", job: null });
   }
-  const sql = createPostgresClient();
   try {
-    const store = new PostgresDigestStore(sql);
-    const job = await enqueueDigest(store, await store.getPreferences(), "cron");
-    if (job) await enqueueDigestRuntimeJob((await getRepositorySet()).jobs, job);
-    return Response.json({ enqueued: Boolean(job), job: job ?? null });
+    const actorId = actorIdSchema.parse(process.env.DISTIL_SYSTEM_ACTOR_ID ?? "");
+    const requestId = requestIdSchema.parse(
+      request.headers.get("x-trace-id") ?? crypto.randomUUID()
+    );
+    const system = createSystemContext({ actorKind: "system", actorId, requestId });
+    const accounts = (await getControlPlaneRepositories(system)).accounts;
+    let afterUserId: Parameters<typeof accounts.listActiveUserIds>[0]["afterUserId"];
+    let scanned = 0;
+    let enqueued = 0;
+    do {
+      const userIds = await accounts.listActiveUserIds({ afterUserId, limit: 100 });
+      for (const userId of userIds) {
+        const context = createAuthContext({
+          userId,
+          actorKind: "system",
+          actorId,
+          requestId: requestIdSchema.parse(crypto.randomUUID()),
+        });
+        const repositories = await getTenantRepositories(context);
+        const store = repositories.digestExperience;
+        const job = await enqueueDigest(context, store, await store.getPreferences(), "cron");
+        if (job) {
+          await enqueueDigestRuntimeJob(context, repositories.jobs, job);
+          enqueued += 1;
+        }
+      }
+      scanned += userIds.length;
+      afterUserId = userIds.at(-1);
+      if (userIds.length < 100) break;
+    } while (afterUserId);
+    return Response.json({ enqueued, scanned });
   } catch {
     return Response.json(
       { error: { code: "PROCESSING_FAILED", message: "Unable to enqueue digest" } },
       { status: 500 }
     );
-  } finally {
-    await sql.end({ timeout: 5 });
   }
 }
 

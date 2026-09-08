@@ -1,6 +1,17 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { PostgresFeedQuery } from "../feed-query";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
+import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
 import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import type { ContentItem } from "@/lib/types";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
@@ -8,6 +19,8 @@ import { PostgresTestHarness } from "../../../../tests/support/postgres";
 jest.setTimeout(120_000);
 const harness = new PostgresTestHarness();
 const migrations = resolve(process.cwd(), "src/lib/postgres/migrations");
+const tenantMigrations = resolve(process.cwd(), "src/lib/postgres/tenant-migrations");
+const rolesSql = resolve(process.cwd(), "src/lib/postgres/roles/phase3_roles.sql");
 const item = (id: string, patch: Partial<ContentItem> = {}): ContentItem => ({
   id,
   title: id,
@@ -26,8 +39,39 @@ const item = (id: string, patch: Partial<ContentItem> = {}): ContentItem => ({
 beforeAll(async () => {
   await harness.start();
   await harness.migrate(migrations);
+  await harness.sql.unsafe("DROP TABLE __distil_test_migrations");
+  await harness.sql.unsafe(await readFile(rolesSql, "utf8"));
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "expand",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  const baseline = await buildTenantMigrationReport({
+    client: harness.sql,
+    stage: "before",
+    ownerId: context.userId,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "backfill",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "contract",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+    baseline,
+  });
 });
-afterEach(async () => harness.reset());
+beforeEach(async () => {
+  await harness.reset();
+  await harness.sql`
+    INSERT INTO users (id, status) VALUES (${context.userId}::uuid, 'active')
+  `;
+});
 afterAll(async () => harness.stop());
 
 describe("PostgresFeedQuery", () => {
@@ -61,7 +105,7 @@ describe("PostgresFeedQuery", () => {
       addedAt: "2026-09-06T00:00:00Z",
     });
 
-    const feed = new PostgresFeedQuery(harness.sql);
+    const feed = new PostgresFeedQuery(harness.sql, context);
     const first = await feed.list({
       sources: ["manual", "publisher"],
       topics: ["ai", "product"],
@@ -98,7 +142,7 @@ describe("PostgresFeedQuery", () => {
     await repos.items.insert(
       item("old", { createdAt: "2026-09-01T00:00:00Z", archivedAt: "2026-09-02T00:00:00Z" })
     );
-    const feed = new PostgresFeedQuery(harness.sql);
+    const feed = new PostgresFeedQuery(harness.sql, context);
     expect(
       (await feed.list({ sort: "for_you", now: new Date("2026-09-07T00:00:00Z") })).items.map(
         (entry) => entry.id

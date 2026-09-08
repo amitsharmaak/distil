@@ -1,9 +1,9 @@
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireRequestSession, requireSessionMutation } from "@/lib/auth/route-helpers";
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getTenantRepositories } from "@/lib/database";
 import { digestErrorResponse, parse, readJson } from "@/lib/digests/http";
 import { preferencesUpdateSchema } from "@/lib/digests/service";
-import { createPostgresClient } from "@/lib/postgres/client";
 
 function unavailable(): Response | undefined {
   return process.env.DATABASE_URL
@@ -16,15 +16,12 @@ function unavailable(): Response | undefined {
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    await requireRequestSession(request, readAuthEnvironment());
+    const context = await resolveRequestAuthContext(request);
     const missing = unavailable();
     if (missing) return missing;
-    const sql = createPostgresClient();
-    try {
-      return Response.json({ preferences: await new PostgresDigestStore(sql).getPreferences() });
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    return Response.json({
+      preferences: await (await getTenantRepositories(context)).digestExperience.getPreferences(),
+    });
   } catch (error) {
     return digestErrorResponse(error);
   }
@@ -32,18 +29,16 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function PUT(request: Request): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const context = await resolveRequestAuthContext(request);
     const input = parse(await readJson(request), preferencesUpdateSchema);
     const missing = unavailable();
     if (missing) return missing;
-    const sql = createPostgresClient();
-    try {
-      return Response.json({
-        preferences: await new PostgresDigestStore(sql).updatePreferences(input),
-      });
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    return Response.json({
+      preferences: await (
+        await getTenantRepositories(context)
+      ).digestExperience.updatePreferences(input),
+    });
   } catch (error) {
     return digestErrorResponse(error);
   }

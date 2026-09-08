@@ -6,6 +6,16 @@ import {
   type PassageSearchStore,
 } from "../retrieval";
 import type { Sql } from "postgres";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import { answerFromKnowledge } from "../service";
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
+const foreignUserId = "20000000-0000-4000-8000-000000000002";
 
 function sqlDouble(responses: unknown[][]) {
   const queries: string[] = [];
@@ -24,6 +34,7 @@ function sqlDouble(responses: unknown[][]) {
 }
 
 const row = {
+  user_id: context.userId,
   item_id: "item-1",
   chunk_id: "chunk-1",
   content_version_id: "version-1",
@@ -54,7 +65,7 @@ describe("retrieval contracts", () => {
 
   it("does not query PostgreSQL for a blank keyword query", async () => {
     const fake = sqlDouble([]);
-    const store = new PostgresPassageSearchStore(fake.sql);
+    const store = new PostgresPassageSearchStore(fake.sql, context);
     await expect(store.searchKeyword({ query: "   " })).resolves.toEqual([]);
     expect(fake.queries).toEqual([]);
   });
@@ -75,7 +86,7 @@ describe("retrieval contracts", () => {
 
   it("builds filtered keyword and general fallback queries and maps stable passage metadata", async () => {
     const fake = sqlDouble([[row], [{ ...row, is_read: true, score: 2 }]]);
-    const store = new PostgresPassageSearchStore(fake.sql);
+    const store = new PostgresPassageSearchStore(fake.sql, context);
     await expect(
       store.searchKeyword({
         query: "durable",
@@ -118,7 +129,7 @@ describe("retrieval contracts", () => {
       [{ ...row, chunk_match: true, metadata_match: true }],
       [{ ...row, is_read: false, score: 1 }],
     ]);
-    const store = new PostgresPassageSearchStore(fake.sql);
+    const store = new PostgresPassageSearchStore(fake.sql, context);
     await expect(store.searchKeyword({ query: "durable", limit: 500 })).resolves.toEqual([
       expect.objectContaining({ reasons: ["keyword:chunk_text", "keyword:item_metadata"] }),
     ]);
@@ -126,5 +137,23 @@ describe("retrieval contracts", () => {
       expect.objectContaining({ reasons: ["recent:unread"] }),
     ]);
     expect(fake.queries.join("\n")).toContain("i.archived_at IS NULL");
+  });
+
+  it("fails before answer generation when a cross-tenant canary reaches the row mapper", async () => {
+    const fake = sqlDouble([[{ ...row, user_id: foreignUserId }]]);
+    const store = new PostgresPassageSearchStore(fake.sql, context);
+    const generator = jest.fn();
+
+    await expect(
+      answerFromKnowledge({
+        context,
+        request: { query: "durable queue", messages: [] },
+        store,
+        generator,
+      })
+    ).rejects.toThrow("Tenant passage invariant failed");
+
+    expect(generator).not.toHaveBeenCalled();
+    expect(fake.queries.join("\n")).toContain("i.user_id=");
   });
 });

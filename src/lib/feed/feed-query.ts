@@ -2,6 +2,7 @@ import type { Sql } from "postgres";
 
 import { mapItem } from "@/lib/postgres/mappers";
 import type { ContentItem, Priority } from "@/lib/types";
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 export const DEFAULT_FEED_PAGE_SIZE = 30;
 export const MAX_FEED_PAGE_SIZE = 100;
@@ -268,7 +269,14 @@ function rowAffinityScore(row: Row): number | undefined {
 
 /** PostgreSQL-backed filtered, keyset-paginated feed; no client-side filtering. */
 export class PostgresFeedQuery {
-  constructor(private readonly sql: Sql) {}
+  private readonly context: AuthContext;
+
+  constructor(
+    private readonly sql: Sql,
+    context: AuthContext
+  ) {
+    this.context = parseAuthContext(context);
+  }
 
   async list(query: FeedQuery = {}): Promise<FeedPage> {
     const sort = query.sort ?? "for_you";
@@ -276,7 +284,10 @@ export class PostgresFeedQuery {
     if (query.cursor && !cursor) throw new FeedQueryError("INVALID_CURSOR", "cursor is invalid");
     const limit = clampPageSize(query.limit);
     const now = (query.now ?? new Date()).toISOString();
-    const conditions = [this.sql`i.processing_status <> 'rejected'`];
+    const conditions = [
+      this.sql`i.user_id=${this.context.userId}::uuid`,
+      this.sql`i.processing_status <> 'rejected'`,
+    ];
 
     if (query.read !== undefined) conditions.push(this.sql`i.is_read=${query.read}`);
     if (query.archive === "only") conditions.push(this.sql`i.archived_at IS NOT NULL`);
@@ -294,7 +305,8 @@ export class PostgresFeedQuery {
     if (query.collectionIds?.length)
       conditions.push(this.sql`EXISTS (
         SELECT 1 FROM collection_items ci
-        WHERE ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(query.collectionIds)})
+        WHERE ci.user_id=${this.context.userId}::uuid
+          AND ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(query.collectionIds)})
       )`);
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
@@ -322,8 +334,10 @@ export class PostgresFeedQuery {
               END) * exp(-ln(2) * GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - e.occurred_at)) / 86400) / ${PERSONALIZATION_HALF_LIFE_DAYS})
             )
             FROM item_events e
-            JOIN items signal ON signal.id=e.item_id
-            WHERE e.event_type IN ('feedback_recorded','collection_added','completed','archived')
+            JOIN items signal ON signal.user_id=e.user_id AND signal.id=e.item_id
+            WHERE e.user_id=${this.context.userId}::uuid
+              AND signal.user_id=${this.context.userId}::uuid
+              AND e.event_type IN ('feedback_recorded','collection_added','completed','archived')
               AND (
                 signal.source_type=i.source_type
                 OR (i.author IS NOT NULL AND signal.author=i.author)
@@ -372,7 +386,8 @@ export class PostgresFeedQuery {
     const rows = await this.sql<Row[]>`
       SELECT i.*, s.summary AS ai_summary_text, i.ai_priority_score, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
       FROM items i
-      LEFT JOIN ai_summaries s ON s.item_id=i.id AND s.prompt_type='brief'
+      LEFT JOIN ai_summaries s ON s.user_id=${this.context.userId}::uuid
+        AND s.item_id=i.id AND s.prompt_type='brief'
       ${where}
       ${order}
       LIMIT ${limit + 1}`;

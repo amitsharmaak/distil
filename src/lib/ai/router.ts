@@ -13,6 +13,8 @@ import { DEFAULT_MODEL_CONFIG, PROVIDER_FALLBACK_MODELS, MODEL_COSTS } from "./a
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { insertAuditLog } from "@/lib/database";
+import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 /** Per-call metrics for AI usage. */
 export interface UsageMetrics {
@@ -42,6 +44,43 @@ function estimateCost(model: string, tokensIn: number, tokensOut: number): numbe
 const DEFAULT_DAILY_BUDGET = 5;
 // Warn in logs when daily spend reaches this fraction of the budget.
 const BUDGET_WARN_THRESHOLD = 0.9;
+const ROLLING_WINDOW_DAYS = 30;
+
+export class AIQuotaExceededError extends Error {
+  constructor(readonly window: "daily" | "rolling") {
+    super(`The ${window} AI budget is exhausted`);
+    this.name = "AIQuotaExceededError";
+  }
+}
+
+function configuredBudget(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+export async function assertTenantAIBudget(
+  repositories: RepositorySet,
+  now = new Date()
+): Promise<void> {
+  const dailyBudget = configuredBudget("DISTIL_DAILY_AI_BUDGET");
+  const rollingBudget = configuredBudget("DISTIL_ROLLING_30D_AI_BUDGET");
+  const [daily, rolling] = await Promise.all([
+    dailyBudget ? repositories.agent.getDailyAuditStats() : undefined,
+    rollingBudget
+      ? repositories.agent.getAuditStatsSince(
+          new Date(now.getTime() - ROLLING_WINDOW_DAYS * 86_400_000).toISOString()
+        )
+      : undefined,
+  ]);
+  if (dailyBudget && daily && daily.totalCost >= dailyBudget) {
+    throw new AIQuotaExceededError("daily");
+  }
+  if (rollingBudget && rolling && rolling.totalCost >= rollingBudget) {
+    throw new AIQuotaExceededError("rolling");
+  }
+}
 
 class AIUsageTracker {
   private dailyTotal = 0;
@@ -208,6 +247,42 @@ class AIRouter {
     return result;
   }
 
+  async generateTenantText(
+    context: AuthContext,
+    repositories: RepositorySet,
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions
+  ): Promise<string> {
+    const tenant = parseAuthContext(context);
+    await assertTenantAIBudget(repositories);
+    const { provider, model } = this.getEffectiveModel(task);
+    const tokensIn = estimateTokens(prompt);
+    const start = Date.now();
+    const result = await this.getProvider(provider).generateText(prompt, model, options);
+    const metrics: UsageMetrics = {
+      task,
+      provider,
+      model,
+      tokens_in: tokensIn,
+      tokens_out: estimateTokens(result),
+      latency_ms: Date.now() - start,
+      cost_estimate: estimateCost(model, tokensIn, estimateTokens(result)),
+    };
+    await repositories.agent.insertAuditLog({
+      id: randomUUID(),
+      action: `ai:${task}`,
+      model,
+      provider,
+      tokensIn: metrics.tokens_in,
+      tokensOut: metrics.tokens_out,
+      cost: metrics.cost_estimate,
+      latencyMs: metrics.latency_ms,
+      traceId: tenant.requestId,
+    });
+    return result;
+  }
+
   async generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions): Promise<T> {
     const { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
@@ -252,6 +327,35 @@ class AIRouter {
       "AI call completed"
     );
 
+    return result;
+  }
+
+  async generateTenantJSON<T>(
+    context: AuthContext,
+    repositories: RepositorySet,
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions
+  ): Promise<T> {
+    const tenant = parseAuthContext(context);
+    await assertTenantAIBudget(repositories);
+    const { provider, model } = this.getEffectiveModel(task);
+    const tokensIn = estimateTokens(prompt);
+    const start = Date.now();
+    const result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+    const output = JSON.stringify(result);
+    const tokensOut = estimateTokens(output);
+    await repositories.agent.insertAuditLog({
+      id: randomUUID(),
+      action: `ai:${task}`,
+      model,
+      provider,
+      tokensIn,
+      tokensOut,
+      cost: estimateCost(model, tokensIn, tokensOut),
+      latencyMs: Date.now() - start,
+      traceId: tenant.requestId,
+    });
     return result;
   }
 
@@ -353,6 +457,19 @@ export function getAvailableProviders(): ProviderName[] {
 /** Get the effective provider + model for a task. */
 export function getEffectiveModel(task: AITask): ModelAssignment {
   return _getRouter().getEffectiveModel(task);
+}
+
+/** Tenant-bound provider facade. It carries no user content in global state. */
+export function createTenantAIRouter(context: AuthContext, repositories: RepositorySet) {
+  const tenant = parseAuthContext(context);
+  return Object.freeze({
+    generateText(prompt: string, task: AITask, options?: GenerateOptions) {
+      return _getRouter().generateTenantText(tenant, repositories, prompt, task, options);
+    },
+    generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions) {
+      return _getRouter().generateTenantJSON<T>(tenant, repositories, prompt, task, options);
+    },
+  });
 }
 
 /** Get the AI usage tracker singleton. */

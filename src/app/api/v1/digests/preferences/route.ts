@@ -1,14 +1,15 @@
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { requireSessionMutation } from "@/lib/auth/route-helpers";
-import { PostgresDigestStore } from "@/lib/digests/postgres-store";
+import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
+import { getTenantRepositories } from "@/lib/database";
 import { digestErrorResponse, parse, readJson } from "@/lib/digests/http";
 import { digestPreferencesSchema } from "@/lib/digests/service";
-import { createPostgresClient } from "@/lib/postgres/client";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 export async function PATCH(request: Request): Promise<Response> {
   try {
-    await requireSessionMutation(request, readAuthEnvironment());
+    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+    const context = await resolveRequestAuthContext(request);
     const input = parse(await readJson(request), digestPreferencesSchema);
     if (!readPhase2FeatureFlags().digests) {
       return Response.json(
@@ -22,14 +23,11 @@ export async function PATCH(request: Request): Promise<Response> {
         { status: 503 }
       );
     }
-    const sql = createPostgresClient();
-    try {
-      return Response.json({
-        preferences: await new PostgresDigestStore(sql).updatePreferences(input),
-      });
-    } finally {
-      await sql.end({ timeout: 5 });
-    }
+    return Response.json({
+      preferences: await (
+        await getTenantRepositories(context)
+      ).digestExperience.updatePreferences(input),
+    });
   } catch (error) {
     return digestErrorResponse(error);
   }

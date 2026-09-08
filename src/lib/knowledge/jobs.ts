@@ -6,6 +6,12 @@ import type {
   KnowledgeBackfillRepository,
   RepositorySet,
 } from "@/lib/repositories/ports";
+import {
+  parseAuthContext,
+  userIdSchema,
+  traceIdSchema,
+  type AuthContext,
+} from "@/lib/contracts/tenant-context";
 import { createDegradedSummary } from "./artifacts";
 import { createInitialBackfillCheckpoint } from "./backfill";
 import { chunkContent, estimateTokenCount } from "./chunking";
@@ -28,6 +34,8 @@ export type KnowledgeBackfillKind =
   | "degraded_summaries";
 
 export interface KnowledgeBackfillJobPayload {
+  userId: string;
+  traceId: string;
   jobKey: string;
   kind: KnowledgeBackfillKind;
   batchSize: number;
@@ -56,8 +64,13 @@ const backfillTypeFor = (kind: KnowledgeBackfillKind): KnowledgeBackfillType =>
 const defaultScopeFor = (kind: KnowledgeBackfillKind): string =>
   kind === "degraded_summaries" ? "degraded-summaries:v1" : `${kind.replaceAll("_", "-")}:v1`;
 
-const queueJobId = (jobKey: string, cursor: string | undefined, attempt: number): string =>
-  `kbj_${sha256(JSON.stringify([jobKey, cursor ?? null, attempt])).slice("sha256:".length, 39)}`;
+const queueJobId = (
+  userId: string,
+  jobKey: string,
+  cursor: string | undefined,
+  attempt: number
+): string =>
+  `kbj_${sha256(JSON.stringify([userId, jobKey, cursor ?? null, attempt])).slice("sha256:".length, 39)}`;
 
 function boundedBatchSize(value: number | undefined): number {
   const batchSize = value ?? DEFAULT_KNOWLEDGE_BATCH_SIZE;
@@ -74,6 +87,8 @@ function parsePayload(payload: unknown): KnowledgeBackfillJobPayload {
     throw new Error("Knowledge backfill payload is required");
   const input = payload as Partial<KnowledgeBackfillJobPayload>;
   if (
+    !userIdSchema.safeParse(input.userId).success ||
+    !traceIdSchema.safeParse(input.traceId).success ||
     typeof input.jobKey !== "string" ||
     !["content_versions", "chunks", "legacy_artifacts", "degraded_summaries"].includes(
       String(input.kind)
@@ -82,6 +97,8 @@ function parsePayload(payload: unknown): KnowledgeBackfillJobPayload {
     throw new Error("Knowledge backfill payload has an invalid job key or kind");
   }
   return {
+    userId: userIdSchema.parse(input.userId),
+    traceId: traceIdSchema.parse(input.traceId),
     jobKey: input.jobKey,
     kind: input.kind as KnowledgeBackfillKind,
     batchSize: boundedBatchSize(input.batchSize),
@@ -101,7 +118,7 @@ async function enqueuePayload(
   attempt: number
 ): Promise<void> {
   await jobs.enqueue({
-    id: queueJobId(payload.jobKey, cursor, attempt),
+    id: queueJobId(payload.userId, payload.jobKey, cursor, attempt),
     jobType: KNOWLEDGE_BACKFILL_QUEUE_JOB,
     payload: JSON.stringify({ ...payload, expectedCursor: cursor ?? null }),
     priority: 2,
@@ -111,6 +128,7 @@ async function enqueuePayload(
 
 /** Creates one durable checkpoint and queues the first bounded attempt. */
 export async function enqueueKnowledgeBackfill(input: {
+  context: AuthContext;
   repositories: KnowledgeBackfillRepositories;
   kind: KnowledgeBackfillKind;
   scope?: string;
@@ -118,9 +136,11 @@ export async function enqueueKnowledgeBackfill(input: {
   extractorVersion?: string;
   now?: () => Date;
 }): Promise<KnowledgeBackfillCheckpoint> {
+  const tenant = parseAuthContext(input.context);
   const now = (input.now ?? (() => new Date()))().toISOString();
   const batchSize = boundedBatchSize(input.batchSize);
   const initial = createInitialBackfillCheckpoint({
+    context: tenant,
     jobType: backfillTypeFor(input.kind),
     scope: input.scope ?? defaultScopeFor(input.kind),
     now,
@@ -136,6 +156,8 @@ export async function enqueueKnowledgeBackfill(input: {
     await enqueuePayload(
       input.repositories.jobs,
       {
+        userId: tenant.userId,
+        traceId: tenant.requestId,
         jobKey: checkpoint.jobKey,
         kind: input.kind,
         batchSize,
@@ -301,10 +323,13 @@ async function runDegradedSummaryBatch(
 
 /** Runs exactly one bounded batch; continuations are persisted before the checkpoint advances. */
 export async function runKnowledgeBackfillBatch(
+  context: AuthContext,
   untrustedPayload: unknown,
   dependencies: KnowledgeBackfillDependencies
 ): Promise<KnowledgeBackfillCheckpoint> {
+  const tenant = parseAuthContext(context);
   const payload = parsePayload(untrustedPayload);
+  if (payload.userId !== tenant.userId) throw new Error("Knowledge backfill tenant mismatch");
   const now = (dependencies.now ?? (() => new Date()))().toISOString();
   const checkpoint = await dependencies.knowledgeBackfills.find(payload.jobKey);
   if (!checkpoint)
@@ -361,8 +386,12 @@ export async function runKnowledgeBackfillBatch(
 }
 
 /** Adapter suitable for registration with the existing durable job worker. */
-export function createKnowledgeBackfillJobHandler(dependencies: KnowledgeBackfillDependencies) {
+export function createKnowledgeBackfillJobHandler(
+  context: AuthContext,
+  dependencies: KnowledgeBackfillDependencies
+) {
+  const tenant = parseAuthContext(context);
   return async (payload: Record<string, unknown>): Promise<void> => {
-    await runKnowledgeBackfillBatch(payload, dependencies);
+    await runKnowledgeBackfillBatch(tenant, payload, dependencies);
   };
 }
