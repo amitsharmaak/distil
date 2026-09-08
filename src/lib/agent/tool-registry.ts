@@ -5,7 +5,7 @@
 
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
-import { insertAgentAction } from "@/lib/database";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 export type ToolCategory = "READ" | "WRITE-LOW" | "WRITE-MED" | "WRITE-HIGH" | "EXTERNAL";
 
@@ -45,7 +45,7 @@ class ToolRegistry {
   async execute(
     name: string,
     params: Record<string, unknown>,
-    context?: { workflowId?: string; reasoning?: string }
+    context: { repositories: RepositorySet; workflowId?: string; reasoning?: string }
   ): Promise<{ result: unknown; requiresApproval: boolean }> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
@@ -66,7 +66,7 @@ class ToolRegistry {
       const latency = Date.now() - start;
 
       // Log agent action
-      await insertAgentAction({
+      await context.repositories.agent.insertAction({
         id: crypto.randomUUID(),
         workflowId: context?.workflowId,
         actionType: "tool_call",

@@ -8,16 +8,17 @@
  * SERVER-SIDE ONLY — never import from "use client" components.
  */
 
-import { generateText } from "./router";
+import { createTenantAIRouter } from "./router";
 import { aiLogger } from "@/lib/logger";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { getPreferences } from "./preferences";
-import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem, Priority } from "@/lib/types";
 import type { AgentConfig, ScoredItem, UserPreferenceProfile } from "./types";
 
-async function loadAgentConfig(): Promise<AgentConfig> {
-  const raw = await getUserSetting("agent_config");
+async function loadAgentConfig(repositories: RepositorySet): Promise<AgentConfig> {
+  const raw = await repositories.settings.get("agent_config");
   if (!raw) {
     return {
       summaryLength: "brief",
@@ -76,11 +77,26 @@ function heuristicScore(
  * Re-prioritize all unread items. Updates ai_priority_score and priority
  * fields in the database.
  */
-export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
+export function reprioritize(useAI?: boolean): Promise<ScoredItem[]>;
+export function reprioritize(
+  context: AuthContext,
+  repositories: RepositorySet,
+  useAI?: boolean
+): Promise<ScoredItem[]>;
+export async function reprioritize(
+  contextOrUseAI: AuthContext | boolean = false,
+  repositories?: RepositorySet,
+  tenantUseAI = false
+): Promise<ScoredItem[]> {
+  if (typeof contextOrUseAI === "boolean" || !repositories) {
+    throw new Error("Tenant context and repositories are required for prioritization");
+  }
+  const context = contextOrUseAI;
+  const useAI = tenantUseAI;
   const [preferences, agentConfig, items] = await Promise.all([
-    getPreferences(),
-    loadAgentConfig(),
-    getItems(),
+    getPreferences(repositories),
+    loadAgentConfig(repositories),
+    repositories.items.list(),
   ]);
 
   const scored: ScoredItem[] = items.map((item) => {
@@ -103,7 +119,10 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
           preferences
         );
 
-        const text = await generateText(prompt, "prioritize");
+        const text = await createTenantAIRouter(context, repositories).generateText(
+          prompt,
+          "prioritize"
+        );
         const aiRanking = JSON.parse(text) as { id: string; score: number }[];
 
         for (const aiItem of aiRanking) {
@@ -120,7 +139,7 @@ export async function reprioritize(useAI = false): Promise<ScoredItem[]> {
   }
 
   for (const s of scored) {
-    await updateItemPriorityScore(s.itemId, s.score, s.priority);
+    await repositories.items.updatePriorityScore(s.itemId, s.score, s.priority);
   }
 
   return scored.sort((a, b) => b.score - a.score);

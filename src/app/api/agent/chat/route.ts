@@ -27,17 +27,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { ragQuery } from "@/lib/agent/rag";
-import {
-  insertChatConversation,
-  insertChatMessage,
-  getChatMessages,
-  getChatConversations,
-} from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 const MAX_MESSAGE_LENGTH = 20_000;
 const MAX_CONVERSATION_ID_LENGTH = 128;
 
 export async function POST(request: NextRequest) {
+  let tenant: Awaited<ReturnType<typeof requireTenantRoute>>;
+  try {
+    tenant = await requireTenantRoute(request);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
+
   let body: { message?: string; conversationId?: string };
   try {
     body = await request.json();
@@ -70,11 +72,20 @@ export async function POST(request: NextRequest) {
     let convId = conversationId;
     if (!convId) {
       convId = crypto.randomUUID();
-      await insertChatConversation({ id: convId, title: message.slice(0, 100) });
+      await tenant.repositories.agent.insertConversation({
+        id: convId,
+        title: message.slice(0, 100),
+      });
+    } else if (
+      !(await tenant.repositories.agent.listConversations()).some(
+        (conversation) => conversation.id === convId
+      )
+    ) {
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
     // Store user message
-    await insertChatMessage({
+    await tenant.repositories.agent.insertMessage({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "user",
@@ -82,10 +93,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Run RAG query
-    const result = await ragQuery(message);
+    const result = await ragQuery(tenant.context, tenant.repositories, message);
 
     // Store assistant response
-    await insertChatMessage({
+    await tenant.repositories.agent.insertMessage({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "assistant",
@@ -100,6 +111,8 @@ export async function POST(request: NextRequest) {
       chunksUsed: result.chunksUsed,
     });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Chat endpoint error");
     return NextResponse.json({ error: "Failed to process chat message" }, { status: 500 });
   }
@@ -107,6 +120,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get("conversationId");
 
@@ -114,13 +128,22 @@ export async function GET(request: NextRequest) {
       if (conversationId.length > MAX_CONVERSATION_ID_LENGTH) {
         return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
       }
-      const messages = await getChatMessages(conversationId);
+      const messages = await repositories.agent.listMessages(conversationId);
+      if (
+        messages.length === 0 &&
+        !(await repositories.agent.listConversations()).some(
+          (conversation) => conversation.id === conversationId
+        )
+      )
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
       return NextResponse.json({ messages });
     }
 
-    const conversations = await getChatConversations();
+    const conversations = await repositories.agent.listConversations();
     return NextResponse.json({ conversations });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Chat GET endpoint error");
     return NextResponse.json({ error: "Failed to fetch chat data" }, { status: 500 });
   }

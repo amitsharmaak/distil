@@ -17,63 +17,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { getItems, getItemByNormalizedUrl } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { composeCaptureRoutes } from "@/lib/capture/composition";
 import { createCaptureCollectionHandlers } from "@/lib/capture/http";
 import { createCaptureSchema } from "@/lib/capture/schema";
-import { config } from "@/lib/config";
 import { hybridSearch } from "@/lib/ai/search";
-import { buildRawContent, processContent } from "@/lib/intelligence/pipeline";
-import { pendingIngestions } from "@/lib/intelligence/pending-ingestions";
-import { sanitizeUrl, normalizeUrl } from "@/lib/utils";
-import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
+import type { ContentItem } from "@/lib/types";
 
 /**
  * Fetches the URL and runs the full intelligence pipeline.
  * Used by POST /api/items as fire-and-forget background work so the
  * HTTP response can return immediately (202) before enrichment finishes.
  */
-async function ingestInBackground(params: {
-  trimmedUrl: string;
-  normalizedUrl: string;
-  sourceType: SourceType;
-  title?: string;
-  notes?: string;
-  priority?: Priority;
-  contentType?: ContentType;
-  topics?: string[];
-}) {
-  let rawBody: string;
-  try {
-    const response = await fetch(params.trimmedUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Distil/1.0)" },
-      signal: AbortSignal.timeout(10000),
-    });
-    rawBody = await response.text();
-  } catch (fetchError) {
-    apiLogger.warn({ err: fetchError, url: params.trimmedUrl }, "background ingest fetch failed");
-    return;
-  }
-
-  const raw = buildRawContent({
-    sourceType: params.sourceType,
-    rawBody,
-    url: params.normalizedUrl,
-    metadata: {
-      pageTitle: params.title,
-      userNotes: params.notes,
-      priority: params.priority,
-      contentType: params.contentType,
-      topics: params.topics,
-    },
-  });
-
-  try {
-    await processContent(raw);
-  } catch (err) {
-    apiLogger.error({ err, url: params.normalizedUrl }, "background ingest pipeline failed");
-  }
-}
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 
@@ -117,6 +72,7 @@ export function OPTIONS() {
  */
 export async function GET(request: NextRequest) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { searchParams } = request.nextUrl;
 
     // Extract and pass through query filters to the DB helper.
@@ -135,13 +91,15 @@ export async function GET(request: NextRequest) {
     let items: ContentItem[];
     if (filters.query) {
       const { query, ...otherFilters } = filters;
-      items = await hybridSearch(query!, otherFilters);
+      items = await hybridSearch(repositories, query!, otherFilters);
     } else {
-      items = await getItems(filters);
+      items = await repositories.items.list(filters);
     }
 
     return NextResponse.json({ items, total: items.length }, { headers: CORS_HEADERS });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "GET /api/items unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
@@ -195,9 +153,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hosted requests must use the durable capture state machine. The local
-    // SQLite compatibility path below is retained only until migration.
-    if (config.databaseUrl || process.env.VERCEL === "1") {
+    // Capture is always dispatched through the authenticated durable state machine.
+    {
       const composition = await composeCaptureRoutes();
       const captureBody = {
         url,
@@ -222,40 +179,6 @@ export async function POST(request: NextRequest) {
       });
       return createCaptureCollectionHandlers(composition).POST(durableRequest);
     }
-
-    const trimmedUrl = sanitizeUrl(url);
-    const normalizedUrl = normalizeUrl(trimmedUrl);
-    const sourceType = (body.sourceType as SourceType) ?? "manual";
-
-    // ── Dedup check (sync, cheap) ────────────────────────────────────────────
-
-    const existing = await getItemByNormalizedUrl(normalizedUrl);
-    if (existing) {
-      return NextResponse.json(
-        { item: existing, status: "duplicate" },
-        { status: 200, headers: CORS_HEADERS }
-      );
-    }
-
-    // ── Kick off pipeline in background and respond immediately ──────────────
-
-    const task = ingestInBackground({
-      trimmedUrl,
-      normalizedUrl,
-      sourceType,
-      title: typeof body.title === "string" ? body.title.trim() : undefined,
-      notes: typeof body.notes === "string" ? body.notes.trim() : undefined,
-      priority: (body.priority as Priority) ?? undefined,
-      contentType: (body.contentType as ContentType) ?? undefined,
-      topics: Array.isArray(body.topics) ? (body.topics as string[]) : undefined,
-    });
-    pendingIngestions.add(task);
-    task.finally(() => pendingIngestions.delete(task));
-
-    return NextResponse.json(
-      { status: "accepted", url: normalizedUrl },
-      { status: 202, headers: CORS_HEADERS }
-    );
   } catch (error) {
     apiLogger.error({ err: error }, "POST /api/items unexpected error");
     return NextResponse.json(

@@ -5,17 +5,11 @@
 
 import { NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import {
-  getWorkflowRuns,
-  getAgentActions,
-  getPendingApprovals,
-  getDailyAuditStats,
-  getJobStats,
-} from "@/lib/database";
-import { getDailyUsage } from "@/lib/ai/router";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const [
       runningWorkflows,
       recentWorkflows,
@@ -24,12 +18,12 @@ export async function GET() {
       auditStats,
       jobStats,
     ] = await Promise.all([
-      getWorkflowRuns({ status: "running", limit: 10 }),
-      getWorkflowRuns({ limit: 10 }),
-      getAgentActions({ limit: 20 }),
-      getPendingApprovals(10),
-      getDailyAuditStats(),
-      getJobStats(),
+      repositories.agent.listWorkflows({ status: "running", limit: 10 }),
+      repositories.agent.listWorkflows({ limit: 10 }),
+      repositories.agent.listActions({ limit: 20 }),
+      repositories.agent.listPendingApprovals(10),
+      repositories.agent.getDailyAuditStats(),
+      repositories.jobs.getStats(),
     ]);
 
     return NextResponse.json({
@@ -38,12 +32,13 @@ export async function GET() {
       recentActions,
       pendingApprovals,
       stats: {
-        dailyCost: getDailyUsage(),
         ...auditStats,
         jobs: jobStats,
       },
     });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Agent status endpoint error");
     return NextResponse.json({ error: "Failed to fetch agent status" }, { status: 500 });
   }

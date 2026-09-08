@@ -21,9 +21,6 @@ import {
   updateRawContentItemId,
 } from "../database";
 import type { ContentItem, SourceType } from "../types";
-import { generateSummary } from "../ai/summarize";
-import { embedItem } from "../ai/embeddings";
-import { detectStrategy } from "../content-strategies";
 import { classify } from "./classifier";
 import { checkRelevance } from "./relevance";
 import { extractContent } from "./extractor";
@@ -229,15 +226,9 @@ export async function processContent(raw: RawContent): Promise<ProcessingResult>
     await updateItemProcessingStatus(targetItemId, "ready");
     await updateItemPriorityScore(targetItemId, enriched.priorityScore, enriched.priority);
 
-    // Step 10b: Generate the deep AI summary before reporting durable success — skipped for content types
-    // that don't use AI summarization (e.g. tweets), but enabled for X Articles.
-    const strategy = detectStrategy(raw.url ?? "");
-    if (strategy.generateAISummary || extracted.isXArticle) {
-      await generateSummary(targetItemId, { length: "brief" }).catch(() => undefined);
-    }
-
-    // Step 10c: Finish embedding work before returning from the pipeline.
-    await embedItem(targetItemId, extracted.title, enriched.summary).catch(() => undefined);
+    // Tenant-bound enrichment is dispatched only by the durable capture worker.
+    // This legacy pipeline has no authenticated tenant capability, so it must
+    // not invoke summary or embedding providers.
 
     // Step 11: Return ProcessingResult
     return {

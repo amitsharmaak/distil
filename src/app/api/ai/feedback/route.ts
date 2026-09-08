@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import { insertFeedback, getItemById } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { updatePreferencesFromFeedback } from "@/lib/ai/preferences";
 import { reprioritize } from "@/lib/ai/prioritize";
 
@@ -10,6 +10,7 @@ const MAX_REASON_LENGTH = 1_000;
 /** POST /api/ai/feedback — Submit feedback on a content item. */
 export async function POST(req: NextRequest) {
   try {
+    const { context, repositories } = await requireTenantRoute(req);
     const body = await req.json();
     const { itemId, rating, reason } = body as {
       itemId?: string;
@@ -33,30 +34,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const item = await getItemById(itemId);
+    const item = await repositories.items.findById(itemId);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    const feedback = await insertFeedback({
+    const feedback = await repositories.feedback.insert({
       id: crypto.randomUUID(),
       itemId,
       rating,
       reason,
     });
 
-    // Fire-and-forget: update preferences and re-prioritize after feedback
-    (async () => {
+    // Keep tenant identity and repository capability attached to asynchronous work.
+    void (async () => {
       try {
-        await updatePreferencesFromFeedback();
-        await reprioritize(false);
+        await updatePreferencesFromFeedback(context, repositories);
+        await reprioritize(context, repositories, false);
       } catch (err) {
-        apiLogger.error({ err }, "Background preference/priority update failed");
+        apiLogger.error(
+          { err, userId: context.userId },
+          "Background preference/priority update failed"
+        );
       }
     })();
 
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 500) return authFailure;
     apiLogger.error({ err: error }, "Feedback error");
     return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 });
   }

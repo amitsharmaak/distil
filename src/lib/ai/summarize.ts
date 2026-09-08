@@ -10,13 +10,14 @@
  */
 
 import crypto from "crypto";
-import { generateJSON, getEffectiveModel } from "./router";
+import { createTenantAIRouter, getEffectiveModel } from "./router";
 import {
   summarizePrompt,
   chunkSummarizePrompt,
   synthesizeChunkSummariesPrompt,
 } from "@/lib/prompts/summarize";
-import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { SummaryOutput } from "./types";
 
 export type { SummaryOutput };
@@ -93,20 +94,39 @@ function getSummarizableContent(item: { fullContent?: string; summary: string })
  * - Medium content (2000–8000 tokens): single "summarize-complex" call
  * - Long content (>8000 tokens): map-reduce (chunk with "summarize", synthesize with "summarize-complex")
  */
-export async function generateSummary(
+export function generateSummary(
   itemId: string,
-  options: { length?: "brief" | "detailed"; force?: boolean } = {}
+  options?: { length?: "brief" | "detailed"; force?: boolean }
+): Promise<{ summary: string; cached: boolean }>;
+export function generateSummary(
+  context: AuthContext,
+  repositories: RepositorySet,
+  itemId: string,
+  options?: { length?: "brief" | "detailed"; force?: boolean }
+): Promise<{ summary: string; cached: boolean }>;
+export async function generateSummary(
+  contextOrItemId: AuthContext | string,
+  repositoriesOrOptions?: RepositorySet | { length?: "brief" | "detailed"; force?: boolean },
+  maybeItemId?: string,
+  maybeOptions: { length?: "brief" | "detailed"; force?: boolean } = {}
 ): Promise<{ summary: string; cached: boolean }> {
+  if (typeof contextOrItemId === "string" || !maybeItemId) {
+    throw new Error("Tenant context and repositories are required for summary generation");
+  }
+  const context = contextOrItemId;
+  const repositories = repositoriesOrOptions as RepositorySet;
+  const itemId = maybeItemId;
+  const options = maybeOptions;
   const length = options.length ?? "brief";
 
   if (!options.force) {
-    const existing = await getAISummary(itemId, length);
+    const existing = await repositories.summaries.find(itemId, length);
     if (existing) {
       return { summary: existing.summary, cached: true };
     }
   }
 
-  const item = await getItemById(itemId);
+  const item = await repositories.items.findById(itemId);
   if (!item) {
     throw new Error(`Item not found: ${itemId}`);
   }
@@ -124,21 +144,33 @@ export async function generateSummary(
     const chunkOutputs: SummaryOutput[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const prompt = chunkSummarizePrompt(chunks[i], i, chunks.length);
-      const chunkOutput = await generateJSON<SummaryOutput>(prompt, "summarize");
+      const chunkOutput = await createTenantAIRouter(
+        context,
+        repositories
+      ).generateJSON<SummaryOutput>(prompt, "summarize");
       chunkOutputs.push(chunkOutput);
     }
 
     const chunkSummaries = chunkOutputs.map((o) => JSON.stringify(o, null, 2));
     const synthesizePrompt = synthesizeChunkSummariesPrompt(chunkSummaries, item);
-    output = await generateJSON<SummaryOutput>(synthesizePrompt, "summarize-complex");
+    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
+      synthesizePrompt,
+      "summarize-complex"
+    );
   } else if (estimatedTokens >= 2000) {
     // Medium: single summarize-complex call
     const prompt = summarizePrompt(item, length);
-    output = await generateJSON<SummaryOutput>(prompt, "summarize-complex");
+    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
+      prompt,
+      "summarize-complex"
+    );
   } else {
     // Short: single summarize call
     const prompt = summarizePrompt(item, length);
-    output = await generateJSON<SummaryOutput>(prompt, "summarize");
+    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
+      prompt,
+      "summarize"
+    );
   }
 
   const summary = renderSummaryMarkdown(output);
@@ -150,7 +182,7 @@ export async function generateSummary(
         : "summarize";
   const { model } = getEffectiveModel(task);
 
-  await upsertAISummary({
+  await repositories.summaries.upsert({
     id: crypto.randomUUID(),
     itemId,
     summary,

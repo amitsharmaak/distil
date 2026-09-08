@@ -15,18 +15,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { getRejectedItems } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 export async function GET(request: NextRequest) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { searchParams } = request.nextUrl;
     const limit = searchParams.get("limit") ? Number(searchParams.get("limit")) : 50;
     const offset = searchParams.get("offset") ? Number(searchParams.get("offset")) : 0;
 
-    const { items, total } = await getRejectedItems(limit, offset);
+    const { items, total } = await repositories.items.listRejected(limit, offset);
 
     return NextResponse.json({ items, total });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 500) return authFailure;
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

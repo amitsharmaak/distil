@@ -20,10 +20,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { startResearch } from "@/lib/ai/research";
-import { getResearchReport } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 export async function POST(req: NextRequest) {
   try {
+    const { context, repositories } = await requireTenantRoute(req);
     const body = await req.json();
     const { query, itemId } = body as { query?: string; itemId?: string };
 
@@ -31,11 +32,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "query is required" }, { status: 400 });
     }
 
-    const reportId = await startResearch(query.trim(), itemId);
-    const report = await getResearchReport(reportId);
+    if (itemId && !(await repositories.items.findById(itemId)))
+      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    const reportId = await startResearch(context, repositories, query.trim(), itemId);
+    const report = await repositories.research.findReport(reportId);
 
     return NextResponse.json({ report }, { status: 202 });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Research error");
     return NextResponse.json({ error: "Failed to start research" }, { status: 500 });
   }

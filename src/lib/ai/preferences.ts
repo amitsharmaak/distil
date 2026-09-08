@@ -7,16 +7,17 @@
  * SERVER-SIDE ONLY — never import from "use client" components.
  */
 
-import { generateText } from "./router";
+import { createTenantAIRouter } from "./router";
 import { preferenceAnalysisPrompt } from "@/lib/prompts/prioritize";
-import { getAllFeedback, getItemById, getUserSetting, setUserSetting } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { UserPreferenceProfile, FeedbackWithItem } from "./types";
 
 const PREFERENCES_KEY = "agent_preferences";
 const CONFIG_KEY = "agent_config";
 
-export async function getPreferences(): Promise<UserPreferenceProfile> {
-  const raw = await getUserSetting(PREFERENCES_KEY);
+export async function getPreferences(repositories: RepositorySet): Promise<UserPreferenceProfile> {
+  const raw = await repositories.settings.get(PREFERENCES_KEY);
   if (!raw) {
     return {
       topicWeights: {},
@@ -30,31 +31,37 @@ export async function getPreferences(): Promise<UserPreferenceProfile> {
   return JSON.parse(raw) as UserPreferenceProfile;
 }
 
-async function savePreferences(prefs: UserPreferenceProfile): Promise<void> {
-  await setUserSetting(PREFERENCES_KEY, JSON.stringify(prefs));
+async function savePreferences(
+  repositories: RepositorySet,
+  prefs: UserPreferenceProfile
+): Promise<void> {
+  await repositories.settings.set(PREFERENCES_KEY, JSON.stringify(prefs));
 }
 
 /**
  * Analyzes all feedback + item data and updates the preference profile.
  * Uses the fast preference-analysis model via the AI router.
  */
-export async function updatePreferencesFromFeedback(): Promise<UserPreferenceProfile> {
-  const allFeedback = await getAllFeedback();
+export async function updatePreferencesFromFeedback(
+  context: AuthContext,
+  repositories: RepositorySet
+): Promise<UserPreferenceProfile> {
+  const allFeedback = await repositories.feedback.list();
 
   if (allFeedback.length === 0) {
-    return await getPreferences();
+    return getPreferences(repositories);
   }
 
   const feedbackWithItems: FeedbackWithItem[] = [];
   for (const fb of allFeedback) {
-    const item = await getItemById(fb.item_id);
+    const item = await repositories.items.findById(fb.itemId);
     if (!item) continue;
     feedbackWithItems.push({
       feedbackId: fb.id,
-      itemId: fb.item_id,
+      itemId: fb.itemId,
       rating: fb.rating,
-      reason: fb.reason,
-      feedbackDate: fb.created_at,
+      reason: fb.reason ?? null,
+      feedbackDate: fb.createdAt,
       itemTitle: item.title,
       itemTopics: item.topics,
       itemSourceType: item.sourceType,
@@ -64,11 +71,14 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
   }
 
   if (feedbackWithItems.length === 0) {
-    return await getPreferences();
+    return getPreferences(repositories);
   }
 
   const prompt = preferenceAnalysisPrompt(feedbackWithItems);
-  const text = await generateText(prompt, "preference-analysis");
+  const text = await createTenantAIRouter(context, repositories).generateText(
+    prompt,
+    "preference-analysis"
+  );
 
   const parsed = JSON.parse(text) as Omit<UserPreferenceProfile, "lastUpdated">;
 
@@ -77,14 +87,17 @@ export async function updatePreferencesFromFeedback(): Promise<UserPreferencePro
     lastUpdated: new Date().toISOString(),
   };
 
-  await savePreferences(preferences);
+  await savePreferences(repositories, preferences);
   return preferences;
 }
 
-export async function getAgentConfig(): Promise<string | undefined> {
-  return await getUserSetting(CONFIG_KEY);
+export async function getAgentConfig(repositories: RepositorySet): Promise<string | undefined> {
+  return repositories.settings.get(CONFIG_KEY);
 }
 
-export async function saveAgentConfig(configJson: string): Promise<void> {
-  await setUserSetting(CONFIG_KEY, configJson);
+export async function saveAgentConfig(
+  repositories: RepositorySet,
+  configJson: string
+): Promise<void> {
+  await repositories.settings.set(CONFIG_KEY, configJson);
 }

@@ -3,13 +3,14 @@
  * SERVER-SIDE ONLY.
  */
 
-import { generateText } from "@/lib/ai/router";
+import { createTenantAIRouter } from "@/lib/ai/router";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { getToolRegistry } from "./tool-registry";
 import { registerAllTools } from "./register-tools";
-import { insertApproval } from "@/lib/database";
 import { filterPII } from "@/lib/pii-filter";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 // Caps runaway loops where the LLM keeps calling tools without converging.
 const MAX_ITERATIONS = 10;
@@ -54,10 +55,12 @@ export interface OrchestratorResult {
  * Run the agent orchestrator for a given user message.
  */
 export async function runAgent(
+  authContext: AuthContext,
+  repositories: RepositorySet,
   userMessage: string,
   context?: { workflowId?: string; conversationHistory?: string[] }
 ): Promise<OrchestratorResult> {
-  registerAllTools();
+  registerAllTools(authContext, repositories);
   const registry = getToolRegistry();
   const traceId = getTraceId();
   const toolDescriptions = JSON.stringify(registry.getToolDescriptions(), null, 2);
@@ -78,7 +81,10 @@ export async function runAgent(
   while (iterations < MAX_ITERATIONS) {
     iterations++;
 
-    const response = await generateText(currentPrompt, "research-plan");
+    const response = await createTenantAIRouter(authContext, repositories).generateText(
+      currentPrompt,
+      "research-plan"
+    );
 
     // Check for tool calls in response
     const toolCallMatches = response.match(/```tool_call\n([\s\S]*?)```/g);
@@ -106,13 +112,14 @@ export async function runAgent(
         };
 
         const { result, requiresApproval } = await registry.execute(tool, params ?? {}, {
+          repositories,
           workflowId: context?.workflowId,
           reasoning: `User asked: ${filteredMessage.slice(0, 100)}`,
         });
 
         if (requiresApproval) {
           const approvalId = crypto.randomUUID();
-          await insertApproval({
+          await repositories.agent.insertApproval({
             id: approvalId,
             workflowId: context?.workflowId,
             actionType: tool,

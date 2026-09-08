@@ -5,8 +5,9 @@
  * SERVER-SIDE ONLY.
  */
 
-import { generateJSON } from "./router";
-import { updateItem, getItemById } from "@/lib/database";
+import { createTenantAIRouter } from "./router";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import { buildTaxonomyPromptSection, normalizeTags } from "./taxonomy";
 
 interface TaggingResult {
@@ -25,11 +26,13 @@ interface TaggingResult {
  * @returns The tagging result, or undefined if item already had topics
  */
 export async function autoTagItem(
+  context: AuthContext,
+  repositories: RepositorySet,
   itemId: string,
   title: string,
   summary: string
 ): Promise<TaggingResult | undefined> {
-  const item = await getItemById(itemId);
+  const item = await repositories.items.findById(itemId);
   if (!item || (item.topics?.length ?? 0) > 0) {
     return undefined;
   }
@@ -49,7 +52,10 @@ Rules:
 - Only add 1 new tag if nothing fits — it must be a broad domain word, never a product name, company name, or version number.
 - confidence: how confident you are in the tags (0.0 to 1.0).`;
 
-  const result = await generateJSON<TaggingResult>(prompt, "auto-tag");
+  const result = await createTenantAIRouter(context, repositories).generateJSON<TaggingResult>(
+    prompt,
+    "auto-tag"
+  );
 
   if (!result?.topics || !Array.isArray(result.topics)) {
     return undefined;
@@ -63,6 +69,6 @@ Rules:
 
   if (topics.length === 0) return undefined;
 
-  await updateItem(itemId, { topics });
+  await repositories.items.update(itemId, { topics });
   return { topics, confidence: result.confidence ?? 0 };
 }

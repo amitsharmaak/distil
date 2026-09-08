@@ -13,13 +13,14 @@
 
 import crypto from "crypto";
 import { aiLogger } from "@/lib/logger";
-import { generateText, generateTextWithSearch, generateJSON, getEffectiveModel } from "./router";
+import { createTenantAIRouter, getEffectiveModel } from "./router";
 import {
   researchPlanPrompt,
   researchSynthesizePrompt,
   researchGapsPrompt,
 } from "@/lib/prompts/research";
-import { insertResearchReport, updateResearchReport, getItemById } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 /** Progress payload stored in research_reports.progress as JSON. */
 type ProgressPayload =
@@ -28,8 +29,12 @@ type ProgressPayload =
   | { stage: "deepening"; current: number; total: number; question: string }
   | { stage: "synthesizing" };
 
-async function setProgress(reportId: string, payload: ProgressPayload | null): Promise<void> {
-  await updateResearchReport(reportId, {
+async function setProgress(
+  repositories: RepositorySet,
+  reportId: string,
+  payload: ProgressPayload | null
+): Promise<void> {
+  await repositories.research.updateReport(reportId, {
     progress: payload ? JSON.stringify(payload) : null,
   });
 }
@@ -38,28 +43,33 @@ async function setProgress(reportId: string, payload: ProgressPayload | null): P
  * Start a deep research task. Creates a report row and kicks off
  * async research in the background.
  */
-export async function startResearch(query: string, itemId?: string): Promise<string> {
+export async function startResearch(
+  authContext: AuthContext,
+  repositories: RepositorySet,
+  query: string,
+  itemId?: string
+): Promise<string> {
   const reportId = crypto.randomUUID();
 
-  let context: string | undefined;
+  let itemContext: string | undefined;
   if (itemId) {
-    const item = await getItemById(itemId);
+    const item = await repositories.items.findById(itemId);
     if (item) {
-      context = [item.title, item.summary, item.fullContent].filter(Boolean).join("\n\n");
+      itemContext = [item.title, item.summary, item.fullContent].filter(Boolean).join("\n\n");
     }
   }
 
   const { model } = getEffectiveModel("research-plan");
-  await insertResearchReport({
+  await repositories.research.insertReport({
     id: reportId,
     itemId,
     query,
     model,
   });
 
-  void runResearch(reportId, query, context).catch(async (error) => {
+  void runResearch(authContext, repositories, reportId, query, itemContext).catch(async (error) => {
     aiLogger.error({ err: error, reportId }, "Research failed");
-    await updateResearchReport(reportId, {
+    await repositories.research.updateReport(reportId, {
       status: "failed",
       report: `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       completedAt: new Date().toISOString(),
@@ -70,17 +80,24 @@ export async function startResearch(query: string, itemId?: string): Promise<str
   return reportId;
 }
 
-async function runResearch(reportId: string, query: string, context?: string): Promise<void> {
-  await updateResearchReport(reportId, { status: "running" });
+async function runResearch(
+  authContext: AuthContext,
+  repositories: RepositorySet,
+  reportId: string,
+  query: string,
+  context?: string
+): Promise<void> {
+  await repositories.research.updateReport(reportId, { status: "running" });
+  const ai = createTenantAIRouter(authContext, repositories);
 
   // p-limit is ESM-only; use dynamic import
   const pLimit = (await import("p-limit")).default;
   const limit = pLimit(3);
 
   // ── Planning ─────────────────────────────────────────────────────────────
-  await setProgress(reportId, { stage: "planning" });
+  await setProgress(repositories, reportId, { stage: "planning" });
   const planPrompt = researchPlanPrompt(query, context);
-  const planText = await generateText(planPrompt, "research-plan");
+  const planText = await ai.generateText(planPrompt, "research-plan");
 
   let subQuestions: string[];
   try {
@@ -95,11 +112,12 @@ async function runResearch(reportId: string, query: string, context?: string): P
   let completedCount = 0;
   const researchQuestion = (question: string) =>
     limit(async () => {
-      const result = await generateTextWithSearch(
-        `Research this question thoroughly and provide detailed findings with source URLs:\n\n${question}`
+      const result = await ai.generateText(
+        `Research this question thoroughly and provide detailed findings with source URLs:\n\n${question}`,
+        "research-search"
       );
       completedCount++;
-      await setProgress(reportId, {
+      await setProgress(repositories, reportId, {
         stage: "researching",
         current: completedCount,
         total: subQuestions.length,
@@ -126,7 +144,7 @@ async function runResearch(reportId: string, query: string, context?: string): P
   const gapsPrompt = researchGapsPrompt(query, combinedFindings);
   let gapsResult: { gaps: string[] };
   try {
-    gapsResult = await generateJSON<{ gaps: string[] }>(gapsPrompt, "research-gaps");
+    gapsResult = await ai.generateJSON<{ gaps: string[] }>(gapsPrompt, "research-gaps");
   } catch {
     gapsResult = { gaps: [] };
   }
@@ -139,11 +157,12 @@ async function runResearch(reportId: string, query: string, context?: string): P
     let deepeningCompleted = 0;
     const deepenQuestion = (question: string) =>
       limit(async () => {
-        const result = await generateTextWithSearch(
-          `Research this specific gap/question concisely with source URLs:\n\n${question}`
+        const result = await ai.generateText(
+          `Research this specific gap/question concisely with source URLs:\n\n${question}`,
+          "research-search"
         );
         deepeningCompleted++;
-        await setProgress(reportId, {
+        await setProgress(repositories, reportId, {
           stage: "deepening",
           current: deepeningCompleted,
           total: gaps.length,
@@ -172,14 +191,14 @@ async function runResearch(reportId: string, query: string, context?: string): P
   }
 
   // ── Synthesizing ──────────────────────────────────────────────────────────
-  await setProgress(reportId, { stage: "synthesizing" });
+  await setProgress(repositories, reportId, { stage: "synthesizing" });
   const synthesizePrompt = researchSynthesizePrompt(query, combinedFindings);
-  const report = await generateText(synthesizePrompt, "research-synthesize");
+  const report = await ai.generateText(synthesizePrompt, "research-synthesize");
 
   const urlRegex = /https?:\/\/[^\s\)>\]"']+/g;
   const sources = [...new Set(combinedFindings.match(urlRegex) ?? [])];
 
-  await updateResearchReport(reportId, {
+  await repositories.research.updateReport(reportId, {
     report,
     sources: JSON.stringify(sources),
     status: "completed",

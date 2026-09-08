@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { generateSummary } from "@/lib/ai/summarize";
-import { getItemById } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { isTwitterUrl } from "@/lib/utils";
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
 export async function POST(req: NextRequest) {
   try {
+    const { context, repositories } = await requireTenantRoute(req);
     const body = await req.json();
     const { itemId, length, force } = body as {
       itemId?: string;
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "itemId is required" }, { status: 400 });
     }
 
-    const item = await getItemById(itemId);
+    const item = await repositories.items.findById(itemId);
     if (!item) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await generateSummary(itemId, { length, force });
+    const result = await generateSummary(context, repositories, itemId, { length, force });
 
     return NextResponse.json({
       summary: result.summary,
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
       itemId,
     });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Summarize error");
     return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 });
   }

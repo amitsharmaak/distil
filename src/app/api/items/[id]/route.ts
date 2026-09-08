@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { apiLogger } from "@/lib/logger";
-import { updateItem, deleteItem } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,7 @@ type RouteContext = { params: Promise<{ id: string }> };
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { id } = await context.params;
 
     // ── Parse request body ──────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // updateItem merges the patch onto the existing item, so only provided
     // fields change. Returns undefined if the item was not found.
 
-    const updated = await updateItem(id, patch);
+    const updated = await repositories.items.update(id, patch);
 
     if (!updated) {
       return NextResponse.json(
@@ -87,6 +88,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ item: updated }, { headers: CORS_HEADERS });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 500) return authFailure;
     apiLogger.error({ err: error }, "PATCH /api/items/:id unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },
@@ -102,12 +105,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
  *
  * Response: { success: true } on success, { error } on 404/500.
  */
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { id } = await context.params;
 
     // deleteItem returns false if no row matched the given ID.
-    const deleted = await deleteItem(id);
+    const deleted = await repositories.items.delete(id);
 
     if (!deleted) {
       return NextResponse.json(
@@ -118,6 +122,8 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 500) return authFailure;
     apiLogger.error({ err: error }, "DELETE /api/items/:id unexpected error");
     return NextResponse.json(
       { error: "Internal server error" },

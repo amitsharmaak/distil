@@ -7,7 +7,7 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItemById, getRecentEmbeddings, insertNotification } from "@/lib/database";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import { generateEmbedding, cosineSimilarity } from "@/lib/ai/embeddings";
 import { aiLogger } from "@/lib/logger";
 
@@ -21,31 +21,34 @@ interface Insight {
 /**
  * Detect insights (cross-source connections) for a newly added item.
  */
-export async function detectInsights(itemId: string): Promise<Insight[]> {
-  const item = await getItemById(itemId);
+export async function detectInsights(
+  repositories: RepositorySet,
+  itemId: string
+): Promise<Insight[]> {
+  const item = await repositories.items.findById(itemId);
   if (!item) return [];
 
   try {
     const text = `${item.title} ${item.summary}`;
     const embedding = await generateEmbedding(text);
-    const recentEmbeddings = await getRecentEmbeddings(14); // 2 weeks
+    const recentEmbeddings = await repositories.embeddings.listRecent(14); // 2 weeks
 
     const insights: Insight[] = [];
 
     for (const row of recentEmbeddings) {
-      if (row.item_id === itemId) continue;
+      if (row.itemId === itemId) continue;
 
-      const otherEmbedding = JSON.parse(row.embedding) as number[];
+      const otherEmbedding = row.embedding;
       const sim = cosineSimilarity(embedding, otherEmbedding);
 
       if (sim > 0.75) {
-        const otherItem = await getItemById(row.item_id);
+        const otherItem = await repositories.items.findById(row.itemId);
         if (!otherItem) continue;
 
         const crossSource = otherItem.sourceType !== item.sourceType;
         insights.push({
           itemId,
-          relatedItemId: row.item_id,
+          relatedItemId: row.itemId,
           similarity: sim,
           crossSource,
         });
@@ -61,10 +64,10 @@ export async function detectInsights(itemId: string): Promise<Insight[]> {
     // Notify about top cross-source connections
     const crossSourceInsights = insights.filter((i) => i.crossSource).slice(0, 3);
     for (const insight of crossSourceInsights) {
-      const relatedItem = await getItemById(insight.relatedItemId);
+      const relatedItem = await repositories.items.findById(insight.relatedItemId);
       if (!relatedItem) continue;
 
-      await insertNotification({
+      await repositories.notifications.insert({
         id: crypto.randomUUID(),
         itemId: insight.itemId,
         title: "Cross-source connection",

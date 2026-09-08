@@ -1,12 +1,19 @@
-import { getResearchReport } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 /** GET /api/ai/research/[id]/stream — Stream research progress via SSE. */
-export async function GET(_req: Request, context: RouteContext) {
-  const { id } = await context.params;
-
-  const report = await getResearchReport(id);
+export async function GET(req: Request, context: RouteContext) {
+  let repositories;
+  let id: string;
+  let report;
+  try {
+    ({ repositories } = await requireTenantRoute(req));
+    ({ id } = await context.params);
+    report = await repositories.research.findReport(id);
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
   if (!report) {
     return new Response("Report not found", { status: 404 });
   }
@@ -22,7 +29,7 @@ export async function GET(_req: Request, context: RouteContext) {
       };
 
       const poll = async () => {
-        const current = await getResearchReport(id);
+        const current = await repositories.research.findReport(id);
         if (!current) {
           sendEvent("error", JSON.stringify({ message: "Report not found" }));
           controller.close();

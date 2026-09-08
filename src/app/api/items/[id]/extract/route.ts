@@ -14,16 +14,17 @@
 
 import { NextResponse } from "next/server";
 
-import { getItemById, updateItem } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { fetchOG } from "@/lib/og";
 import { extractContent } from "@/lib/content-extractor";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const { id } = await context.params;
-    const item = await getItemById(id);
+    const item = await repositories.items.findById(id);
 
     if (!item) {
       return NextResponse.json({ error: `Item with id "${id}" not found` }, { status: 404 });
@@ -51,9 +52,11 @@ export async function POST(_request: Request, context: RouteContext) {
     if (og?.image && !item.thumbnailUrl) patch.thumbnailUrl = og.image;
     if (og?.siteName && !item.publication) patch.publication = og.siteName;
 
-    const updated = await updateItem(id, patch);
+    const updated = await repositories.items.update(id, patch);
     return NextResponse.json({ item: updated, extracted: true });
   } catch (err) {
+    const authFailure = tenantRouteFailureResponse(err);
+    if (authFailure.status !== 500) return authFailure;
     console.error("POST /api/items/[id]/extract error:", err);
     return NextResponse.json({ error: "Failed to extract content" }, { status: 500 });
   }

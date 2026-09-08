@@ -4,10 +4,9 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItems, getItemById, getRecentEmbeddings } from "@/lib/database";
 import { aiLogger } from "@/lib/logger";
 import { generateEmbedding, cosineSimilarity } from "./embeddings";
-import type { ItemFilters } from "@/lib/database";
+import type { ItemFilters, RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem } from "@/lib/types";
 
 /**
@@ -15,14 +14,15 @@ import type { ContentItem } from "@/lib/types";
  * then merges and re-ranks results.
  */
 export async function hybridSearch(
+  repositories: RepositorySet,
   query: string,
   filters: Omit<ItemFilters, "query"> = {}
 ): Promise<ContentItem[]> {
   // Run FTS and semantic search in parallel
   const [ftsResults, semanticResults] = await Promise.all([
-    getItems({ ...filters, query }),
+    repositories.items.list({ ...filters, query }),
     // Semantic search
-    semanticSearch(query, filters),
+    semanticSearch(repositories, query, filters),
   ]);
 
   // Merge results: FTS results first (already ranked), then add semantic-only results
@@ -43,21 +43,22 @@ export async function hybridSearch(
 }
 
 async function semanticSearch(
+  repositories: RepositorySet,
   query: string,
   filters: Omit<ItemFilters, "query">
 ): Promise<ContentItem[]> {
   try {
     const queryEmbedding = await generateEmbedding(query);
-    const recentEmbeddings = await getRecentEmbeddings(90); // 90 days for search
+    const recentEmbeddings = await repositories.embeddings.listRecent(90); // 90 days for search
 
     // Compute similarities
     const similarities: Array<{ itemId: string; similarity: number }> = [];
     for (const row of recentEmbeddings) {
-      const embedding = JSON.parse(row.embedding) as number[];
+      const embedding = row.embedding;
       const sim = cosineSimilarity(queryEmbedding, embedding);
       if (sim > 0.3) {
         // Lower threshold for search than dedup
-        similarities.push({ itemId: row.item_id, similarity: sim });
+        similarities.push({ itemId: row.itemId, similarity: sim });
       }
     }
 
@@ -68,7 +69,7 @@ async function semanticSearch(
     if (topIds.length === 0) return [];
 
     // Fetch the actual items and apply filters
-    const items = (await Promise.all(topIds.map((id) => getItemById(id))))
+    const items = (await Promise.all(topIds.map((id) => repositories.items.findById(id))))
       .filter((item): item is ContentItem => item != null)
       .filter((item) => {
         if (filters.sourceType && item.sourceType !== filters.sourceType) return false;

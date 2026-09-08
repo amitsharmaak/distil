@@ -7,10 +7,11 @@
  */
 
 import { hybridSearch } from "@/lib/ai/search";
-import { generateText } from "@/lib/ai/router";
+import { createTenantAIRouter } from "@/lib/ai/router";
 import { filterPII } from "@/lib/pii-filter";
 import { aiLogger } from "@/lib/logger";
-import { getItems } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,16 +161,23 @@ function itemsToChunks(items: ContentItem[], maxChunks: number): RAGChunk[] {
   return chunks.slice(0, maxChunks);
 }
 
-async function retrieveForSpecific(query: string, maxChunks: number): Promise<RAGChunk[]> {
-  const items = await hybridSearch(query, { limit: 20 });
+async function retrieveForSpecific(
+  repositories: RepositorySet,
+  query: string,
+  maxChunks: number
+): Promise<RAGChunk[]> {
+  const items = await hybridSearch(repositories, query, { limit: 20 });
   return itemsToChunks(items, maxChunks);
 }
 
-async function retrieveForGeneral(maxChunks: number): Promise<RAGChunk[]> {
+async function retrieveForGeneral(
+  repositories: RepositorySet,
+  maxChunks: number
+): Promise<RAGChunk[]> {
   // Prefer unread items; fall back to all recent if nothing is unread
-  let items = await getItems({ isRead: false, limit: 15 });
+  let items = await repositories.items.list({ isRead: false, limit: 15 });
   if (items.length === 0) {
-    items = await getItems({ limit: 15 });
+    items = await repositories.items.list({ limit: 15 });
   }
   return itemsToChunks(items, maxChunks);
 }
@@ -178,7 +186,22 @@ async function retrieveForGeneral(maxChunks: number): Promise<RAGChunk[]> {
 // Main RAG entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function ragQuery(query: string): Promise<RAGResult> {
+export function ragQuery(query: string): Promise<RAGResult>;
+export function ragQuery(
+  context: AuthContext,
+  repositories: RepositorySet,
+  query: string
+): Promise<RAGResult>;
+export async function ragQuery(
+  contextOrQuery: AuthContext | string,
+  repositories?: RepositorySet,
+  maybeQuery?: string
+): Promise<RAGResult> {
+  if (typeof contextOrQuery === "string" || !repositories || !maybeQuery) {
+    throw new Error("Tenant context and repositories are required for RAG queries");
+  }
+  const context = contextOrQuery;
+  const query = maybeQuery;
   const { filtered: filteredQuery } = filterPII(query);
   const intent = classifyIntent(filteredQuery);
 
@@ -188,7 +211,10 @@ export async function ragQuery(query: string): Promise<RAGResult> {
   if (intent === "conversational") {
     const prompt = CONVERSATIONAL_PROMPT.replace("{QUESTION}", filteredQuery);
     try {
-      const answer = await generateText(prompt, "research-synthesize");
+      const answer = await createTenantAIRouter(context, repositories).generateText(
+        prompt,
+        "research-synthesize"
+      );
       return {
         answer,
         citations: [],
@@ -211,13 +237,13 @@ export async function ragQuery(query: string): Promise<RAGResult> {
   let chunks: RAGChunk[];
 
   if (intent === "specific") {
-    chunks = await retrieveForSpecific(filteredQuery, maxChunks);
+    chunks = await retrieveForSpecific(repositories, filteredQuery, maxChunks);
     // Fall back to general retrieval when specific search finds nothing but items exist
     if (chunks.length === 0) {
-      chunks = await retrieveForGeneral(maxChunks);
+      chunks = await retrieveForGeneral(repositories, maxChunks);
     }
   } else {
-    chunks = await retrieveForGeneral(maxChunks);
+    chunks = await retrieveForGeneral(repositories, maxChunks);
   }
 
   if (chunks.length === 0) {
@@ -254,14 +280,19 @@ export async function ragQuery(query: string): Promise<RAGResult> {
     );
   }
 
-  const context = contextParts.join("\n\n---\n\n");
+  const promptContext = contextParts.join("\n\n---\n\n");
   const promptTemplate = intent === "general" ? GENERAL_PROMPT : SPECIFIC_PROMPT;
-  const prompt = promptTemplate.replace("{CONTEXT}", context).replace("{QUESTION}", filteredQuery);
+  const prompt = promptTemplate
+    .replace("{CONTEXT}", promptContext)
+    .replace("{QUESTION}", filteredQuery);
 
   const totalTokensEstimate = Math.ceil(prompt.length / 4);
 
   try {
-    const answer = await generateText(prompt, "research-synthesize");
+    const answer = await createTenantAIRouter(context, repositories).generateText(
+      prompt,
+      "research-synthesize"
+    );
 
     return {
       answer,

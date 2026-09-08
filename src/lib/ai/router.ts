@@ -12,7 +12,6 @@ import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
 import { DEFAULT_MODEL_CONFIG, PROVIDER_FALLBACK_MODELS, MODEL_COSTS } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
-import { insertAuditLog } from "@/lib/database";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 import type { RepositorySet } from "@/lib/repositories/ports";
 
@@ -164,21 +163,9 @@ class AIRouter {
     traceId: string | undefined
   ): Promise<void> {
     getUsageTrackerInstance().record(metrics);
-    try {
-      await insertAuditLog({
-        id: randomUUID(),
-        action,
-        model: metrics.model,
-        provider: metrics.provider,
-        tokensIn: metrics.tokens_in,
-        tokensOut: metrics.tokens_out,
-        cost: metrics.cost_estimate,
-        latencyMs: metrics.latency_ms,
-        traceId: traceId ?? undefined,
-      });
-    } catch (err) {
-      aiLogger.warn({ err }, "Failed to persist AI call to audit_log");
-    }
+    // Unscoped callers deliberately receive in-memory accounting only. Durable
+    // audit records are written exclusively by the tenant-bound facade below.
+    aiLogger.debug({ action, traceId }, "Skipped unscoped AI audit persistence");
   }
 
   private checkBudget(): void {

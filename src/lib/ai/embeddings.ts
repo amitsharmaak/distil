@@ -6,7 +6,7 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "@/lib/config";
-import { getRecentEmbeddings, upsertItemEmbedding } from "@/lib/database";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 const OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
 const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
@@ -86,17 +86,18 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * Returns items above the threshold, sorted by similarity descending.
  */
 export async function findSimilarItems(
+  repositories: RepositorySet,
   embedding: number[],
   threshold = 0.85
 ): Promise<Array<{ itemId: string; similarity: number }>> {
-  const rows = await getRecentEmbeddings(30);
+  const rows = await repositories.embeddings.listRecent(30);
   const results: Array<{ itemId: string; similarity: number }> = [];
 
   for (const row of rows) {
-    const other = JSON.parse(row.embedding) as number[];
+    const other = row.embedding;
     const sim = cosineSimilarity(embedding, other);
     if (sim >= threshold) {
-      results.push({ itemId: row.item_id, similarity: sim });
+      results.push({ itemId: row.itemId, similarity: sim });
     }
   }
 
@@ -108,7 +109,12 @@ export async function findSimilarItems(
  * Generates an embedding for title + summary and stores it in item_embeddings.
  * Fire-and-forget safe: catches and logs errors.
  */
-export async function embedItem(itemId: string, title: string, summary: string): Promise<void> {
+export async function embedItem(
+  repositories: RepositorySet,
+  itemId: string,
+  title: string,
+  summary: string
+): Promise<void> {
   const provider = getEmbeddingProvider();
   if (!provider) {
     return; // No provider configured — skip silently
@@ -121,5 +127,5 @@ export async function embedItem(itemId: string, title: string, summary: string):
 
   const embedding = await generateEmbedding(text);
   const model = provider === "openai" ? OPENAI_EMBEDDING_MODEL : GEMINI_EMBEDDING_MODEL;
-  await upsertItemEmbedding(itemId, embedding, model);
+  await repositories.embeddings.upsert(itemId, embedding, model);
 }

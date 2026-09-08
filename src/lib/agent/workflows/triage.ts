@@ -3,7 +3,8 @@
  * SERVER-SIDE ONLY.
  */
 
-import { getItemById } from "@/lib/database";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import { generateSummary } from "@/lib/ai/summarize";
 import { embedItem } from "@/lib/ai/embeddings";
 import { reprioritize } from "@/lib/ai/prioritize";
@@ -16,8 +17,12 @@ import { detectStrategy } from "@/lib/content-strategies";
  * 2. Embed for semantic search
  * 3. Re-prioritize all items (updates this item's score)
  */
-export async function runTriageWorkflow(itemId: string): Promise<void> {
-  const item = await getItemById(itemId);
+export async function runTriageWorkflow(
+  context: AuthContext,
+  repositories: RepositorySet,
+  itemId: string
+): Promise<void> {
+  const item = await repositories.items.findById(itemId);
   if (!item) {
     aiLogger.warn({ itemId }, "Triage skipped: item not found");
     return;
@@ -28,12 +33,12 @@ export async function runTriageWorkflow(itemId: string): Promise<void> {
     let embedText = item.summary;
 
     if (strategy.generateAISummary) {
-      const { summary } = await generateSummary(itemId, { length: "brief" });
+      const { summary } = await generateSummary(context, repositories, itemId, { length: "brief" });
       embedText = summary || item.summary;
     }
 
-    await embedItem(itemId, item.title, embedText);
-    await reprioritize(false);
+    await embedItem(repositories, itemId, item.title, embedText);
+    await reprioritize(context, repositories, false);
     aiLogger.info({ itemId }, "Triage completed");
   } catch (error) {
     aiLogger.error({ err: error, itemId }, "Triage failed");

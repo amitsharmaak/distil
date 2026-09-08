@@ -5,13 +5,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import { getPendingApprovals, resolveApproval } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const approvals = await getPendingApprovals();
+    const { repositories } = await requireTenantRoute(request);
+    const approvals = await repositories.agent.listPendingApprovals();
     return NextResponse.json({ approvals });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Approvals GET error");
     return NextResponse.json({ error: "Failed to fetch approvals" }, { status: 500 });
   }
@@ -19,6 +22,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { repositories } = await requireTenantRoute(request);
     const body = await request.json();
     const { approvalId, decision } = body as {
       approvalId?: string;
@@ -39,7 +43,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await resolveApproval(approvalId, decision);
+    const pending = await repositories.agent.listPendingApprovals();
+    if (!pending.some((approval) => approval.id === approvalId)) {
+      return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+    }
+    await repositories.agent.resolveApproval(approvalId, decision);
 
     // If approved, execute the tool
     // The approval payload contains the tool call details
@@ -48,6 +56,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, approvalId, decision });
   } catch (error) {
+    const authFailure = tenantRouteFailureResponse(error);
+    if (authFailure.status !== 503) return authFailure;
     apiLogger.error({ err: error }, "Approvals POST error");
     return NextResponse.json({ error: "Failed to process approval" }, { status: 500 });
   }

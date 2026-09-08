@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
-import { getPendingResearchSuggestions } from "@/lib/database";
+import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 /** GET /api/ai/research/suggestions — Pending topic suggestions from proactive scan. */
-export async function GET() {
-  const suggestions = await getPendingResearchSuggestions();
-  return NextResponse.json({
-    suggestions: suggestions.map((s) => ({
-      id: s.id,
-      topic: s.topic,
-      reason: s.reason,
-      suggestedQuery: s.suggested_query,
-      sourceItemIds: JSON.parse(s.source_item_ids || "[]") as string[],
-      createdAt: s.created_at,
-    })),
-  });
+export async function GET(req: Request) {
+  try {
+    const { repositories } = await requireTenantRoute(req);
+    const suggestions = await repositories.research.listPendingSuggestions();
+    return NextResponse.json({
+      suggestions: suggestions.map((s) => ({
+        id: s.id,
+        topic: s.topic,
+        reason: s.reason,
+        suggestedQuery: s.suggestedQuery,
+        sourceItemIds: s.sourceItemIds,
+        createdAt: s.createdAt,
+      })),
+    });
+  } catch (error) {
+    return tenantRouteFailureResponse(error);
+  }
 }

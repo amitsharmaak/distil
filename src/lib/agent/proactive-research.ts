@@ -7,15 +7,11 @@
 
 import { randomUUID } from "crypto";
 
-import {
-  getItems,
-  getResearchReports,
-  insertNotification,
-  replacePendingResearchSuggestions,
-} from "@/lib/database";
-import { generateJSON } from "@/lib/ai/router";
+import { createTenantAIRouter } from "@/lib/ai/router";
 import { aiLogger } from "@/lib/logger";
 import type { ContentItem } from "@/lib/types";
+import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 
 interface TopicCluster {
   topic: string;
@@ -57,7 +53,11 @@ const DEFAULT_QUERY_TEMPLATE = (topic: string) =>
 /**
  * Determines if a topic cluster warrants a research suggestion (not auto-run).
  */
-async function evaluateClusterForSuggestion(cluster: TopicCluster): Promise<{
+async function evaluateClusterForSuggestion(
+  context: AuthContext,
+  repositories: RepositorySet,
+  cluster: TopicCluster
+): Promise<{
   should: boolean;
   reason: string;
   suggestedQuery: string;
@@ -74,7 +74,7 @@ ${itemTitles}
 Is there a significant development or trend worth researching further?
 Respond with JSON: { "should": true/false, "reason": "brief explanation", "suggestedQuery": "specific web research query if should=true" }`;
 
-    const result = await generateJSON<{
+    const result = await createTenantAIRouter(context, repositories).generateJSON<{
       should: boolean;
       reason: string;
       suggestedQuery?: string;
@@ -106,10 +106,13 @@ export interface ProactiveScanResult {
  * Run a proactive research scan on recent items.
  * Persists pending suggestions only — deep research runs after user approval.
  */
-export async function runProactiveScan(): Promise<ProactiveScanResult> {
+export async function runProactiveScan(
+  context: AuthContext,
+  repositories: RepositorySet
+): Promise<ProactiveScanResult> {
   aiLogger.info("Starting proactive research scan");
 
-  const recentItems = await getItems({ sort: "recent", limit: 100 });
+  const recentItems = await repositories.items.list({ sort: "recent", limit: 100 });
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const filtered = recentItems.filter((i) => new Date(i.createdAt) > cutoff);
 
@@ -120,11 +123,11 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
 
   const clusters = findTopicClusters(filtered, 2);
 
-  const recentReports = await getResearchReports(50);
+  const recentReports = await repositories.research.listReports(50);
   const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recentlyResearchedQueries = new Set(
     recentReports
-      .filter((r) => new Date(r.created_at) > recentCutoff)
+      .filter((r) => new Date(r.createdAt) > recentCutoff)
       .map((r) => r.query.toLowerCase().trim())
   );
 
@@ -140,7 +143,11 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
   for (const cluster of clusters.slice(0, 3)) {
     const topicKey = cluster.topic.toLowerCase().trim();
 
-    const { should, reason, suggestedQuery } = await evaluateClusterForSuggestion(cluster);
+    const { should, reason, suggestedQuery } = await evaluateClusterForSuggestion(
+      context,
+      repositories,
+      cluster
+    );
 
     if (!should) continue;
 
@@ -162,11 +169,11 @@ export async function runProactiveScan(): Promise<ProactiveScanResult> {
     });
   }
 
-  await replacePendingResearchSuggestions(toSave);
+  await repositories.research.replacePendingSuggestions(toSave);
 
   if (toSave.length > 0 && toSave[0]) {
     const first = toSave[0];
-    await insertNotification({
+    await repositories.notifications.insert({
       id: randomUUID(),
       itemId: first.sourceItemIds[0] ?? first.id,
       title: "Research suggestions ready",
