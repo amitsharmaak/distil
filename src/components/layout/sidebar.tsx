@@ -39,18 +39,28 @@ const navItems = [
 ];
 
 export function Sidebar({
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
   showAnswers = true,
   showDigests = true,
   showKnowledgeUi = true,
   showSearch = true,
 }: {
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
   showAnswers?: boolean;
   showDigests?: boolean;
   showKnowledgeUi?: boolean;
   showSearch?: boolean;
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = controlledCollapsed ?? internalCollapsed;
+
+  function setCollapsed(next: boolean) {
+    if (controlledCollapsed === undefined) setInternalCollapsed(next);
+    onCollapsedChange?.(next);
+  }
 
   return (
     <aside
