@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuthContext, userIdSchema } from "../src/lib/contracts/tenant-context";
-import { getTenantRepositories } from "../src/lib/database";
 import {
   BACKFILL_EXTRACTOR_VERSION,
   enqueueKnowledgeBackfill,
@@ -10,6 +9,8 @@ import {
   type KnowledgeBackfillKind,
 } from "../src/lib/knowledge/jobs";
 import type { JobQueueRepository, RepositorySet } from "../src/lib/repositories/ports";
+import { closePostgresClient, createPostgresClient } from "../src/lib/postgres/client";
+import { createPostgresRepositoryAccess } from "../src/lib/postgres/tenant-repositories";
 
 const kinds: KnowledgeBackfillKind[] = [
   "content_versions",
@@ -155,33 +156,43 @@ export async function main(argv = process.argv.slice(2)) {
     actorId: "00000000-0000-4000-8000-000000000004",
     requestId: randomUUID(),
   });
-  const repositories = await getTenantRepositories(context);
-  const candidateCounts = Object.fromEntries(
-    await Promise.all(
-      options.selectedKinds.map(async (kind) => [kind, await countCandidates(kind, repositories)])
-    )
-  );
-  const runs = options.execute
-    ? []
-    : options.selectedKinds.map((kind) => ({ kind, status: "dry-run", processedCount: 0, batches: 0 }));
-  if (options.execute) {
-    for (const kind of options.selectedKinds) {
-      runs.push(await executeKind(kind, options, context, repositories));
+  const sql = createPostgresClient({ max: 1, idleTimeoutSeconds: 2 });
+  try {
+    const repositories = await createPostgresRepositoryAccess(sql).getTenantRepositories(context);
+    const candidateCounts = Object.fromEntries(
+      await Promise.all(
+        options.selectedKinds.map(async (kind) => [kind, await countCandidates(kind, repositories)])
+      )
+    );
+    const runs = options.execute
+      ? []
+      : options.selectedKinds.map((kind) => ({
+          kind,
+          status: "dry-run",
+          processedCount: 0,
+          batches: 0,
+        }));
+    if (options.execute) {
+      for (const kind of options.selectedKinds) {
+        runs.push(await executeKind(kind, options, context, repositories));
+      }
     }
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          mode: options.execute ? "execute" : "dry-run",
+          tenant: "configured",
+          batchSize: options.batchSize,
+          candidateCounts,
+          runs,
+        },
+        null,
+        2
+      )}\n`
+    );
+  } finally {
+    await closePostgresClient(sql);
   }
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        mode: options.execute ? "execute" : "dry-run",
-        tenant: "configured",
-        batchSize: options.batchSize,
-        candidateCounts,
-        runs,
-      },
-      null,
-      2
-    )}\n`
-  );
 }
 
 if (process.argv[1]?.endsWith("run-knowledge-backfill.ts")) {
