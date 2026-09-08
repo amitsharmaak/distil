@@ -71,4 +71,40 @@ describe("tenant migration CLI contract", () => {
       ])
     ).toThrow("only valid for the after stage");
   });
+
+  it("defaults database verification to the pre-contract expand inventory and accepts an explicit lifecycle inventory", () => {
+    expect(
+      parseTenantMigrationArgs([
+        "--amit-user-id",
+        ownerId,
+        "--stage",
+        "after",
+        "--baseline",
+        "before.json",
+        "--output",
+        "after.json",
+        "--through",
+        "lifecycle",
+      ])
+    ).toEqual({
+      ownerId,
+      dryRun: false,
+      stage: "after",
+      output: "after.json",
+      baseline: "before.json",
+      through: "lifecycle",
+    });
+    expect(() =>
+      parseTenantMigrationArgs([
+        "--amit-user-id",
+        ownerId,
+        "--stage",
+        "before",
+        "--output",
+        "before.json",
+        "--through",
+        "future",
+      ])
+    ).toThrow("Invalid --through");
+  });
 });

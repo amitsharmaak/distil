@@ -6,21 +6,23 @@ export interface TenantMigrationCliOptions {
   readonly ownerId: string;
   readonly dryRun: boolean;
   readonly stage?: TenantMigrationStage;
+  readonly through?: "expand" | "lifecycle";
   readonly output?: string;
   readonly baseline?: string;
 }
 
 export const TENANT_MIGRATION_USAGE = `Usage:
   npm run db:tenant:verify -- --amit-user-id <uuid> --dry-run
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage rehearsal --output <report.json>
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage before --output <report.json>
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage after --baseline <before.json> --output <report.json>
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage rehearsal --output <report.json> [--through expand|lifecycle]
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage before --output <report.json> [--through expand|lifecycle]
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage after --baseline <before.json> --output <report.json> [--through expand|lifecycle]
 
 The Amit UUID must be supplied directly. Email addresses and environment-derived ownership are not accepted.`;
 
 export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrationCliOptions {
   let ownerId: string | undefined;
   let stage: TenantMigrationStage | undefined;
+  let through: "expand" | "lifecycle" | undefined;
   let output: string | undefined;
   let baseline: string | undefined;
   let dryRun = false;
@@ -41,7 +43,13 @@ export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrati
       stage = value;
     } else if (argument === "--output") output = next();
     else if (argument === "--baseline") baseline = next();
-    else if (argument === "--dry-run") dryRun = true;
+    else if (argument === "--through") {
+      const value = next();
+      if (value !== "expand" && value !== "lifecycle") {
+        throw new Error(`Invalid --through: ${value}`);
+      }
+      through = value;
+    } else if (argument === "--dry-run") dryRun = true;
     else if (argument === "--help" || argument === "-h") throw new Error(TENANT_MIGRATION_USAGE);
     else throw new Error(`Unknown argument: ${argument}`);
   }
@@ -49,8 +57,10 @@ export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrati
   if (!ownerId) throw new Error("--amit-user-id is required; ownership is never inferred");
   ownerId = normalizeExplicitAmitUserId(ownerId);
   if (dryRun) {
-    if (stage || output || baseline) {
-      throw new Error("--dry-run cannot be combined with --stage, --output, or --baseline");
+    if (stage || through || output || baseline) {
+      throw new Error(
+        "--dry-run cannot be combined with --stage, --through, --output, or --baseline"
+      );
     }
     return { ownerId, dryRun };
   }
@@ -59,7 +69,14 @@ export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrati
   if (stage === "after" && !baseline) throw new Error("--baseline is required for the after stage");
   if (stage !== "after" && baseline)
     throw new Error("--baseline is only valid for the after stage");
-  return { ownerId, dryRun, stage, output, ...(baseline ? { baseline } : {}) };
+  return {
+    ownerId,
+    dryRun,
+    stage,
+    output,
+    ...(through ? { through } : {}),
+    ...(baseline ? { baseline } : {}),
+  };
 }
 
 export function buildDryRunPlan(ownerId: string) {

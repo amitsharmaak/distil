@@ -55,6 +55,9 @@ async function main(): Promise<void> {
       client: sql as unknown as ReadonlyQueryClient,
       ownerId: options.ownerId,
       stage: options.stage!,
+      // The documented before/after gate runs before contract and lifecycle.
+      // Operators can opt into the stronger post-lifecycle schema inventory.
+      through: options.through ?? "expand",
     });
     if (options.baseline) {
       const comparisonFailures = verifyAfterAgainstBaseline(
