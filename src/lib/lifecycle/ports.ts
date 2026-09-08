@@ -1,4 +1,13 @@
 import type { UserId } from "@/lib/contracts";
+import { z } from "zod";
+
+export const authProviderSubjectSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1_024)
+  .brand("AuthProviderSubject");
+export type AuthProviderSubject = z.infer<typeof authProviderSubjectSchema>;
 
 export type AccountExportStatus = "pending" | "running" | "ready" | "failed" | "expired";
 
@@ -39,6 +48,8 @@ export interface AccountDeletionRecord {
   cancelledAt?: string;
   completedAt?: string;
   failureCode?: string;
+  /** Internal-only provider subject resolved by the privileged lifecycle repository. */
+  authProviderSubject?: AuthProviderSubject;
 }
 
 export interface ExportDataset {
@@ -119,7 +130,12 @@ export interface PurgeVerification {
 export interface ControlPlaneLifecycleRepository {
   findDeletionVerification(deletionId: string): Promise<PurgeVerification | undefined>;
   findDeletionWork(deletionId: string, userId: UserId): Promise<AccountDeletionRecord | undefined>;
-  markDeletionPurging(deletionId: string, userId: UserId, at: string): Promise<boolean>;
+  markDeletionPurging(
+    deletionId: string,
+    userId: UserId,
+    authProviderSubject: AuthProviderSubject,
+    at: string
+  ): Promise<boolean>;
   completeDeletion(input: {
     deletionId: string;
     userId: UserId;
@@ -152,6 +168,6 @@ export interface ControlPlaneLifecycleRepository {
 
 /** Provider admin deletion/revocation is external and deliberately adapter-neutral. */
 export interface AuthAccountPurger {
-  revokeSessions(userId: UserId): Promise<void>;
-  deleteIdentity(userId: UserId): Promise<void>;
+  revokeSessions(providerSubject: AuthProviderSubject): Promise<void>;
+  deleteIdentity(providerSubject: AuthProviderSubject): Promise<void>;
 }

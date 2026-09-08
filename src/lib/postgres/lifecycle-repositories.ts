@@ -3,15 +3,17 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Sql } from "postgres";
 
 import { parseAuthContext, type AuthContext, type UserId } from "@/lib/contracts";
-import type {
-  AccountDeletionRecord,
-  AccountExportRecord,
-  ControlPlaneLifecycleRepository,
-  ExportDataset,
-  PurgeVerification,
-  TenantLifecycleRepository,
-  UsageCounter,
-  UserQuota,
+import {
+  authProviderSubjectSchema,
+  type AccountDeletionRecord,
+  type AccountExportRecord,
+  type AuthProviderSubject,
+  type ControlPlaneLifecycleRepository,
+  type ExportDataset,
+  type PurgeVerification,
+  type TenantLifecycleRepository,
+  type UsageCounter,
+  type UserQuota,
 } from "@/lib/lifecycle/ports";
 import { tenantProtectedTables } from "@/lib/postgres/tenant-migration/manifest";
 
@@ -152,6 +154,9 @@ function mapDeletion(row: Row | undefined): AccountDeletionRecord | undefined {
     ...(optionalIso(row.cancelled_at) ? { cancelledAt: optionalIso(row.cancelled_at) } : {}),
     ...(optionalIso(row.completed_at) ? { completedAt: optionalIso(row.completed_at) } : {}),
     ...(row.failure_code ? { failureCode: String(row.failure_code) } : {}),
+    ...(row.auth_provider_subject
+      ? { authProviderSubject: authProviderSubjectSchema.parse(row.auth_provider_subject) }
+      : {}),
   };
 }
 
@@ -434,14 +439,33 @@ export class PostgresControlPlaneLifecycleRepository implements ControlPlaneLife
     return mapDeletion(
       (
         await this.sql<Row[]>`
-      SELECT * FROM public.account_deletions WHERE id=${deletionId}::uuid AND user_id=${userId}::uuid LIMIT 1`
+      SELECT deletion.*,
+        coalesce(
+          deletion.checkpoint->>'neonAuthSubject',
+          identity.provider_subject
+        ) AS auth_provider_subject
+      FROM public.account_deletions AS deletion
+      LEFT JOIN LATERAL (
+        SELECT CASE WHEN count(*)=1 THEN min(provider_subject) END AS provider_subject
+        FROM public.auth_identities
+        WHERE user_id=deletion.user_id AND provider='neon'
+      ) AS identity ON true
+      WHERE deletion.id=${deletionId}::uuid AND deletion.user_id=${userId}::uuid LIMIT 1`
       )[0]
     );
   }
 
-  async markDeletionPurging(deletionId: string, userId: UserId, at: string) {
+  async markDeletionPurging(
+    deletionId: string,
+    userId: UserId,
+    authProviderSubject: AuthProviderSubject,
+    at: string
+  ) {
     const rows = await this.sql`
-      UPDATE public.account_deletions SET status='purging',started_at=coalesce(started_at,${at}::timestamptz),updated_at=${at}::timestamptz
+      UPDATE public.account_deletions
+      SET status='purging',
+          checkpoint=jsonb_set(checkpoint,'{neonAuthSubject}',to_jsonb(${authProviderSubject}::text),true),
+          started_at=coalesce(started_at,${at}::timestamptz),updated_at=${at}::timestamptz
       WHERE id=${deletionId}::uuid AND user_id=${userId}::uuid AND status IN ('requested','draining','failed') AND purge_after<=${at}::timestamptz RETURNING id`;
     return rows.length === 1;
   }

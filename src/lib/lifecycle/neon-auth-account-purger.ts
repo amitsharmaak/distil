@@ -1,5 +1,8 @@
-import { userIdSchema, type UserId } from "@/lib/contracts";
-import type { AuthAccountPurger } from "@/lib/lifecycle/ports";
+import {
+  authProviderSubjectSchema,
+  type AuthAccountPurger,
+  type AuthProviderSubject,
+} from "@/lib/lifecycle/ports";
 
 const SAFE_NEON_RESOURCE_ID = /^[a-z0-9-]{1,60}$/u;
 
@@ -19,8 +22,8 @@ export interface NeonAuthPurgerOptions {
 export class NeonAuthAccountPurger implements AuthAccountPurger {
   private readonly request: typeof fetch;
   private readonly endpoint: string;
-  private readonly completed = new Set<UserId>();
-  private readonly pending = new Map<UserId, Promise<void>>();
+  private readonly completed = new Set<AuthProviderSubject>();
+  private readonly pending = new Map<AuthProviderSubject, Promise<void>>();
 
   constructor(private readonly options: NeonAuthPurgerOptions) {
     if (!options.apiKey.trim()) throw new Error("Neon API key is required for identity purge");
@@ -37,8 +40,8 @@ export class NeonAuthAccountPurger implements AuthAccountPurger {
     this.request = options.fetch ?? fetch;
   }
 
-  private purge(userId: UserId): Promise<void> {
-    const parsed = userIdSchema.parse(userId);
+  private purge(providerSubject: AuthProviderSubject): Promise<void> {
+    const parsed = authProviderSubjectSchema.parse(providerSubject);
     if (this.completed.has(parsed)) return Promise.resolve();
     const existing = this.pending.get(parsed);
     if (existing) return existing;
@@ -47,8 +50,8 @@ export class NeonAuthAccountPurger implements AuthAccountPurger {
     return operation;
   }
 
-  private async deleteUser(userId: UserId): Promise<void> {
-    const response = await this.request(`${this.endpoint}${encodeURIComponent(userId)}`, {
+  private async deleteUser(providerSubject: AuthProviderSubject): Promise<void> {
+    const response = await this.request(`${this.endpoint}${encodeURIComponent(providerSubject)}`, {
       method: "DELETE",
       headers: {
         accept: "application/json",
@@ -60,17 +63,17 @@ export class NeonAuthAccountPurger implements AuthAccountPurger {
     // A prior successful attempt may have lost its response; normalize the
     // resulting not-found response to success for lifecycle job redelivery.
     if (response.status === 204 || response.status === 404) {
-      this.completed.add(userId);
+      this.completed.add(providerSubject);
       return;
     }
     throw new Error(`Neon identity purge failed with status ${response.status}`);
   }
 
-  revokeSessions(userId: UserId): Promise<void> {
-    return this.purge(userId);
+  revokeSessions(providerSubject: AuthProviderSubject): Promise<void> {
+    return this.purge(providerSubject);
   }
 
-  deleteIdentity(userId: UserId): Promise<void> {
-    return this.purge(userId);
+  deleteIdentity(providerSubject: AuthProviderSubject): Promise<void> {
+    return this.purge(providerSubject);
   }
 }

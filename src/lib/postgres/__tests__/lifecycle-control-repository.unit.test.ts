@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { UserId } from "@/lib/contracts";
+import { authProviderSubjectSchema } from "@/lib/lifecycle/ports";
 import { PostgresControlPlaneLifecycleRepository } from "@/lib/postgres/lifecycle-repositories";
 import { tenantProtectedTables } from "@/lib/postgres/tenant-migration/manifest";
 
@@ -13,6 +14,7 @@ const actorId = "30000000-0000-4000-8000-000000000030";
 const requestId = "40000000-0000-4000-8000-000000000040";
 const auditId = "50000000-0000-4000-8000-000000000050";
 const at = "2026-09-08T12:00:00.000Z";
+const providerSubject = authProviderSubjectSchema.parse("neon-auth-subject-10");
 
 function deletionRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -24,6 +26,7 @@ function deletionRow(overrides: Record<string, unknown> = {}) {
     purge_after: "2026-09-08T00:00:00.000Z",
     updated_at: at,
     started_at: at,
+    auth_provider_subject: providerSubject,
     ...overrides,
   };
 }
@@ -79,14 +82,45 @@ describe("PostgresControlPlaneLifecycleRepository", () => {
       id: deletionId,
       userId,
       status: "purging",
+      authProviderSubject: providerSubject,
     });
-    await expect(repository.markDeletionPurging(deletionId, otherUserId, at)).resolves.toBe(false);
-    await expect(repository.markDeletionPurging(deletionId, userId, at)).resolves.toBe(true);
+    await expect(
+      repository.markDeletionPurging(deletionId, otherUserId, providerSubject, at)
+    ).resolves.toBe(false);
+    await expect(
+      repository.markDeletionPurging(deletionId, userId, providerSubject, at)
+    ).resolves.toBe(true);
     await repository.failDeletion(deletionId, userId, "PURGE_FAILED", at);
 
     expect(database.queries[0].values).toEqual([deletionId, otherUserId]);
-    expect(database.queries[2].values).toEqual([at, at, deletionId, otherUserId, at]);
+    expect(database.queries[2].values).toEqual([
+      providerSubject,
+      at,
+      at,
+      deletionId,
+      otherUserId,
+      at,
+    ]);
     expect(database.queries[4].values).toEqual(["PURGE_FAILED", at, deletionId, userId]);
+    database.assertExhausted();
+  });
+
+  it("prefers the durable deletion checkpoint over a missing provider identity on retry", async () => {
+    const database = createLifecycleSqlDouble();
+    database.respond([
+      deletionRow({
+        checkpoint: { neonAuthSubject: providerSubject },
+        auth_provider_subject: providerSubject,
+      }),
+    ]);
+    const repository = new PostgresControlPlaneLifecycleRepository(database.sql);
+
+    await expect(repository.findDeletionWork(deletionId, userId)).resolves.toMatchObject({
+      authProviderSubject: providerSubject,
+      checkpoint: { neonAuthSubject: providerSubject },
+    });
+    expect(database.queries[0].text).toContain("coalesce");
+    expect(database.queries[0].text).toContain("checkpoint->>'neonAuthSubject'");
     database.assertExhausted();
   });
 

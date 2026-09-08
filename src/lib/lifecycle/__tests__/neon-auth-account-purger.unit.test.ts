@@ -1,7 +1,7 @@
 import { NeonAuthAccountPurger } from "@/lib/lifecycle/neon-auth-account-purger";
-import { userIdSchema } from "@/lib/contracts";
+import { authProviderSubjectSchema } from "@/lib/lifecycle/ports";
 
-const userId = userIdSchema.parse("11111111-1111-4111-8111-111111111111");
+const providerSubject = authProviderSubjectSchema.parse("neon:external-subject-123");
 
 describe("Neon Auth account purger", () => {
   it("coalesces session and identity purge into the branch-scoped admin deletion", async () => {
@@ -16,12 +16,15 @@ describe("Neon Auth account purger", () => {
       fetch: request,
     });
 
-    await Promise.all([purger.revokeSessions(userId), purger.deleteIdentity(userId)]);
-    await purger.deleteIdentity(userId);
+    await Promise.all([
+      purger.revokeSessions(providerSubject),
+      purger.deleteIdentity(providerSubject),
+    ]);
+    await purger.deleteIdentity(providerSubject);
 
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(
-      `https://console.neon.test/api/v2/projects/project-one/branches/branch-one/auth/users/${userId}`,
+      "https://console.neon.test/api/v2/projects/project-one/branches/branch-one/auth/users/neon%3Aexternal-subject-123",
       expect.objectContaining({
         method: "DELETE",
         headers: expect.objectContaining({ authorization: "Bearer server-only-key" }),
@@ -40,7 +43,7 @@ describe("Neon Auth account purger", () => {
       branchId: "branch-one",
       fetch: missing,
     });
-    await expect(purger.revokeSessions(userId)).resolves.toBeUndefined();
+    await expect(purger.revokeSessions(providerSubject)).resolves.toBeUndefined();
 
     const failed = new NeonAuthAccountPurger({
       apiKey: "key",
@@ -52,7 +55,7 @@ describe("Neon Auth account purger", () => {
           new Response("sensitive provider body", { status: 500 })
         ) as jest.MockedFunction<typeof fetch>,
     });
-    await expect(failed.deleteIdentity(userId)).rejects.toThrow(
+    await expect(failed.deleteIdentity(providerSubject)).rejects.toThrow(
       "Neon identity purge failed with status 500"
     );
   });

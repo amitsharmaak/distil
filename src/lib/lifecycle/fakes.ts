@@ -1,18 +1,17 @@
-import type { UserId } from "@/lib/contracts";
-import type { AuthAccountPurger } from "./ports";
+import type { AuthAccountPurger, AuthProviderSubject } from "./ports";
 
 export class FakeAuthAccountPurger implements AuthAccountPurger {
-  readonly revoked: UserId[] = [];
-  readonly deleted: UserId[] = [];
+  readonly revoked: AuthProviderSubject[] = [];
+  readonly deleted: AuthProviderSubject[] = [];
   fail = false;
 
-  async revokeSessions(userId: UserId): Promise<void> {
+  async revokeSessions(providerSubject: AuthProviderSubject): Promise<void> {
     if (this.fail) throw new Error("Injected auth purge failure");
-    this.revoked.push(userId);
+    this.revoked.push(providerSubject);
   }
 
-  async deleteIdentity(userId: UserId): Promise<void> {
+  async deleteIdentity(providerSubject: AuthProviderSubject): Promise<void> {
     if (this.fail) throw new Error("Injected auth purge failure");
-    this.deleted.push(userId);
+    this.deleted.push(providerSubject);
   }
 }

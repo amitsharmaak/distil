@@ -13,6 +13,7 @@ const userId = "10000000-0000-4000-8000-000000000010";
 const deletionId = "20000000-0000-4000-8000-000000000020";
 const requestId = "30000000-0000-4000-8000-000000000030";
 const actorId = "40000000-0000-4000-8000-000000000040";
+const providerSubject = "neon-auth-subject-81";
 const now = new Date("2026-09-08T12:00:00.000Z");
 const context = createAuthContext({
   userId,
@@ -31,6 +32,7 @@ function deletion(
     userId,
     status,
     checkpoint: {},
+    authProviderSubject: providerSubject,
     requestedAt: "2026-09-01T00:00:00.000Z",
     purgeAfter: "2026-09-08T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
@@ -218,6 +220,22 @@ describe("account deletion lifecycle", () => {
     ).rejects.toThrow("Deletion is not claimable");
   });
 
+  it("fails closed before claiming or deleting anything when the provider subject is absent", async () => {
+    const control = controlRepository({
+      findDeletionWork: jest
+        .fn()
+        .mockResolvedValue(deletion("requested", { authProviderSubject: undefined })),
+    });
+    const dependencies = workerDependencies(control);
+
+    await expect(
+      processAccountDeletion(context, {} as never, dependencies, { deletionId, now })
+    ).rejects.toThrow("Deletion auth identity is unavailable");
+    expect(control.markDeletionPurging).not.toHaveBeenCalled();
+    expect(dependencies.objectStore.list).not.toHaveBeenCalled();
+    expect(dependencies.authPurger.revokeSessions).not.toHaveBeenCalled();
+  });
+
   it("purges every tenant object, provider identity, and records zero-count verification", async () => {
     const object = {
       ref: { objectType: "exports" as const, objectId: deletionId, version: 1 },
@@ -239,8 +257,14 @@ describe("account deletion lifecycle", () => {
       expect.objectContaining({ userId, actorKind: "system", actorId }),
       object.ref
     );
-    expect(dependencies.authPurger.revokeSessions).toHaveBeenCalledWith(userId);
-    expect(dependencies.authPurger.deleteIdentity).toHaveBeenCalledWith(userId);
+    expect(dependencies.authPurger.revokeSessions).toHaveBeenCalledWith(providerSubject);
+    expect(dependencies.authPurger.deleteIdentity).toHaveBeenCalledWith(providerSubject);
+    expect(control.markDeletionPurging).toHaveBeenCalledWith(
+      deletionId,
+      userId,
+      providerSubject,
+      now.toISOString()
+    );
     expect(control.completeDeletion).toHaveBeenCalledWith(
       expect.objectContaining({
         deletionId,

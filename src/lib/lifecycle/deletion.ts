@@ -9,6 +9,7 @@ import type {
   AuthAccountPurger,
   ControlPlaneLifecycleRepository,
 } from "@/lib/lifecycle/ports";
+import { authProviderSubjectSchema } from "@/lib/lifecycle/ports";
 import type { RepositorySet } from "@/lib/repositories/ports";
 import type { TenantJobDispatcher } from "@/lib/queue/dispatchers";
 import type { TenantObjectStore } from "@/lib/storage/object-store";
@@ -97,7 +98,18 @@ export async function processAccountDeletion(
   if (new Date(record.purgeAfter).getTime() > now.getTime()) {
     throw new Error("Deletion grace period has not elapsed");
   }
-  if (!(await control.markDeletionPurging(record.id, context.userId, now.toISOString()))) {
+  const authProviderSubject = authProviderSubjectSchema.safeParse(record.authProviderSubject);
+  if (!authProviderSubject.success) {
+    throw new Error("Deletion auth identity is unavailable");
+  }
+  if (
+    !(await control.markDeletionPurging(
+      record.id,
+      context.userId,
+      authProviderSubject.data,
+      now.toISOString()
+    ))
+  ) {
     throw new Error("Deletion is not claimable");
   }
   try {
@@ -111,8 +123,8 @@ export async function processAccountDeletion(
     for (const object of objects) await dependencies.objectStore.delete(purgeContext, object.ref);
     const remaining = await dependencies.objectStore.list(purgeContext, { limit: 1 });
     if (remaining.length > 0) throw new Error("Tenant objects remain after purge");
-    await dependencies.authPurger.revokeSessions(context.userId);
-    await dependencies.authPurger.deleteIdentity(context.userId);
+    await dependencies.authPurger.revokeSessions(authProviderSubject.data);
+    await dependencies.authPurger.deleteIdentity(authProviderSubject.data);
     const verification = await control.completeDeletion({
       deletionId: record.id,
       userId: context.userId,

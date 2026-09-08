@@ -10,6 +10,7 @@ import {
   requestAccountDeletion,
 } from "@/lib/lifecycle/deletion";
 import { FakeAuthAccountPurger } from "@/lib/lifecycle/fakes";
+import { authProviderSubjectSchema } from "@/lib/lifecycle/ports";
 import {
   processAccountExport,
   readAccountExportDownload,
@@ -187,10 +188,48 @@ it("revokes queued work immediately and restores active status on grace-period c
   expect(active?.status).toBe("active");
 });
 
+it("checkpoints the external auth subject before purge so failed work can retry", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql, harness.sql);
+  const repositories = access.getTenantRepositories(alpha);
+  const control = (await access.getControlPlaneRepositories(system)).lifecycle;
+  const providerSubject = authProviderSubjectSchema.parse("neon-retry-subject-alpha");
+  await harness.sql`
+    INSERT INTO auth_identities (id,user_id,provider,provider_subject,email,email_verified)
+    VALUES ('61000000-0000-4000-8000-000000000081'::uuid,${alpha.userId}::uuid,'neon',
+      ${providerSubject},'alpha@example.com',true)`;
+  const requested = await requestAccountDeletion(alpha, repositories, {
+    confirmation: "DELETE MY ACCOUNT",
+    now,
+  });
+  const purgeAt = new Date(requested.deletion.purgeAfter).toISOString();
+
+  await expect(
+    control.findDeletionWork(requested.deletion.id, alpha.userId)
+  ).resolves.toMatchObject({ authProviderSubject: providerSubject });
+  await expect(
+    control.markDeletionPurging(requested.deletion.id, alpha.userId, providerSubject, purgeAt)
+  ).resolves.toBe(true);
+  await harness.sql`DELETE FROM auth_identities WHERE user_id=${alpha.userId}::uuid`;
+  await control.failDeletion(requested.deletion.id, alpha.userId, "PURGE_FAILED", purgeAt);
+
+  await expect(
+    control.findDeletionWork(requested.deletion.id, alpha.userId)
+  ).resolves.toMatchObject({
+    status: "failed",
+    authProviderSubject: providerSubject,
+    checkpoint: { neonAuthSubject: providerSubject },
+  });
+});
+
 it("purges tenant rows, objects, and provider identity before writing a content-free tombstone", async () => {
   const access = createPostgresRepositoryAccess(runtimeSql, harness.sql);
   const repositories = access.getTenantRepositories(alpha);
   const store = new FakeTenantObjectStore();
+  const providerSubject = authProviderSubjectSchema.parse("neon-auth-subject-alpha");
+  await harness.sql`
+    INSERT INTO auth_identities (id,user_id,provider,provider_subject,email,email_verified)
+    VALUES ('60000000-0000-4000-8000-000000000081'::uuid,${alpha.userId}::uuid,'neon',
+      ${providerSubject},'alpha@example.com',true)`;
   await store.put(
     alpha,
     {
@@ -226,8 +265,8 @@ it("purges tenant rows, objects, and provider identity before writing a content-
     status: "completed",
     verification: { zeroRowCount: 0, zeroObjectCount: 0, authPurged: true },
   });
-  expect(authPurger.revoked).toEqual([alpha.userId]);
-  expect(authPurger.deleted).toEqual([alpha.userId]);
+  expect(authPurger.revoked).toEqual([providerSubject]);
+  expect(authPurger.deleted).toEqual([providerSubject]);
   await expect(store.list(alpha)).resolves.toEqual([]);
   const [rows, tombstones, audits] = await Promise.all([
     harness.sql<Array<{ count: number }>>`
@@ -256,8 +295,8 @@ it("purges tenant rows, objects, and provider identity before writing a content-
       { deletionId: requested.deletion.id, now: new Date(requested.deletion.purgeAfter) }
     )
   ).resolves.toMatchObject({ status: "completed", verification: outcome.verification });
-  expect(authPurger.revoked).toEqual([alpha.userId]);
-  expect(authPurger.deleted).toEqual([alpha.userId]);
+  expect(authPurger.revoked).toEqual([providerSubject]);
+  expect(authPurger.deleted).toEqual([providerSubject]);
 });
 
 it("atomically admits one concurrent invitation dispatch and safely releases bounded retries", async () => {
