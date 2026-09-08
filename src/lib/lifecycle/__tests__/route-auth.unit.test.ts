@@ -55,7 +55,7 @@ describe("lifecycle route fresh authentication", () => {
         freshUntil: new Date(Date.now() - 60 * 1000).toISOString(),
         isFresh: false,
       },
-    });
+    } as never);
 
     await expect(
       requireLifecycleRoute(new Request("https://distil.example/api/v1/account/export"), {

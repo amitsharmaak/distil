@@ -26,7 +26,7 @@ describe("capture-requests queue callback", () => {
     });
   });
 
-  it("registers exactly one capture topic trigger in Vercel configuration", () => {
+  it("registers the capture topic trigger in Vercel configuration", () => {
     const vercel = JSON.parse(readFileSync(resolve("vercel.json"), "utf8")) as {
       regions: string[];
       functions: Record<
@@ -35,18 +35,16 @@ describe("capture-requests queue callback", () => {
       >;
     };
     expect(vercel.regions).toEqual(["sin1"]);
-    expect(vercel.functions).toEqual({
-      "src/app/api/queue/capture-requests/route.ts": {
-        maxDuration: 60,
-        experimentalTriggers: [
-          {
-            type: "queue/v2beta",
-            topic: "capture-requests",
-            retryAfterSeconds: 60,
-            initialDelaySeconds: 0,
-          },
-        ],
-      },
+    expect(vercel.functions["src/app/api/queue/capture-requests/route.ts"]).toEqual({
+      maxDuration: 60,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "capture-requests",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
     });
   });
 

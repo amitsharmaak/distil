@@ -95,6 +95,7 @@
   "POST /api/notifications",
   "POST /api/publishers/:id/login",
   "POST /api/publishers/:id/sync",
+  "POST /api/queue/account-lifecycle",
   "POST /api/queue/capture-requests",
   "POST /api/settings/email-intelligence",
   "POST /api/slack/sync",
