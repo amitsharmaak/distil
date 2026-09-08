@@ -8,13 +8,17 @@ import {
 } from "@/lib/lifecycle/deletion";
 import { lifecycleRouteErrorResponse, readLifecycleJson } from "@/lib/lifecycle/http";
 import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
+import { createVercelTenantJobDispatcher } from "@/lib/queue/dispatchers";
 
 export async function POST(request: Request): Promise<Response> {
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
     const { context, repositories } = await requireLifecycleRoute(request, { fresh: true });
     const input = deletionConfirmationSchema.parse(await readLifecycleJson(request));
-    const result = await requestAccountDeletion(context, repositories, input);
+    const result = await requestAccountDeletion(context, repositories, {
+      ...input,
+      dispatcher: await createVercelTenantJobDispatcher(),
+    });
     return Response.json(
       {
         deletion: publicDeletion(result.deletion),

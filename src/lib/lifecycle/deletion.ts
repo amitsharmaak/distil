@@ -10,6 +10,7 @@ import type {
   ControlPlaneLifecycleRepository,
 } from "@/lib/lifecycle/ports";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import type { TenantJobDispatcher } from "@/lib/queue/dispatchers";
 import type { TenantObjectStore } from "@/lib/storage/object-store";
 
 import { LifecycleError } from "./errors";
@@ -23,7 +24,7 @@ export const deletionConfirmationSchema = z
 export async function requestAccountDeletion(
   context: AuthContext,
   repositories: RepositorySet,
-  input: { confirmation: string; now?: Date }
+  input: { confirmation: string; now?: Date; dispatcher?: TenantJobDispatcher }
 ): Promise<{ deletion: AccountDeletionRecord; jobId: string; created: boolean }> {
   deletionConfirmationSchema.parse({ confirmation: input.confirmation });
   const now = input.now ?? new Date();
@@ -33,17 +34,18 @@ export async function requestAccountDeletion(
     purgeAfter: new Date(now.getTime() + ACCOUNT_DELETION_GRACE_MS).toISOString(),
   });
   const jobId = result.record.id;
-  if (result.created) {
-    await enqueueTenantJob(context, repositories, {
-      jobId,
-      jobType: ACCOUNT_DELETION_JOB_TYPE,
-      idempotencyKey: `account-deletion:${result.record.id}`,
-      payload: { deletionId: result.record.id, jobId },
-      runAfter: result.record.purgeAfter,
-      maxRetries: 20,
-      priority: 100,
-    });
-  }
+  // Idempotent replays also re-publish the durable job if its original queue
+  // wake-up failed before the client received a response.
+  await enqueueTenantJob(context, repositories, {
+    jobId,
+    jobType: ACCOUNT_DELETION_JOB_TYPE,
+    idempotencyKey: `account-deletion:${result.record.id}`,
+    payload: { deletionId: result.record.id, jobId },
+    runAfter: result.record.purgeAfter,
+    maxRetries: 20,
+    priority: 100,
+    dispatcher: input.dispatcher,
+  });
   return { deletion: result.record, jobId, created: result.created };
 }
 

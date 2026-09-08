@@ -11,6 +11,7 @@ import {
   type TenantJobEnvelopeV1,
 } from "@/lib/contracts/tenant-jobs";
 import type { JobQueueRecord, RepositorySet } from "@/lib/repositories/ports";
+import type { TenantJobDispatcher } from "@/lib/queue/dispatchers";
 
 export const TENANT_JOB_ACTOR_ID = "00000000-0000-4000-8000-000000000003";
 
@@ -58,7 +59,7 @@ function ownsEnvelope(job: JobQueueRecord, envelope: TenantJobEnvelopeV1): boole
 export async function consumeTenantJobEnvelope(
   untrustedEnvelope: unknown,
   dependencies: TenantJobRuntimeDependencies
-): Promise<"completed" | "failed" | "rejected"> {
+): Promise<"completed" | "failed" | "rejected" | "unsupported"> {
   const envelope = parseTenantJobEnvelopeV1(untrustedEnvelope);
   const context = createAuthContext({
     userId: envelope.userId,
@@ -83,7 +84,7 @@ export async function consumeTenantJobEnvelope(
   const handler = dependencies.handlers.get(job.job_type);
   if (!handler) {
     await repositories.jobs.complete(job.id, "No tenant handler registered");
-    return "failed";
+    return "unsupported";
   }
   try {
     await handler(context, job.payload, repositories);
@@ -108,9 +109,11 @@ export async function enqueueTenantJob(
     priority?: number;
     maxRetries?: number;
     runAfter?: string;
+    dispatcher?: TenantJobDispatcher;
   }
 ): Promise<TenantJobEnvelopeV1> {
   const trusted = parseAuthContext(context);
+  const delaySeconds = queueDelaySeconds(input.runAfter);
   const envelope = createTenantJobEnvelopeV1({
     userId: trusted.userId,
     jobId: input.jobId,
@@ -127,5 +130,17 @@ export async function enqueueTenantJob(
     maxRetries: input.maxRetries,
     runAfter: input.runAfter,
   });
+  await input.dispatcher?.dispatch(envelope, {
+    idempotencyKey: input.idempotencyKey,
+    ...(delaySeconds === undefined ? {} : { delaySeconds }),
+  });
   return envelope;
+}
+
+/** Converts the durable queue's scheduled time into the queue transport delay. */
+function queueDelaySeconds(runAfter?: string): number | undefined {
+  if (!runAfter) return undefined;
+  const runAfterMs = Date.parse(runAfter);
+  if (Number.isNaN(runAfterMs)) throw new Error("Invalid tenant job runAfter timestamp");
+  return Math.max(0, Math.ceil((runAfterMs - Date.now()) / 1_000));
 }

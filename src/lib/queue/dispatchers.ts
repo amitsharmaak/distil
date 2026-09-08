@@ -1,7 +1,8 @@
 import type { CaptureDispatcher } from "@/lib/contracts/capture";
-import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
+import type { CaptureQueueMessageV2, TenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
 
 export const CAPTURE_QUEUE_TOPIC = "capture-requests";
+export const ACCOUNT_LIFECYCLE_QUEUE_TOPIC = "account-lifecycle";
 
 export interface QueuedCaptureMessage {
   message: CaptureQueueMessageV2;
@@ -62,4 +63,66 @@ export class VercelCaptureDispatcher implements CaptureDispatcher {
 export async function createVercelCaptureDispatcher(): Promise<VercelCaptureDispatcher> {
   const { send } = await import("@vercel/queue");
   return new VercelCaptureDispatcher(send);
+}
+
+export interface TenantJobDispatcher {
+  dispatch(
+    message: TenantJobEnvelopeV1,
+    options: { idempotencyKey: string; delaySeconds?: number }
+  ): Promise<void>;
+}
+
+export interface VercelTenantJobSender {
+  <T>(
+    topic: string,
+    message: T,
+    options: { idempotencyKey: string; region?: string; delaySeconds?: number }
+  ): Promise<unknown>;
+}
+
+/** Test-only in-memory dispatcher for the minimal tenant job envelope. */
+export class FakeTenantJobDispatcher implements TenantJobDispatcher {
+  readonly messages: Array<{
+    message: TenantJobEnvelopeV1;
+    idempotencyKey: string;
+    delaySeconds?: number;
+  }> = [];
+  failure?: Error;
+
+  async dispatch(
+    message: TenantJobEnvelopeV1,
+    options: { idempotencyKey: string; delaySeconds?: number }
+  ): Promise<void> {
+    if (this.failure) throw this.failure;
+    if (this.messages.some((queued) => queued.idempotencyKey === options.idempotencyKey)) return;
+    this.messages.push({
+      message: structuredClone(message),
+      idempotencyKey: options.idempotencyKey,
+      ...(options.delaySeconds === undefined ? {} : { delaySeconds: options.delaySeconds }),
+    });
+  }
+}
+
+/** Production dispatcher for tenant-scoped lifecycle work. */
+export class VercelTenantJobDispatcher implements TenantJobDispatcher {
+  constructor(
+    private readonly sender: VercelTenantJobSender,
+    private readonly region = "sin1"
+  ) {}
+
+  async dispatch(
+    message: TenantJobEnvelopeV1,
+    options: { idempotencyKey: string; delaySeconds?: number }
+  ): Promise<void> {
+    await this.sender(ACCOUNT_LIFECYCLE_QUEUE_TOPIC, message, {
+      idempotencyKey: options.idempotencyKey,
+      region: this.region,
+      ...(options.delaySeconds === undefined ? {} : { delaySeconds: options.delaySeconds }),
+    });
+  }
+}
+
+export async function createVercelTenantJobDispatcher(): Promise<VercelTenantJobDispatcher> {
+  const { send } = await import("@vercel/queue");
+  return new VercelTenantJobDispatcher(send);
 }

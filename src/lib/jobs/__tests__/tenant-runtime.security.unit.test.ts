@@ -1,5 +1,6 @@
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { createTenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
+import { FakeTenantJobDispatcher } from "@/lib/queue/dispatchers";
 import { consumeTenantJobEnvelope, enqueueTenantJob } from "../tenant-runtime";
 
 const userId = "10000000-0000-4000-8000-000000000010";
@@ -46,6 +47,32 @@ describe("tenant job runtime", () => {
       expect.objectContaining({ userId, idempotencyKey: "one", payload: '{"itemId":"item-1"}' })
     );
     expect(JSON.parse(repos.jobs.enqueue.mock.calls[0][0].payload)).not.toHaveProperty("userId");
+  });
+
+  it("publishes a strict envelope only after persisting its tenant job", async () => {
+    const repos = repositories();
+    const dispatcher = new FakeTenantJobDispatcher();
+    const dispatch = jest.spyOn(dispatcher, "dispatch");
+    await enqueueTenantJob(context, repos as never, {
+      jobId,
+      jobType: "account.export",
+      idempotencyKey: "account-export:one",
+      payload: { exportId: jobId, jobId },
+      dispatcher,
+    });
+
+    expect(repos.jobs.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ id: jobId, jobType: "account.export" })
+    );
+    expect(dispatcher.messages).toEqual([
+      expect.objectContaining({
+        idempotencyKey: "account-export:one",
+        message: expect.objectContaining({ userId, jobId, jobType: "account.export" }),
+      }),
+    ]);
+    expect(repos.jobs.enqueue.mock.invocationCallOrder[0]).toBeLessThan(
+      dispatch.mock.invocationCallOrder[0]
+    );
   });
 
   it("revalidates explicit owner columns before invoking a handler", async () => {
@@ -145,7 +172,7 @@ describe("tenant job runtime", () => {
         getTenantRepositories: jest.fn().mockResolvedValue(unhandled),
         handlers: new Map(),
       })
-    ).resolves.toBe("failed");
+    ).resolves.toBe("unsupported");
     expect(unhandled.jobs.complete).toHaveBeenCalledWith(jobId, "No tenant handler registered");
 
     const failed = repositories();

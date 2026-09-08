@@ -3,6 +3,7 @@ import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { publicExport, requestAccountExport } from "@/lib/lifecycle/exports";
 import { lifecycleRouteErrorResponse } from "@/lib/lifecycle/http";
 import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
+import { createVercelTenantJobDispatcher } from "@/lib/queue/dispatchers";
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -10,6 +11,7 @@ export async function POST(request: Request): Promise<Response> {
     const { context, repositories } = await requireLifecycleRoute(request, { fresh: true });
     const result = await requestAccountExport(context, repositories, {
       idempotencyKey: request.headers.get("idempotency-key") ?? "",
+      dispatcher: await createVercelTenantJobDispatcher(),
     });
     return Response.json(
       { export: publicExport(result.export), job: { id: result.jobId }, created: result.created },

@@ -19,6 +19,17 @@
           "initialDelaySeconds": 0
         }
       ]
+    },
+    "src/app/api/queue/account-lifecycle/route.ts": {
+      "maxDuration": 60,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "account-lifecycle",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0
+        }
+      ]
     }
   }
 }

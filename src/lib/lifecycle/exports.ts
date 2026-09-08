@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { AuthContext } from "@/lib/contracts";
 import { enqueueTenantJob } from "@/lib/jobs/tenant-runtime";
 import type { AccountExportRecord, ExportDataset } from "@/lib/lifecycle/ports";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import type { TenantJobDispatcher } from "@/lib/queue/dispatchers";
 import {
   deserializeLogicalObjectRef,
   serializeLogicalObjectRef,
@@ -21,6 +22,11 @@ export const EXPORT_DOWNLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 export const EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const encoder = new TextEncoder();
+
+function exportRetentionJobId(exportId: string): string {
+  const hash = createHash("sha256").update(`account-export-expire:${exportId}`).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
@@ -94,7 +100,7 @@ export function buildAccountExportArchive(
 export async function requestAccountExport(
   context: AuthContext,
   repositories: RepositorySet,
-  input: { idempotencyKey: string; now?: Date }
+  input: { idempotencyKey: string; now?: Date; dispatcher?: TenantJobDispatcher }
 ): Promise<{ export: AccountExportRecord; jobId: string; created: boolean }> {
   const idempotencyKey = input.idempotencyKey.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u.test(idempotencyKey)) {
@@ -124,23 +130,27 @@ export async function requestAccountExport(
       );
       throw new LifecycleError("QUOTA_EXCEEDED", 429, "Export quota exhausted");
     }
-    await enqueueTenantJob(context, repositories, {
-      jobId,
-      jobType: ACCOUNT_EXPORT_JOB_TYPE,
-      idempotencyKey: `account-export:${result.record.id}`,
-      payload: { exportId: result.record.id, jobId },
-      maxRetries: 5,
-    });
-    const retentionJobId = randomUUID();
-    await enqueueTenantJob(context, repositories, {
-      jobId: retentionJobId,
-      jobType: ACCOUNT_EXPORT_RETENTION_JOB_TYPE,
-      idempotencyKey: `account-export-expire:${result.record.id}`,
-      payload: { exportId: result.record.id, jobId: retentionJobId },
-      runAfter: result.record.purgeAfter,
-      maxRetries: 20,
-    });
   }
+  // Re-publish idempotent requests after a transport failure. The database row
+  // is the durable source of truth; queue delivery is only the wake-up signal.
+  await enqueueTenantJob(context, repositories, {
+    jobId,
+    jobType: ACCOUNT_EXPORT_JOB_TYPE,
+    idempotencyKey: `account-export:${result.record.id}`,
+    payload: { exportId: result.record.id, jobId },
+    maxRetries: 5,
+    dispatcher: input.dispatcher,
+  });
+  const retentionJobId = exportRetentionJobId(result.record.id);
+  await enqueueTenantJob(context, repositories, {
+    jobId: retentionJobId,
+    jobType: ACCOUNT_EXPORT_RETENTION_JOB_TYPE,
+    idempotencyKey: `account-export-expire:${result.record.id}`,
+    payload: { exportId: result.record.id, jobId: retentionJobId },
+    runAfter: result.record.purgeAfter,
+    maxRetries: 20,
+    dispatcher: input.dispatcher,
+  });
   return { export: result.record, jobId, created: result.created };
 }
 

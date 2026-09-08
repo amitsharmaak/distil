@@ -1089,6 +1089,16 @@
       "testProfile": "service"
     },
     {
+      "path": "/api/queue/account-lifecycle",
+      "source": "src/app/api/queue/account-lifecycle/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "vercel_queue_signature_with_strict_tenant_job_envelope",
+      "requiredPrincipal": "queue_service",
+      "scope": "service",
+      "resources": ["account_exports", "account_deletions", "job_queue", "future_object_store"],
+      "testProfile": "service"
+    },
+    {
       "path": "/api/settings/email-intelligence",
       "source": "src/app/api/settings/email-intelligence/route.ts",
       "methods": ["GET", "POST"],
@@ -1751,6 +1761,13 @@
       "resources": ["capture_requests", "items"]
     },
     {
+      "id": "account-lifecycle-queue-callback",
+      "source": "src/app/api/queue/account-lifecycle/route.ts",
+      "currentTenant": "signed queue envelope only",
+      "requiredTenant": "Vercel queue callback plus strict TenantJobEnvelopeV1; tenant-scoped claim revalidates userId, jobId and jobType before an allowlisted handler runs",
+      "resources": ["account_exports", "account_deletions", "job_queue", "future_object_store"]
+    },
+    {
       "id": "capture-worker",
       "source": "src/lib/capture/worker.ts",
       "currentTenant": "absent",
@@ -2370,7 +2387,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 83,
+    "expectedApiRouteFileCount": 84,
     "expectedPageFileCount": 20,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

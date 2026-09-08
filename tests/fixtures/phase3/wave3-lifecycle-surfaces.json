@@ -6,7 +6,8 @@
     "GET /api/v1/account/exports/:id/download",
     "POST /api/v1/account/deletion",
     "DELETE /api/v1/account/deletion",
-    "GET /api/v1/account/usage"
+    "GET /api/v1/account/usage",
+    "POST /api/queue/account-lifecycle"
   ],
-  "workers": ["worker:account-export", "worker:account-deletion"]
+  "workers": ["worker:account-export", "worker:account-deletion", "worker:account-lifecycle-queue"]
 }

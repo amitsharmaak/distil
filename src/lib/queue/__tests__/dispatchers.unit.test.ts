@@ -1,16 +1,28 @@
 import {
   createVercelCaptureDispatcher,
+  createVercelTenantJobDispatcher,
   FakeCaptureDispatcher,
+  FakeTenantJobDispatcher,
   LocalCaptureDispatcher,
   VercelCaptureDispatcher,
+  VercelTenantJobDispatcher,
 } from "../dispatchers";
-import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
+import {
+  createCaptureQueueMessageV2,
+  createTenantJobEnvelopeV1,
+} from "@/lib/contracts/tenant-jobs";
 
 jest.mock("@vercel/queue", () => ({ send: jest.fn().mockResolvedValue({ messageId: "queue-1" }) }));
 
 const message = createCaptureQueueMessageV2({
   userId: "10000000-0000-4000-8000-000000000010",
   captureId: "10000000-0000-4000-8000-000000000001",
+  traceId: "10000000-0000-4000-8000-000000000011",
+});
+const lifecycleMessage = createTenantJobEnvelopeV1({
+  userId: "10000000-0000-4000-8000-000000000010",
+  jobId: "10000000-0000-4000-8000-000000000012",
+  jobType: "account.export",
   traceId: "10000000-0000-4000-8000-000000000011",
 });
 
@@ -52,6 +64,35 @@ describe("capture dispatchers", () => {
     const dispatcher = await createVercelCaptureDispatcher();
     await expect(
       dispatcher.dispatch(message, { idempotencyKey: message.captureId })
+    ).resolves.toBeUndefined();
+  });
+
+  it("publishes lifecycle envelopes to their dedicated topic with delayed delivery", async () => {
+    const sender = jest.fn().mockResolvedValue({ messageId: "queue-1" });
+    await new VercelTenantJobDispatcher(sender).dispatch(lifecycleMessage, {
+      idempotencyKey: "account-export:one",
+      delaySeconds: 42,
+    });
+    expect(sender).toHaveBeenCalledWith("account-lifecycle", lifecycleMessage, {
+      idempotencyKey: "account-export:one",
+      region: "sin1",
+      delaySeconds: 42,
+    });
+  });
+
+  it("deduplicates test lifecycle dispatches by idempotency key", async () => {
+    const dispatcher = new FakeTenantJobDispatcher();
+    await dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" });
+    await dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" });
+    expect(dispatcher.messages).toEqual([
+      expect.objectContaining({ message: lifecycleMessage, idempotencyKey: "account-export:one" }),
+    ]);
+  });
+
+  it("creates the lifecycle production dispatcher from the Vercel SDK", async () => {
+    const dispatcher = await createVercelTenantJobDispatcher();
+    await expect(
+      dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" })
     ).resolves.toBeUndefined();
   });
 });
