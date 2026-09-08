@@ -38,6 +38,7 @@ export async function enqueueTenantKnowledgeBackfill(
   const trusted = parseAuthContext(context);
   return enqueueKnowledgeBackfill({
     ...input,
+    context: trusted,
     repositories: scopedRepositories(trusted, repositories),
   });
 }
@@ -47,5 +48,8 @@ export function createTenantKnowledgeBackfillJobHandler(
   repositories: RepositorySet
 ) {
   const trusted = parseAuthContext(context);
-  return createKnowledgeBackfillJobHandler(scopedRepositories(trusted, repositories));
+  return createKnowledgeBackfillJobHandler(
+    trusted,
+    scopedRepositories(trusted, repositories)
+  );
 }
