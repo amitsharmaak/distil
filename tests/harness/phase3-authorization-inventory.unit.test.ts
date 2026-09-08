@@ -19,7 +19,7 @@ describe("Phase 3 durable authorization inventory", () => {
     const inventory = loadPhase3AuthorizationInventory(matrixPath);
     expect(inventory.baselineCommit).toBe("428a0b023e2295b59fe864efeb2b26047b0ed6fa");
     expect(inventory.tables).toHaveLength(49);
-    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 84);
+    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 85);
     expect(inventory.pageLoaders).toHaveLength(20);
     expect(() => assertPhase3AuthorizationInventory(inventory)).not.toThrow();
   });

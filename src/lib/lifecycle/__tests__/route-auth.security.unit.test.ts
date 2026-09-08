@@ -110,7 +110,11 @@ describe("lifecycle recovery route authorization", () => {
         allowDeletionPending: true,
         fresh: true,
       })
-    ).rejects.toMatchObject({ name: "AccessDeniedError", reason: "unauthenticated" });
+    ).rejects.toMatchObject({
+      name: "LifecycleError",
+      code: "FRESH_AUTH_REQUIRED",
+      recovery: { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" },
+    });
     expect(getTenantRepositories).not.toHaveBeenCalled();
   });
 
