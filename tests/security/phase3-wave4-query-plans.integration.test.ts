@@ -44,6 +44,11 @@ const REVIEWED_QUERIES: Record<ReviewedQuery, string> = {
   `,
 };
 
+function percentile(values: readonly number[], quantile: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * quantile))] ?? 0;
+}
+
 function applicationClient(connectionUri: string): Sql {
   const url = new URL(connectionUri);
   url.username = runtimeRole;
@@ -215,6 +220,70 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
             expect(rows.every(({ user_id: userId }) => userId === tenant.user.id)).toBe(true);
           }
         }
+      );
+    }
+  });
+
+  it("P3-PERF-002/P3-DB-003: makes balanced progress under bounded pool pressure", async () => {
+    const requestCount = 80;
+    const observations = await Promise.all(
+      Array.from({ length: requestCount }, async (_, index) => {
+        const tenant = index % 2 === 0 ? fixture.alpha : fixture.beta;
+        const startedAt = performance.now();
+        const rowCount = await withTenantTransaction(
+          applicationSql,
+          parseAuthContext(tenant.auth.session),
+          async (transaction) => {
+            const feed = await transaction.unsafe<Array<{ user_id: string }>>(
+              REVIEWED_QUERIES.feed
+            );
+            const deletion = await transaction.unsafe<Array<{ user_id: string }>>(
+              REVIEWED_QUERIES.deletion
+            );
+            expect(
+              [...feed, ...deletion].every(({ user_id: userId }) => userId === tenant.user.id)
+            ).toBe(true);
+            return feed.length + deletion.length;
+          }
+        );
+        return {
+          tenantId: tenant.user.id,
+          rowCount,
+          durationMs: performance.now() - startedAt,
+        };
+      })
+    );
+
+    expect(observations).toHaveLength(requestCount);
+    expect(observations.every(({ rowCount }) => rowCount === 31)).toBe(true);
+    expect(observations.filter(({ tenantId }) => tenantId === fixture.alpha.user.id)).toHaveLength(
+      40
+    );
+    expect(observations.filter(({ tenantId }) => tenantId === fixture.beta.user.id)).toHaveLength(
+      40
+    );
+
+    const cleared = await Promise.all(
+      Array.from(
+        { length: 4 },
+        () =>
+          applicationSql<Array<{ user_id: string | null; actor_id: string | null }>>`
+          SELECT nullif(current_setting('app.user_id', true), '') AS user_id,
+                 nullif(current_setting('app.actor_id', true), '') AS actor_id
+        `
+      )
+    );
+    expect(cleared.flat()).toEqual(
+      Array.from({ length: 4 }, () => ({ user_id: null, actor_id: null }))
+    );
+
+    if (process.env.DISTIL_WAVE4_PRINT_LOAD === "1") {
+      const durations = observations.map(({ durationMs }) => durationMs);
+      process.stderr.write(
+        `\n[wave4 local bounded load] requests=${requestCount} pool=2 ` +
+          `p50=${percentile(durations, 0.5).toFixed(1)}ms ` +
+          `p95=${percentile(durations, 0.95).toFixed(1)}ms ` +
+          `max=${Math.max(...durations).toFixed(1)}ms\n`
       );
     }
   });

@@ -3,7 +3,15 @@ import { resolve } from "node:path";
 
 import postgres, { type Sql } from "postgres";
 
+import { CaptureProcessingError } from "@/lib/capture/errors";
+import { CaptureService } from "@/lib/capture/service";
+import { CaptureWorker } from "@/lib/capture/worker";
 import { createAuthContext, createSystemContext } from "@/lib/contracts";
+import {
+  createCaptureQueueMessageV2,
+  createTenantJobEnvelopeV1,
+} from "@/lib/contracts/tenant-jobs";
+import { consumeLifecycleTenantJobEnvelope } from "@/lib/lifecycle/queue-runtime";
 import {
   cancelAccountDeletion,
   processAccountDeletion,
@@ -16,6 +24,7 @@ import {
   readAccountExportDownload,
   requestAccountExport,
 } from "@/lib/lifecycle/exports";
+import { FakeCaptureDispatcher, FakeTenantJobDispatcher } from "@/lib/queue/dispatchers";
 import { FakeTenantObjectStore } from "@/lib/storage/fake-object-store";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
 import { PostgresAuthRepository } from "../auth-repository";
@@ -166,6 +175,164 @@ it("creates one idempotent export, produces an owner-only archive, and enforces 
   expect(reservations.filter(({ allowed }) => !allowed)).toHaveLength(1);
 });
 
+it("P3-RECOVERY-001: recovers durable export after queue and object-store outages", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql);
+  const alphaRepositories = access.getTenantRepositories(alpha);
+  const betaRepositories = access.getTenantRepositories(beta);
+  const dispatcher = new FakeTenantJobDispatcher();
+  dispatcher.failure = new Error("injected lifecycle queue outage");
+
+  await expect(
+    requestAccountExport(alpha, alphaRepositories, {
+      idempotencyKey: "wave4-export-recovery",
+      now,
+      dispatcher,
+    })
+  ).rejects.toThrow("injected lifecycle queue outage");
+
+  dispatcher.failure = undefined;
+  const replay = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "wave4-export-recovery",
+    now,
+    dispatcher,
+  });
+  expect(replay.created).toBe(false);
+  expect(dispatcher.messages).toHaveLength(2);
+
+  const store = new FakeTenantObjectStore();
+  const put = jest.spyOn(store, "put");
+  store.failNext("put");
+  const exportEnvelope = dispatcher.messages.find(
+    ({ message }) => message.jobType === "account.export"
+  )!.message;
+  const consume = (envelope = exportEnvelope) =>
+    consumeLifecycleTenantJobEnvelope(envelope, {
+      getTenantRepositories: async (context) => access.getTenantRepositories(context),
+      getObjectStore: () => store,
+    });
+  await expect(consume()).resolves.toBe("failed");
+  await expect(alphaRepositories.lifecycle.findExport(replay.export.id)).resolves.toMatchObject({
+    status: "failed",
+    failureCode: "EXPORT_GENERATION_FAILED",
+  });
+
+  await expect(consume()).resolves.toBe("completed");
+  const ready = await alphaRepositories.lifecycle.findExport(replay.export.id);
+  expect(ready).toMatchObject({ status: "ready" });
+  await expect(consume()).resolves.toBe("rejected");
+  await expect(
+    consume(
+      createTenantJobEnvelopeV1({
+        userId: beta.userId,
+        jobId: exportEnvelope.jobId,
+        jobType: exportEnvelope.jobType,
+        traceId: beta.requestId,
+      })
+    )
+  ).resolves.toBe("rejected");
+  expect(put).toHaveBeenCalledTimes(2);
+  await expect(store.list(alpha)).resolves.toHaveLength(1);
+  await expect(store.list(beta)).resolves.toEqual([]);
+  await expect(betaRepositories.lifecycle.findExport(replay.export.id)).resolves.toBeUndefined();
+
+  const [jobs, usage] = await Promise.all([
+    harness.sql<Array<{ count: number }>>`
+      SELECT count(*)::integer AS count FROM job_queue
+      WHERE user_id=${alpha.userId}::uuid
+        AND job_type IN ('account.export','account.export-expire')`,
+    harness.sql<Array<{ request_count: number }>>`
+      SELECT request_count FROM usage_counters
+      WHERE user_id=${alpha.userId}::uuid AND operation='account.exports'`,
+  ]);
+  expect(jobs[0]?.count).toBe(2);
+  expect(usage[0]?.request_count).toBe(1);
+});
+
+it("P3-RECOVERY-002: retries one durable capture after queue publication fails", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql);
+  const alphaRepositories = access.getTenantRepositories(alpha);
+  const betaRepositories = access.getTenantRepositories(beta);
+  const dispatcher = new FakeCaptureDispatcher();
+  dispatcher.failure = new Error("injected capture queue outage");
+  const captureId = "50000000-0000-4000-8000-000000000084";
+  const service = new CaptureService({
+    context: alpha,
+    captures: alphaRepositories.captures,
+    dispatcher,
+    resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+    id: () => captureId,
+    now: () => now,
+  });
+  const input = {
+    url: "https://wave4.example/recovery",
+    source: "web" as const,
+  };
+
+  await expect(service.create(input)).rejects.toMatchObject({
+    name: "QueueUnavailableError",
+    receipt: { id: captureId, status: "failed", retryable: true },
+  });
+  dispatcher.failure = undefined;
+  await expect(service.retry(captureId)).resolves.toMatchObject({
+    id: captureId,
+    status: "queued",
+    retryable: true,
+  });
+  await expect(service.create(input)).resolves.toMatchObject({
+    duplicate: true,
+    receipt: { id: captureId, status: "queued" },
+  });
+  expect(dispatcher.messages).toHaveLength(1);
+
+  const processor = jest
+    .fn()
+    .mockRejectedValueOnce(new CaptureProcessingError("UPSTREAM_503", "busy", "transient"))
+    .mockResolvedValue({ status: "ready" });
+  const audit = jest.fn();
+  const worker = new CaptureWorker({
+    context: alpha,
+    captures: alphaRepositories.captures,
+    processor,
+    audit,
+    now: () => now,
+  });
+  await expect(worker.handle(dispatcher.messages[0]!.message)).rejects.toMatchObject({
+    name: "CaptureRetryScheduledError",
+  });
+  await expect(worker.handle(dispatcher.messages[0]!.message)).resolves.toMatchObject({
+    id: captureId,
+    status: "ready",
+    attempts: 2,
+  });
+  await expect(worker.handle(dispatcher.messages[0]!.message)).resolves.toMatchObject({
+    status: "ready",
+    attempts: 2,
+  });
+  expect(processor).toHaveBeenCalledTimes(2);
+  await expect(
+    worker.handle(
+      createCaptureQueueMessageV2({
+        userId: beta.userId,
+        captureId,
+        traceId: beta.requestId,
+      })
+    )
+  ).resolves.toBeUndefined();
+  expect(audit).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "capture_queue_owner_mismatch_or_missing" })
+  );
+
+  const betaService = new CaptureService({
+    context: beta,
+    captures: betaRepositories.captures,
+    dispatcher: new FakeCaptureDispatcher(),
+  });
+  await expect(betaService.get(captureId)).rejects.toMatchObject({ name: "CaptureNotFoundError" });
+  const [count] = await harness.sql<Array<{ count: number }>>`
+    SELECT count(*)::integer AS count FROM capture_requests WHERE id=${captureId}`;
+  expect(count?.count).toBe(1);
+});
+
 it("revokes queued work immediately and restores active status on grace-period cancellation", async () => {
   const repositories = createPostgresRepositoryAccess(runtimeSql).getTenantRepositories(alpha);
   const result = await requestAccountDeletion(alpha, repositories, {
@@ -219,6 +386,72 @@ it("checkpoints the external auth subject before purge so failed work can retry"
     authProviderSubject: providerSubject,
     checkpoint: { neonAuthSubject: providerSubject },
   });
+});
+
+it("P3-RECOVERY-003: resumes deletion after provider outage and terminal replay", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql, harness.sql);
+  const repositories = access.getTenantRepositories(alpha);
+  const control = (await access.getControlPlaneRepositories(system)).lifecycle;
+  const store = new FakeTenantObjectStore();
+  const authPurger = new FakeAuthAccountPurger();
+  const providerSubject = authProviderSubjectSchema.parse("neon-wave4-recovery-alpha");
+  await harness.sql`
+    INSERT INTO auth_identities (id,user_id,provider,provider_subject,email,email_verified)
+    VALUES ('61000000-0000-4000-8000-000000000084'::uuid,${alpha.userId}::uuid,'neon',
+      ${providerSubject},'alpha@example.com',true)`;
+  await store.put(
+    alpha,
+    {
+      objectType: "raw-content",
+      objectId: "51000000-0000-4000-8000-000000000084",
+      version: 1,
+    },
+    new TextEncoder().encode("wave4 private content"),
+    { contentType: "text/plain", createdAt: now.toISOString() }
+  );
+  const requested = await requestAccountDeletion(alpha, repositories, {
+    confirmation: "DELETE MY ACCOUNT",
+    now,
+  });
+  const purgeAt = new Date(requested.deletion.purgeAfter);
+  const dependencies = {
+    objectStore: store,
+    authPurger,
+    getControlPlaneLifecycle: async () => control,
+    systemContext: system,
+  };
+
+  authPurger.fail = true;
+  await expect(
+    processAccountDeletion(alpha, repositories, dependencies, {
+      deletionId: requested.deletion.id,
+      now: purgeAt,
+    })
+  ).rejects.toThrow("Injected auth purge failure");
+  await expect(
+    control.findDeletionWork(requested.deletion.id, alpha.userId)
+  ).resolves.toMatchObject({
+    status: "failed",
+    checkpoint: { neonAuthSubject: providerSubject },
+  });
+  await expect(store.list(alpha)).resolves.toEqual([]);
+
+  authPurger.fail = false;
+  const completed = await processAccountDeletion(alpha, repositories, dependencies, {
+    deletionId: requested.deletion.id,
+    now: purgeAt,
+  });
+  await expect(
+    processAccountDeletion(alpha, repositories, dependencies, {
+      deletionId: requested.deletion.id,
+      now: purgeAt,
+    })
+  ).resolves.toEqual(completed);
+  expect(authPurger.revoked).toEqual([providerSubject]);
+  expect(authPurger.deleted).toEqual([providerSubject]);
+  const [betaAccount] = await harness.sql<Array<{ status: string }>>`
+    SELECT status FROM users WHERE id=${beta.userId}::uuid`;
+  expect(betaAccount?.status).toBe("active");
 });
 
 it("purges tenant rows, objects, and provider identity before writing a content-free tombstone", async () => {

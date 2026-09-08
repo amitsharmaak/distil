@@ -1212,3 +1212,45 @@ through the security-barrier view; retaining it would have added write cost with
 accepted plan. Focused deterministic tests passed 26/26 and the new PostgreSQL suite passed 2/2.
 Next: add concurrent bounded-load observations and wire deterministic failure/replay to the actual
 capture, durable queue, export and deletion adapters.
+
+### Wave 4 local performance and recovery checkpoint — 2026-09-08
+
+The second Wave 4 slice adds bounded pool pressure and real-adapter failure/replay without changing
+production behavior or configuration. `P3-PERF-002/P3-DB-003` launches 80 alternating alpha/beta
+transactions through a two-connection restricted runtime pool. Each transaction performs bounded
+recent-feed and deletion-status reads, both users complete exactly 40 operations, every returned row
+belongs to the active tenant, and all sampled pool connections have empty tenant/actor settings
+afterward. One local Docker run observed p50 66.8 ms, p95 118.3 ms and max 123.4 ms. These values are
+diagnostic observations only, not portable CI thresholds.
+
+The PostgreSQL lifecycle suite now executes three complete deterministic recovery chains against
+the production services and tenant repositories:
+
+- `P3-RECOVERY-001`: a lifecycle queue outage occurs after the export/job transaction commits;
+  replay publishes the one export and one retention job without double-charging usage. A later
+  object-store put outage marks the export failed; the same persisted envelope resumes to `ready`.
+  Terminal and forged-owner replay does not rewrite the object or expose it to beta.
+- `P3-RECOVERY-002`: a capture queue outage leaves exactly one failed/retryable receipt. Retry
+  publishes one tenant envelope; a transient worker failure returns it to the queue and the second
+  delivery reaches `ready`. Terminal delivery is idempotent and a forged beta owner is audited with
+  no mutation.
+- `P3-RECOVERY-003`: deletion removes the tenant object, then an injected provider outage persists
+  `PURGE_FAILED` plus the external-subject checkpoint. Replay finishes provider purge, relational
+  zero-row verification and the content-free tombstone. Terminal replay repeats no provider effect,
+  and beta remains active.
+
+Focused evidence passed: the Wave 4 PostgreSQL performance suite 3/3 and lifecycle integration suite
+8/8. All feature flags remain false and no external resource was contacted. Next: run the complete
+PostgreSQL and deterministic regression corpus, then prepare the independent two-user Preview-clone
+acceptance record.
+
+The complete local regression is green at this checkpoint: TypeScript; lint with the same 10 known
+warnings and zero errors; dependency/license and Phase 3 security audits; production build; 180
+deterministic suites / 1,281 tests; 12 PostgreSQL suites / 43 tests; 27 browser E2E tests with the
+same three Phase 2 feature-disabled skips; and 11/11 extension E2E tests. Changed-code coverage
+passed at 85.3% lines and 81.2% branches across 177 suites / 1,218 tests, with every critical group
+above 90% in statements, branches, functions and lines. The extension runner first collided with
+the concurrently started browser server on local port 3100; a clean sequential rerun passed 11/11,
+confirming orchestration contention rather than a product failure. No external resource, rollout
+flag or deployment was changed. Wave 4 remains open for the independent synthetic two-user
+Preview-clone acceptance, evidence freeze, CI confirmation and Phase 3 exit decision.
