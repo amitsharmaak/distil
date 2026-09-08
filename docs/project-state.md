@@ -499,10 +499,10 @@ should not be used by the new clients.
 
 ### Remaining Phase 1 execution queue
 
-There are seven remaining tasks. Work through them in order and pick up one top-level task at a
-time. The nested checkboxes are that task's execution sequence, not additional Phase 1 tasks. Mark
-the top-level task complete only when all of its subtasks and completion evidence are present. Do
-not start Production work without the explicit decision in Task 7.
+Phase 1 has seven ordered top-level tasks. Tasks 1 through 5 are complete; resume with the combined
+Task 6 and Phase 2 physical-device acceptance described in the reconciliation checkpoint below.
+The nested checkboxes are each task's execution sequence, not additional Phase 1 tasks. Do not start
+Production work without the explicit decision in Task 7.
 
 #### Task 1 — Make the GitHub quality gate green
 
@@ -543,41 +543,60 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 #### Task 3 — Make Vercel Preview deployment repeatable from GitHub
 
-- [ ] Connect `amitsharmaak/distil` to the existing `pv-1850/project-evgf1` Vercel project.
-- [ ] Keep Production undeployed and retain the current Preview-only Neon isolation.
-- [ ] Confirm a commit on `codex/phase-1-personal-capture` creates a Preview for that exact SHA.
-- [ ] Verify `sin1`, the `capture-requests` consumer, its 60-second limit, and the stable Preview alias.
-- [ ] Verify unauthenticated `GET /api/health` succeeds, Vercel Authentication remains off, and
+- [x] Connect `amitsharmaak/distil` to the existing `pv-1850/project-evgf1` Vercel project.
+- [x] Keep Production undeployed and retain the current Preview-only Neon isolation.
+- [x] Confirm a commit on `codex/phase-1-personal-capture` creates a Preview for that exact SHA.
+- [x] Verify `sin1`, the `capture-requests` consumer, its 60-second limit, and the stable Preview alias.
+- [x] Verify unauthenticated `GET /api/health` succeeds, Vercel Authentication remains off, and
       Distil authentication remains on.
-- [ ] **Task 3 complete:** append the Git SHA, deployment ID, inspector URL, and health evidence here.
+- [x] **Task 3 complete (2026-09-07 20:18 IST):** verification commit
+      `020944a7f8331d47cbc1691768dc404b6ae0fb9f` produced ready Preview deployment
+      `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`; the exact-SHA, `sin1`, queue, authentication and health
+      evidence is retained in the authoritative Phase 1 state and summarized above.
 
 #### Task 4 — Configure and accept one AI provider
 
-- [ ] Choose Gemini, OpenAI, or Anthropic; record the expected models, budget ceiling, and rationale.
+- [x] Choose Gemini, OpenAI, or Anthropic; record the expected models, budget ceiling, and rationale.
       Anthropic alone cannot provide embeddings in the current implementation, so choose an embedding
       provider too if Anthropic is selected.
-- [ ] Add only the selected provider's Preview-scoped key in Vercel and redeploy the reviewed commit.
+- [x] Add only the selected provider's Preview-scoped key in Vercel and redeploy the reviewed commit.
       Never paste the key into Git, logs, this document, or chat.
-- [ ] Capture five public cases: short news, long analysis, technical article, paywall/partial content,
+- [x] Capture five public cases: short news, long analysis, technical article, paywall/partial content,
       and malformed or extraction-hostile content.
-- [ ] Record receipt terminal state, processing time, provider/model, faithfulness, and usefulness.
-- [ ] Test provider timeout/rate-limit behavior: safe retry, no duplicate, no leaked provider detail,
+- [x] Record receipt terminal state, processing time, provider/model, faithfulness, and usefulness.
+- [x] Test provider timeout/rate-limit behavior: safe retry, no duplicate, no leaked provider detail,
       no queue loop, and normal completion inside the 60-second worker budget.
-- [ ] Run deterministic evals and any approved live eval; inspect Vercel logs for secrets.
-- [ ] **Task 4 complete:** append accepted quality threshold, results, cost, commit, and deployment ID.
+- [x] Run deterministic evals and an approved live eval; inspect Vercel logs for secrets.
+- [x] **Task 4 complete:** accepted on 2026-09-07 at implementation commit
+      `c836eb4ca09a398d0fad7fa4cfea0df8f2175335`, deployment
+      `dpl_HwYfCVuKwEnQpFTjGYDstJQTGRTy`, with the quality, cost, provider and safety evidence
+      summarized above.
 
 #### Task 5 — Provision and accept independent capture clients
 
-- [ ] Create a `Browser Extension` capture token; store it only in the extension and record only its
+- [x] Create a `Browser Extension` capture token; store it only in the extension and record only its
       masked identifier here.
-- [ ] Point the extension at `https://distil-preview-pv-1850.vercel.app`.
-- [ ] Test new capture, duplicate capture, temporary network failure/offline replay, restart recovery,
+- [x] Point the extension at `https://distil-preview-pv-1850.vercel.app`.
+- [x] Test new capture, duplicate capture, temporary network failure/offline replay, restart recovery,
       and extension-token revocation.
-- [ ] Create a separate `iPhone Shortcut` token; store it only in the Shortcut and record only its
+- [x] Create a separate `iPhone Shortcut` token; store it only in the Shortcut and record only its
       masked identifier here. Never reuse the extension token.
-- [ ] Build **Save to Distil** exactly as documented in `docs/iphone-shortcut.md`.
-- [ ] **Task 5 complete:** append both masked token identifiers and browser-extension acceptance
+- [x] Build **Save to Distil** exactly as documented in `docs/iphone-shortcut.md`.
+- [x] **Task 5 complete:** append both masked token identifiers and browser-extension acceptance
       evidence here; do not record either token value.
+
+Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview deployment
+`dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`, and stable alias
+`https://distil-preview-pv-1850.vercel.app`. Production was not deployed or modified.
+
+- **Browser Extension:** extension ID `njllmldjdjdleenhphaoecgbnepfkjlf`; active token identifier
+  `dst_cap_XyAMs4a3…`, stored only in the extension. Fresh and duplicate capture, offline replay,
+  restart recovery, token revocation and replacement recovery passed. The Preview allowlist includes
+  only that extension origin in addition to the stable web origin.
+- **iPhone Shortcut:** active token identifier `dst_cap_ceWsAhyB…`, stored only in **Save to Distil**
+  and distinct from the extension token. Chrome Share Sheet URL extraction and the no-URL guard
+  passed on the physical iPhone. The remaining multi-app, revocation, Airplane Mode and Home Screen
+  matrix belongs to Task 6.
 
 #### Task 6 — Complete real-device and Preview acceptance
 
@@ -610,21 +629,22 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 ### Known blockers and decisions
 
-- The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
-  to Vercel CI/CD.
-- Tasks 1 and 2 are complete. Task 2's accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c`
-  passed all eight prerequisite jobs and the aggregate quality gate in run `34126389699`. Resume at
-  Task 3: connect the existing Vercel project to GitHub without deploying Production.
+- The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. Its stable Preview alias
+  points to accepted application SHA `f4437bf`, deployment `dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`.
+- Tasks 1 through 5 are complete. Resume with Task 6 on the unified integrated Preview; Task 7 remains
+  the explicit Production go/no-go decision.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
-- The AI provider selection and Preview AI secret are not set.
+- Gemini is selected and its key plus the `$1.00` application budget guardrail are Preview-scoped.
+  No OpenAI or Anthropic key is configured in Preview.
 - Docker-backed PostgreSQL integration tests pass in the Task 1 GitHub quality gate but cannot run
   locally because Docker is not installed; Task 2 CI must rerun that gate.
 - The refreshed production dependency audit reports zero vulnerabilities. The original 8 High and
   2 Moderate findings, dependency paths, reviewed upgrades, and current dispositions are recorded in
   `docs/security-audit.md`; `npm audit fix --force` was not used.
 - No production migration, production import, or production deployment has occurred.
-- Real iPhone Share Sheet behavior remains a manual device test.
+- Chrome Share Sheet URL extraction and the no-URL path passed. Safari, Apple News, plain-text URL,
+  revocation, Airplane Mode and Home Screen behavior remain Task 6 physical-device tests.
 
 ### Safety and rollback position
 
@@ -1367,3 +1387,36 @@ connection strings, real-user data or captured content. Restart from code SHA `9
 checkpoint following this section, green CI run `34219562782`, disposable branch
 `br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. Complete the
 physical iPhone walkthrough before calling the strict Phase 2 acceptance gate closed.
+
+### Cross-phase acceptance reconciliation — 2026-09-08
+
+The authoritative Phase 1 Task 5 evidence from `codex/phase-1-personal-capture` is reconciled above:
+Tasks 1 through 5 are complete, the browser extension and iPhone Shortcut use distinct accepted
+tokens, and no token value is stored here. The stale copied Task 3 through Task 5 checkboxes and
+blocker text in this integrated record have been corrected. This documentation reconciliation does
+not itself rerun acceptance and does not mutate Preview, Production, user data or credentials.
+
+The next acceptance sequence is:
+
+1. Prepare one isolated unified Preview from the stable Phase 1 Preview dataset, preserving the
+   accepted token hashes and applying the integrated Phase 2 and Phase 3 migration chain at code SHA
+   `933ad10` or a state-only descendant. Keep Production and the stable Preview alias unchanged.
+2. Verify migration inventories, tenant ownership, restricted runtime access, both existing token
+   identities, health, queues, connectors-off posture, rollback, secret-free logs and the complete
+   desktop Phase 2 flow before involving the physical device.
+3. Temporarily point the existing Shortcut and extension at the isolated unified Preview. Run one
+   combined physical-device session covering Phase 1 Task 6 and the remaining Phase 2 iPhone gate.
+   Token replacement is required only when the deliberate revocation cases are reached.
+4. Record timestamped results against one code SHA and deployment ID, close Phase 1 Task 6 and the
+   strict Phase 2 device gate only if every blocking case passes, then restore or deliberately retain
+   the client endpoint configuration.
+5. Decide Phase 1 Task 7 Production go/no-go separately. After that decision, separately decide
+   whether to activate Phase 3 hosted auth, link the first real account and migrate its ownership;
+   Phase 3 implementation acceptance does not authorize those operational changes.
+
+The combined user-visible walkthrough will cover Home Screen PWA/session/offline privacy; Shortcut
+capture from Chrome, Safari, Apple News and plain-text URL plus no-URL and Airplane Mode behavior;
+independent Shortcut and extension revocation/recovery with the web session intact; and Phase 2
+Today, reader progress, note, highlight, search, grounded answer/citation, abstention and digest
+dismissal. Codex owns the migration, durable `202`, queued-to-ready, deduplication, controlled retry,
+queue health, connector shutdown, logs and rollback checks around that device session.
