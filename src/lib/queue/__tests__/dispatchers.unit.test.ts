@@ -34,6 +34,23 @@ describe("capture dispatchers", () => {
     expect(dispatcher.messages).toHaveLength(1);
   });
 
+  it("propagates explicit fake-dispatch failures without queueing either message type", async () => {
+    const failure = new Error("queue unavailable");
+    const capture = new FakeCaptureDispatcher();
+    capture.failure = failure;
+    await expect(capture.dispatch(message, { idempotencyKey: message.captureId })).rejects.toBe(
+      failure
+    );
+    expect(capture.messages).toEqual([]);
+
+    const lifecycle = new FakeTenantJobDispatcher();
+    lifecycle.failure = failure;
+    await expect(
+      lifecycle.dispatch(lifecycleMessage, { idempotencyKey: "account-export:failure" })
+    ).rejects.toBe(failure);
+    expect(lifecycle.messages).toEqual([]);
+  });
+
   it("drains local messages synchronously without fire-and-forget work", async () => {
     const dispatcher = new LocalCaptureDispatcher();
     const handler = jest.fn().mockResolvedValue(undefined);
@@ -60,6 +77,17 @@ describe("capture dispatchers", () => {
     ]);
   });
 
+  it("uses an explicitly configured region for capture delivery", async () => {
+    const sender = jest.fn().mockResolvedValue({ messageId: "queue-1" });
+    await new VercelCaptureDispatcher(sender, "iad1").dispatch(message, {
+      idempotencyKey: message.captureId,
+    });
+    expect(sender).toHaveBeenCalledWith("capture-requests", message, {
+      idempotencyKey: message.captureId,
+      region: "iad1",
+    });
+  });
+
   it("creates the production dispatcher from the Vercel SDK", async () => {
     const dispatcher = await createVercelCaptureDispatcher();
     await expect(
@@ -80,12 +108,34 @@ describe("capture dispatchers", () => {
     });
   });
 
+  it("omits delay for immediate lifecycle delivery and honors an explicit region", async () => {
+    const sender = jest.fn().mockResolvedValue({ messageId: "queue-1" });
+    await new VercelTenantJobDispatcher(sender, "iad1").dispatch(lifecycleMessage, {
+      idempotencyKey: "account-export:immediate",
+    });
+    expect(sender).toHaveBeenCalledWith("account-lifecycle", lifecycleMessage, {
+      idempotencyKey: "account-export:immediate",
+      region: "iad1",
+    });
+  });
+
   it("deduplicates test lifecycle dispatches by idempotency key", async () => {
     const dispatcher = new FakeTenantJobDispatcher();
     await dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" });
     await dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" });
     expect(dispatcher.messages).toEqual([
       expect.objectContaining({ message: lifecycleMessage, idempotencyKey: "account-export:one" }),
+    ]);
+  });
+
+  it("omits delay from fake lifecycle messages when no schedule is requested", async () => {
+    const dispatcher = new FakeTenantJobDispatcher();
+    await dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:immediate" });
+    expect(dispatcher.messages).toEqual([
+      {
+        message: lifecycleMessage,
+        idempotencyKey: "account-export:immediate",
+      },
     ]);
   });
 
