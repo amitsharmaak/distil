@@ -151,7 +151,9 @@ describe("ragQuery — general intent", () => {
 
     const result = await queryRag("what's new?");
 
-    expect(mockListItems).toHaveBeenCalledWith(expect.objectContaining({ isRead: false, limit: 15 }));
+    expect(mockListItems).toHaveBeenCalledWith(
+      expect.objectContaining({ isRead: false, limit: 15 })
+    );
     expect(result.chunksUsed).toBeGreaterThan(0);
   });
 
@@ -179,9 +181,13 @@ describe("ragQuery — specific intent", () => {
 
     await queryRag("tell me about React hooks");
 
-    expect(mockHybridSearch).toHaveBeenCalledWith(repositories, expect.stringContaining("React hooks"), {
-      limit: 20,
-    });
+    expect(mockHybridSearch).toHaveBeenCalledWith(
+      repositories,
+      expect.stringContaining("React hooks"),
+      {
+        limit: 20,
+      }
+    );
     expect(mockListItems).not.toHaveBeenCalled();
   });
 

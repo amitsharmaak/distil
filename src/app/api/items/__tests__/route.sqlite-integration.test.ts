@@ -10,66 +10,24 @@
 // Use in-memory SQLite for all tests in this file.
 process.env.DB_PATH = ":memory:";
 
-// Mock fetch so POST doesn't make real network calls.
-const mockFetch = jest.fn().mockResolvedValue({
-  text: () => Promise.resolve("<html><head><title>Test</title></head><body>content</body></html>"),
-});
-global.fetch = mockFetch as typeof fetch;
-
-// Mock the intelligence pipeline so POST doesn't run full classifier/extractor/enricher.
-jest.mock("@/lib/intelligence/pipeline", () => {
+jest.mock("@/lib/auth/tenant-route", () => {
   const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
   return {
-    buildRawContent: jest.fn(
-      (params: {
-        sourceType: string;
-        rawBody: string;
-        url?: string;
-        metadata?: Record<string, unknown>;
-      }) => ({
-        id: "mock-raw-id",
-        sourceType: params.sourceType,
-        rawBody: params.rawBody,
-        url: params.url,
-        metadata: params.metadata ?? {},
-        fetchedAt: new Date().toISOString(),
-      })
-    ),
-    processContent: jest.fn().mockImplementation(
-      async (raw: {
-        id: string;
-        sourceType: string;
-        url?: string;
-        metadata?: {
-          pageTitle?: string;
-          userNotes?: string;
-          priority?: string;
-          contentType?: string;
-          topics?: string[];
-        };
-      }) => {
-        const existing = await actualDb.getItemByNormalizedUrl(raw.url ?? "");
-        if (existing) return { status: "ready" as const };
-
-        const meta = raw.metadata ?? {};
-        const item = {
-          id: raw.id,
-          title: meta.pageTitle ?? raw.url ?? "Untitled",
-          summary: meta.userNotes ?? "Enriched summary",
-          sourceType: raw.sourceType as import("@/lib/types").SourceType,
-          contentType: (meta.contentType as "article" | "video" | "podcast") ?? "article",
-          topics: meta.topics ?? [],
-          url: raw.url ?? "",
-          priority: (meta.priority as "high" | "medium" | "low") ?? "medium",
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        };
-        await actualDb.insertItem(item);
-        return { status: "ready" as const };
-      }
-    ),
+    requireTenantRoute: jest.fn(async () => ({
+      context: {},
+      repositories: {
+        items: {
+          list: actualDb.getItems,
+          update: actualDb.updateItem,
+          delete: actualDb.deleteItem,
+        },
+      },
+    })),
+    tenantRouteFailureResponse: jest.fn(() => new Response(null, { status: 500 })),
   };
 });
+
+jest.mock("@/lib/capture/composition", () => ({ composeCaptureRoutes: jest.fn() }));
 
 // Keep route search deterministic even if developer API keys are present.
 // The route contract only needs the repository-backed keyword result here;
@@ -77,8 +35,9 @@ jest.mock("@/lib/intelligence/pipeline", () => {
 jest.mock("@/lib/ai/search", () => {
   const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
   return {
-    hybridSearch: jest.fn(async (query: string, filters: import("@/lib/db").ItemFilters = {}) =>
-      actualDb.getItems({ ...filters, query })
+    hybridSearch: jest.fn(
+      async (_repositories: unknown, query: string, filters: import("@/lib/db").ItemFilters = {}) =>
+        actualDb.getItems({ ...filters, query })
     ),
   };
 });
@@ -91,19 +50,10 @@ import type { ContentItem } from "@/lib/types";
 
 // Import the route handlers under test.
 import { GET, POST, OPTIONS } from "../route";
-import { pendingIngestions } from "@/lib/intelligence/pending-ingestions";
+import { composeCaptureRoutes } from "@/lib/capture/composition";
 
-import { getItemByNormalizedUrl, getItems } from "@/lib/db";
-
-/**
- * Awaits all in-flight background ingestions kicked off by POST.
- * Settles even if the underlying tasks reject.
- */
-async function flushIngestions() {
-  while (pendingIngestions.size > 0) {
-    await Promise.allSettled([...pendingIngestions]);
-  }
-}
+const createCapture = jest.fn();
+const mockedComposeCaptureRoutes = jest.mocked(composeCaptureRoutes);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +87,23 @@ function makeRequest(
 
 beforeEach(() => {
   db.exec("DELETE FROM items");
+  createCapture.mockReset();
+  createCapture.mockResolvedValue({
+    receipt: {
+      id: "capture-1",
+      normalizedUrl: "https://example.com/capture",
+      status: "queued",
+      retryable: true,
+      attempts: 0,
+      createdAt: "2026-09-08T00:00:00.000Z",
+      updatedAt: "2026-09-08T00:00:00.000Z",
+    },
+    duplicate: false,
+  });
+  mockedComposeCaptureRoutes.mockResolvedValue({
+    authenticate: async () => ({ kind: "session", context: {} }) as never,
+    service: async () => ({ create: createCapture }) as never,
+  });
 });
 
 // ── OPTIONS ───────────────────────────────────────────────────────────────────
@@ -321,7 +288,7 @@ describe("POST /api/items", () => {
     expect(body.error).toMatch(/url/i);
   });
 
-  it("defaults sourceType to manual when omitted", async () => {
+  it("maps omitted sourceType to a web capture", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -330,9 +297,9 @@ describe("POST /api/items", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(202);
-    await flushIngestions();
-    const item = await getItemByNormalizedUrl("https://example.com/default-source");
-    expect(item?.sourceType).toBe("manual");
+    expect(createCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://example.com/default-source", source: "web" })
+    );
   });
 
   it("returns 400 for invalid JSON body", async () => {
@@ -346,7 +313,7 @@ describe("POST /api/items", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 202 immediately and ingests in the background", async () => {
+  it("returns a durable 202 receipt and forwards capture metadata", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -361,18 +328,29 @@ describe("POST /api/items", () => {
 
     expect(res.status).toBe(202);
     const body = await res.json();
-    expect(body.status).toBe("accepted");
-
-    await flushIngestions();
-    const item = await getItemByNormalizedUrl("https://example.com/create-test");
-    expect(item).toBeDefined();
-    expect(item?.sourceType).toBe("manual");
-    expect(item?.priority).toBe("high");
-    expect(item?.isRead).toBe(false);
+    expect(body.receipt.status).toBe("queued");
+    expect(createCapture).toHaveBeenCalledWith({
+      url: "https://example.com/create-test",
+      source: "web",
+      topics: ["Tech"],
+      priority: "high",
+    });
   });
 
-  it("returns 200 with the existing item when the URL is a duplicate", async () => {
-    await insertItem(makeItem({ id: "dup-1", url: "https://example.com/dup" }));
+  it("returns 200 when the tenant capture service finds a duplicate", async () => {
+    createCapture.mockResolvedValueOnce({
+      receipt: {
+        id: "capture-existing",
+        normalizedUrl: "https://example.com/dup",
+        status: "ready",
+        itemId: "dup-1",
+        retryable: false,
+        attempts: 1,
+        createdAt: "2026-09-08T00:00:00.000Z",
+        updatedAt: "2026-09-08T00:00:01.000Z",
+      },
+      duplicate: true,
+    });
 
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
@@ -383,13 +361,11 @@ describe("POST /api/items", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.status).toBe("duplicate");
-    expect(body.item.id).toBe("dup-1");
-    // Should not have spawned a background ingestion.
-    expect(await getItems({ includeProcessing: true })).toHaveLength(1);
+    expect(body.duplicate).toBe(true);
+    expect(body.receipt.itemId).toBe("dup-1");
   });
 
-  it("uses caller-provided title in metadata", async () => {
+  it("forwards a caller-provided title", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -400,13 +376,12 @@ describe("POST /api/items", () => {
       }),
     });
     await POST(req);
-    await flushIngestions();
-
-    const item = await getItemByNormalizedUrl("https://example.com/title-test");
-    expect(item?.title).toBe("My Custom Title");
+    expect(createCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "My Custom Title" })
+    );
   });
 
-  it("uses notes as summary when provided", async () => {
+  it("forwards notes and browser-extension source", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -417,24 +392,27 @@ describe("POST /api/items", () => {
       }),
     });
     await POST(req);
-    await flushIngestions();
-
-    const item = await getItemByNormalizedUrl("https://example.com/notes-test");
-    expect(item?.summary).toBe("My personal notes about this page.");
+    expect(createCapture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notes: "My personal notes about this page.",
+        source: "browser-extension",
+      })
+    );
   });
 
-  it("defaults contentType to article and priority to medium", async () => {
+  it("applies the capture contract defaults", async () => {
     const req = makeRequest("http://localhost:3000/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: "https://example.com/defaults-test", sourceType: "manual" }),
     });
     await POST(req);
-    await flushIngestions();
-
-    const item = await getItemByNormalizedUrl("https://example.com/defaults-test");
-    expect(item?.contentType).toBe("article");
-    expect(item?.priority).toBe("medium");
+    expect(createCapture).toHaveBeenCalledWith({
+      url: "https://example.com/defaults-test",
+      source: "web",
+      priority: "medium",
+      topics: [],
+    });
   });
 
   it("includes CORS headers in response", async () => {

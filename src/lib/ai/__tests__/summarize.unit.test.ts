@@ -161,7 +161,9 @@ describe("generateSummary — cache behaviour", () => {
       created_at: new Date().toISOString(),
     });
 
-    const result = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "brief",
+    });
 
     expect(result.cached).toBe(true);
     expect(result.summary).toBe(mockBriefSummary);
@@ -171,7 +173,9 @@ describe("generateSummary — cache behaviour", () => {
   it("calls the API when no cached summary exists", async () => {
     mockGetAISummary.mockReturnValue(undefined);
 
-    const result = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "brief",
+    });
 
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
     expect(result.cached).toBe(false);
@@ -258,9 +262,9 @@ describe("generateSummary — generation", () => {
   it("throws an error when the item does not exist in the DB", async () => {
     mockGetItemById.mockReturnValue(undefined);
 
-    await expect(
-      generateSummary(context, repositories, "nonexistent-item-id")
-    ).rejects.toThrow("Item not found");
+    await expect(generateSummary(context, repositories, "nonexistent-item-id")).rejects.toThrow(
+      "Item not found"
+    );
   });
 
   it("includes the article title in the prompt sent to the AI", async () => {
@@ -311,7 +315,9 @@ describe("generateSummary — TechCrunch article fixture", () => {
   });
 
   it("returns cached=false on first generation and cached=true on second call", async () => {
-    const first = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
+    const first = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "brief",
+    });
     expect(first.cached).toBe(false);
 
     mockGetAISummary.mockReturnValue({
@@ -323,7 +329,9 @@ describe("generateSummary — TechCrunch article fixture", () => {
       created_at: new Date().toISOString(),
     });
 
-    const second = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
+    const second = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "brief",
+    });
     expect(second.cached).toBe(true);
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
   });

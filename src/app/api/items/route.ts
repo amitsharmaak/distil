@@ -53,6 +53,11 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
+function withCorsHeaders(response: Response): Response {
+  for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
+  return response;
+}
+
 // ── GET /api/items ────────────────────────────────────────────────────────────
 
 /**
@@ -177,7 +182,9 @@ export async function POST(request: NextRequest) {
         headers: request.headers,
         body: JSON.stringify(capture.data),
       });
-      return createCaptureCollectionHandlers(composition).POST(durableRequest);
+      return withCorsHeaders(
+        await createCaptureCollectionHandlers(composition).POST(durableRequest)
+      );
     }
   } catch (error) {
     apiLogger.error({ err: error }, "POST /api/items unexpected error");

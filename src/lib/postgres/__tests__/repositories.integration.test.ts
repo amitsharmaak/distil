@@ -102,32 +102,19 @@ describe("PostgreSQL repository contracts", () => {
     expect(await repos.summaries.find("new", "brief")).toBeUndefined();
   });
 
-  it("enforces legal capture transitions with compare-and-set semantics", async () => {
+  it("rejects capture creation without tenant identity", async () => {
     const repos = createPostgresRepositories(harness.sql);
-    await repos.captures.create({
-      id: "capture",
-      url: "https://example.com",
-      normalizedUrl: "https://example.com/",
-      topics: [],
-      priority: "medium",
-      source: "ios-shortcut",
-      createdAt: "2026-01-01T00:00:00Z",
-    });
-    expect(
-      await repos.captures.transition("capture", ["failed"], {
-        status: "queued",
-        updatedAt: "2026-01-01T00:01:00Z",
+    await expect(
+      repos.captures.create({
+        id: "capture",
+        url: "https://example.com",
+        normalizedUrl: "https://example.com/",
+        topics: [],
+        priority: "medium",
+        source: "ios-shortcut",
+        createdAt: "2026-01-01T00:00:00Z",
       })
-    ).toBeUndefined();
-    expect(
-      (
-        await repos.captures.transition("capture", ["queued"], {
-          status: "processing",
-          attempts: 1,
-          updatedAt: "2026-01-01T00:01:00Z",
-        })
-      )?.status
-    ).toBe("processing");
+    ).rejects.toThrow("Tenant identity is required");
   });
 
   it("atomically consumes rate limit windows", async () => {

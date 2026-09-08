@@ -164,6 +164,9 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     const fake = sqlDouble([[captureRow], [captureRow], [], [captureRow], [captureRow], []]);
     const captures = createPostgresRepositories(fake.sql).captures;
     const created = await captures.create({
+      userId,
+      originActorKind: "user",
+      originActorId: userId,
       id: "capture-1",
       url: "https://example.com/article",
       normalizedUrl: "https://example.com/article",
@@ -417,6 +420,22 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     });
   });
 
+  test("enqueues tenant jobs with tenant-relative idempotency", async () => {
+    const fake = sqlDouble([[], []]);
+    const jobs = createPostgresRepositories(fake.sql).jobs;
+    await expect(
+      jobs.enqueue({
+        userId,
+        id: "tenant-job",
+        jobType: "capture",
+        idempotencyKey: "capture:tenant-job",
+        payload: "{}",
+      })
+    ).resolves.toBeUndefined();
+    expect(fake.queries.some((query) => query.includes("idempotency_key"))).toBe(true);
+    expect(fake.queries.some((query) => query.includes("user_id"))).toBe(true);
+  });
+
   test("covers agent persistence parsing and workflow branches", async () => {
     const fake = sqlDouble();
     const agent = createPostgresRepositories(fake.sql).agent;
@@ -662,6 +681,9 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
 
     fake.responses.push([{ ...captureRow, title: "Title", notes: "Note" }]);
     await repos.captures.create({
+      userId,
+      originActorKind: "user",
+      originActorId: userId,
       id: "capture-1",
       url: "https://example.com",
       normalizedUrl: "https://example.com/",

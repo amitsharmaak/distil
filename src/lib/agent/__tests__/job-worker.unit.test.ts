@@ -45,8 +45,6 @@ describe("job worker", () => {
     await expect(enqueueTriageJob("item-1")).rejects.toThrow(
       "Tenant-scoped job enqueue is required for item-1"
     );
-    await expect(enqueueProactiveScan()).rejects.toThrow(
-      "Tenant-scoped job enqueue is required"
-    );
+    await expect(enqueueProactiveScan()).rejects.toThrow("Tenant-scoped job enqueue is required");
   });
 });

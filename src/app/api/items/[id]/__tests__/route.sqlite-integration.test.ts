@@ -7,6 +7,22 @@
 // Use in-memory SQLite for all tests in this file.
 process.env.DB_PATH = ":memory:";
 
+jest.mock("@/lib/auth/tenant-route", () => {
+  const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
+  return {
+    requireTenantRoute: jest.fn(async () => ({
+      context: {},
+      repositories: {
+        items: {
+          update: actualDb.updateItem,
+          delete: actualDb.deleteItem,
+        },
+      },
+    })),
+    tenantRouteFailureResponse: jest.fn(() => new Response(null, { status: 500 })),
+  };
+});
+
 import { NextRequest } from "next/server";
 import { db, insertItem } from "@/lib/db";
 import type { ContentItem } from "@/lib/types";

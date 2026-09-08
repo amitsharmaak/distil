@@ -464,16 +464,13 @@ class PostgresDigests implements DigestRepository {
 class PostgresCaptures implements CaptureRepository {
   constructor(private readonly sql: Sql) {}
   async create(v: NewCaptureRecord) {
-    const rows =
-      v.userId && v.originActorKind && v.originActorId
-        ? await this.sql<
-            Row[]
-          >`INSERT INTO capture_requests (user_id,id,url,normalized_url,title,notes,topics,priority,source,origin_actor_kind,origin_actor_id,status,created_at,updated_at)
-          VALUES (${v.userId},${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},${v.originActorKind},${v.originActorId},'queued',${v.createdAt},${v.createdAt}) RETURNING *`
-        : await this.sql<
-            Row[]
-          >`INSERT INTO capture_requests (id,url,normalized_url,title,notes,topics,priority,source,status,created_at,updated_at)
-          VALUES (${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},'queued',${v.createdAt},${v.createdAt}) RETURNING *`;
+    if (!v.userId || !v.originActorKind || !v.originActorId) {
+      throw new Error("Tenant identity is required to create a capture");
+    }
+    const rows = await this.sql<
+      Row[]
+    >`INSERT INTO capture_requests (user_id,id,url,normalized_url,title,notes,topics,priority,source,origin_actor_kind,origin_actor_id,status,created_at,updated_at)
+      VALUES (${v.userId},${v.id},${v.url},${v.normalizedUrl},${v.title ?? null},${v.notes ?? null},${this.sql.json(v.topics)},${v.priority},${v.source},${v.originActorKind},${v.originActorId},'queued',${v.createdAt},${v.createdAt}) RETURNING *`;
     return mapCapture(rows[0]);
   }
   async findById(id: string) {
@@ -550,6 +547,34 @@ class PostgresRateLimits implements RateLimitRepository {
     const principalKind = v.principalKind ?? "system";
     const principalId = v.principalId ?? "legacy";
     const operation = v.operation ?? "rate-limit";
+    if (!v.userId) {
+      let legacyRows = await this.sql<{ count: number }[]>`
+        UPDATE rate_limit_windows SET count=count+1
+        WHERE key=${v.key} AND window_start=${start} AND window_seconds=${v.windowSeconds}
+        RETURNING count`;
+      if (!legacyRows[0]) {
+        try {
+          legacyRows = await this.sql.begin(
+            async (tx) =>
+              await tx<{ count: number }[]>`
+              INSERT INTO rate_limit_windows (key,window_start,window_seconds,count)
+              VALUES (${v.key},${start},${v.windowSeconds},1) RETURNING count`
+          );
+        } catch (error) {
+          legacyRows = await this.sql<{ count: number }[]>`
+            UPDATE rate_limit_windows SET count=count+1
+            WHERE key=${v.key} AND window_start=${start} AND window_seconds=${v.windowSeconds}
+            RETURNING count`;
+          if (!legacyRows[0]) throw error;
+        }
+      }
+      const count = legacyRows[0].count;
+      return {
+        allowed: count <= v.limit,
+        remaining: Math.max(0, v.limit - count),
+        resetAt: new Date(new Date(start).getTime() + v.windowSeconds * 1000).toISOString(),
+      };
+    }
     let rows = await this.sql<{ count: number }[]>`
       UPDATE rate_limit_windows
       SET count=count+1
@@ -1707,16 +1732,28 @@ class PostgresJobs implements JobQueueRepository {
     } catch {
       payload = input.payload ?? {};
     }
-    const columns = input.userId
-      ? this
-          .sql`(user_id,id,job_type,idempotency_key,payload,priority,max_retries,run_after,status,created_at,updated_at)`
-      : this
-          .sql`(id,job_type,idempotency_key,payload,priority,max_retries,run_after,status,created_at,updated_at)`;
-    const values = input.userId
-      ? this
-          .sql`(${input.userId},${input.id},${input.jobType},${input.idempotencyKey ?? input.id},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`
-      : this
-          .sql`(${input.id},${input.jobType},${input.idempotencyKey ?? input.id},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`;
+    // Phase 2 databases predate the tenant idempotency column. Preserve their
+    // primary-key deduplication until the Phase 3 migration has been applied.
+    if (!input.userId) {
+      const existing = await this.sql`SELECT 1 FROM job_queue WHERE id=${input.id} LIMIT 1`;
+      if (existing[0]) return;
+      try {
+        await this.sql`
+          INSERT INTO job_queue
+            (id,job_type,payload,priority,max_retries,run_after,status,created_at,updated_at)
+          VALUES
+            (${input.id},${input.jobType},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`;
+      } catch (error) {
+        const concurrent = await this.sql`SELECT 1 FROM job_queue WHERE id=${input.id} LIMIT 1`;
+        if (!concurrent[0]) throw error;
+      }
+      return;
+    }
+
+    const columns = this
+      .sql`(user_id,id,job_type,idempotency_key,payload,priority,max_retries,run_after,status,created_at,updated_at)`;
+    const values = this
+      .sql`(${input.userId},${input.id},${input.jobType},${input.idempotencyKey ?? input.id},${this.sql.json(payload as never)},${input.priority ?? 0},${input.maxRetries ?? 3},${input.runAfter ?? null},'pending',now(),now())`;
     const idempotencyKey = input.idempotencyKey ?? input.id;
     const exists = await this.sql`
       SELECT 1 FROM job_queue WHERE idempotency_key=${idempotencyKey} LIMIT 1`;

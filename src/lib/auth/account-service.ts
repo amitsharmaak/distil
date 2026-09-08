@@ -1,4 +1,3 @@
-import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import {
   resolveLegacyAuthRequest,
@@ -14,7 +13,10 @@ export async function resolveCurrentAccount(
   request: Request,
   dependencies?: { provider: ProviderIdentityPort; repositories: AuthRepositoryPort }
 ) {
-  const provider = dependencies?.provider ?? getNeonAuthServer();
+  // Keep the optional Neon adapter out of legacy/SQLite route module graphs. The
+  // provider is ESM-only and should be loaded only when Neon Auth is enabled.
+  const provider =
+    dependencies?.provider ?? (await import("@/lib/auth/neon-server")).getNeonAuthServer();
   const repositories = dependencies?.repositories ?? (await getAuthRepositoryPort());
   return resolveNeonAuthRequest(
     provider,
