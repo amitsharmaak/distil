@@ -29,6 +29,13 @@ export interface ConsumeInvitationInput {
   consumedAt: string;
 }
 
+export interface InvitationDispatchClaimInput {
+  invitationId: string;
+  tokenHash: string;
+  emailHash: string;
+  claimId: string;
+}
+
 export interface InvitationRepositoryPort {
   createInvitation(record: InvitationRecord): Promise<void>;
   findInvitationById(id: string): Promise<InvitationRecord | undefined>;
@@ -38,6 +45,12 @@ export interface InvitationRepositoryPort {
     revokedByActorId: string;
     reason: string;
   }): Promise<boolean>;
+  /** Atomically revalidates the pending invite and acquires its provider-dispatch lease. */
+  claimInvitationDispatch(input: InvitationDispatchClaimInput): Promise<boolean>;
+  /** Commits a successful provider call and starts the per-invitation resend cooldown. */
+  completeInvitationDispatch(input: { invitationId: string; claimId: string }): Promise<boolean>;
+  /** Releases a failed provider call into a bounded database-calculated retry delay. */
+  failInvitationDispatch(input: { invitationId: string; claimId: string }): Promise<boolean>;
   /**
    * Atomically rechecks hash, email, expiry/revocation/consumption state, then
    * creates/reactivates the user and inserts auth_identities(provider,

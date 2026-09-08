@@ -44,6 +44,15 @@ function fakeRepositories(): AuthRepositoryPort & {
       repository.invitation.revokeReason = input.reason;
       return true;
     },
+    async claimInvitationDispatch() {
+      return true;
+    },
+    async completeInvitationDispatch() {
+      return true;
+    },
+    async failInvitationDispatch() {
+      return true;
+    },
     async consumeInvitationAndLinkIdentity(input) {
       if (!repository.invitation || repository.invitation.status !== "pending") return undefined;
       if (

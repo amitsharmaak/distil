@@ -29,4 +29,21 @@ describe("Phase 3 lifecycle migration", () => {
     expect(migration).toContain("JOIN public.users AS account ON account.id = token.user_id");
     expect(migration).toContain("AND account.status = 'active'");
   });
+
+  it("claims invitation provider dispatch atomically with expiring leases and bounded retry", () => {
+    expect(migration).toContain(
+      "ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_claim_id uuid"
+    );
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION distil_claim_invitation_dispatch");
+    expect(migration).toContain(
+      "dispatch_claim_expires_at = statement_timestamp() + interval '2 minutes'"
+    );
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION distil_complete_invitation_dispatch");
+    expect(migration).toContain(
+      "dispatch_retry_after = statement_timestamp() + interval '1 minute'"
+    );
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION distil_fail_invitation_dispatch");
+    expect(migration).toContain("least(");
+    expect(migration).toContain("300,");
+  });
 });

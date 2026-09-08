@@ -118,6 +118,46 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     return rows.length === 1;
   }
 
+  async claimInvitationDispatch(input: {
+    invitationId: string;
+    tokenHash: string;
+    emailHash: string;
+    claimId: string;
+  }): Promise<boolean> {
+    const [row] = await this.sql<Array<{ claimed: boolean }>>`
+      SELECT distil_claim_invitation_dispatch(
+        ${input.invitationId}::uuid,
+        ${input.tokenHash},
+        ${input.emailHash},
+        ${input.claimId}::uuid
+      ) AS claimed
+    `;
+    return row?.claimed === true;
+  }
+
+  async completeInvitationDispatch(input: {
+    invitationId: string;
+    claimId: string;
+  }): Promise<boolean> {
+    const [row] = await this.sql<Array<{ completed: boolean }>>`
+      SELECT distil_complete_invitation_dispatch(
+        ${input.invitationId}::uuid,
+        ${input.claimId}::uuid
+      ) AS completed
+    `;
+    return row?.completed === true;
+  }
+
+  async failInvitationDispatch(input: { invitationId: string; claimId: string }): Promise<boolean> {
+    const [row] = await this.sql<Array<{ failed: boolean }>>`
+      SELECT distil_fail_invitation_dispatch(
+        ${input.invitationId}::uuid,
+        ${input.claimId}::uuid
+      ) AS failed
+    `;
+    return row?.failed === true;
+  }
+
   async consumeInvitationAndLinkIdentity(
     input: ConsumeInvitationInput
   ): Promise<LinkedAccount | undefined> {

@@ -84,6 +84,11 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.knowledgeBackfillCheckpoints.jobKey).toBeDefined();
   expect(schema.users.id).toBeDefined();
   expect(schema.invitations.normalizedEmail).toBeDefined();
+  expect(schema.invitations.dispatchClaimId).toBeDefined();
+  expect(schema.invitations.dispatchClaimExpiresAt).toBeDefined();
+  expect(schema.invitations.dispatchRetryAfter).toBeDefined();
+  expect(schema.invitations.dispatchSucceededAt).toBeDefined();
+  expect(schema.invitations.dispatchAttempts).toBeDefined();
   expect(schema.accountExports.downloadExpiresAt).toBeDefined();
   expect(schema.accountDeletions.purgeAfter).toBeDefined();
   expect(schema.researchSuggestionSources.itemId).toBeDefined();

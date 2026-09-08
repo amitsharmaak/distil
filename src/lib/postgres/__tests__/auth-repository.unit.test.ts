@@ -67,4 +67,42 @@ describe("PostgresAuthRepository", () => {
     expect(fake.queries).toHaveLength(1);
     expect(fake.queries[0]).toContain("distil_consume_invitation");
   });
+
+  it("claims, completes, and releases provider dispatch only through exact-key functions", async () => {
+    const fake = sqlDouble({
+      distil_claim_invitation_dispatch: [{ claimed: true }],
+      distil_complete_invitation_dispatch: [{ completed: true }],
+      distil_fail_invitation_dispatch: [{ failed: true }],
+    });
+    const repository = new PostgresAuthRepository(fake.sql);
+    const invitationId = "33333333-3333-4333-8333-333333333333";
+    const claimId = "44444444-4444-4444-8444-444444444444";
+
+    await expect(
+      repository.claimInvitationDispatch({
+        invitationId,
+        tokenHash: "token-hash",
+        emailHash: "email-hash",
+        claimId,
+      })
+    ).resolves.toBe(true);
+    await expect(
+      repository.completeInvitationDispatch({
+        invitationId,
+        claimId,
+      })
+    ).resolves.toBe(true);
+    await expect(
+      repository.failInvitationDispatch({
+        invitationId,
+        claimId,
+      })
+    ).resolves.toBe(true);
+    expect(fake.queries).toEqual([
+      expect.stringContaining("distil_claim_invitation_dispatch"),
+      expect.stringContaining("distil_complete_invitation_dispatch"),
+      expect.stringContaining("distil_fail_invitation_dispatch"),
+    ]);
+    expect(fake.queries.join(" ")).not.toContain("UPDATE invitations");
+  });
 });

@@ -24,6 +24,25 @@ ALTER TABLE account_deletions ADD COLUMN IF NOT EXISTS updated_at timestamptz NO
 ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS cancellation_requested_at timestamptz;
 ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS cancellation_reason text;
 
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_claim_id uuid;
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_claimed_at timestamptz;
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_claim_expires_at timestamptz;
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_retry_after timestamptz;
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_succeeded_at timestamptz;
+ALTER TABLE invitations ADD COLUMN IF NOT EXISTS dispatch_attempts integer NOT NULL DEFAULT 0;
+ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_dispatch_attempts_check;
+ALTER TABLE invitations ADD CONSTRAINT invitations_dispatch_attempts_check
+  CHECK (dispatch_attempts >= 0);
+ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_dispatch_claim_check;
+ALTER TABLE invitations ADD CONSTRAINT invitations_dispatch_claim_check CHECK (
+  (dispatch_claim_id IS NULL AND dispatch_claimed_at IS NULL AND dispatch_claim_expires_at IS NULL)
+  OR
+  (dispatch_claim_id IS NOT NULL AND dispatch_claimed_at IS NOT NULL
+    AND dispatch_claim_expires_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS invitations_dispatch_retry_idx
+  ON invitations(status, dispatch_retry_after);
+
 -- PostgreSQL expands SELECT * when a view is created. Rebuild the contract views
 -- for altered tables so the new additive columns are visible to tenant repositories.
 DO $phase3_lifecycle_views$
@@ -143,3 +162,114 @@ REVOKE ALL ON account_deletion_tombstones, operator_audit_events FROM PUBLIC, di
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   account_deletion_tombstones, operator_audit_events, user_quotas, connector_oauth_states
   TO distil_migration;
+
+-- Only one requester may cross the provider side-effect boundary for an
+-- invitation at a time. A crashed claim self-releases after two minutes.
+CREATE OR REPLACE FUNCTION distil_claim_invitation_dispatch(
+  requested_id uuid,
+  requested_token_hash text,
+  requested_email_hash text,
+  requested_claim_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_claim_invitation_dispatch$
+  WITH claimed AS (
+    UPDATE public.invitations
+    SET dispatch_claim_id = requested_claim_id,
+        dispatch_claimed_at = statement_timestamp(),
+        dispatch_claim_expires_at = statement_timestamp() + interval '2 minutes',
+        dispatch_attempts = dispatch_attempts + 1
+    WHERE id = requested_id
+      AND token_hash = requested_token_hash
+      AND email_hash = requested_email_hash
+      AND status = 'pending'
+      AND revoked_at IS NULL
+      AND consumed_at IS NULL
+      AND expires_at > statement_timestamp()
+      AND (dispatch_claim_expires_at IS NULL OR dispatch_claim_expires_at <= statement_timestamp())
+      AND (dispatch_retry_after IS NULL OR dispatch_retry_after <= statement_timestamp())
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM claimed)
+$phase3_claim_invitation_dispatch$;
+
+CREATE OR REPLACE FUNCTION distil_complete_invitation_dispatch(
+  requested_id uuid,
+  requested_claim_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_complete_invitation_dispatch$
+  WITH completed AS (
+    UPDATE public.invitations
+    SET dispatch_claim_id = NULL,
+        dispatch_claimed_at = NULL,
+        dispatch_claim_expires_at = NULL,
+        dispatch_retry_after = statement_timestamp() + interval '1 minute',
+        dispatch_succeeded_at = statement_timestamp()
+    WHERE id = requested_id
+      AND dispatch_claim_id = requested_claim_id
+      AND status = 'pending'
+      AND revoked_at IS NULL
+      AND consumed_at IS NULL
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM completed)
+$phase3_complete_invitation_dispatch$;
+
+CREATE OR REPLACE FUNCTION distil_fail_invitation_dispatch(
+  requested_id uuid,
+  requested_claim_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $phase3_fail_invitation_dispatch$
+  WITH failed AS (
+    UPDATE public.invitations
+    SET dispatch_claim_id = NULL,
+        dispatch_claimed_at = NULL,
+        dispatch_claim_expires_at = NULL,
+        dispatch_retry_after = statement_timestamp() + make_interval(
+          secs => least(
+            300,
+            (5 * power(2, least(greatest(dispatch_attempts - 1, 0), 6)))::integer
+          )
+        )
+    WHERE id = requested_id
+      AND dispatch_claim_id = requested_claim_id
+      AND status = 'pending'
+      AND revoked_at IS NULL
+      AND consumed_at IS NULL
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM failed)
+$phase3_fail_invitation_dispatch$;
+
+ALTER FUNCTION distil_claim_invitation_dispatch(uuid, text, text, uuid)
+  OWNER TO distil_migration;
+ALTER FUNCTION distil_complete_invitation_dispatch(uuid, uuid)
+  OWNER TO distil_migration;
+ALTER FUNCTION distil_fail_invitation_dispatch(uuid, uuid)
+  OWNER TO distil_migration;
+REVOKE ALL ON FUNCTION distil_claim_invitation_dispatch(uuid, text, text, uuid)
+  FROM PUBLIC;
+REVOKE ALL ON FUNCTION distil_complete_invitation_dispatch(uuid, uuid)
+  FROM PUBLIC;
+REVOKE ALL ON FUNCTION distil_fail_invitation_dispatch(uuid, uuid)
+  FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION distil_claim_invitation_dispatch(uuid, text, text, uuid)
+  TO distil_runtime;
+GRANT EXECUTE ON FUNCTION distil_complete_invitation_dispatch(uuid, uuid)
+  TO distil_runtime;
+GRANT EXECUTE ON FUNCTION distil_fail_invitation_dispatch(uuid, uuid)
+  TO distil_runtime;

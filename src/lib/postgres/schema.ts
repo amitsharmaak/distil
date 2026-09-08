@@ -83,6 +83,12 @@ export const invitations = pgTable(
     revokedByActorId: uuid("revoked_by_actor_id"),
     revokeReason: text("revoke_reason"),
     revokedAt: time("revoked_at"),
+    dispatchClaimId: uuid("dispatch_claim_id"),
+    dispatchClaimedAt: time("dispatch_claimed_at"),
+    dispatchClaimExpiresAt: time("dispatch_claim_expires_at"),
+    dispatchRetryAfter: time("dispatch_retry_after"),
+    dispatchSucceededAt: time("dispatch_succeeded_at"),
+    dispatchAttempts: integer("dispatch_attempts").notNull().default(0),
     createdAt: time("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -98,6 +104,12 @@ export const invitations = pgTable(
       "invitations_revocation_check",
       sql`${t.status} <> 'revoked' or (${t.revokedByActorId} is not null and ${t.revokeReason} is not null and ${t.revokedAt} is not null)`
     ),
+    check("invitations_dispatch_attempts_check", sql`${t.dispatchAttempts} >= 0`),
+    check(
+      "invitations_dispatch_claim_check",
+      sql`(${t.dispatchClaimId} is null and ${t.dispatchClaimedAt} is null and ${t.dispatchClaimExpiresAt} is null) or (${t.dispatchClaimId} is not null and ${t.dispatchClaimedAt} is not null and ${t.dispatchClaimExpiresAt} is not null)`
+    ),
+    index("invitations_dispatch_retry_idx").on(t.status, t.dispatchRetryAfter),
   ]
 );
 

@@ -31,6 +31,9 @@ function repositories(account?: LinkedAccount): AuthRepositoryPort {
     createInvitation: jest.fn(),
     findInvitationById: jest.fn(),
     revokeInvitation: jest.fn(),
+    claimInvitationDispatch: jest.fn(),
+    completeInvitationDispatch: jest.fn(),
+    failInvitationDispatch: jest.fn(),
     consumeInvitationAndLinkIdentity: jest.fn(),
     findAccountByIdentity: jest.fn().mockResolvedValue(account),
   };

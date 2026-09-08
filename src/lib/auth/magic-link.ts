@@ -44,8 +44,11 @@ export function createMagicLinkRequestHandler(dependencies: {
   repositories: AuthRepositoryPort;
   appOrigin: string;
   stateSecret: string;
+  now?: () => Date;
 }) {
   return async function POST(request: Request): Promise<Response> {
+    let dispatchClaim: { invitationId: string; claimId: string } | undefined;
+    let providerAccepted = false;
     try {
       requireAllowedOrigin(request, new Set([dependencies.appOrigin]));
       const body = (await request.json()) as {
@@ -56,7 +59,33 @@ export function createMagicLinkRequestHandler(dependencies: {
       if (typeof body.email !== "string" || typeof body.invitationToken !== "string") {
         throw new AccessDeniedError("unmapped");
       }
-      await validateInvitation(body.invitationToken, body.email, dependencies.repositories);
+      const now = dependencies.now?.() ?? new Date();
+      const invitation = await validateInvitation(
+        body.invitationToken,
+        body.email,
+        dependencies.repositories,
+        now
+      );
+      const claimId = crypto.randomUUID();
+      const claimed = await dependencies.repositories.claimInvitationDispatch({
+        ...invitation,
+        claimId,
+      });
+      const accepted = async () => {
+        const response = NextResponse.json({ accepted: true }, { status: 202 });
+        response.cookies.set(
+          PENDING_INVITATION_COOKIE,
+          await sealPendingInvitation(
+            { token: body.invitationToken as string, nextPath: body.next },
+            dependencies.stateSecret,
+            now
+          ),
+          pendingInvitationCookieOptions
+        );
+        return response;
+      };
+      if (!claimed) return accepted();
+      dispatchClaim = { invitationId: invitation.invitationId, claimId };
       const completeUrl = new URL(
         "/api/auth/invitations/complete",
         dependencies.appOrigin
@@ -69,18 +98,23 @@ export function createMagicLinkRequestHandler(dependencies: {
         errorCallbackURL: deniedUrl,
       });
       if (result.error) throw new Error("provider rejected magic link");
-
-      const response = NextResponse.json({ accepted: true }, { status: 202 });
-      response.cookies.set(
-        PENDING_INVITATION_COOKIE,
-        await sealPendingInvitation(
-          { token: body.invitationToken, nextPath: body.next },
-          dependencies.stateSecret
-        ),
-        pendingInvitationCookieOptions
-      );
-      return response;
+      providerAccepted = true;
+      const completed = await dependencies.repositories.completeInvitationDispatch({
+        ...dispatchClaim,
+      });
+      if (!completed) throw new Error("magic link dispatch claim was lost");
+      dispatchClaim = undefined;
+      return accepted();
     } catch (error) {
+      if (dispatchClaim && !providerAccepted) {
+        try {
+          await dependencies.repositories.failInvitationDispatch({
+            ...dispatchClaim,
+          });
+        } catch {
+          // The durable lease bounds recovery even when releasing the claim fails.
+        }
+      }
       if (error instanceof AccessDeniedError || error instanceof AuthError) {
         return Response.json(
           { error: { code: "ACCESS_DENIED", message: "Unable to continue" } },

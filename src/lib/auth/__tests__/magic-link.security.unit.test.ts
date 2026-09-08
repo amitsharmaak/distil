@@ -24,6 +24,9 @@ function repository(): AuthRepositoryPort & { invitation?: InvitationRecord } {
       result.invitation?.id === id ? result.invitation : undefined
     ),
     revokeInvitation: jest.fn(),
+    claimInvitationDispatch: jest.fn().mockResolvedValue(true),
+    completeInvitationDispatch: jest.fn().mockResolvedValue(true),
+    failInvitationDispatch: jest.fn().mockResolvedValue(true),
     consumeInvitationAndLinkIdentity: jest.fn(),
     findAccountByIdentity: jest.fn(),
   };
@@ -103,6 +106,175 @@ describe("invitation-gated magic links", () => {
     await expect(openPendingInvitation(cookieValue(setCookie), stateSecret)).resolves.toMatchObject(
       { nextPath: "/" }
     );
+  });
+
+  it("lets only one concurrent valid request cross the provider dispatch boundary", async () => {
+    const repositories = repository();
+    const invitation = await issueInvitation(
+      {
+        action: "issue",
+        email: "amit@example.com",
+        issuedByActorId: actorId,
+        reason: "Pilot",
+        appOrigin: origin,
+      },
+      repositories
+    );
+    const token = new URLSearchParams(new URL(invitation.invitationUrl).hash.slice(1)).get(
+      "token"
+    )!;
+    let activeClaim = false;
+    let dispatched = false;
+    jest.mocked(repositories.claimInvitationDispatch).mockImplementation(async () => {
+      if (activeClaim || dispatched) return false;
+      activeClaim = true;
+      return true;
+    });
+    jest.mocked(repositories.completeInvitationDispatch).mockImplementation(async () => {
+      activeClaim = false;
+      dispatched = true;
+      return true;
+    });
+    let releaseProvider!: () => void;
+    let markProviderStarted!: () => void;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest.fn(async () => {
+        markProviderStarted();
+        await providerGate;
+        return { error: null };
+      }),
+    };
+    const handler = createMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      stateSecret,
+    });
+    const request = () =>
+      new Request(`${origin}/api/auth/invitations/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com", invitationToken: token }),
+      });
+
+    const first = handler(request());
+    await providerStarted;
+    const replay = await handler(request());
+    expect(replay.status).toBe(202);
+    expect(provider.requestMagicLink).toHaveBeenCalledTimes(1);
+    releaseProvider();
+    await expect(first).resolves.toMatchObject({ status: 202 });
+    expect(repositories.completeInvitationDispatch).toHaveBeenCalledTimes(1);
+    await expect(handler(request())).resolves.toMatchObject({ status: 202 });
+    expect(provider.requestMagicLink).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases provider failures into a bounded retry instead of permanently locking the invite", async () => {
+    const repositories = repository();
+    const invitation = await issueInvitation(
+      {
+        action: "issue",
+        email: "amit@example.com",
+        issuedByActorId: actorId,
+        reason: "Pilot",
+        appOrigin: origin,
+      },
+      repositories
+    );
+    const token = new URLSearchParams(new URL(invitation.invitationUrl).hash.slice(1)).get(
+      "token"
+    )!;
+    let clock = new Date("2026-09-08T08:00:00.000Z");
+    let claimed = false;
+    let retryAt = 0;
+    jest.mocked(repositories.claimInvitationDispatch).mockImplementation(async () => {
+      if (claimed || clock.getTime() < retryAt) return false;
+      claimed = true;
+      return true;
+    });
+    jest.mocked(repositories.failInvitationDispatch).mockImplementation(async () => {
+      claimed = false;
+      retryAt = clock.getTime() + 5_000;
+      return true;
+    });
+    jest.mocked(repositories.completeInvitationDispatch).mockImplementation(async () => {
+      claimed = false;
+      return true;
+    });
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest
+        .fn()
+        .mockResolvedValueOnce({ error: new Error("private provider detail") })
+        .mockResolvedValueOnce({ error: null }),
+    };
+    const handler = createMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      stateSecret,
+      now: () => clock,
+    });
+    const request = () =>
+      new Request(`${origin}/api/auth/invitations/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com", invitationToken: token }),
+      });
+
+    await expect(handler(request())).resolves.toMatchObject({ status: 503 });
+    await expect(handler(request())).resolves.toMatchObject({ status: 202 });
+    expect(provider.requestMagicLink).toHaveBeenCalledTimes(1);
+    clock = new Date(clock.getTime() + 5_000);
+    await expect(handler(request())).resolves.toMatchObject({ status: 202 });
+    expect(provider.requestMagicLink).toHaveBeenCalledTimes(2);
+    expect(repositories.failInvitationDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the lease when provider delivery succeeds but durable completion is unavailable", async () => {
+    const repositories = repository();
+    const invitation = await issueInvitation(
+      {
+        action: "issue",
+        email: "amit@example.com",
+        issuedByActorId: actorId,
+        reason: "Pilot",
+        appOrigin: origin,
+      },
+      repositories
+    );
+    const token = new URLSearchParams(new URL(invitation.invitationUrl).hash.slice(1)).get(
+      "token"
+    )!;
+    jest
+      .mocked(repositories.completeInvitationDispatch)
+      .mockRejectedValueOnce(new Error("database unavailable"));
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest.fn().mockResolvedValue({ error: null }),
+    };
+    const response = await createMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      stateSecret,
+    })(
+      new Request(`${origin}/api/auth/invitations/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com", invitationToken: token }),
+      })
+    );
+    expect(response.status).toBe(503);
+    expect(provider.requestMagicLink).toHaveBeenCalledTimes(1);
+    expect(repositories.failInvitationDispatch).not.toHaveBeenCalled();
   });
 
   it("never dispatches a provider request for a wrong email, invalid invite, or hostile origin", async () => {

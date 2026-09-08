@@ -17,6 +17,7 @@ import {
 } from "@/lib/lifecycle/exports";
 import { FakeTenantObjectStore } from "@/lib/storage/fake-object-store";
 import { PostgresTestHarness } from "../../../../tests/support/postgres";
+import { PostgresAuthRepository } from "../auth-repository";
 import { applyTenantMigrationStage } from "../tenant-migration/migrator";
 import { buildTenantMigrationReport } from "../tenant-migration/verifier";
 import { createPostgresRepositoryAccess } from "../tenant-repositories";
@@ -253,4 +254,119 @@ it("purges tenant rows, objects, and provider identity before writing a content-
   ).resolves.toMatchObject({ status: "completed", verification: outcome.verification });
   expect(authPurger.revoked).toEqual([alpha.userId]);
   expect(authPurger.deleted).toEqual([alpha.userId]);
+});
+
+it("atomically admits one concurrent invitation dispatch and safely releases bounded retries", async () => {
+  const invitationId = "60000000-0000-4000-8000-000000000081";
+  const claimedAt = new Date("2026-09-08T09:00:00.000Z");
+  await harness.sql`
+    INSERT INTO invitations
+      (id,normalized_email,email_hash,token_salt,token_hash,issued_by_actor_id,
+       issuance_reason,status,expires_at,created_at)
+    VALUES
+      (${invitationId}::uuid,'invite@example.com','email-hash','salt','token-hash',
+       ${system.actorId}::uuid,'concurrency test','pending',
+       ${new Date(claimedAt.getTime() + 86_400_000).toISOString()}::timestamptz,
+       ${claimedAt.toISOString()}::timestamptz)`;
+  const repository = new PostgresAuthRepository(runtimeSql);
+  const claimIds = Array.from(
+    { length: 12 },
+    (_, index) => `70000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`
+  );
+  await expect(
+    repository.claimInvitationDispatch({
+      invitationId,
+      tokenHash: "wrong-token-hash",
+      emailHash: "email-hash",
+      claimId: "70000000-0000-4000-8000-999999999999",
+    })
+  ).resolves.toBe(false);
+  const claims = await Promise.all(
+    claimIds.map(async (claimId) => ({
+      claimId,
+      claimed: await repository.claimInvitationDispatch({
+        invitationId,
+        tokenHash: "token-hash",
+        emailHash: "email-hash",
+        claimId,
+      }),
+    }))
+  );
+  const winner = claims.filter(({ claimed }) => claimed);
+  expect(winner).toHaveLength(1);
+  const [claimedRow] = await harness.sql<
+    Array<{ dispatch_attempts: number; dispatch_claim_id: string }>
+  >`
+    SELECT dispatch_attempts,dispatch_claim_id::text
+    FROM invitations WHERE id=${invitationId}::uuid`;
+  expect(claimedRow).toEqual({ dispatch_attempts: 1, dispatch_claim_id: winner[0]?.claimId });
+
+  await expect(
+    repository.completeInvitationDispatch({
+      invitationId,
+      claimId: winner[0]!.claimId,
+    })
+  ).resolves.toBe(true);
+  await expect(
+    repository.claimInvitationDispatch({
+      invitationId,
+      tokenHash: "token-hash",
+      emailHash: "email-hash",
+      claimId: claimIds[1]!,
+    })
+  ).resolves.toBe(false);
+
+  const retryClaimId = "70000000-0000-4000-8000-888888888888";
+  await harness.sql`
+    UPDATE invitations SET dispatch_retry_after=statement_timestamp() - interval '1 second'
+    WHERE id=${invitationId}::uuid`;
+  await expect(
+    repository.claimInvitationDispatch({
+      invitationId,
+      tokenHash: "token-hash",
+      emailHash: "email-hash",
+      claimId: retryClaimId,
+    })
+  ).resolves.toBe(true);
+  await expect(
+    repository.failInvitationDispatch({
+      invitationId,
+      claimId: retryClaimId,
+    })
+  ).resolves.toBe(true);
+  await expect(
+    repository.claimInvitationDispatch({
+      invitationId,
+      tokenHash: "token-hash",
+      emailHash: "email-hash",
+      claimId: "70000000-0000-4000-8000-777777777777",
+    })
+  ).resolves.toBe(false);
+  const [failedRow] = await harness.sql<Array<{ retry_seconds: number }>>`
+    SELECT extract(epoch FROM (dispatch_retry_after - statement_timestamp()))::float8 AS retry_seconds
+    FROM invitations WHERE id=${invitationId}::uuid`;
+  expect(failedRow!.retry_seconds).toBeGreaterThan(8);
+  expect(failedRow!.retry_seconds).toBeLessThanOrEqual(10);
+  await harness.sql`
+    UPDATE invitations SET dispatch_retry_after=statement_timestamp() - interval '1 second'
+    WHERE id=${invitationId}::uuid`;
+  const cappedClaimId = "70000000-0000-4000-8000-666666666666";
+  await expect(
+    repository.claimInvitationDispatch({
+      invitationId,
+      tokenHash: "token-hash",
+      emailHash: "email-hash",
+      claimId: cappedClaimId,
+    })
+  ).resolves.toBe(true);
+  await harness.sql`
+    UPDATE invitations SET dispatch_attempts=100 WHERE id=${invitationId}::uuid`;
+  await expect(
+    repository.failInvitationDispatch({ invitationId, claimId: cappedClaimId })
+  ).resolves.toBe(true);
+  const [cappedRow] = await harness.sql<Array<{ retry_seconds: number }>>`
+    SELECT extract(epoch FROM (dispatch_retry_after - statement_timestamp()))::float8 AS retry_seconds
+    FROM invitations WHERE id=${invitationId}::uuid`;
+  expect(cappedRow!.retry_seconds).toBeGreaterThan(298);
+  expect(cappedRow!.retry_seconds).toBeLessThanOrEqual(300);
 });

@@ -17,6 +17,7 @@ export type {
 export type {
   AuthIdentityRepositoryPort,
   AuthRepositoryPort,
+  InvitationDispatchClaimInput,
   InvitationRecord,
   InvitationRepositoryPort,
 } from "@/lib/auth/ports";
