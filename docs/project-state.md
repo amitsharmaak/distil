@@ -798,7 +798,7 @@ Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
    coverage across the integrated product.
 
-#### Wave 3 — Isolated Preview and acceptance (pending)
+#### Wave 3 — Isolated Preview and acceptance (completed and frozen)
 
 Use a Phase 2-specific Neon branch/database and Vercel Preview. Apply additive migrations, verify
 dry-run backfill counts, enable knowledge features first, backfill chunks and embeddings in bounded
@@ -1105,7 +1105,74 @@ Wave 3 cannot freeze yet. Required remaining gates:
    failure, full regression and independent two-user adversarial acceptance. Do not enable
    invitations or link a real identity before those records exist.
 
-Restart at this branch after the state commit. Verify `git status`, re-run
-`npm run audit:phase3-security -- --json` to confirm only the three dependency findings, and resolve
-the external gates above before creating any Preview resources. Keep `FEATURE_NEON_AUTH=false`,
-`FEATURE_CONNECTORS=false`, and every Phase 2 rollout flag false throughout the rehearsal.
+### Wave 3 closure execution — 2026-09-08
+
+Wave 3 closure resumed from integration HEAD `debfd09f8e6d783a9d9b03f0ce00c512d31d14a6` with three
+non-overlapping workstreams: auth dependency/fresh-auth disposition, production lifecycle adapters,
+and disposable Preview-clone rehearsal tooling. The integration lead owns shared-file resolution,
+external execution, complete verification, and this state document. Workstream commits must be
+reviewed and integrated centrally; no agent may enable flags, create real users, link Amit, promote
+Preview, or mutate Production.
+
+Wave 3 is now **completed and implementation-frozen** at
+`290817cc9d1124141ce18b3b0018e9e5345d63d3`. This state-document commit follows the frozen code
+SHA. `FEATURE_NEON_AUTH=false`, `FEATURE_CONNECTORS=false`, and every Phase 2 rollout flag remained
+false throughout; no Preview alias or Production resource was promoted or mutated.
+
+Closure implementation:
+
+- Commits `2efc1c8` and `5e06c43` add the private-only Vercel Blob tenant object store with
+  tenant/environment-derived keys, integrity metadata and idempotent purge. Commit `0e38968` adds
+  the branch-scoped Neon Auth purge adapter and corrects the deletion contract to use the external
+  Neon provider subject rather than Distil's internal user UUID. The subject is checkpointed before
+  destructive work, so a lost provider response or removed identity row remains retry-safe.
+- Commit `ea7b90f` clears the invalid Better Auth peer graph and AGPL transitive dependency gate with
+  a fail-closed local replacement for the unused Neon Auth UI, while retaining the official Neon
+  Next client/server adapters. It also adds explicit magic-link reauthentication for stale
+  destructive actions. ADR 0003 records the reviewed dependency/legal disposition.
+- Commit `e519f3f` adds a dry-run-by-default Preview clone plan and fail-closed, content-free evidence
+  validator. Commit `1610c26` fixes two defects found only by the live rehearsal: checksum row-alias
+  collision with `capture_requests.source`, and nondeterministic baseline hashing of columns derived
+  by the expand migration. Commit `290817c` closes the final route-inventory and SQL regression
+  gates.
+
+External disposable-clone evidence (`wave3-20260908`):
+
+- Neon project `floral-river-70536503` in `aws-ap-southeast-1`; source branch
+  `br-spring-wildflower-b38agkuk`; recovery LSN `0/2381938` within the six-hour retention window.
+  Rehearsal branch `br-icy-morning-b3eji7ig` migrated through expand, backfill, contract and
+  lifecycle. A true post-migration restore clone matched invariant fingerprint
+  `262bd489ef8fc914ffd6c819e536f3fe621c4e62276a729cd834b83057ae5a74` and all four migration
+  ledger checksums. The restore and lifecycle-test branches were deleted after evidence capture;
+  the rehearsal branch expires automatically on 2026-09-10.
+- Bidirectional RLS checks proved each synthetic user could read its own row and neither could read
+  the other's. The live PostgreSQL lifecycle suite passed 5/5 on an isolated Neon branch, including
+  idempotent export, cross-tenant denial, deletion cancellation, provider-subject checkpoint retry,
+  final zero-row purge and content-free tombstone. A newer synthetic tombstone was replayed into the
+  restored clone and reduced one deliberately resurrected user to zero.
+- Private Vercel Blob store `store_zl1onOa4HNcSWHbQ` passed live write/read/list/hash/size/delete
+  verification with no object left behind. Its token exists only as a Preview secret; Production
+  has no Blob token. A synthetic Neon Auth identity was deleted through the production adapter,
+  repeat deletion normalized successfully, and direct database verification found zero remaining
+  auth users. The one-use project API key was revoked and its local material removed.
+- Vercel project `project-evgf1` built frozen SHA `290817c` against the rehearsal branch as
+  deployment `dpl_RZgtfoxvKjezvTkoX3xqkjoCudoh`; `/api/health` passed. Rollback built the accepted
+  Phase 2 SHA `2ade16b2347c2f50566cb3a73a67312855392fc8` against the preserved source branch as
+  deployment `dpl_FS37dY8AjGgr37VmRqXKZ2sAWEDF`; `/api/health` also passed. Both are unpromoted
+  Preview deployments. Blocked and superseded rehearsal deployments were removed.
+- The complete private evidence bundle is gitignored under
+  `artifacts/preview-clone-rehearsal/wave3-20260908/`; files are mode `0600`. Offline verification
+  passed for frozen SHA `290817c`, provider/branch binding, restore parity, isolation, lifecycle,
+  tombstone and rollback fields. No connection string, token, email content or user data is stored
+  in the bundle or this document.
+
+Final local gates passed: lint/format with the 10 known warnings and zero errors; TypeScript;
+dependency/license audit; Phase 3 security audit with zero findings; 129 unit suites / 937 tests;
+production build; and the live Neon lifecycle suite above. The frozen SHA also built successfully
+on Vercel. The final GitHub Actions run for this state commit must pass before Wave 4 implementation
+begins; record its run ID below when complete.
+
+Restart on `codex/phase-3-tenancy`. Confirm the implementation freeze SHA above and the final CI run,
+then begin Wave 4 performance, failure, full-regression and independent adversarial acceptance.
+Keep every rollout flag false; Wave 3 completion authorizes Wave 4 work, not real-user linking,
+invitations, Preview promotion or Production migration.
