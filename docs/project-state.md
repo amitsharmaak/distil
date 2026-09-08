@@ -1254,3 +1254,64 @@ the concurrently started browser server on local port 3100; a clean sequential r
 confirming orchestration contention rather than a product failure. No external resource, rollout
 flag or deployment was changed. Wave 4 remains open for the independent synthetic two-user
 Preview-clone acceptance, evidence freeze, CI confirmation and Phase 3 exit decision.
+
+### Wave 4 acceptance and Phase 3 exit — 2026-09-08
+
+Phase 3 Wave 4 is **completed and implementation-frozen** at
+`b93c2bac47f1fd46d83e9c05b05b3d644e768927`. This state-only commit follows the accepted code SHA.
+All Phase 2 and Phase 3 rollout flags remain false. Neither stable Preview nor Production was
+promoted or mutated, and no real identity was created, invited or linked. Phase 3 implementation is
+accepted; actual multi-user activation remains a separate operator decision.
+
+The final disposable-clone rehearsal used Neon project `floral-river-70536503`, source branch
+`br-spring-wildflower-b38agkuk`, and fresh auto-expiring branch
+`br-noisy-river-b3iyu8s0` (`wave4-acceptance-20260908`). The source branch contained only the Phase 1
+migration, so the rehearsal exercised the complete ordinary Phase 2 migration chain followed by
+Phase 3 expand, backfill, contract and lifecycle. It found and fixed one real cold-start defect:
+pre-contract verification incorrectly demanded lifecycle-only tables. Commit `b93c2ba` makes the
+normal before/after verifier stop at expand and adds explicit `--through lifecycle` verification
+after lifecycle. Both stages then passed, and the restricted non-bypass runtime role returned only
+the transaction-local tenant while clearing tenant and actor settings after use.
+
+Two clean, unpromoted Vercel Preview deployments built the exact accepted SHA against that branch:
+alpha `dpl_HBY9wDQBWLwvFedKkfwvDkg29drR` and beta
+`dpl_2mLxKT4SMryj3YhKRx5BsnxMrc9Q`. Each used the restricted runtime database role, a distinct
+synthetic legacy-session user and deployment-scoped secrets. The initial dataset gave each user one
+item, note, annotation, collection, membership and capture token. Bidirectional live HTTP checks
+passed for health, missing/forged authentication, exact account resolution, items, feed,
+collections, notes, annotations and identifier guessing. Each capture token was deliberately sent
+to the opposite deployment; the resulting receipt belonged to the token's user rather than the
+deployment's legacy-session user, and remained invisible to the other tenant. Foreign and missing
+resources matched on status, error code and normalized body; not-found messages reflect only the
+caller-supplied UUID. Twenty alternating paired timing observations per class and tenant produced
+foreign/missing median ratios of 1.01 and 1.03; these remain diagnostic rather than a portable
+security threshold.
+
+The live sample complements, rather than replaces, the deterministic authorization corpus. The
+checked-in inventory covers 49 tables, 119 route-method surfaces and 20 workers/crons, including
+nested resources, capture and durable queues, retrieval/ranking, outbound AI context, lifecycle,
+quotas, logs and private object-key rules. The focused isolation gate passed 7 suites / 47 tests.
+The earlier complete Wave 4 run remains green at 180 deterministic suites / 1,281 tests, 12
+PostgreSQL suites / 43 tests, 27 browser E2E passes with three feature-disabled skips, and 11/11
+extension E2E. Its bounded two-connection run completed 80 alternating operations with both tenants
+making progress and no context leak; p50 was 66.8 ms, p95 118.3 ms and max 123.4 ms on the recorded
+local dataset of 20 tenants, 4,000 items and 40,000 lifecycle rows. Reviewed feed, search, export and
+deletion plans retained visible tenant index predicates. Deterministic capture, durable-job, export,
+object-store, provider-purge and deletion failure/replay chains all resumed from durable state,
+remained idempotent and rejected forged owners.
+
+GitHub Actions run
+[34213857401](https://github.com/amitsharmaak/distil/actions/runs/34213857401) passed all nine jobs
+for exact SHA `b93c2ba`: static checks, deterministic and isolation suites, security, coverage,
+PostgreSQL integration, production build, extension E2E, desktop/mobile web E2E and the aggregate
+gate. Rollback deployment `dpl_FS37dY8AjGgr37VmRqXKZ2sAWEDF`, built from accepted Phase 2 SHA
+`2ade16b2347c2f50566cb3a67312855392fc8`, remains Ready and returned HTTP 200 from `/api/health`.
+
+The content-free, mode-`0600` Wave 4 evidence bundle is gitignored at
+`artifacts/preview-clone-rehearsal/wave4-20260908/`; it records migration verification, exact SHA and
+CI binding, deployment/branch identifiers, dataset counts, performance and failure matrices, live
+A/B assertions and rollback outcome without credentials, connection strings, captured content or
+real-user data. The disposable Neon branch auto-expires on 2026-09-09. The two evidence deployments
+are intentionally unpromoted. Next: retain the accepted SHA and flags-off posture until an operator
+separately approves rollout sequencing, Preview alias promotion, synthetic invitation rehearsal and
+eventual production migration; none is implied by Phase 3 implementation acceptance.
