@@ -56,6 +56,7 @@ test("exempts explicitly identified type-only files", () => {
     new Map([
       ["src/lib/contracts/capture.ts", new Set([1])],
       ["src/lib/auth/ports.ts", new Set([1])],
+      ["src/lib/lifecycle/ports.ts", new Set([1])],
     ]),
     "/repo"
   );

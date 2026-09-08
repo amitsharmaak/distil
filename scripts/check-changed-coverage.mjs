@@ -14,6 +14,7 @@ const TYPE_ONLY_FILES = new Set([
   "src/lib/intelligence/types.ts",
   "src/lib/knowledge/types.ts",
   "src/lib/auth/ports.ts",
+  "src/lib/lifecycle/ports.ts",
   "src/lib/repositories/ports.ts",
   "src/lib/types.ts",
 ]);
