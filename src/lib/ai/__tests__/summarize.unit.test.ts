@@ -11,28 +11,37 @@ process.env.DB_PATH = ":memory:";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 jest.mock("../router", () => ({
-  generateJSON: jest.fn(),
+  createTenantAIRouter: jest.fn(),
   getEffectiveModel: jest.fn(() => ({ model: "gemini-2.5-flash" })),
-}));
-
-jest.mock("@/lib/database", () => ({
-  getAISummary: jest.fn(),
-  upsertAISummary: jest.fn(),
-  getItemById: jest.fn(),
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import { generateSummary } from "../summarize";
-import { generateJSON } from "../router";
-import { getAISummary, upsertAISummary, getItemById } from "@/lib/database";
+import { createTenantAIRouter, getEffectiveModel } from "../router";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem } from "@/lib/types";
 
 // Typed mock helpers.
-const mockGenerateJSON = generateJSON as jest.Mock;
-const mockGetAISummary = getAISummary as jest.Mock;
-const mockUpsertAISummary = upsertAISummary as jest.Mock;
-const mockGetItemById = getItemById as jest.Mock;
+const mockCreateTenantAIRouter = createTenantAIRouter as jest.Mock;
+const mockGetEffectiveModel = getEffectiveModel as jest.Mock;
+const mockGenerateJSON = jest.fn();
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
+
+const repositories = {
+  summaries: { find: jest.fn(), upsert: jest.fn() },
+  items: { findById: jest.fn() },
+} as unknown as RepositorySet;
+const mockGetAISummary = repositories.summaries.find as jest.Mock;
+const mockUpsertAISummary = repositories.summaries.upsert as jest.Mock;
+const mockGetItemById = repositories.items.findById as jest.Mock;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +132,8 @@ Voice mode democratises AI-assisted coding for developers with repetitive strain
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCreateTenantAIRouter.mockReturnValue({ generateJSON: mockGenerateJSON });
+  mockGetEffectiveModel.mockReturnValue({ model: "gemini-2.5-flash" });
 
   // Defaults: no cached summary, item found in DB, generateJSON returns brief output.
   // techCrunchItem has ~200 chars in summary → ~50 tokens → uses "summarize" task.
@@ -134,6 +145,12 @@ beforeEach(() => {
 // ── Cache behaviour ───────────────────────────────────────────────────────────
 
 describe("generateSummary — cache behaviour", () => {
+  it("fails closed when tenant context and repositories are omitted", async () => {
+    await expect(generateSummary(techCrunchItem.id)).rejects.toThrow(
+      "Tenant context and repositories are required for summary generation"
+    );
+  });
+
   it("returns cached summary and skips the API when cache exists for the same length", async () => {
     mockGetAISummary.mockReturnValue({
       id: "sum-cached-1",
@@ -144,7 +161,7 @@ describe("generateSummary — cache behaviour", () => {
       created_at: new Date().toISOString(),
     });
 
-    const result = await generateSummary(techCrunchItem.id, { length: "brief" });
+    const result = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     expect(result.cached).toBe(true);
     expect(result.summary).toBe(mockBriefSummary);
@@ -154,7 +171,7 @@ describe("generateSummary — cache behaviour", () => {
   it("calls the API when no cached summary exists", async () => {
     mockGetAISummary.mockReturnValue(undefined);
 
-    const result = await generateSummary(techCrunchItem.id, { length: "brief" });
+    const result = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
     expect(result.cached).toBe(false);
@@ -171,7 +188,7 @@ describe("generateSummary — cache behaviour", () => {
       created_at: new Date().toISOString(),
     });
 
-    const result = await generateSummary(techCrunchItem.id, {
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "brief",
       force: true,
     });
@@ -196,7 +213,7 @@ describe("generateSummary — cache behaviour", () => {
 
     mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
 
-    const result = await generateSummary(techCrunchItem.id, {
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "detailed",
     });
 
@@ -210,7 +227,7 @@ describe("generateSummary — cache behaviour", () => {
 
 describe("generateSummary — generation", () => {
   it("stores the generated summary in the DB cache", async () => {
-    await generateSummary(techCrunchItem.id, { length: "brief" });
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     expect(mockUpsertAISummary).toHaveBeenCalledTimes(1);
     expect(mockUpsertAISummary).toHaveBeenCalledWith(
@@ -224,14 +241,14 @@ describe("generateSummary — generation", () => {
   });
 
   it("persists model name in the DB cache entry", async () => {
-    await generateSummary(techCrunchItem.id, { length: "brief" });
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     const call = mockUpsertAISummary.mock.calls[0][0] as { model: string };
     expect(call.model).toBe("gemini-2.5-flash");
   });
 
   it("stores a unique id with each upsert", async () => {
-    await generateSummary(techCrunchItem.id, { length: "brief" });
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     const call = mockUpsertAISummary.mock.calls[0][0] as { id: string };
     expect(typeof call.id).toBe("string");
@@ -241,18 +258,20 @@ describe("generateSummary — generation", () => {
   it("throws an error when the item does not exist in the DB", async () => {
     mockGetItemById.mockReturnValue(undefined);
 
-    await expect(generateSummary("nonexistent-item-id")).rejects.toThrow("Item not found");
+    await expect(
+      generateSummary(context, repositories, "nonexistent-item-id")
+    ).rejects.toThrow("Item not found");
   });
 
   it("includes the article title in the prompt sent to the AI", async () => {
-    await generateSummary(techCrunchItem.id, { length: "brief" });
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     const promptArg = mockGenerateJSON.mock.calls[0][0] as string;
     expect(promptArg).toContain(techCrunchItem.title);
   });
 
   it("includes the topics in the prompt sent to the AI", async () => {
-    await generateSummary(techCrunchItem.id, { length: "brief" });
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     const promptArg = mockGenerateJSON.mock.calls[0][0] as string;
     expect(promptArg).toContain("AI");
@@ -260,7 +279,7 @@ describe("generateSummary — generation", () => {
   });
 
   it("defaults to 'brief' length when no options are provided", async () => {
-    await generateSummary(techCrunchItem.id);
+    await generateSummary(context, repositories, techCrunchItem.id);
 
     const promptArg = mockGenerateJSON.mock.calls[0][0] as string;
     expect(promptArg).toContain("3-5");
@@ -272,7 +291,7 @@ describe("generateSummary — generation", () => {
 
 describe("generateSummary — TechCrunch article fixture", () => {
   it("brief summary contains TL;DR and Key Points sections", async () => {
-    const result = await generateSummary(techCrunchItem.id, {
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "brief",
     });
 
@@ -283,7 +302,7 @@ describe("generateSummary — TechCrunch article fixture", () => {
   it("detailed summary also contains Why This Matters section", async () => {
     mockGenerateJSON.mockResolvedValueOnce(mockDetailedOutput);
 
-    const result = await generateSummary(techCrunchItem.id, {
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "detailed",
     });
 
@@ -292,7 +311,7 @@ describe("generateSummary — TechCrunch article fixture", () => {
   });
 
   it("returns cached=false on first generation and cached=true on second call", async () => {
-    const first = await generateSummary(techCrunchItem.id, { length: "brief" });
+    const first = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
     expect(first.cached).toBe(false);
 
     mockGetAISummary.mockReturnValue({
@@ -304,7 +323,7 @@ describe("generateSummary — TechCrunch article fixture", () => {
       created_at: new Date().toISOString(),
     });
 
-    const second = await generateSummary(techCrunchItem.id, { length: "brief" });
+    const second = await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
     expect(second.cached).toBe(true);
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
   });

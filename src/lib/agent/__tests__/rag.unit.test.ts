@@ -16,11 +16,7 @@ jest.mock("@/lib/ai/search", () => ({
 }));
 
 jest.mock("@/lib/ai/router", () => ({
-  generateText: jest.fn(),
-}));
-
-jest.mock("@/lib/database", () => ({
-  getItems: jest.fn(),
+  createTenantAIRouter: jest.fn(),
 }));
 
 jest.mock("@/lib/pii-filter", () => ({
@@ -31,13 +27,30 @@ jest.mock("@/lib/pii-filter", () => ({
 
 import { ragQuery } from "../rag";
 import { hybridSearch } from "@/lib/ai/search";
-import { generateText } from "@/lib/ai/router";
-import { getItems } from "@/lib/database";
+import { createTenantAIRouter } from "@/lib/ai/router";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem } from "@/lib/types";
 
 const mockHybridSearch = hybridSearch as jest.MockedFunction<typeof hybridSearch>;
-const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
-const mockGetItems = getItems as jest.MockedFunction<typeof getItems>;
+const mockCreateTenantAIRouter = createTenantAIRouter as jest.Mock;
+const mockGenerateText = jest.fn();
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
+
+const repositories = {
+  items: { list: jest.fn() },
+} as unknown as RepositorySet;
+const mockListItems = repositories.items.list as jest.Mock;
+
+function queryRag(query: string) {
+  return ragQuery(context, repositories, query);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,9 +73,10 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCreateTenantAIRouter.mockReturnValue({ generateText: mockGenerateText });
   mockGenerateText.mockResolvedValue("Here is a helpful answer based on your content.");
   mockHybridSearch.mockResolvedValue([]);
-  mockGetItems.mockResolvedValue([]);
+  mockListItems.mockResolvedValue([]);
 });
 
 // ── Intent classification — conversational ────────────────────────────────────
@@ -70,19 +84,25 @@ beforeEach(() => {
 describe("ragQuery — conversational intent", () => {
   const greetings = ["hi", "hello", "hey", "thanks", "thank you", "ok", "bye"];
 
+  it("fails closed when tenant context and repositories are omitted", async () => {
+    await expect(ragQuery("hello")).rejects.toThrow(
+      "Tenant context and repositories are required for RAG queries"
+    );
+  });
+
   it.each(greetings)('responds directly to "%s" without retrieval', async (greeting) => {
-    const result = await ragQuery(greeting);
+    const result = await queryRag(greeting);
 
     expect(result.chunksUsed).toBe(0);
     expect(result.citations).toEqual([]);
     expect(mockHybridSearch).not.toHaveBeenCalled();
-    expect(mockGetItems).not.toHaveBeenCalled();
+    expect(mockListItems).not.toHaveBeenCalled();
   });
 
   it("returns a fallback when generateText fails for a greeting", async () => {
     mockGenerateText.mockRejectedValue(new Error("API timeout"));
 
-    const result = await ragQuery("hello");
+    const result = await queryRag("hello");
 
     expect(result.answer).toBeDefined();
     expect(result.chunksUsed).toBe(0);
@@ -114,38 +134,38 @@ describe("ragQuery — general intent", () => {
 
   it.each(generalQueries)('routes "%s" to general retrieval (getItems)', async (query) => {
     const item = makeItem({ isRead: false });
-    mockGetItems.mockResolvedValue([item]);
+    mockListItems.mockResolvedValue([item]);
 
-    await ragQuery(query);
+    await queryRag(query);
 
-    expect(mockGetItems).toHaveBeenCalled();
+    expect(mockListItems).toHaveBeenCalled();
     expect(mockHybridSearch).not.toHaveBeenCalled();
   });
 
   it("prefers unread items for general queries", async () => {
     const unread = makeItem({ id: "unread-1", isRead: false });
-    mockGetItems.mockImplementation(async (filters) => {
+    mockListItems.mockImplementation(async (filters: { isRead?: boolean }) => {
       if (filters && filters.isRead === false) return [unread];
       return [];
     });
 
-    const result = await ragQuery("what's new?");
+    const result = await queryRag("what's new?");
 
-    expect(mockGetItems).toHaveBeenCalledWith(expect.objectContaining({ isRead: false }));
+    expect(mockListItems).toHaveBeenCalledWith(expect.objectContaining({ isRead: false, limit: 15 }));
     expect(result.chunksUsed).toBeGreaterThan(0);
   });
 
   it("falls back to all items when no unread items exist", async () => {
     const read = makeItem({ id: "read-1", isRead: true });
-    mockGetItems.mockImplementation(async (filters) => {
+    mockListItems.mockImplementation(async (filters: { isRead?: boolean }) => {
       if (filters && filters.isRead === false) return [];
       return [read];
     });
 
-    const result = await ragQuery("what's in my feed");
+    const result = await queryRag("what's in my feed");
 
     // First call: isRead: false (returns empty), second call: limit only (returns read item)
-    expect(mockGetItems).toHaveBeenCalledTimes(2);
+    expect(mockListItems).toHaveBeenCalledTimes(2);
     expect(result.chunksUsed).toBeGreaterThan(0);
   });
 });
@@ -157,24 +177,24 @@ describe("ragQuery — specific intent", () => {
     const item = makeItem({ title: "React Hooks Deep Dive" });
     mockHybridSearch.mockResolvedValue([item]);
 
-    await ragQuery("tell me about React hooks");
+    await queryRag("tell me about React hooks");
 
-    expect(mockHybridSearch).toHaveBeenCalledWith(expect.stringContaining("React hooks"), {
+    expect(mockHybridSearch).toHaveBeenCalledWith(repositories, expect.stringContaining("React hooks"), {
       limit: 20,
     });
-    expect(mockGetItems).not.toHaveBeenCalled();
+    expect(mockListItems).not.toHaveBeenCalled();
   });
 
   it("falls back to general retrieval when specific search returns nothing", async () => {
     mockHybridSearch.mockResolvedValue([]);
     const item = makeItem({ title: "Fallback Article" });
     // getItems is called by the general fallback
-    mockGetItems.mockResolvedValue([item]);
+    mockListItems.mockResolvedValue([item]);
 
-    const result = await ragQuery("obscure topic xyz123abc");
+    const result = await queryRag("obscure topic xyz123abc");
 
     expect(mockHybridSearch).toHaveBeenCalled();
-    expect(mockGetItems).toHaveBeenCalled();
+    expect(mockListItems).toHaveBeenCalled();
     expect(result.chunksUsed).toBeGreaterThan(0);
   });
 });
@@ -184,9 +204,9 @@ describe("ragQuery — specific intent", () => {
 describe("ragQuery — empty library", () => {
   it("returns empty-library message when no items exist anywhere", async () => {
     mockHybridSearch.mockResolvedValue([]);
-    mockGetItems.mockResolvedValue([]);
+    mockListItems.mockResolvedValue([]);
 
-    const result = await ragQuery("what should I read today");
+    const result = await queryRag("what should I read today");
 
     expect(result.answer.toLowerCase()).toContain("empty");
     expect(result.chunksUsed).toBe(0);
@@ -196,9 +216,9 @@ describe("ragQuery — empty library", () => {
   it("does NOT return empty-library message for specific queries when items exist", async () => {
     mockHybridSearch.mockResolvedValue([]); // specific search finds nothing
     const item = makeItem({ title: "General Fallback Article" });
-    mockGetItems.mockResolvedValue([item]); // but items exist
+    mockListItems.mockResolvedValue([item]); // but items exist
 
-    const result = await ragQuery("some obscure specific query");
+    const result = await queryRag("some obscure specific query");
 
     expect(result.answer.toLowerCase()).not.toContain("empty");
     expect(result.chunksUsed).toBeGreaterThan(0);
@@ -217,7 +237,7 @@ describe("ragQuery — citations", () => {
     });
     mockHybridSearch.mockResolvedValue([item]);
 
-    const result = await ragQuery("TypeScript tips");
+    const result = await queryRag("TypeScript tips");
 
     expect(result.citations).toHaveLength(1);
     expect(result.citations[0]).toMatchObject({
@@ -234,7 +254,7 @@ describe("ragQuery — citations", () => {
     const item = makeItem({ id: "dup-1", title: "Long Article", summary: longSummary });
     mockHybridSearch.mockResolvedValue([item]);
 
-    const result = await ragQuery("React");
+    const result = await queryRag("React");
 
     // Only one citation entry despite multiple chunks
     const citationIds = result.citations.map((c) => c.id);
@@ -250,7 +270,7 @@ describe("ragQuery — generation errors", () => {
     mockHybridSearch.mockResolvedValue([item]);
     mockGenerateText.mockRejectedValue(new Error("Gemini API error"));
 
-    const result = await ragQuery("tell me about this article");
+    const result = await queryRag("tell me about this article");
 
     expect(result.answer.toLowerCase()).toContain("error");
     // Citations and chunksUsed are still populated (retrieved before generation failed)

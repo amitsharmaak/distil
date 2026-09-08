@@ -12,17 +12,10 @@ process.env.DB_PATH = ":memory:";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 jest.mock("../router", () => ({
-  generateText: jest.fn(),
-  generateJSON: jest.fn(),
+  createTenantAIRouter: jest.fn(),
   getEffectiveModel: jest.fn(() => ({ provider: "gemini", model: "gemini-2.5-flash" })),
   getAvailableProviders: jest.fn(() => ["gemini"]),
   generateTextWithSearch: jest.fn(),
-}));
-
-jest.mock("@/lib/database", () => ({
-  getItems: jest.fn(),
-  updateItemPriorityScore: jest.fn(),
-  getUserSetting: jest.fn(),
 }));
 
 jest.mock("../preferences", () => ({
@@ -32,17 +25,31 @@ jest.mock("../preferences", () => ({
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import { reprioritize } from "../prioritize";
-import { getItems, updateItemPriorityScore, getUserSetting } from "@/lib/database";
+import { createAuthContext } from "@/lib/contracts/tenant-context";
+import type { RepositorySet } from "@/lib/repositories/ports";
 import { getPreferences } from "../preferences";
-import { generateText } from "../router";
+import { createTenantAIRouter } from "../router";
 import type { ContentItem } from "@/lib/types";
 import type { UserPreferenceProfile } from "../types";
 
-const mockGetItems = getItems as jest.Mock;
-const mockUpdateItemPriorityScore = updateItemPriorityScore as jest.Mock;
-const mockGetUserSetting = getUserSetting as jest.Mock;
+const mockCreateTenantAIRouter = createTenantAIRouter as jest.Mock;
 const mockGetPreferences = getPreferences as jest.Mock;
-const mockGenerateText = generateText as jest.Mock;
+const mockGenerateText = jest.fn();
+const mockGetItems = jest.fn();
+const mockUpdateItemPriorityScore = jest.fn();
+const mockGetSetting = jest.fn();
+
+const context = createAuthContext({
+  userId: "10000000-0000-4000-8000-000000000001",
+  actorKind: "user",
+  actorId: "10000000-0000-4000-8000-000000000001",
+  requestId: "30000000-0000-4000-8000-000000000001",
+});
+
+const repositories = {
+  items: { list: mockGetItems, updatePriorityScore: mockUpdateItemPriorityScore },
+  settings: { get: mockGetSetting },
+} as unknown as RepositorySet;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -106,7 +113,8 @@ const aiEnthusiastPreferences: UserPreferenceProfile = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGetUserSetting.mockReturnValue(null); // use default agent config
+  mockGetSetting.mockReturnValue(undefined); // use default agent config
+  mockCreateTenantAIRouter.mockReturnValue({ generateText: mockGenerateText });
   mockGetPreferences.mockReturnValue(neutralPreferences);
   mockGetItems.mockReturnValue([]);
   mockUpdateItemPriorityScore.mockReturnValue(undefined);
@@ -115,9 +123,15 @@ beforeEach(() => {
 // ── Basic behaviour ───────────────────────────────────────────────────────────
 
 describe("reprioritize — basic behaviour", () => {
+  it("fails closed when tenant context and repositories are omitted", async () => {
+    await expect(reprioritize()).rejects.toThrow(
+      "Tenant context and repositories are required for prioritization"
+    );
+  });
+
   it("returns an empty array when there are no items", async () => {
     mockGetItems.mockReturnValue([]);
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
     expect(result).toEqual([]);
   });
 
@@ -125,7 +139,7 @@ describe("reprioritize — basic behaviour", () => {
     const items = [makeItem({ id: "a" }), makeItem({ id: "b" }), makeItem({ id: "c" })];
     mockGetItems.mockReturnValue(items);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     expect(result).toHaveLength(3);
     expect(result.map((r) => r.itemId)).toEqual(expect.arrayContaining(["a", "b", "c"]));
@@ -136,7 +150,7 @@ describe("reprioritize — basic behaviour", () => {
     const old = makeItem({ id: "old", createdAt: daysAgo(25) });
     mockGetItems.mockReturnValue([old, recent]); // note: intentionally reversed
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     expect(result[0].itemId).toBe("recent");
     expect(result[1].itemId).toBe("old");
@@ -146,7 +160,7 @@ describe("reprioritize — basic behaviour", () => {
   it("persists each item's score to the database", async () => {
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    await reprioritize();
+    await reprioritize(context, repositories);
 
     expect(mockUpdateItemPriorityScore).toHaveBeenCalledTimes(1);
     expect(mockUpdateItemPriorityScore).toHaveBeenCalledWith(
@@ -162,7 +176,7 @@ describe("reprioritize — basic behaviour", () => {
     );
     mockGetItems.mockReturnValue(items);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     for (const s of result) {
       expect(s.score).toBeGreaterThanOrEqual(0);
@@ -173,7 +187,7 @@ describe("reprioritize — basic behaviour", () => {
   it("does not call the AI API when useAI is false (default)", async () => {
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    await reprioritize(); // useAI defaults to false
+    await reprioritize(context, repositories); // useAI defaults to false
 
     expect(mockGenerateText).not.toHaveBeenCalled();
   });
@@ -187,7 +201,7 @@ describe("reprioritize — heuristic scoring", () => {
     const stale = makeItem({ id: "stale", createdAt: daysAgo(20) });
     mockGetItems.mockReturnValue([fresh, stale]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const freshScore = result.find((r) => r.itemId === "fresh")!.score;
     const staleScore = result.find((r) => r.itemId === "stale")!.score;
@@ -200,7 +214,7 @@ describe("reprioritize — heuristic scoring", () => {
     const read = makeItem({ id: "read", isRead: true, createdAt: baseDate });
     mockGetItems.mockReturnValue([unread, read]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const unreadScore = result.find((r) => r.itemId === "unread")!.score;
     const readScore = result.find((r) => r.itemId === "read")!.score;
@@ -222,7 +236,7 @@ describe("reprioritize — heuristic scoring", () => {
     });
     mockGetItems.mockReturnValue([aiArticle, sportsArticle]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const aiScore = result.find((r) => r.itemId === "ai-article")!.score;
     const sportsScore = result.find((r) => r.itemId === "sports-article")!.score;
@@ -233,7 +247,7 @@ describe("reprioritize — heuristic scoring", () => {
     mockGetPreferences.mockReturnValue(aiEnthusiastPreferences);
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const scored = result.find((r) => r.itemId === techCrunchItem.id)!;
     expect(scored).toBeDefined();
@@ -245,7 +259,7 @@ describe("reprioritize — heuristic scoring", () => {
     mockGetPreferences.mockReturnValue(neutralPreferences);
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const scored = result.find((r) => r.itemId === techCrunchItem.id)!;
     expect(scored).toBeDefined();
@@ -266,7 +280,7 @@ describe("reprioritize — heuristic scoring", () => {
     });
     mockGetItems.mockReturnValue([oldCookingArticle, techCrunchItem]);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     const techCrunchScore = result.find((r) => r.itemId === techCrunchItem.id)!.score;
     const cookingScore = result.find((r) => r.itemId === "old-cooking")!.score;
@@ -285,7 +299,7 @@ describe("reprioritize — priority label consistency", () => {
     ];
     mockGetItems.mockReturnValue(items);
 
-    const result = await reprioritize();
+    const result = await reprioritize(context, repositories);
 
     for (const s of result) {
       if (s.score >= 70) expect(s.priority).toBe("high");
@@ -298,7 +312,7 @@ describe("reprioritize — priority label consistency", () => {
     mockGetPreferences.mockReturnValue(aiEnthusiastPreferences);
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    await reprioritize();
+    await reprioritize(context, repositories);
 
     const [, , persistedPriority] = mockUpdateItemPriorityScore.mock.calls[0] as [
       string,
@@ -319,7 +333,7 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
     mockGenerateText.mockResolvedValue(aiRankingResponse);
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    await reprioritize(true);
+    await reprioritize(context, repositories, true);
 
     expect(mockGenerateText).toHaveBeenCalledTimes(1);
   });
@@ -334,7 +348,7 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
 
     mockGetItems.mockReturnValue([techCrunchItem]);
 
-    const result = await reprioritize(true);
+    const result = await reprioritize(context, repositories, true);
     const scored = result.find((r) => r.itemId === techCrunchItem.id)!;
 
     // The merged score should be high (≥70), as both AI and heuristic signals are strong.
@@ -347,7 +361,7 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
     mockGetItems.mockReturnValue([techCrunchItem]);
 
     // Should not throw — error is caught internally.
-    const result = await reprioritize(true);
+    const result = await reprioritize(context, repositories, true);
 
     expect(result).toHaveLength(1);
     expect(result[0].itemId).toBe(techCrunchItem.id);
@@ -357,7 +371,7 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
   it("does not call the AI API when there are no items", async () => {
     mockGetItems.mockReturnValue([]);
 
-    await reprioritize(true);
+    await reprioritize(context, repositories, true);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
   });
