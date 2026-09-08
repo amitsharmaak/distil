@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-07 (Asia/Kolkata)
+Last updated: 2026-09-08 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -960,6 +960,42 @@ Wave 2 began from the exact Wave 1 SHA in three isolated worktrees:
 - `/private/tmp/distil-p3-wave2-surfaces` (`codex/p3-wave2-surfaces`) owns remaining routes,
   research/agent/chat, notifications/settings, dormant connectors, loaders, and extension account
   separation.
+
+Wave 2 is complete and frozen at `b14529b984a0fb38fb7085edb719560f9a07a5e1`. The integration
+branch now binds capture and durable jobs, feed/reader/retrieval/answers/digests/AI context, legacy
+agent and research paths, settings/notifications, dormant connector routes, and extension offline
+state to the authenticated tenant. Capture/job envelopes reject missing or forged owners, database
+candidate sets are tenant-filtered before ranking or prompt assembly, and legacy item routes now
+exercise tenant repositories plus the durable capture receipt contract. Unscoped capture creation
+fails closed. Pre-Phase-3 PostgreSQL queue and rate-limit storage remains migration-compatible
+without weakening the tenant-view upsert rules.
+
+Wave 2 closure evidence on Node `v22.23.2`:
+
+- Phase 3 isolation harness: 4 suites, 21 tests passed.
+- Final full Jest run: 143 suites and 1,026 tests passed; the focused coverage run passed 140 suites
+  and 963 tests.
+- Changed-code coverage versus `origin/main`: 83.3% lines and 80.3% branches. Auth, capture, queue,
+  URL-safety, and migration coverage each passed the 90% critical-module gate.
+- PostgreSQL 16 integration: all 10 sequential suites passed, including tenant views/upserts,
+  migration compatibility, forged-envelope rejection, restricted runtime role behavior, FORCE RLS,
+  missing-context denial, same-value cross-tenant rows, pooled-connection switching, and rollback.
+- Lint/format, TypeScript, production build, desktop/mobile browser E2E (27 passed, 3 intentionally
+  skipped behind disabled Phase 2 flags), and extension E2E (11 passed) all passed.
+
+Wave 3 may start from the Wave 2 freeze SHA above. Its first execution sequence is:
+
+1. Create Wave 3 workstreams from the exact freeze SHA; do not forward-port from the old Wave 2
+   worktrees.
+2. Close account lifecycle surfaces: onboarding, verified-email/recovery behavior, session/device
+   management, and invitation activation, using synthetic isolated Preview accounts until the
+   external auth gates are cleared.
+3. Implement tenant-scoped export/deletion, quotas/usage visibility, privacy controls, audit and
+   support procedures, then extend the authorization matrix and A/B adversarial tests for each new
+   route, worker, and data path.
+4. Keep multi-user exposure and real-account linking disabled until Waves 3-4, the Neon SDK/legal
+   decision, Preview provisioning/sender configuration, migration verification, and the complete
+   Phase 3 security gate are all accepted.
 
 Keep `FEATURE_NEON_AUTH=false`. The pinned `@neondatabase/auth@0.5.0-beta` server dependency has no
 high-severity npm advisory after the `fast-uri` override, but still has an invalid Better Auth peer
