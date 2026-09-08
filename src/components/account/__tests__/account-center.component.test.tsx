@@ -40,8 +40,8 @@ describe("AccountCenter deletion confirmation", () => {
     expect(confirmButton).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
-      target: { value: "DELETE" },
+    fireEvent.change(screen.getByLabelText("Type DELETE MY ACCOUNT to confirm"), {
+      target: { value: "DELETE MY ACCOUNT" },
     });
     expect(confirmButton).toBeEnabled();
 
@@ -51,7 +51,11 @@ describe("AccountCenter deletion confirmation", () => {
     fireEvent.click(confirmButton);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/api/v1/account/deletion", { method: "POST" })
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/account/deletion", {
+        method: "POST",
+        headers: { "content-type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      })
     );
     expect(await screen.findByText(/Deletion status: requested/)).toBeInTheDocument();
   });

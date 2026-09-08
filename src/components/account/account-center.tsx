@@ -39,6 +39,8 @@ interface DeletionRequest {
   purgeAfter?: string;
 }
 
+const DELETE_CONFIRMATION = "DELETE MY ACCOUNT";
+
 function messageFor(response: Response, fallback: string): Promise<string> {
   return response
     .json()
@@ -171,7 +173,11 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   async function requestDeletion() {
-    const response = await fetch("/api/v1/account/deletion", { method: "POST" });
+    const response = await fetch("/api/v1/account/deletion", {
+      method: "POST",
+      headers: { "content-type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ confirmation: DELETE_CONFIRMATION }),
+    });
     if (!response.ok) {
       setError(
         await messageFor(response, "Could not request account deletion. Please authenticate again.")
@@ -405,10 +411,10 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                     <p className="text-sm font-medium">Confirm account deletion</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       This immediately revokes access and starts the deletion grace period. Type
-                      <span className="font-medium"> DELETE</span> to continue.
+                      <span className="font-medium"> {DELETE_CONFIRMATION}</span> to continue.
                     </p>
                     <label className="mt-3 block text-sm font-medium" htmlFor="delete-confirmation">
-                      Type DELETE to confirm
+                      Type {DELETE_CONFIRMATION} to confirm
                     </label>
                     <Input
                       className="mt-1"
@@ -418,7 +424,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                     />
                     <div className="mt-3 flex gap-2">
                       <Button
-                        disabled={deleteConfirmation !== "DELETE"}
+                        disabled={deleteConfirmation !== DELETE_CONFIRMATION}
                         onClick={() => void requestDeletion()}
                         size="sm"
                         variant="destructive"
