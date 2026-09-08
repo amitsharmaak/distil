@@ -1463,3 +1463,46 @@ walkthrough, confirm private response cache headers, and run the controlled-retr
 the existing Shortcut and extension to the unified alias and execute the combined physical-device
 checklist. The browser is intentionally waiting at the unified Preview login page; no password has
 been entered by automation.
+
+#### Unified authenticated acceptance checkpoint — 2026-09-08 18:35 IST
+
+The user completed the correct-password login without exposing or recording the temporary test
+credential. Authenticated desktop acceptance then passed Today/feed visibility, keyword search and
+reader navigation; a grounded answer about sporadic E layers with an exact saved-source citation;
+citation navigation back to the reader; explicit abstention for an unsupported question; a
+deterministic-fallback digest run; digest-item dismissal; reader progress persisted at 75%; and a
+temporary clone-only note persisted across reload. The note remains on the disposable clone as
+acceptance evidence. Anchored text selection is reserved for the physical-device walkthrough.
+
+The walkthrough found and fixed two blocking defects. Commit `ef65745` lifts sidebar collapse state
+into the app shell so the content offset always matches the actual 64px or 256px sidebar width; the
+previous mismatch covered form controls between the `md` and `lg` breakpoints. Commit `a5ac594`
+centrally forces `cache-control: private, no-store` on every `/api/v1` response; live inspection had
+shown the tenant feed using Next.js's default public revalidation header. Focused tests (8/8), lint
+with the same 10 known warnings and zero errors, TypeScript and a production build passed.
+
+Final unified deployment `dpl_BG36KH7un4aNK4Cn8Q4fUbfa7K6X` is Ready at
+`https://project-evgf1-oopvd3lz8-pv-1850.vercel.app`; the unified alias points to it. It is built from
+SHA `a5ac594`, retains the isolated clone and the same feature posture, and supersedes the earlier
+candidate IDs in this checkpoint. Live health and login returned 200. Account, feed and search
+responses returned `private, no-store`; the 806px browser viewport no longer overlaps; and the
+75% progress plus note remained visible after the final alias switch.
+
+A fresh final-deployment capture for RFC 9112 returned durable 202, receipt
+`a878eed1-98f4-4463-90c7-82f883b328b9` became ready in one attempt, duplicate submission returned
+200 with the same receipt, and the temporary token was revoked and then rejected with 401. A
+separate transient-upstream case used receipt `e63fcde7-0fc2-4e32-9227-a20c0cf34ea5`. After its
+durable scheduled retry was placed into clone-only failed state to exercise the explicit retry API,
+the authenticated retry returned 202 with the same receipt, attempts advanced from one to two, no
+item was created and the receipt was left failed/retryable; its temporary token is revoked. Runtime
+inspection found only the expected retry-scheduled 502 entries from that deliberate failure, zero
+unexpected server errors and zero secret-pattern matches across 300 log entries.
+
+Backend/desktop preflight is therefore complete for this exact SHA and deployment. Remaining work
+is one combined physical iPhone session: Home Screen PWA/session/offline privacy; Shortcut capture
+from Chrome, Safari, Apple News and plain-text URL; no-URL and Airplane Mode behavior; independent
+Shortcut and extension revocation/recovery with the web session intact; and mobile Today, reader
+progress, note, anchored highlight, search, grounded citation/navigation, abstention and digest
+dismissal. Do not close Phase 1 Task 6 or the strict Phase 2 device gate until those results are
+recorded. Phase 1 Task 7 Production go/no-go and Phase 3 hosted-auth activation remain separate
+decisions after this combined device gate.
