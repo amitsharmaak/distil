@@ -10,6 +10,24 @@ import { lifecycleRouteErrorResponse, readLifecycleJson } from "@/lib/lifecycle/
 import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
 import { createVercelTenantJobDispatcher } from "@/lib/queue/dispatchers";
 
+export async function GET(request: Request): Promise<Response> {
+  try {
+    const { account, repositories } = await requireLifecycleRoute(request, {
+      allowDeletionPending: true,
+    });
+    const deletion = await repositories.lifecycle.findDeletion();
+    return Response.json(
+      {
+        account: { status: account.status },
+        deletion: deletion ? publicDeletion(deletion) : null,
+      },
+      { headers: { "cache-control": "private, no-store" } }
+    );
+  } catch (error) {
+    return lifecycleRouteErrorResponse(error);
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);

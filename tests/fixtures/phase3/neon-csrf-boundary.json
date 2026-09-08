@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "src/lib/auth/neon-proxy.ts",
-  "sha256": "3bd433867a4a7e2ada776f74a4131f0e88456fafe42b7f87f9d60813b07b7b3a",
+  "sha256": "5f46fd38b17366c8a0c8a0e06385faaad2acfade2b229327aa67b08e4a6e9b84",
   "centrallyProtectedSurfaces": [
     "DELETE /api/ai/research/suggestions/:id",
     "DELETE /api/items/:id",

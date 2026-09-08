@@ -315,7 +315,7 @@ export function neonCsrfBoundaryIssues(
   const validationIndex = source.indexOf(
     "requireAllowedOrigin(request, dependencies.allowedOrigins)"
   );
-  const accountResolutionIndex = source.indexOf("const resolved = await resolveNeonAuthRequest(");
+  const accountResolutionIndex = source.indexOf("await resolveRequest(");
   if (
     validationIndex < 0 ||
     accountResolutionIndex < 0 ||

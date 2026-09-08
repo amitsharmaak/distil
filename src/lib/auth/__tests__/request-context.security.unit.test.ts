@@ -5,6 +5,7 @@ import {
   requireFreshAuthentication,
   resolveLegacyAuthRequest,
   resolveNeonAuthRequest,
+  resolveNeonLifecycleRecoveryRequest,
 } from "@/lib/auth/request-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { createSessionToken } from "@/lib/auth/session";
@@ -90,6 +91,30 @@ describe("request AuthContext resolution", () => {
       ).rejects.toBeInstanceOf(AccessDeniedError);
     }
   );
+
+  it("allows only active and deletion_pending accounts through lifecycle recovery", async () => {
+    await expect(
+      resolveNeonLifecycleRecoveryRequest(
+        provider(),
+        repositories({ userId, status: "deletion_pending" }),
+        requestId,
+        now
+      )
+    ).resolves.toMatchObject({
+      context: { userId, actorId: userId, requestId },
+      account: { status: "deletion_pending" },
+    });
+    for (const status of ["migration_pending", "suspended", "deleted"] as const) {
+      await expect(
+        resolveNeonLifecycleRecoveryRequest(
+          provider(),
+          repositories({ userId, status }),
+          requestId,
+          now
+        )
+      ).rejects.toMatchObject({ name: "AccessDeniedError", reason: "disabled" });
+    }
+  });
 
   it("requires provider-verified email and marks older sessions as not fresh", async () => {
     await expect(

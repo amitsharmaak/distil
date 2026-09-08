@@ -44,6 +44,8 @@
   "GET /api/v1/capture-tokens",
   "GET /api/v1/account",
   "GET /api/v1/account/sessions",
+  "GET /api/v1/account/deletion",
+  "GET /api/v1/account/exports",
   "GET /api/v1/account/exports/:id",
   "GET /api/v1/account/exports/:id/download",
   "GET /api/v1/account/usage",

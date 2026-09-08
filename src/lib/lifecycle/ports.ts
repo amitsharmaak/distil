@@ -70,6 +70,7 @@ export interface TenantLifecycleRepository {
     downloadExpiresAt: string;
     purgeAfter: string;
   }): Promise<{ record: AccountExportRecord; created: boolean }>;
+  listExports(input: { limit: number }): Promise<AccountExportRecord[]>;
   findExport(id: string): Promise<AccountExportRecord | undefined>;
   claimExport(id: string, at: string): Promise<AccountExportRecord | undefined>;
   completeExport(input: {

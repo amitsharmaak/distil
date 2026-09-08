@@ -58,11 +58,12 @@ export async function readProviderIdentity(
   };
 }
 
-export async function resolveNeonAuthRequest(
+async function resolveNeonAuthRequestWithPolicy(
   provider: ProviderIdentityPort,
   repositories: AuthRepositoryPort,
   requestId?: string,
-  now = new Date()
+  now = new Date(),
+  allowDeletionPending = false
 ): Promise<ResolvedAuthRequest> {
   const identity = await readProviderIdentity(provider);
   const account = await repositories.findAccountByIdentity({
@@ -70,7 +71,12 @@ export async function resolveNeonAuthRequest(
     providerSubject: identity.subject,
   });
   if (!account) throw new AccessDeniedError("unmapped");
-  if (account.status !== "active") throw new AccessDeniedError("disabled");
+  if (
+    account.status !== "active" &&
+    !(allowDeletionPending && account.status === "deletion_pending")
+  ) {
+    throw new AccessDeniedError("disabled");
+  }
 
   const parsedRequestId = requestIdSchema.safeParse(requestId);
   const parsedSessionId = sessionIdSchema.safeParse(identity.sessionId);
@@ -88,6 +94,25 @@ export async function resolveNeonAuthRequest(
     identity,
     freshAuth: freshAuthMarker(identity.authenticatedAt, now),
   };
+}
+
+export function resolveNeonAuthRequest(
+  provider: ProviderIdentityPort,
+  repositories: AuthRepositoryPort,
+  requestId?: string,
+  now = new Date()
+): Promise<ResolvedAuthRequest> {
+  return resolveNeonAuthRequestWithPolicy(provider, repositories, requestId, now);
+}
+
+/** Exact recovery capability for deletion status/cancellation and the Account shell. */
+export function resolveNeonLifecycleRecoveryRequest(
+  provider: ProviderIdentityPort,
+  repositories: AuthRepositoryPort,
+  requestId?: string,
+  now = new Date()
+): Promise<ResolvedAuthRequest> {
+  return resolveNeonAuthRequestWithPolicy(provider, repositories, requestId, now, true);
 }
 
 export async function resolveLegacyAuthRequest(

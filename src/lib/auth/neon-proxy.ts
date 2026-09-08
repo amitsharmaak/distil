@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
-import { resolveNeonAuthRequest, type ProviderIdentityPort } from "@/lib/auth/request-context";
+import {
+  resolveNeonAuthRequest,
+  resolveNeonLifecycleRecoveryRequest,
+  type ProviderIdentityPort,
+} from "@/lib/auth/request-context";
 
 const PUBLIC_PATHS = new Set([
   "/invite",
@@ -60,6 +64,12 @@ export function requiresNeonSessionOrigin(method: string): boolean {
   return !SAFE_METHODS.has(method);
 }
 
+/** The only proxy capability that accepts a deletion-pending internal account. */
+export function isLifecycleRecoveryRequest(pathname: string, method: string): boolean {
+  if (pathname === "/account") return method === "GET" || method === "HEAD";
+  return pathname === "/api/v1/account/deletion" && (method === "GET" || method === "DELETE");
+}
+
 export async function authorizeNeonProxy(
   request: NextRequest,
   requestId: string,
@@ -85,7 +95,10 @@ export async function authorizeNeonProxy(
     if (requiresNeonSessionOrigin(request.method)) {
       requireAllowedOrigin(request, dependencies.allowedOrigins);
     }
-    const resolved = await resolveNeonAuthRequest(
+    const resolveRequest = isLifecycleRecoveryRequest(request.nextUrl.pathname, request.method)
+      ? resolveNeonLifecycleRecoveryRequest
+      : resolveNeonAuthRequest;
+    const resolved = await resolveRequest(
       dependencies.provider,
       dependencies.repositories,
       requestId

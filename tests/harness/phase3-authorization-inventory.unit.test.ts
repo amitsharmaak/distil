@@ -99,8 +99,10 @@ describe("Phase 3 durable authorization inventory", () => {
       version: 1,
       routes: [
         "POST /api/v1/account/export",
+        "GET /api/v1/account/exports",
         "GET /api/v1/account/exports/:id",
         "GET /api/v1/account/exports/:id/download",
+        "GET /api/v1/account/deletion",
         "POST /api/v1/account/deletion",
         "DELETE /api/v1/account/deletion",
         "GET /api/v1/account/usage",

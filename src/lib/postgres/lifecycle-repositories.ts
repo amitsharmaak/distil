@@ -206,6 +206,15 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
     );
   }
 
+  async listExports(input: { limit: number }) {
+    return (
+      await this.sql<Row[]>`
+        SELECT * FROM account_exports
+        ORDER BY requested_at DESC, id DESC
+        LIMIT ${input.limit}`
+    ).map((row) => mapExport(row)!);
+  }
+
   async claimExport(id: string, at: string) {
     const rows = await this.sql<Row[]>`
       UPDATE account_exports SET status='running',updated_at=${at}::timestamptz,failure_code=NULL

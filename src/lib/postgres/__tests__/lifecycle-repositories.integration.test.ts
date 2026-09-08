@@ -136,6 +136,10 @@ it("creates one idempotent export, produces an owner-only archive, and enforces 
     now,
   });
   expect(ready.status).toBe("ready");
+  await expect(alphaRepositories.lifecycle.listExports({ limit: 20 })).resolves.toEqual([
+    expect.objectContaining({ id: ready.id, status: "ready", userId: alpha.userId }),
+  ]);
+  await expect(betaRepositories.lifecycle.listExports({ limit: 20 })).resolves.toEqual([]);
   await expect(
     readAccountExportDownload(alpha, alphaRepositories, store, ready.id, now)
   ).resolves.toMatchObject({

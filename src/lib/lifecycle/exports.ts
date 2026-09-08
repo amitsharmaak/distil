@@ -154,6 +154,17 @@ export async function requestAccountExport(
   return { export: result.record, jobId, created: result.created };
 }
 
+export async function listAccountExports(
+  repositories: RepositorySet,
+  input: { limit?: number } = {}
+): Promise<ReturnType<typeof publicExport>[]> {
+  const limit = input.limit ?? 20;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new LifecycleError("INVALID_REQUEST", 400, "Invalid export list limit");
+  }
+  return (await repositories.lifecycle.listExports({ limit })).map(publicExport);
+}
+
 export async function purgeExpiredAccountExport(
   context: AuthContext,
   repositories: RepositorySet,

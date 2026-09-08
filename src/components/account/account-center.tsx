@@ -68,6 +68,7 @@ async function messageFor(response: Response, fallback: string): Promise<string>
 
 export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) {
   const [account, setAccount] = useState<AccountProfile>();
+  const [accountStatus, setAccountStatus] = useState<AccountProfile["status"]>();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [exports, setExports] = useState<ExportRequest[]>([]);
   const [deletion, setDeletion] = useState<DeletionRequest | null>();
@@ -96,18 +97,46 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
 
   async function load() {
     setError(undefined);
+    const deletionResponse = await fetch("/api/v1/account/deletion", {
+      headers: { Accept: "application/json" },
+    });
+    if (deletionResponse.ok) {
+      const lifecycle = (await deletionResponse.json()) as {
+        account: { status: "active" | "deletion_pending" };
+        deletion: DeletionRequest | null;
+      };
+      setAccountStatus(lifecycle.account.status);
+      setDeletion(lifecycle.deletion);
+      if (lifecycle.account.status === "deletion_pending") {
+        setAccount(undefined);
+        setSessions([]);
+        setExports([]);
+        setUsage(undefined);
+        return;
+      }
+    } else if (deletionResponse.status !== 404) {
+      throw new Error(await messageFor(deletionResponse, "Could not load deletion status."));
+    }
+
     const profile = await fetch("/api/v1/account", { headers: { Accept: "application/json" } });
     if (!profile.ok) throw new Error(await messageFor(profile, "Could not load your account."));
     const payload = (await profile.json()) as { account: AccountProfile };
     setAccount(payload.account);
+    setAccountStatus(payload.account.status);
 
-    const [sessionResponse, usageResponse] = await Promise.all([
+    const [sessionResponse, usageResponse, exportResponse] = await Promise.all([
       fetch("/api/v1/account/sessions", { headers: { Accept: "application/json" } }),
       fetch("/api/v1/account/usage", { headers: { Accept: "application/json" } }),
+      fetch("/api/v1/account/exports", { headers: { Accept: "application/json" } }),
     ]);
     if (sessionResponse.ok)
       setSessions(((await sessionResponse.json()) as { sessions: Session[] }).sessions);
     if (usageResponse.ok) setUsage((await usageResponse.json()) as { aiAvailable?: boolean });
+    if (exportResponse.ok) {
+      setExports(((await exportResponse.json()) as { exports: ExportRequest[] }).exports);
+    } else if (exportResponse.status !== 404) {
+      setError(await messageFor(exportResponse, "Could not load your exports."));
+    }
   }
 
   useEffect(() => {
@@ -228,6 +257,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     }
     const payload = (await response.json()) as { deletion: DeletionRequest };
     setDeletion(payload.deletion);
+    setAccountStatus("deletion_pending");
     setDeleteConfirmationOpen(false);
     setDeleteConfirmation("");
     setNotice("Deletion is scheduled. You can cancel during the grace period.");
@@ -247,6 +277,56 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     }
     setDeletion(((await response.json()) as { deletion: DeletionRequest }).deletion);
     setNotice("Account deletion has been cancelled.");
+    try {
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not reload your account.");
+    }
+  }
+
+  const deletionCanBeCancelled =
+    deletion?.status === "requested" || deletion?.status === "draining";
+
+  if (accountStatus === "deletion_pending") {
+    return (
+      <div className="space-y-4">
+        <section className="rounded-xl border border-destructive/40 bg-card p-5">
+          <div className="flex gap-3">
+            <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" />
+            <div>
+              <h2 className="text-base font-semibold">Account deletion in progress</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Your account is disabled. Only deletion status and grace-period cancellation are
+                available.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span>
+              Deletion status: {deletion?.status ?? "unavailable"}
+              {deletion?.purgeAfter
+                ? ` · purge after ${new Date(deletion.purgeAfter).toLocaleDateString()}`
+                : ""}
+            </span>
+            {deletionCanBeCancelled ? (
+              <Button onClick={() => void cancelDeletion()} size="sm" variant="outline">
+                Cancel deletion
+              </Button>
+            ) : null}
+          </div>
+        </section>
+        {notice ? (
+          <p aria-live="polite" className="text-sm text-primary">
+            {notice}
+          </p>
+        ) : null}
+        {error ? (
+          <p aria-live="polite" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
   }
 
   function retryFreshAuthAction() {
@@ -454,9 +534,11 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                     ? ` · purge after ${new Date(deletion.purgeAfter).toLocaleDateString()}`
                     : ""}
                 </span>
-                <Button onClick={() => void cancelDeletion()} size="sm" variant="outline">
-                  Cancel deletion
-                </Button>
+                {deletionCanBeCancelled ? (
+                  <Button onClick={() => void cancelDeletion()} size="sm" variant="outline">
+                    Cancel deletion
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <div className="mt-4 space-y-3">

@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   authorizeNeonProxy,
   hasSpecializedNeonAuth,
+  isLifecycleRecoveryRequest,
   isPublicNeonPath,
   requiresNeonSessionOrigin,
 } from "@/lib/auth/neon-proxy";
+import type { LinkedAccount } from "@/lib/auth/account";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { userIdSchema } from "@/lib/contracts";
 
@@ -44,10 +46,7 @@ function provider() {
   };
 }
 
-function repositories(account?: {
-  userId: typeof userId;
-  status: "active" | "suspended";
-}): AuthRepositoryPort {
+function repositories(account?: LinkedAccount): AuthRepositoryPort {
   return {
     createInvitation: jest.fn(),
     findInvitationById: jest.fn(),
@@ -191,6 +190,45 @@ describe("composed Neon proxy authorization", () => {
     expect(requiresNeonSessionOrigin("DELETE")).toBe(true);
     expect(hasSpecializedNeonAuth("/api/items", "POST")).toBe(true);
     expect(hasSpecializedNeonAuth("/api/items", "GET")).toBe(false);
+    expect(isLifecycleRecoveryRequest("/account", "GET")).toBe(true);
+    expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "GET")).toBe(true);
+    expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "DELETE")).toBe(true);
+    expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "POST")).toBe(false);
+    expect(isLifecycleRecoveryRequest("/api/v1/account", "GET")).toBe(false);
+  });
+
+  it("permits deletion-pending identities only on the Account recovery shell and status/cancel API", async () => {
+    const pending = { userId, status: "deletion_pending" as const };
+    for (const [method, path] of [
+      ["GET", "/account"],
+      ["GET", "/api/v1/account/deletion"],
+      ["DELETE", "/api/v1/account/deletion"],
+    ] as const) {
+      const result = await authorizeNeonProxy(
+        new NextRequest(`https://distil.example${path}`, {
+          method,
+          ...(method === "DELETE" ? { headers: { origin: "https://distil.example" } } : {}),
+        }),
+        requestId,
+        { provider: provider(), repositories: repositories(pending), allowedOrigins }
+      );
+      expect(result.response).toBeUndefined();
+      expect(result.requestHeaders?.get("x-distil-user-id")).toBe(userId);
+    }
+
+    const general = await authorizeNeonProxy(
+      new NextRequest("https://distil.example/api/v1/account"),
+      requestId,
+      { provider: provider(), repositories: repositories(pending), allowedOrigins }
+    );
+    expect(general.response?.status).toBe(403);
+
+    const missingOrigin = await authorizeNeonProxy(
+      new NextRequest("https://distil.example/api/v1/account/deletion", { method: "DELETE" }),
+      requestId,
+      { provider: provider(), repositories: repositories(pending), allowedOrigins }
+    );
+    expect(missingOrigin.response?.status).toBe(403);
   });
 
   it.each(centrallyProtectedMutations)(
