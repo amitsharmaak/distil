@@ -8,7 +8,10 @@ jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest
 jest.mock("@/lib/auth/environment", () => ({
   readAuthEnvironment: jest.fn(() => ({ allowedOrigins: new Set(["https://distil.test"]) })),
 }));
-jest.mock("@/lib/auth/origin", () => ({ requireAllowedOrigin: jest.fn() }));
+jest.mock("@/lib/auth/origin", () => {
+  const actual = jest.requireActual<typeof import("@/lib/auth/origin")>("@/lib/auth/origin");
+  return { requireAllowedOrigin: jest.fn(actual.requireAllowedOrigin) };
+});
 
 import { resolveCapturePrincipal } from "@/lib/auth";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
@@ -46,6 +49,22 @@ describe("capture route composition", () => {
     expect(requireAllowedOrigin).toHaveBeenCalledWith(request, new Set(["https://distil.test"]));
   });
 
+  it.each([undefined, "https://hostile.example"])(
+    "rejects a session mutation with %s Origin",
+    async (origin) => {
+      jest.mocked(resolveCapturePrincipal).mockResolvedValue({ kind: "session", context });
+      const composition = await composeCaptureRoutes();
+      const request = new Request("https://distil.test/api/v1/captures", {
+        method: "POST",
+        ...(origin ? { headers: { origin } } : {}),
+      });
+      await expect(composition.authenticate(request)).rejects.toMatchObject({
+        code: "ORIGIN_NOT_ALLOWED",
+        status: 403,
+      });
+    }
+  );
+
   it("does not require an origin for session reads or capture-token writes", async () => {
     const composition = await composeCaptureRoutes();
     jest.mocked(resolveCapturePrincipal).mockResolvedValue({ kind: "session", context });
@@ -56,9 +75,16 @@ describe("capture route composition", () => {
       userId: context.userId,
       tokenId: context.actorId,
     });
-    await composition.authenticate(
-      new Request("https://distil.test/api/v1/captures", { method: "POST" })
-    );
+    for (const origin of [undefined, "https://hostile.example"] as const) {
+      await expect(
+        composition.authenticate(
+          new Request("https://distil.test/api/v1/captures", {
+            method: "POST",
+            ...(origin ? { headers: { origin } } : {}),
+          })
+        )
+      ).resolves.toMatchObject({ kind: "capture-token" });
+    }
     expect(requireAllowedOrigin).not.toHaveBeenCalled();
   });
 });

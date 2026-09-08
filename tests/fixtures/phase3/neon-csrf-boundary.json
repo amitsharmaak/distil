@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "source": "src/lib/auth/neon-proxy.ts",
+  "sha256": "3bd433867a4a7e2ada776f74a4131f0e88456fafe42b7f87f9d60813b07b7b3a",
+  "centrallyProtectedSurfaces": [
+    "DELETE /api/ai/research/suggestions/:id",
+    "DELETE /api/items/:id",
+    "PATCH /api/items/:id",
+    "PATCH /api/notifications/:id",
+    "POST /api/agent/approvals",
+    "POST /api/agent/chat",
+    "POST /api/ai/feedback",
+    "POST /api/ai/prioritize",
+    "POST /api/ai/research",
+    "POST /api/ai/research/proactive",
+    "POST /api/ai/research/suggestions/:id/start",
+    "POST /api/ai/summarize",
+    "POST /api/items/:id/extract",
+    "POST /api/notifications",
+    "POST /api/settings/email-intelligence",
+    "PUT /api/ai/preferences",
+    "PUT /api/notifications/preferences"
+  ]
+}

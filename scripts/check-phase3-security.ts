@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { normalizeConnectorReturnPath } from "../src/lib/connectors/oauth-state";
 import {
   loadCsrfRouteExemptions,
+  loadNeonCsrfBoundaryReview,
   loadPhase3AuthorizationInventory,
   mutationOriginProtectionIssues,
   phase3AuthorizationInventoryIssues,
@@ -20,7 +21,15 @@ for (const detail of phase3AuthorizationInventoryIssues(inventory, root)) {
 const csrfExemptions = loadCsrfRouteExemptions(
   resolve(root, "tests/fixtures/phase3/csrf-route-exemptions.json")
 );
-for (const detail of mutationOriginProtectionIssues(inventory, csrfExemptions, root)) {
+const neonCsrfBoundary = loadNeonCsrfBoundaryReview(
+  resolve(root, "tests/fixtures/phase3/neon-csrf-boundary.json")
+);
+for (const detail of mutationOriginProtectionIssues(
+  inventory,
+  csrfExemptions,
+  neonCsrfBoundary,
+  root
+)) {
   findings.push({ id: "csrf-coverage", detail });
 }
 

@@ -1,10 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeNeonProxy, isPublicNeonPath } from "@/lib/auth/neon-proxy";
+import {
+  authorizeNeonProxy,
+  hasSpecializedNeonAuth,
+  isPublicNeonPath,
+  requiresNeonSessionOrigin,
+} from "@/lib/auth/neon-proxy";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { userIdSchema } from "@/lib/contracts";
 
 const userId = userIdSchema.parse("20000000-0000-4000-8000-000000000002");
 const requestId = "30000000-0000-4000-8000-000000000003";
+const allowedOrigins = new Set(["https://distil.example"]);
+const centrallyProtectedMutations = [
+  "DELETE /api/ai/research/suggestions/:id",
+  "DELETE /api/items/:id",
+  "PATCH /api/items/:id",
+  "PATCH /api/notifications/:id",
+  "POST /api/agent/approvals",
+  "POST /api/agent/chat",
+  "POST /api/ai/feedback",
+  "POST /api/ai/prioritize",
+  "POST /api/ai/research",
+  "POST /api/ai/research/proactive",
+  "POST /api/ai/research/suggestions/:id/start",
+  "POST /api/ai/summarize",
+  "POST /api/items/:id/extract",
+  "POST /api/notifications",
+  "POST /api/settings/email-intelligence",
+  "PUT /api/ai/preferences",
+  "PUT /api/notifications/preferences",
+] as const;
 
 function provider() {
   return {
@@ -52,7 +77,7 @@ describe("composed Neon proxy authorization", () => {
     const result = await authorizeNeonProxy(
       new NextRequest("https://distil.example/api/v1/feed"),
       requestId,
-      { provider: provider(), repositories: repositories() }
+      { provider: provider(), repositories: repositories(), allowedOrigins }
     );
     expect(result.response?.status).toBe(403);
     await expect(result.response?.json()).resolves.toMatchObject({
@@ -66,7 +91,11 @@ describe("composed Neon proxy authorization", () => {
         headers: { "x-distil-user-id": "attacker-controlled" },
       }),
       requestId,
-      { provider: provider(), repositories: repositories({ userId, status: "active" }) }
+      {
+        provider: provider(),
+        repositories: repositories({ userId, status: "active" }),
+        allowedOrigins,
+      }
     );
     expect(result.response).toBeUndefined();
     expect(result.requestHeaders?.get("x-distil-user-id")).toBe(userId);
@@ -84,6 +113,7 @@ describe("composed Neon proxy authorization", () => {
     const result = await authorizeNeonProxy(request, requestId, {
       provider: publicProvider,
       repositories: repositories(),
+      allowedOrigins,
     });
     expect(result.requestHeaders?.get("x-request-header")).toBe("preserved");
     expect(publicProvider.middleware).not.toHaveBeenCalled();
@@ -97,7 +127,7 @@ describe("composed Neon proxy authorization", () => {
     const result = await authorizeNeonProxy(
       new NextRequest("https://distil.example/feed"),
       requestId,
-      { provider: redirectingProvider, repositories: authRepositories }
+      { provider: redirectingProvider, repositories: authRepositories, allowedOrigins }
     );
     expect(result.response).toBe(redirect);
     expect(authRepositories.findAccountByIdentity).not.toHaveBeenCalled();
@@ -109,7 +139,7 @@ describe("composed Neon proxy authorization", () => {
     const apiResult = await authorizeNeonProxy(
       new NextRequest("https://distil.example/api/v1/feed"),
       requestId,
-      { provider: unauthenticated, repositories: repositories() }
+      { provider: unauthenticated, repositories: repositories(), allowedOrigins }
     );
     expect(apiResult.response?.status).toBe(401);
     await expect(apiResult.response?.json()).resolves.toMatchObject({
@@ -119,7 +149,7 @@ describe("composed Neon proxy authorization", () => {
     const pageResult = await authorizeNeonProxy(
       new NextRequest("https://distil.example/feed"),
       requestId,
-      { provider: provider(), repositories: repositories() }
+      { provider: provider(), repositories: repositories(), allowedOrigins }
     );
     expect(pageResult.response?.status).toBe(307);
     expect(pageResult.response?.headers.get("location")).toBe(
@@ -139,8 +169,118 @@ describe("composed Neon proxy authorization", () => {
     const result = await authorizeNeonProxy(
       new NextRequest("https://distil.example/feed"),
       requestId,
-      { provider: staleProvider, repositories: repositories({ userId, status: "active" }) }
+      {
+        provider: staleProvider,
+        repositories: repositories({ userId, status: "active" }),
+        allowedOrigins,
+      }
     );
     expect(result.requestHeaders?.get("x-distil-fresh-auth")).toBe("0");
+  });
+
+  it("classifies safe methods and the legacy bearer capture path explicitly", () => {
+    expect(requiresNeonSessionOrigin("GET")).toBe(false);
+    expect(requiresNeonSessionOrigin("HEAD")).toBe(false);
+    expect(requiresNeonSessionOrigin("OPTIONS")).toBe(false);
+    expect(requiresNeonSessionOrigin("POST")).toBe(true);
+    expect(requiresNeonSessionOrigin("PUT")).toBe(true);
+    expect(requiresNeonSessionOrigin("PATCH")).toBe(true);
+    expect(requiresNeonSessionOrigin("DELETE")).toBe(true);
+    expect(hasSpecializedNeonAuth("/api/items", "POST")).toBe(true);
+    expect(hasSpecializedNeonAuth("/api/items", "GET")).toBe(false);
+  });
+
+  it.each(centrallyProtectedMutations)(
+    "%s rejects missing/foreign origins and accepts the configured origin",
+    async (surface) => {
+      const [method, path] = surface.split(" ", 2);
+      for (const origin of [undefined, "https://hostile.example"] as const) {
+        const authRepositories = repositories({ userId, status: "active" });
+        const request = new NextRequest(`https://distil.example${path}`, {
+          method,
+          ...(origin ? { headers: { origin } } : {}),
+        });
+        const result = await authorizeNeonProxy(request, requestId, {
+          provider: provider(),
+          repositories: authRepositories,
+          allowedOrigins,
+        });
+        expect(result.response?.status).toBe(403);
+        await expect(result.response?.json()).resolves.toEqual({
+          error: { code: "ACCESS_DENIED", message: "Unable to continue" },
+        });
+        expect(authRepositories.findAccountByIdentity).not.toHaveBeenCalled();
+      }
+
+      const allowed = await authorizeNeonProxy(
+        new NextRequest(`https://distil.example${path}`, {
+          method,
+          headers: { origin: "https://distil.example" },
+        }),
+        requestId,
+        {
+          provider: provider(),
+          repositories: repositories({ userId, status: "active" }),
+          allowedOrigins,
+        }
+      );
+      expect(allowed.response).toBeUndefined();
+      expect(allowed.requestHeaders?.get("x-distil-user-id")).toBe(userId);
+    }
+  );
+
+  it.each([
+    ["GET", "/api/v1/feed", true],
+    ["GET", "/api/cron/digests", true],
+    ["POST", "/api/v1/captures", false],
+    ["POST", "/api/items", false],
+    ["POST", "/api/queue/capture-requests", false],
+    ["POST", "/api/auth/invitations/request-link", false],
+  ] as const)(
+    "keeps %s %s on its safe or specialized authentication path",
+    async (method, path, invokesProvider) => {
+      const authProvider = provider();
+      const result = await authorizeNeonProxy(
+        new NextRequest(`https://distil.example${path}`, {
+          method,
+          headers: { authorization: "Bearer dst_cap_test" },
+        }),
+        requestId,
+        {
+          provider: authProvider,
+          repositories: repositories({ userId, status: "active" }),
+          allowedOrigins,
+        }
+      );
+      expect(result.response).toBeUndefined();
+      expect(authProvider.middleware).toHaveBeenCalledTimes(invokesProvider ? 1 : 0);
+    }
+  );
+
+  it("preserves the dormant connector route with an allowed origin and blocks a hostile one", async () => {
+    const dependencies = {
+      provider: provider(),
+      repositories: repositories({ userId, status: "active" }),
+      allowedOrigins,
+    };
+    const allowed = await authorizeNeonProxy(
+      new NextRequest("https://distil.example/api/auth/gmail", {
+        method: "DELETE",
+        headers: { origin: "https://distil.example" },
+      }),
+      requestId,
+      dependencies
+    );
+    expect(allowed.response).toBeUndefined();
+
+    const blocked = await authorizeNeonProxy(
+      new NextRequest("https://distil.example/api/auth/gmail", {
+        method: "DELETE",
+        headers: { origin: "https://hostile.example" },
+      }),
+      requestId,
+      dependencies
+    );
+    expect(blocked.response?.status).toBe(403);
   });
 });

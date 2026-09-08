@@ -3,13 +3,16 @@ import { resolve } from "node:path";
 import {
   assertPhase3AuthorizationInventory,
   loadCsrfRouteExemptions,
+  loadNeonCsrfBoundaryReview,
   loadPhase3AuthorizationInventory,
   mutationOriginProtectionIssues,
+  neonCsrfBoundaryIssues,
   phase3AuthorizationInventoryIssues,
   reviewedOwnerMutationSurfaces,
 } from "../support/phase3-authorization-inventory";
 
 const matrixPath = resolve(process.cwd(), "docs/authorization-matrix.json");
+const csrfBoundaryPath = resolve(process.cwd(), "tests/fixtures/phase3/neon-csrf-boundary.json");
 
 describe("Phase 3 durable authorization inventory", () => {
   it("matches every frozen Wave 2 route, page, and Drizzle table in both directions", () => {
@@ -38,13 +41,29 @@ describe("Phase 3 durable authorization inventory", () => {
     const exemptions = loadCsrfRouteExemptions(
       resolve(process.cwd(), "tests/fixtures/phase3/csrf-route-exemptions.json")
     );
+    const boundary = loadNeonCsrfBoundaryReview(csrfBoundaryPath);
     expect(exemptions).toHaveLength(7);
-    const issues = mutationOriginProtectionIssues(inventory, exemptions);
-    expect(
-      issues.filter(
-        (issue) => !issue.startsWith("cookie-authenticated mutation has no route origin check:")
-      )
-    ).toEqual([]);
+    expect(boundary.centrallyProtectedSurfaces).toHaveLength(17);
+    expect(neonCsrfBoundaryIssues(boundary, inventory)).toEqual([]);
+    expect(mutationOriginProtectionIssues(inventory, exemptions, boundary)).toEqual([]);
+  });
+
+  it("fails closed when the reviewed central CSRF source digest drifts", () => {
+    const inventory = loadPhase3AuthorizationInventory(matrixPath);
+    const exemptions = loadCsrfRouteExemptions(
+      resolve(process.cwd(), "tests/fixtures/phase3/csrf-route-exemptions.json")
+    );
+    const boundary = {
+      ...loadNeonCsrfBoundaryReview(csrfBoundaryPath),
+      sha256: "0".repeat(64),
+    };
+    const issues = mutationOriginProtectionIssues(inventory, exemptions, boundary);
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Neon CSRF boundary digest drift"),
+        "cookie-authenticated mutation has no route origin check: POST /api/ai/summarize",
+      ])
+    );
   });
 
   it("reports additions and removals instead of assigning default policy", () => {

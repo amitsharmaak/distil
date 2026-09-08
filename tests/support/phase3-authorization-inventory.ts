@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { relative, resolve, sep } from "node:path";
 import { discoverNextRouteSurfaces } from "./authorization-matrix";
 
@@ -47,6 +48,13 @@ export interface CsrfRouteExemption {
   surface: string;
   control: "dormant-no-side-effect" | "composed-principal-origin";
   reason: string;
+}
+
+export interface NeonCsrfBoundaryReview {
+  version: 1;
+  source: string;
+  sha256: string;
+  centrallyProtectedSurfaces: string[];
 }
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -268,6 +276,80 @@ export function loadCsrfRouteExemptions(file: string): CsrfRouteExemption[] {
   return parsed.exemptions as CsrfRouteExemption[];
 }
 
+export function loadNeonCsrfBoundaryReview(file: string): NeonCsrfBoundaryReview {
+  const parsed: unknown = JSON.parse(readFileSync(resolve(file), "utf8"));
+  if (
+    !isRecord(parsed) ||
+    parsed.version !== 1 ||
+    parsed.source !== "src/lib/auth/neon-proxy.ts" ||
+    !/^[a-f0-9]{64}$/.test(String(parsed.sha256)) ||
+    !Array.isArray(parsed.centrallyProtectedSurfaces) ||
+    !parsed.centrallyProtectedSurfaces.every((surface) => typeof surface === "string")
+  ) {
+    throw new Error("Neon CSRF boundary review must contain a source digest and surface array");
+  }
+  return parsed as unknown as NeonCsrfBoundaryReview;
+}
+
+/**
+ * The reviewed source digest makes central-control drift explicit. Structural
+ * assertions then prove that the reviewed code still wires Origin validation
+ * before internal account resolution and receives the configured allowlist.
+ */
+export function neonCsrfBoundaryIssues(
+  review: NeonCsrfBoundaryReview,
+  inventory: Phase3AuthorizationInventory,
+  workspaceRoot = process.cwd()
+): string[] {
+  const issues: string[] = [];
+  const sourcePath = resolve(workspaceRoot, review.source);
+  if (!existsSync(sourcePath)) return [`missing Neon CSRF boundary source: ${review.source}`];
+  const source = readFileSync(sourcePath, "utf8");
+  const digest = createHash("sha256").update(source, "utf8").digest("hex");
+  if (digest !== review.sha256) {
+    issues.push(`Neon CSRF boundary digest drift: expected ${review.sha256}; got ${digest}`);
+  }
+  if (!/requireAllowedOrigin\(request,\s*dependencies\.allowedOrigins\)/.test(source)) {
+    issues.push("Neon CSRF boundary no longer invokes the reviewed Origin validator");
+  }
+  const validationIndex = source.indexOf(
+    "requireAllowedOrigin(request, dependencies.allowedOrigins)"
+  );
+  const accountResolutionIndex = source.indexOf("const resolved = await resolveNeonAuthRequest(");
+  if (
+    validationIndex < 0 ||
+    accountResolutionIndex < 0 ||
+    validationIndex > accountResolutionIndex
+  ) {
+    issues.push("Neon CSRF boundary must validate Origin before internal account resolution");
+  }
+  if (!/export function requiresNeonSessionOrigin\(method: string\)/.test(source)) {
+    issues.push("Neon CSRF boundary lost its explicit safe/unsafe method classifier");
+  }
+  const proxySource = readFileSync(resolve(workspaceRoot, "src/proxy.ts"), "utf8");
+  if (
+    !/import \{ authorizeNeonProxy \} from "@\/lib\/auth\/neon-proxy";/.test(proxySource) ||
+    !/await authorizeNeonProxy\(request, traceId, \{/.test(proxySource)
+  ) {
+    issues.push("application proxy no longer invokes the reviewed Neon authorization boundary");
+  }
+  if (!/allowedOrigins:\s*readAuthEnvironment\(\)\.allowedOrigins/.test(proxySource)) {
+    issues.push("Neon proxy does not supply the configured Origin allowlist to authorization");
+  }
+
+  const reviewedMutations = new Set(reviewedOwnerMutationSurfaces(inventory));
+  const protectedSet = new Set(review.centrallyProtectedSurfaces);
+  if (protectedSet.size !== review.centrallyProtectedSurfaces.length) {
+    issues.push("Neon CSRF boundary review contains duplicate surfaces");
+  }
+  for (const surface of [...protectedSet].sort()) {
+    if (!reviewedMutations.has(surface)) {
+      issues.push(`stale centrally protected mutation: ${surface}`);
+    }
+  }
+  return issues;
+}
+
 /**
  * Static review companion to generated runtime cases. It recognizes only the
  * central origin helpers or two narrow, source-verifiable exceptions.
@@ -275,12 +357,17 @@ export function loadCsrfRouteExemptions(file: string): CsrfRouteExemption[] {
 export function mutationOriginProtectionIssues(
   inventory: Phase3AuthorizationInventory,
   exemptions: readonly CsrfRouteExemption[],
+  boundary: NeonCsrfBoundaryReview,
   workspaceRoot = process.cwd()
 ): string[] {
   const issues: string[] = [];
   const mutations = reviewedOwnerMutationSurfaces(inventory);
   const mutationSet = new Set(mutations);
   const exemptionMap = new Map(exemptions.map((entry) => [entry.surface, entry]));
+  const boundaryIssues = neonCsrfBoundaryIssues(boundary, inventory, workspaceRoot);
+  const centralProtection =
+    boundaryIssues.length === 0 ? new Set(boundary.centrallyProtectedSurfaces) : new Set<string>();
+  issues.push(...boundaryIssues);
   if (exemptionMap.size !== exemptions.length) issues.push("duplicate CSRF exemption surface");
 
   for (const exemption of exemptions) {
@@ -318,6 +405,7 @@ export function mutationOriginProtectionIssues(
       }
       continue;
     }
+    if (centralProtection.has(surface)) continue;
     issues.push(`cookie-authenticated mutation has no route origin check: ${surface}`);
   }
   return issues;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessDeniedError } from "@/lib/auth/account";
+import { requireAllowedOrigin } from "@/lib/auth/origin";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { resolveNeonAuthRequest, type ProviderIdentityPort } from "@/lib/auth/request-context";
 
@@ -22,6 +23,7 @@ const PROTECTED_AUTH_PREFIXES = [
   "/api/auth/gmail",
   "/api/auth/slack",
 ] as const;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export interface NeonProxyProvider extends ProviderIdentityPort {
   middleware(config: { loginUrl: string }): (request: NextRequest) => Promise<NextResponse>;
@@ -48,12 +50,29 @@ export function isPublicNeonPath(pathname: string): boolean {
   );
 }
 
+/** Method-specific routes whose handler authenticates a session or bearer principal itself. */
+export function hasSpecializedNeonAuth(pathname: string, method: string): boolean {
+  return pathname === "/api/items" && (method === "POST" || method === "OPTIONS");
+}
+
+/** Central cookie-session CSRF classification after public/specialized routes have exited. */
+export function requiresNeonSessionOrigin(method: string): boolean {
+  return !SAFE_METHODS.has(method);
+}
+
 export async function authorizeNeonProxy(
   request: NextRequest,
   requestId: string,
-  dependencies: { provider: NeonProxyProvider; repositories: AuthRepositoryPort }
+  dependencies: {
+    provider: NeonProxyProvider;
+    repositories: AuthRepositoryPort;
+    allowedOrigins: ReadonlySet<string>;
+  }
 ): Promise<{ response?: NextResponse; requestHeaders?: Headers; providerHeaders?: Headers }> {
-  if (isPublicNeonPath(request.nextUrl.pathname)) {
+  if (
+    isPublicNeonPath(request.nextUrl.pathname) ||
+    hasSpecializedNeonAuth(request.nextUrl.pathname, request.method)
+  ) {
     return { requestHeaders: new Headers(request.headers) };
   }
 
@@ -63,6 +82,9 @@ export async function authorizeNeonProxy(
   }
 
   try {
+    if (requiresNeonSessionOrigin(request.method)) {
+      requireAllowedOrigin(request, dependencies.allowedOrigins);
+    }
     const resolved = await resolveNeonAuthRequest(
       dependencies.provider,
       dependencies.repositories,

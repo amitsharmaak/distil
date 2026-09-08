@@ -12,6 +12,7 @@ import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
 import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
+import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 
 const CONNECTOR_API_PREFIXES = [
@@ -63,6 +64,7 @@ export async function proxy(request: NextRequest) {
       const authorization = await authorizeNeonProxy(request, traceId, {
         provider: auth,
         repositories: await getAuthRepositoryPort(),
+        allowedOrigins: readAuthEnvironment().allowedOrigins,
       });
       if (authorization.response) {
         authorization.response.headers.set("x-trace-id", traceId);
