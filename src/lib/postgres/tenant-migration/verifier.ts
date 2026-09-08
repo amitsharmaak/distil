@@ -101,6 +101,9 @@ export function validateManifest(manifest: TenantMigrationManifest): void {
   for (const table of manifest.tables) {
     if (table.identityColumns.length === 0)
       throw new Error(`${table.table} has no identity columns`);
+    for (const column of table.migrationColumns ?? []) {
+      assertIdentifier(column, "migration column");
+    }
     const declaredJson = new Set<string>();
     for (const json of table.jsonColumns) {
       if (declaredJson.has(json.column))

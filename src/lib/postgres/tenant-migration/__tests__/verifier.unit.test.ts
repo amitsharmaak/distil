@@ -1,3 +1,4 @@
+import { buildStableChecksumSql } from "../sql";
 import type { TenantMigrationManifest, TenantMigrationReport } from "../types";
 import {
   buildTenantMigrationReport,
@@ -123,6 +124,20 @@ function reportClient(discovered = columns(), counts = { orphan: "0", collision:
 }
 
 describe("tenant migration verifier", () => {
+  it("uses a checksum row alias that cannot collide with a source column", () => {
+    const [table] = manifest().tables;
+    const sql = buildStableChecksumSql({
+      ...table,
+      highValueColumns: ["source"],
+      migrationColumns: ["derived_owner_kind"],
+    });
+
+    expect(sql).toContain("to_jsonb(tenant_row)");
+    expect(sql).toContain('AS tenant_row');
+    expect(sql).not.toContain("to_jsonb(source)");
+    expect(sql).toContain("ARRAY['user_id', 'derived_owner_kind']");
+  });
+
   it("normalizes the explicit owner and hashes canonical nested objects", () => {
     expect(normalizeExplicitAmitUserId(ownerId.toUpperCase())).toBe(ownerId);
     expect(() => normalizeExplicitAmitUserId("amit")).toThrow("RFC 4122 UUID");

@@ -42,14 +42,21 @@ ORDER BY c.table_schema, c.table_name, c.ordinal_position`;
 }
 
 export function buildStableChecksumSql(table: TenantTableClassification): string {
-  const identity = `jsonb_build_array(${qualifiedColumns("source", table.identityColumns)})::text`;
+  // Use an alias that cannot collide with application columns (capture_requests
+  // has a scalar `source` column). PostgreSQL resolves `to_jsonb(source)` to
+  // that scalar instead of the composite row, so removing user_id fails.
+  const alias = "tenant_row";
+  const excludedColumns = [table.ownerColumn, ...(table.migrationColumns ?? [])];
+  for (const column of excludedColumns) assertIdentifier(column, "migration column");
+  const exclusions = excludedColumns.map((column) => `'${column}'`).join(", ");
+  const identity = `jsonb_build_array(${qualifiedColumns(alias, table.identityColumns)})::text`;
   return `
 SELECT count(*)::text AS row_count,
        md5(coalesce(string_agg(row_digest, '' ORDER BY identity_key), '')) AS stable_checksum
 FROM (
   SELECT ${identity} AS identity_key,
-         md5((to_jsonb(source) - '${table.ownerColumn}')::text) AS row_digest
-  FROM ${tableName(table)} AS source
+         md5((to_jsonb(${alias}) - ARRAY[${exclusions}])::text) AS row_digest
+  FROM ${tableName(table)} AS ${alias}
 ) checksums`;
 }
 

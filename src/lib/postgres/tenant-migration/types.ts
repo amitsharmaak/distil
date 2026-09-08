@@ -40,6 +40,8 @@ export interface TenantTableClassification {
   readonly table: string;
   readonly tenantBearing: true;
   readonly ownerColumn: "user_id";
+  /** Columns introduced and derived by the tenancy migration, excluded from frozen-data hashes. */
+  readonly migrationColumns?: readonly string[];
   readonly identityColumns: readonly string[];
   readonly highValueColumns: readonly string[];
   readonly references: readonly ReferenceClassification[];

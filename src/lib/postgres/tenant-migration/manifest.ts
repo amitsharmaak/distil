@@ -33,6 +33,7 @@ const jsonRefs = (
 
 interface TableInput {
   identity: readonly string[];
+  migrationColumns?: readonly string[];
   highValue?: readonly string[];
   references?: readonly ReferenceClassification[];
   uniqueness?: readonly UniquenessClassification[];
@@ -45,6 +46,7 @@ const tenant = (table: string, input: TableInput): TenantTableClassification => 
   table,
   tenantBearing: true,
   ownerColumn: "user_id",
+  ...(input.migrationColumns ? { migrationColumns: input.migrationColumns } : {}),
   identityColumns: input.identity,
   highValueColumns: input.highValue ?? [],
   references: input.references ?? [],
@@ -368,6 +370,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     }),
     tenant("capture_requests", {
       identity: ["id"],
+      migrationColumns: ["origin_actor_kind", "origin_actor_id"],
       highValue: ["url", "normalized_url", "notes", "topics"],
       references: [ref("item", ["item_id"], "items")],
       uniqueness: [
@@ -387,6 +390,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     }),
     tenant("rate_limit_windows", {
       identity: ["key", "window_start", "window_seconds"],
+      migrationColumns: ["environment", "principal_kind", "principal_id", "operation"],
       highValue: ["key", "count"],
       uniqueness: [unique("window", ["key", "window_start", "window_seconds"])],
     }),
