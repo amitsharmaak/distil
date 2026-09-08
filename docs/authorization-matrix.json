@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-07",
-  "baselineCommit": "f208c551d56ae12c4ab0446d074230224e077915",
-  "status": "required-policy-not-yet-implemented",
+  "updatedAt": "2026-09-08",
+  "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
+  "status": "wave-2-freeze-reviewed-wave-3-additions-pending",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
   "sourceOfTruth": "docs/phase-3-ownership.md",
   "testProfiles": {
@@ -372,6 +372,73 @@
       "currentScope": "global-key",
       "requiredScope": "principal-scoped",
       "ownerVia": "environment and verified user/token/IP actor encoded as distinct columns or collision-safe key"
+    },
+    {
+      "name": "users",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "self-row-routed-through-tenant-view",
+      "requiredScope": "self-or-platform-admin",
+      "ownerVia": "id equals the transaction-local user_id"
+    },
+    {
+      "name": "auth_identities",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "sensitive": true
+    },
+    {
+      "name": "invitations",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "operator-control-plane",
+      "requiredScope": "operator-control-plane",
+      "ownerVia": "no tenant before acceptance; operator reason and audit required",
+      "sensitive": true
+    },
+    {
+      "name": "session_metadata",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id",
+      "sensitive": true
+    },
+    {
+      "name": "account_exports",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user-foundation",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; object reference and download authorization remain owner-bound",
+      "sensitive": true
+    },
+    {
+      "name": "account_deletions",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user-foundation",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; checkpoint cannot broaden the deletion graph"
+    },
+    {
+      "name": "usage_counters",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user-foundation",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id"
+    },
+    {
+      "name": "user_entitlements",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "direct-user-foundation",
+      "requiredScope": "direct-user-read-platform-write",
+      "ownerVia": "user_id"
+    },
+    {
+      "name": "research_suggestion_sources",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "derived-user",
+      "requiredScope": "derived-user",
+      "ownerVia": "same-user composite references to research_suggestions and items"
     }
   ],
   "repositoryFamilies": [
@@ -610,6 +677,79 @@
       "scope": "owner",
       "resources": ["ai_summaries", "items"],
       "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/:path+",
+      "source": "src/app/api/auth/[...path]/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "strict-provider-route-and-method-allowlist",
+      "requiredPrincipal": "anonymous-or-current-session-by-allowed-operation",
+      "scope": "public",
+      "resources": ["provider_sessions"],
+      "testProfile": "public",
+      "notes": "Only get-session, magic-link verification and sign-out are reachable; POST requires exact Origin."
+    },
+    {
+      "path": "/api/auth/account/status",
+      "source": "src/app/api/auth/account/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "active_internal_account",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["users", "auth_identities"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/devices/:id",
+      "source": "src/app/api/auth/devices/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "active_internal_account_plus_origin",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata", "provider_sessions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/devices/revoke-others",
+      "source": "src/app/api/auth/devices/revoke-others/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "active_internal_account_plus_origin",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata", "provider_sessions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/devices",
+      "source": "src/app/api/auth/devices/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "active_internal_account",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["session_metadata", "provider_sessions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/auth/invitations/complete",
+      "source": "src/app/api/auth/invitations/complete/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "sealed-invitation-state-plus-verified-provider-session",
+      "requiredPrincipal": "invited_verified_identity",
+      "scope": "public",
+      "resources": ["invitations", "users", "auth_identities"],
+      "testProfile": "public",
+      "notes": "Atomic invite consumption must permit exactly one concurrent completion."
+    },
+    {
+      "path": "/api/auth/invitations/request-link",
+      "source": "src/app/api/auth/invitations/request-link/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "invitation-token-plus-origin",
+      "requiredPrincipal": "valid_invitation",
+      "scope": "public",
+      "resources": ["invitations", "rate_limit_windows"],
+      "testProfile": "public",
+      "notes": "Invitation/email rate limiting and replay control must occur before provider dispatch."
     },
     {
       "path": "/api/auth/gmail/callback",
@@ -1241,6 +1381,14 @@
       "testProfile": "owner"
     },
     {
+      "path": "/access-denied",
+      "source": "src/app/access-denied/page.tsx",
+      "currentAuth": "public-generic-denial",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "no personal data",
+      "testProfile": "public"
+    },
+    {
       "path": "/archive",
       "source": "src/app/archive/page.tsx",
       "currentAuth": "proxy_session",
@@ -1301,6 +1449,14 @@
       "resources": ["items", "ai_summaries", "feedback"],
       "testProfile": "owner",
       "notes": "Direct server loader is an IDOR and cross-tenant navigation hotspot until TenantContext reaches every query."
+    },
+    {
+      "path": "/invite",
+      "source": "src/app/invite/page.tsx",
+      "currentAuth": "public-invitation-entry",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "/api/auth/invitations/request-link; raw token remains in URL fragment",
+      "testProfile": "public"
     },
     {
       "path": "/login",
@@ -2043,9 +2199,9 @@
     }
   ],
   "inventoryCoverage": {
-    "expectedDrizzleTableCount": 36,
-    "expectedApiRouteFileCount": 67,
-    "expectedPageFileCount": 16,
+    "expectedDrizzleTableCount": 45,
+    "expectedApiRouteFileCount": 74,
+    "expectedPageFileCount": 18,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

@@ -13,6 +13,7 @@ export const NEGATIVE_TEST_LAYERS = [
   "rate-limit",
   "logging",
   "object-storage",
+  "dependency",
 ] as const;
 
 export type NegativeTestLayer = (typeof NEGATIVE_TEST_LAYERS)[number];
@@ -32,6 +33,37 @@ export interface NegativeTestCatalog {
   version: 1;
   entries: NegativeTestCatalogEntry[];
 }
+
+export const REQUIRED_NEGATIVE_TEST_IDS = [
+  "P3-AUTH-001",
+  "P3-AUTH-002",
+  "P3-CSRF-001",
+  "P3-SESSION-001",
+  "P3-OAUTH-001",
+  "P3-ROUTE-001",
+  "P3-ROUTE-002",
+  "P3-REPO-001",
+  "P3-DB-001",
+  "P3-DB-002",
+  "P3-DB-003",
+  "P3-DB-004",
+  "P3-QUEUE-001",
+  "P3-QUEUE-002",
+  "P3-QUEUE-003",
+  "P3-SEARCH-001",
+  "P3-AI-001",
+  "P3-CACHE-001",
+  "P3-RATE-001",
+  "P3-LOG-001",
+  "P3-OBJECT-001",
+  "P3-EXPORT-001",
+  "P3-EXPORT-002",
+  "P3-DELETE-001",
+  "P3-DELETE-002",
+  "P3-RECOVERY-001",
+  "P3-OUTAGE-001",
+  "P3-DEPENDENCY-001",
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -72,6 +104,9 @@ export function validateNegativeTestCatalog(input: unknown): string[] {
   }
   if (!input.entries.some((entry) => isRecord(entry) && entry.layer === "queue")) {
     issues.push("negative-test catalog must include a forged queue case");
+  }
+  for (const id of REQUIRED_NEGATIVE_TEST_IDS) {
+    if (!ids.has(id)) issues.push(`negative-test catalog is missing required case: ${id}`);
   }
   return issues;
 }

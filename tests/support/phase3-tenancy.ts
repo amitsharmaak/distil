@@ -40,6 +40,19 @@ export interface TenantFixture {
     captureId: string;
     collectionId: string;
     jobId: string;
+    sessionId: string;
+    otherSessionId: string;
+    invitationId: string;
+    exportId: string;
+    deletionId: string;
+    oauthStateNonce: string;
+  };
+  canaries: {
+    itemTitle: string;
+    itemBody: string;
+    bearerToken: string;
+    sessionCookie: string;
+    oauthCode: string;
   };
 }
 
@@ -51,8 +64,8 @@ export interface TwoTenantFixture {
 const tenant = (sequence: number, name: string): TenantFixture => {
   const suffix = String(sequence).padStart(12, "0");
   const userId = `10000000-0000-4000-8000-${suffix}`;
-  const actorId = `20000000-0000-4000-8000-${suffix}`;
   const requestId = `30000000-0000-4000-8000-${suffix}`;
+  const sessionId = `50000000-0000-4000-8000-${suffix}`;
 
   return {
     user: {
@@ -63,8 +76,11 @@ const tenant = (sequence: number, name: string): TenantFixture => {
       session: {
         userId,
         actorKind: "user",
-        actorId,
-        sessionId: `50000000-0000-4000-8000-${suffix}`,
+        // The production AuthContext contract requires a user actor to be its
+        // own tenant principal. A different deterministic actor id makes a
+        // fixture impossible to parse and can hide adapter drift.
+        actorId: userId,
+        sessionId,
         requestId,
       },
       captureToken: {
@@ -76,7 +92,7 @@ const tenant = (sequence: number, name: string): TenantFixture => {
       system: {
         userId,
         actorKind: "system",
-        actorId: "phase3-test-worker",
+        actorId: `20000000-0000-4000-8000-${suffix}`,
         requestId: `80000000-0000-4000-8000-${suffix}`,
       },
     },
@@ -85,6 +101,19 @@ const tenant = (sequence: number, name: string): TenantFixture => {
       captureId: `90000000-0000-4000-8000-${suffix}`,
       collectionId: `collection-${name}`,
       jobId: `a0000000-0000-4000-8000-${suffix}`,
+      sessionId,
+      otherSessionId: `b0000000-0000-4000-8000-${suffix}`,
+      invitationId: `c0000000-0000-4000-8000-${suffix}`,
+      exportId: `d0000000-0000-4000-8000-${suffix}`,
+      deletionId: `e0000000-0000-4000-8000-${suffix}`,
+      oauthStateNonce: `f0000000-0000-4000-8000-${suffix}`,
+    },
+    canaries: {
+      itemTitle: `P3_${name.toUpperCase()}_TITLE_CANARY_9f2d`,
+      itemBody: `P3_${name.toUpperCase()}_BODY_CANARY_7c4a`,
+      bearerToken: `dst_cap_P3_${name.toUpperCase()}_TOKEN_CANARY_1a8e`,
+      sessionCookie: `P3_${name.toUpperCase()}_SESSION_CANARY_3b6f`,
+      oauthCode: `P3_${name.toUpperCase()}_OAUTH_CANARY_5d0c`,
     },
   };
 };

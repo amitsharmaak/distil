@@ -146,9 +146,13 @@ describe("Phase 3 negative-test catalog", () => {
   });
 
   it("rejects catalogs without mandatory database and queue cases", () => {
-    expect(validateNegativeTestCatalog({ version: 1, entries: [] })).toEqual([
-      "negative-test catalog must include a database isolation case",
-      "negative-test catalog must include a forged queue case",
-    ]);
+    expect(validateNegativeTestCatalog({ version: 1, entries: [] })).toEqual(
+      expect.arrayContaining([
+        "negative-test catalog must include a database isolation case",
+        "negative-test catalog must include a forged queue case",
+        "negative-test catalog is missing required case: P3-CSRF-001",
+        "negative-test catalog is missing required case: P3-DELETE-002",
+      ])
+    );
   });
 });

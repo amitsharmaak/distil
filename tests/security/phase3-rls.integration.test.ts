@@ -322,6 +322,41 @@ describeWithTenantMigration(
       ]);
     });
 
+    it("P3-DB-003: preserves tenant isolation under concurrent pool pressure", async () => {
+      const contexts = Array.from({ length: 64 }, (_, index) =>
+        index % 2 === 0 ? fixture.alpha.auth.session : fixture.beta.auth.session
+      );
+      const observations = await Promise.all(
+        contexts.map((context) =>
+          concurrencyPool.asTenant(context, async (transaction) => {
+            const [setting] = await transaction<
+              { user_id: string; actor_id: string; request_id: string }[]
+            >`SELECT current_setting('app.user_id') AS user_id,
+                     current_setting('app.actor_id') AS actor_id,
+                     current_setting('app.request_id') AS request_id`;
+            const rows = await transaction<{ value: string }[]>`
+              SELECT value FROM public.__distil_rls_pool_probe
+              WHERE id = 'shared-id' ORDER BY value
+            `;
+            return { setting, values: rows.map(({ value }) => value) };
+          })
+        )
+      );
+
+      observations.forEach((observation, index) => {
+        const context = contexts[index];
+        expect(observation.setting).toEqual({
+          user_id: context.userId,
+          actor_id: context.actorId,
+          request_id: context.requestId,
+        });
+        expect(observation.values).toEqual([
+          context.userId === fixture.alpha.user.id ? "alpha-only" : "beta-only",
+        ]);
+      });
+      await expect(concurrencyPool.assertTenantCleared()).resolves.toBeUndefined();
+    });
+
     it("clears transaction-local tenant state after rollback", async () => {
       await expect(
         pool.asTenant(fixture.beta.auth.session, async (transaction) => {

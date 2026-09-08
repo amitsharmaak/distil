@@ -140,6 +140,146 @@
       "attack": "Request the object key directly and replay any previously issued signed URL.",
       "expected": "Deny access; private keys include an immutable tenant boundary and signed URLs are narrowly scoped.",
       "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-AUTH-002",
+      "layer": "auth",
+      "surface": "invitation-gated magic-link dispatch and completion",
+      "threat": "replayed invite causes email flooding or duplicate account activation",
+      "setup": "Prepare one valid invitation and one verified provider session.",
+      "attack": "Concurrently request the magic link twice and replay the same completion state twice.",
+      "expected": "Exactly one provider dispatch and one account activation occur; all replays are generic denials.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-CSRF-001",
+      "layer": "route",
+      "surface": "every cookie-authenticated owner mutation generated from the authorization matrix",
+      "threat": "cross-site request forgery after enabling Neon Auth",
+      "setup": "Authenticate alpha and enumerate every POST, PUT, PATCH, and DELETE owner surface.",
+      "attack": "Invoke each surface with a missing or hostile Origin while preserving alpha's session cookie.",
+      "expected": "Return 403 before repository, provider, queue, or object-store side effects.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-SESSION-001",
+      "layer": "auth",
+      "surface": "session/device listing, targeted revocation, and account disable",
+      "threat": "session substitution, token disclosure, or stale access after revocation",
+      "setup": "Give alpha two devices, beta one device, and retain their provider session tokens only server-side.",
+      "attack": "Guess beta's device id, revoke alpha's second device, and disable alpha during an active request.",
+      "expected": "Tokens are never returned; foreign ids are concealed; revoked or disabled sessions fail the next protected request.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-OAUTH-001",
+      "layer": "auth",
+      "surface": "connector OAuth state issue and consume",
+      "threat": "open redirect, provider substitution, replay, or cross-tenant nonce burn",
+      "setup": "Issue alpha state bound to alpha's session and Gmail.",
+      "attack": "Consume as beta, consume as Slack, use a backslash external return path, then replay as alpha.",
+      "expected": "Invalid attempts cannot burn alpha's state; return remains same-origin; only alpha/Gmail succeeds exactly once.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-EXPORT-001",
+      "layer": "object-storage",
+      "surface": "account export builder and stored artifact",
+      "threat": "denylist gaps leak credentials, another tenant, or future unreviewed tables",
+      "setup": "Seed alpha and beta content plus token, cookie, OAuth, prompt, and URL canaries.",
+      "attack": "Build alpha's export and recursively inspect every key and value.",
+      "expected": "Only explicit allowlisted sections exist; alpha content is present; credentials, internal hashes, and beta canaries are absent.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-EXPORT-002",
+      "layer": "route",
+      "surface": "export status and download",
+      "threat": "foreign export-id guessing or stale artifact replay",
+      "setup": "Complete alpha's export and prepare an unknown export id.",
+      "attack": "Read/download as beta, after expiry, and after alpha deletion.",
+      "expected": "Foreign and missing ids are identical 404s; expired/deleted artifacts cannot be downloaded.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-DELETE-001",
+      "layer": "repository",
+      "surface": "account deletion ownership graph",
+      "threat": "orphaned rows, credentials, jobs, or objects after deletion",
+      "setup": "Seed the full alpha ownership graph and an independent beta graph.",
+      "attack": "Delete alpha and inspect every reviewed table, queue, connector, and object seam.",
+      "expected": "Alpha access is revoked before purge, the full alpha graph is gone, and beta is byte-for-byte unchanged.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-DELETE-002",
+      "layer": "queue",
+      "surface": "deletion request, cancellation, and worker race",
+      "threat": "capture/job commit races deletion or cancellation races irreversible purge",
+      "setup": "Pause deletion at each checkpoint with in-flight tenant jobs and a deterministic barrier.",
+      "attack": "Interleave request, auth, enqueue, retry, cancellation, duplicate delivery, and worker restart.",
+      "expected": "No new personal work commits after disable; cancellation is bounded to the reversible state; replay resumes idempotently.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-QUEUE-003",
+      "layer": "queue",
+      "surface": "capture, export, deletion, and durable-job retry",
+      "threat": "duplicate delivery or retry changes tenant or repeats effects",
+      "setup": "Prepare one valid message, an exact duplicate, a retry, and a forged-owner copy.",
+      "attack": "Deliver all messages concurrently and again after a simulated process restart.",
+      "expected": "One logical effect occurs; retry preserves tenant; duplicate is idempotent; forgery has no effect.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-DB-003",
+      "layer": "database",
+      "surface": "concurrent tenant transactions through a small PostgreSQL pool",
+      "threat": "RLS context crossover under pool pressure",
+      "setup": "Use more alpha/beta operations than pool connections with colliding public identifiers.",
+      "attack": "Run reads, writes, commit, rollback, and cancellation in randomized but seeded order.",
+      "expected": "Every result belongs to the caller and every checked-in connection has empty tenant settings.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-DB-004",
+      "layer": "database",
+      "surface": "feed, search, export, and deletion query plans",
+      "threat": "tenant predicate applied after a broad scan or ranking stage",
+      "setup": "Seed realistic alpha/beta cardinality and collect stable EXPLAIN plans without ANALYZE.",
+      "attack": "Inspect candidate, join, rank, and delete plans for each reviewed query family.",
+      "expected": "The tenant predicate is visible at the earliest relation and tenant-leading indexes are usable.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-RECOVERY-001",
+      "layer": "object-storage",
+      "surface": "export and deletion checkpoints",
+      "threat": "outage leaves downloadable partial export or unrecoverable partial deletion",
+      "setup": "Inject a one-shot failure before and after each database/object-store checkpoint.",
+      "attack": "Restart the worker and redeliver the same message.",
+      "expected": "Partial exports are never downloadable; workers resume or safely repeat; completed evidence is durable.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-OUTAGE-001",
+      "layer": "queue",
+      "surface": "auth provider, database, queue, and object-store seams",
+      "threat": "dependency outage widens authorization or loses accepted work",
+      "setup": "Configure deterministic one-shot failures at named external-effect boundaries.",
+      "attack": "Exercise login, export, deletion, and retry across each injected failure.",
+      "expected": "Authorization fails closed; accepted work remains durable; retries do not duplicate effects.",
+      "delivery": "phase-3-exit"
+    },
+    {
+      "id": "P3-DEPENDENCY-001",
+      "layer": "dependency",
+      "surface": "committed production package manifest and lock graph",
+      "threat": "unpinned auth SDK, incompatible peers, or unapproved reciprocal license",
+      "setup": "Read only package.json and package-lock.json with no registry access.",
+      "attack": "Check the exact auth SDK pin, locked version, Better Auth peer resolution, and every production license.",
+      "expected": "The graph is deterministic, peer-compatible, and contains no unapproved AGPL dependency.",
+      "delivery": "phase-3-exit"
     }
   ]
 }

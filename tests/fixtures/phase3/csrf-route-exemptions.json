@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "exemptions": [
+    {
+      "surface": "DELETE /api/auth/gmail",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any disconnect side effect."
+    },
+    {
+      "surface": "DELETE /api/auth/slack",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any disconnect side effect."
+    },
+    {
+      "surface": "POST /api/gmail/sync",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any synchronization side effect."
+    },
+    {
+      "surface": "POST /api/publishers/:id/login",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any browser credential side effect."
+    },
+    {
+      "surface": "POST /api/publishers/:id/sync",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any synchronization side effect."
+    },
+    {
+      "surface": "POST /api/slack/sync",
+      "control": "dormant-no-side-effect",
+      "reason": "Authenticated connector gate returns 404 before any synchronization side effect."
+    },
+    {
+      "surface": "POST /api/v1/captures/:id/retry",
+      "control": "composed-principal-origin",
+      "reason": "Capture composition validates Origin only for cookie sessions and permits bearer tokens."
+    }
+  ]
+}
