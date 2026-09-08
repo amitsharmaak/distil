@@ -972,6 +972,11 @@ without weakening the tenant-view upsert rules.
 
 Wave 2 closure evidence on Node `v22.23.2`:
 
+- GitHub Actions run
+  [34193330071](https://github.com/amitsharmaak/distil/actions/runs/34193330071) passed on
+  restart-document commit `112e3116114927b9bd3741078a152c2d95c37a54`. Its only change from frozen
+  code SHA `428a0b023e2295b59fe864efeb2b26047b0ed6fa` is this state document, so the
+  workflow verifies the exact frozen Wave 2 code.
 - Phase 3 isolation harness: 4 suites, 21 tests passed.
 - Final full Jest run: 143 suites and 1,026 tests passed; the focused coverage run passed 140 suites
   and 963 tests.
@@ -998,6 +1003,24 @@ Wave 3 may start from the Wave 2 freeze SHA above. Its first execution sequence 
 4. Keep multi-user exposure and real-account linking disabled until Waves 3-4, the Neon SDK/legal
    decision, Preview provisioning/sender configuration, migration verification, and the complete
    Phase 3 security gate are all accepted.
+
+Wave 3 execution began on 2026-09-08 from exact frozen code SHA
+`428a0b023e2295b59fe864efeb2b26047b0ed6fa` in three isolated worktrees:
+
+- `/private/tmp/distil-p3-wave3-account` (`codex/p3-wave3-account`) owns onboarding, account UX,
+  session/device and capture-token management, quota visibility, export/deletion UI, and fresh-auth
+  route behavior. It does not own lifecycle storage or purge internals.
+- `/private/tmp/distil-p3-wave3-lifecycle` (`codex/p3-wave3-lifecycle`) owns additive lifecycle
+  schema/contracts, export/deletion workers, fake/local object storage, quotas, suspension/audit,
+  purge verification, and operational runbooks. Real Blob provisioning is excluded.
+- `/private/tmp/distil-p3-wave3-security` (`codex/p3-wave3-security`) owns independent security and
+  privacy tests plus additive early Wave 4 harnesses. It reports product findings and changes only
+  test infrastructure unless the integration lead assigns a bounded fix.
+
+The integration lead remains on `codex/phase-3-tenancy`, owns shared-file resolution, review,
+integration, full gates, and this state document. Agents commit but never merge. All rollout flags,
+invitations, dormant connectors, real-user linking, Preview promotion, and destructive production
+migration remain disabled while Wave 3 is in progress.
 
 Keep `FEATURE_NEON_AUTH=false`. The pinned `@neondatabase/auth@0.5.0-beta` server dependency has no
 high-severity npm advisory after the `fast-uri` override, but still has an invalid Better Auth peer
