@@ -55,6 +55,8 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   async function load() {
     setError(undefined);
@@ -178,6 +180,8 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     }
     const payload = (await response.json()) as { deletion: DeletionRequest };
     setDeletion(payload.deletion);
+    setDeleteConfirmationOpen(false);
+    setDeleteConfirmation("");
     setNotice("Deletion is scheduled. You can cancel during the grace period.");
   }
 
@@ -207,7 +211,8 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Your timezone keeps daily briefs and dates aligned to your day. Privacy controls apply
-          only to your account.
+          only to your account. These saved preferences are enforced by supported knowledge features
+          as they become available.
         </p>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium">
@@ -394,15 +399,55 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                 </Button>
               </div>
             ) : (
-              <Button
-                className="mt-4"
-                onClick={() => void requestDeletion()}
-                size="sm"
-                variant="destructive"
-              >
-                <Trash2 className="mr-1 h-4 w-4" />
-                Request deletion
-              </Button>
+              <div className="mt-4 space-y-3">
+                {deleteConfirmationOpen ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                    <p className="text-sm font-medium">Confirm account deletion</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      This immediately revokes access and starts the deletion grace period. Type
+                      <span className="font-medium"> DELETE</span> to continue.
+                    </p>
+                    <label className="mt-3 block text-sm font-medium" htmlFor="delete-confirmation">
+                      Type DELETE to confirm
+                    </label>
+                    <Input
+                      className="mt-1"
+                      id="delete-confirmation"
+                      onChange={(event) => setDeleteConfirmation(event.target.value)}
+                      value={deleteConfirmation}
+                    />
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        disabled={deleteConfirmation !== "DELETE"}
+                        onClick={() => void requestDeletion()}
+                        size="sm"
+                        variant="destructive"
+                      >
+                        Confirm deletion
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setDeleteConfirmationOpen(false);
+                          setDeleteConfirmation("");
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Keep account
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => setDeleteConfirmationOpen(true)}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Request deletion
+                  </Button>
+                )}
+              </div>
             )}
           </section>
 
