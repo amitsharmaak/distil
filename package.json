@@ -45,7 +45,8 @@
     "db:check": "drizzle-kit check",
     "auth:invite": "tsx scripts/auth-invitations.ts",
     "account:lifecycle": "tsx scripts/account-lifecycle.ts",
-    "account:verify-purge": "tsx scripts/verify-account-purge.ts"
+    "account:verify-purge": "tsx scripts/verify-account-purge.ts",
+    "rehearse:preview-clone": "tsx scripts/rehearse-preview-clone.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

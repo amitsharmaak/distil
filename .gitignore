@@ -27,6 +27,7 @@ data/publisher-sessions/
 /test-results
 /blob-report
 /artifacts/tenant-migration/
+/artifacts/preview-clone-rehearsal/
 
 # next.js
 /.next/
