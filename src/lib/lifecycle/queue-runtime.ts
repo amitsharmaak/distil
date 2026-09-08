@@ -7,11 +7,11 @@ import {
   type TenantJobRuntimeDependencies,
 } from "@/lib/jobs/tenant-runtime";
 import type { AuthAccountPurger, ControlPlaneLifecycleRepository } from "@/lib/lifecycle/ports";
+import { getLifecycleAuthPurger } from "@/lib/lifecycle/auth-purger-runtime";
 import { getLifecycleObjectStore } from "@/lib/lifecycle/object-store-runtime";
 import type { TenantObjectStore } from "@/lib/storage/object-store";
 
 import { ACCOUNT_DELETION_JOB_TYPE, type AccountDeletionWorkerDependencies } from "./deletion";
-import { LifecycleError } from "./errors";
 import { ACCOUNT_EXPORT_JOB_TYPE, ACCOUNT_EXPORT_RETENTION_JOB_TYPE } from "./exports";
 import {
   createAccountDeletionJobHandler,
@@ -30,16 +30,6 @@ export interface LifecycleQueueRuntimeDependencies {
   createSystemContext?: (context: AuthContext) => SystemContext;
 }
 
-function unavailableAuthPurger(): AuthAccountPurger {
-  // Deletion must not reach object or database purge work unless an explicit
-  // provider admin adapter has been installed. A fake here would be unsafe.
-  throw new LifecycleError(
-    "UNAVAILABLE",
-    503,
-    "Identity purge dependency is not configured for lifecycle workers"
-  );
-}
-
 function defaultControlPlaneLifecycle(context: SystemContext) {
   return getControlPlaneRepositories(context).then(({ lifecycle }) => lifecycle);
 }
@@ -53,7 +43,7 @@ export function createLifecycleTenantJobHandlers(
   dependencies: LifecycleQueueRuntimeDependencies = {}
 ): ReadonlyMap<string, TenantJobHandler> {
   const getObjectStore = dependencies.getObjectStore ?? getLifecycleObjectStore;
-  const getAuthPurger = dependencies.getAuthPurger ?? unavailableAuthPurger;
+  const getAuthPurger = dependencies.getAuthPurger ?? getLifecycleAuthPurger;
   const getControlPlaneLifecycle =
     dependencies.getControlPlaneLifecycle ?? defaultControlPlaneLifecycle;
   const systemContext =

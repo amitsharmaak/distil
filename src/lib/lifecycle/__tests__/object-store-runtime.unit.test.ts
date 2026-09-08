@@ -4,9 +4,16 @@ jest.mock("@/lib/storage/local-object-store", () => ({
     environment,
   })),
 }));
+jest.mock("@/lib/storage/vercel-blob-object-store", () => ({
+  VercelBlobTenantObjectStore: jest.fn().mockImplementation((token, environment) => ({
+    token,
+    environment,
+  })),
+}));
 
 import { LocalTenantObjectStore } from "@/lib/storage/local-object-store";
 import { getLifecycleObjectStore } from "@/lib/lifecycle/object-store-runtime";
+import { VercelBlobTenantObjectStore } from "@/lib/storage/vercel-blob-object-store";
 
 describe("lifecycle object-store runtime", () => {
   const originalRoot = process.env.DISTIL_LOCAL_OBJECT_STORE_DIR;
@@ -37,5 +44,35 @@ describe("lifecycle object-store runtime", () => {
       "/private/tmp/distil-lifecycle-objects",
       "test"
     );
+  });
+
+  it("requires an explicit complete hosted provider configuration", () => {
+    expect(() =>
+      getLifecycleObjectStore({
+        DISTIL_OBJECT_STORE_PROVIDER: "vercel-blob",
+        DISTIL_OBJECT_STORE_ENVIRONMENT: "preview",
+      })
+    ).toThrow("misconfigured");
+    expect(VercelBlobTenantObjectStore).not.toHaveBeenCalled();
+
+    const environment = {
+      DISTIL_OBJECT_STORE_PROVIDER: "vercel-blob",
+      DISTIL_OBJECT_STORE_ENVIRONMENT: "preview",
+      BLOB_READ_WRITE_TOKEN: "token",
+      NODE_ENV: "production",
+    };
+    const first = getLifecycleObjectStore(environment);
+    const second = getLifecycleObjectStore(environment);
+    expect(first).toBe(second);
+    expect(VercelBlobTenantObjectStore).toHaveBeenCalledWith("token", "preview");
+  });
+
+  it("never falls back to local storage in a hosted environment", () => {
+    expect(() =>
+      getLifecycleObjectStore({
+        DISTIL_LOCAL_OBJECT_STORE_DIR: "/private/tmp/distil-lifecycle-objects",
+        VERCEL: "1",
+      })
+    ).toThrow("Hosted account export storage is required");
   });
 });
