@@ -122,13 +122,13 @@ export class VercelBlobTenantObjectStore implements TenantObjectStore {
     options: { contentType: string; createdAt?: string }
   ): Promise<ObjectMetadata> {
     const paths = this.paths(context, value);
-    const metadata: ObjectMetadata = {
+    const metadata = storedMetadataSchema.parse({
       ref: paths.ref,
       contentType: options.contentType,
       contentHash: objectContentHash(body),
       sizeBytes: body.byteLength,
       createdAt: options.createdAt ?? new Date().toISOString(),
-    };
+    });
     await this.client.put(paths.body, body, options.contentType);
     try {
       await this.client.put(paths.metadata, JSON.stringify(metadata), "application/json");
@@ -194,7 +194,16 @@ export class VercelBlobTenantObjectStore implements TenantObjectStore {
       for (const blob of page.blobs) {
         if (!blob.pathname.endsWith(".metadata.json")) continue;
         const metadata = await this.readMetadata(blob.pathname);
-        if (metadata) records.push(metadata);
+        if (!metadata) continue;
+        const expectedPath = `${deriveTenantObjectKey(
+          this.environment,
+          context,
+          metadata.ref
+        )}.metadata.json`;
+        if (expectedPath !== blob.pathname) {
+          throw new Error("Stored object metadata does not match its tenant-derived key");
+        }
+        records.push(metadata);
         if (records.length >= limit) return records;
       }
       cursor = page.hasMore ? page.cursor : undefined;
