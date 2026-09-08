@@ -16,6 +16,7 @@ jest.mock("@/lib/lifecycle/deletion", () => {
 
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { cancelAccountDeletion, requestAccountDeletion } from "@/lib/lifecycle/deletion";
+import { LifecycleError } from "@/lib/lifecycle/errors";
 import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
 
 import { DELETE, GET, POST } from "../route";
@@ -92,5 +93,76 @@ describe("account deletion recovery route", () => {
       allowDeletionPending: true,
     });
     expect(requireAllowedOrigin).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns an active owner with no deletion record", async () => {
+    repositories.lifecycle.findDeletion.mockResolvedValueOnce(undefined);
+    jest.mocked(requireLifecycleRoute).mockResolvedValueOnce({
+      context,
+      account: { userId: deletion.userId, status: "active" },
+      repositories,
+    } as never);
+
+    const response = await GET(new Request("https://distil.example/api/v1/account/deletion"));
+    await expect(response.json()).resolves.toEqual({
+      account: { status: "active" },
+      deletion: null,
+    });
+  });
+
+  it("returns typed feature-disabled and malformed-body errors", async () => {
+    jest
+      .mocked(requireLifecycleRoute)
+      .mockRejectedValueOnce(new LifecycleError("NOT_FOUND", 404, "Not found"));
+    const disabled = await GET(new Request("https://distil.example/api/v1/account/deletion"));
+    expect(disabled.status).toBe(404);
+    expect(repositories.lifecycle.findDeletion).not.toHaveBeenCalled();
+
+    const wrongType = await POST(
+      new Request("https://distil.example/api/v1/account/deletion", {
+        method: "POST",
+        body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      })
+    );
+    expect(wrongType.status).toBe(415);
+
+    const malformed = await POST(
+      new Request("https://distil.example/api/v1/account/deletion", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      })
+    );
+    expect(malformed.status).toBe(400);
+    expect(requestAccountDeletion).not.toHaveBeenCalled();
+  });
+
+  it("preserves typed deletion and cancellation service failures", async () => {
+    jest
+      .mocked(requestAccountDeletion)
+      .mockRejectedValueOnce(
+        new LifecycleError("INVALID_REQUEST", 400, "Confirmation does not match")
+      );
+    const requested = await POST(
+      new Request("https://distil.example/api/v1/account/deletion", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      })
+    );
+    expect(requested.status).toBe(400);
+    await expect(requested.json()).resolves.toMatchObject({
+      error: { code: "INVALID_REQUEST", message: "Confirmation does not match" },
+    });
+
+    jest
+      .mocked(cancelAccountDeletion)
+      .mockRejectedValueOnce(
+        new LifecycleError("NOT_READY", 409, "Deletion can no longer be cancelled")
+      );
+    const cancelled = await DELETE(
+      new Request("https://distil.example/api/v1/account/deletion", { method: "DELETE" })
+    );
+    expect(cancelled.status).toBe(409);
   });
 });

@@ -1,6 +1,7 @@
 jest.mock("@/lib/lifecycle/route-auth", () => ({ requireLifecycleRoute: jest.fn() }));
 
 import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
+import { LifecycleError } from "@/lib/lifecycle/errors";
 
 import { GET } from "../route";
 
@@ -48,5 +49,24 @@ describe("account export list route", () => {
     expect(JSON.stringify(payload)).not.toContain(ownerId);
     expect(JSON.stringify(payload)).not.toContain("private-idempotency-key");
     expect(JSON.stringify(payload)).not.toContain("private-object-reference");
+  });
+
+  it("returns typed feature-disabled and repository failures", async () => {
+    jest
+      .mocked(requireLifecycleRoute)
+      .mockRejectedValueOnce(new LifecycleError("NOT_FOUND", 404, "Not found"));
+    const disabled = await GET(new Request("https://distil.example/api/v1/account/exports"));
+    expect(disabled.status).toBe(404);
+    expect(listExports).not.toHaveBeenCalled();
+
+    listExports.mockRejectedValueOnce(new Error("database unavailable"));
+    const unavailable = await GET(new Request("https://distil.example/api/v1/account/exports"));
+    expect(unavailable.status).toBe(503);
+    await expect(unavailable.json()).resolves.toEqual({
+      error: {
+        code: "UNAVAILABLE",
+        message: "Account lifecycle is temporarily unavailable",
+      },
+    });
   });
 });
