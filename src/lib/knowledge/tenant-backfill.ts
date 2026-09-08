@@ -48,8 +48,5 @@ export function createTenantKnowledgeBackfillJobHandler(
   repositories: RepositorySet
 ) {
   const trusted = parseAuthContext(context);
-  return createKnowledgeBackfillJobHandler(
-    trusted,
-    scopedRepositories(trusted, repositories)
-  );
+  return createKnowledgeBackfillJobHandler(trusted, scopedRepositories(trusted, repositories));
 }
