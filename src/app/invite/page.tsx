@@ -13,7 +13,7 @@ export default function InvitePage() {
     const response = await fetch("/api/auth/invitations/request-link", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: data.get("email"), invitationToken }),
+      body: JSON.stringify({ email: data.get("email"), invitationToken, next: "/onboarding" }),
     });
     setMessage(
       response.ok

@@ -14,7 +14,10 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const context = await resolveRequestAuthContext(request);
     const repositories = await getTenantRepositories(context);
-    return Response.json({ tokens: await repositories.captureTokens.list() });
+    return Response.json(
+      { tokens: await repositories.captureTokens.list() },
+      { headers: { "cache-control": "private, no-store" } }
+    );
   } catch (error) {
     return failure(error);
   }

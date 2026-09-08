@@ -228,6 +228,7 @@ describe("/api/v1/capture-tokens", () => {
       request("/api/v1/capture-tokens", { headers: { cookie: await sessionCookie() } })
     );
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     const body = await response.json();
     expect(body.tokens).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain("tokenHash");
