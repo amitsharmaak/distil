@@ -183,7 +183,9 @@ jobs:
       - run: npm ci
       - run: npm run test:coverage
         env:
-          COVERAGE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # Push deltas depend on batching and make the same branch pass or fail
+          # based on its previous push. Compare branches to the stable main base.
+          COVERAGE_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
