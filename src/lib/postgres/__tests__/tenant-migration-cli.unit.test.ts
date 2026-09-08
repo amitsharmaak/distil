@@ -26,6 +26,7 @@ describe("tenant migration CLI contract", () => {
       expect.objectContaining({ stage: "backfill", implementedHere: true }),
       expect.objectContaining({ stage: "verify", implementedHere: true }),
       expect.objectContaining({ stage: "contract", implementedHere: true }),
+      expect.objectContaining({ stage: "lifecycle", implementedHere: true }),
     ]);
     expect(JSON.stringify(plan)).not.toContain("email");
   });

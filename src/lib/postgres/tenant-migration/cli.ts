@@ -100,6 +100,12 @@ export function buildDryRunPlan(ownerId: string) {
         prerequisite:
           "Pass the before report; verification reruns transactionally before constraints and RLS.",
       },
+      {
+        stage: "lifecycle",
+        implementedHere: true,
+        prerequisite:
+          "Apply only after contract; adds account lifecycle state without changing frozen data.",
+      },
     ],
     controls: [
       "discover-and-reject-unclassified-application-tables",

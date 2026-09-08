@@ -468,6 +468,26 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     },
     {
       schema: "public",
+      table: "user_quotas",
+      tenantBearing: true,
+      ownerColumn: "user_id",
+      lifecycle: "account",
+      jsonColumns: [],
+      reason: "Quota configuration is tenant-local and assigned by the account control plane.",
+      introducedIn: "lifecycle",
+    },
+    {
+      schema: "public",
+      table: "connector_oauth_states",
+      tenantBearing: true,
+      ownerColumn: "user_id",
+      lifecycle: "identity",
+      jsonColumns: [],
+      reason: "Single-use OAuth state is bound to one tenant, session, redirect and PKCE verifier.",
+      introducedIn: "lifecycle",
+    },
+    {
+      schema: "public",
       table: "research_suggestion_sources",
       tenantBearing: true,
       ownerColumn: "user_id",
@@ -489,6 +509,20 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       tenantBearing: false,
       reason:
         "Staged tenant migration ledger contains checksums and the approved opaque owner UUID.",
+    },
+    {
+      schema: "public",
+      table: "account_deletion_tombstones",
+      tenantBearing: false,
+      reason: "Content-free deletion proof survives removal of the owning account row.",
+      introducedIn: "lifecycle",
+    },
+    {
+      schema: "public",
+      table: "operator_audit_events",
+      tenantBearing: false,
+      reason: "Privileged audit stores only allowlisted operational metadata and hashed targets.",
+      introducedIn: "lifecycle",
     },
   ],
 };

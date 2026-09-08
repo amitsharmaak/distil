@@ -71,4 +71,22 @@ describe("staged tenant migrator", () => {
     ).rejects.toThrow("requires the frozen before report");
     expect(fake.unsafeStatements).toHaveLength(0);
   });
+
+  it("applies the additive lifecycle stage only after the contract ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "lifecycle", ownerId })
+    ).resolves.toMatchObject({
+      stage: "lifecycle",
+      file: "0008_phase3_lifecycle.sql",
+      alreadyApplied: false,
+    });
+  });
 });

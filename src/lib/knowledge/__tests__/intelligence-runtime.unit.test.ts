@@ -95,6 +95,20 @@ function repositories(
         .fn()
         .mockResolvedValue({ totalCalls: 0, totalTokens: 0, totalCost: 0 }),
     },
+    lifecycle: {
+      consumeUsage: jest.fn().mockResolvedValue({
+        allowed: true,
+        counter: {
+          date: "2026-09-08",
+          operation: "ai.requests",
+          provider: "",
+          requestCount: 1,
+          inputTokens: 0,
+          outputTokens: 0,
+          costMicrousd: 0,
+        },
+      }),
+    },
   } as unknown as RepositorySet;
   return { result, intelligenceArtifacts };
 }
@@ -261,6 +275,32 @@ describe("durable intelligence summary runtime", () => {
     });
     const generator = validGenerator();
     await runIntelligenceSummaryJob(context, payload, result, { generator });
+    expect(generator.generate).not.toHaveBeenCalled();
+    expect(intelligenceArtifacts.complete).toHaveBeenCalledWith(
+      "artifact-1",
+      expect.objectContaining({ status: "degraded", errorCode: "budget_exceeded" })
+    );
+  });
+
+  it("keeps durable content and degrades cleanly when the tenant-local quota is exhausted", async () => {
+    const { result, intelligenceArtifacts } = repositories();
+    jest.mocked(result.lifecycle.consumeUsage).mockResolvedValueOnce({
+      allowed: false,
+      counter: {
+        date: "2026-09-08",
+        operation: "ai.requests",
+        provider: "",
+        requestCount: 10,
+        inputTokens: 0,
+        outputTokens: 0,
+        costMicrousd: 0,
+      },
+      quota: { quotaKey: "ai.requests", period: "day", hardLimit: 10 },
+    });
+    const generator = validGenerator();
+
+    await runIntelligenceSummaryJob(context, payload, result, { generator });
+
     expect(generator.generate).not.toHaveBeenCalled();
     expect(intelligenceArtifacts.complete).toHaveBeenCalledWith(
       "artifact-1",

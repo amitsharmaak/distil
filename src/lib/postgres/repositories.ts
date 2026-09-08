@@ -62,6 +62,8 @@ import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
 import { tenantLockKey, withTenantLocks } from "./tenant-lock";
+import { PostgresTenantLifecycleRepository } from "./lifecycle-repositories";
+import { PostgresConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
 
 type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
@@ -1777,6 +1779,7 @@ class PostgresJobs implements JobQueueRepository {
           (status='pending' AND (run_after IS NULL OR run_after <= now()))
           OR (status='running' AND locked_at < now() - interval '5 minutes')
         )
+          AND cancellation_requested_at IS NULL
         ORDER BY priority DESC, created_at ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
@@ -1798,6 +1801,7 @@ class PostgresJobs implements JobQueueRepository {
       UPDATE job_queue
       SET locked_at=now(), locked_by=${workerId}, status='running', updated_at=now()
       WHERE id=${id}
+        AND cancellation_requested_at IS NULL
         AND ((status='pending' AND (run_after IS NULL OR run_after <= now()))
           OR (status='running' AND locked_at < now() - interval '5 minutes'))
       RETURNING *
@@ -1808,7 +1812,9 @@ class PostgresJobs implements JobQueueRepository {
   async complete(id: string, error?: string) {
     if (!error) {
       await this.sql`
-        UPDATE job_queue SET status='completed', completed_at=now(), updated_at=now()
+        UPDATE job_queue
+        SET status=CASE WHEN cancellation_requested_at IS NULL THEN 'completed' ELSE 'cancelled' END,
+            completed_at=now(), updated_at=now()
         WHERE id=${id}
       `;
       return;
@@ -1817,13 +1823,56 @@ class PostgresJobs implements JobQueueRepository {
       UPDATE job_queue
       SET attempts=attempts+1,
           last_error=${error},
-          status=CASE WHEN attempts+1 < max_retries THEN 'pending' ELSE 'failed' END,
+          status=CASE
+            WHEN cancellation_requested_at IS NOT NULL THEN 'cancelled'
+            WHEN attempts+1 < max_retries THEN 'pending'
+            ELSE 'failed'
+          END,
           locked_at=NULL,
           locked_by=NULL,
-          completed_at=CASE WHEN attempts+1 < max_retries THEN NULL ELSE now() END,
+          completed_at=CASE
+            WHEN cancellation_requested_at IS NOT NULL OR attempts+1 >= max_retries THEN now()
+            ELSE NULL
+          END,
           updated_at=now()
       WHERE id=${id}
     `;
+  }
+
+  async requestCancellation(id: string, reason: string, at: string) {
+    const rows = await this.sql<{ id: string }[]>`
+      UPDATE job_queue
+      SET cancellation_requested_at=${at}::timestamptz,
+          cancellation_reason=${reason},
+          status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END,
+          completed_at=CASE WHEN status='pending' THEN ${at}::timestamptz ELSE completed_at END,
+          updated_at=${at}::timestamptz
+      WHERE id=${id} AND status IN ('pending','running')
+      RETURNING id
+    `;
+    return rows.length === 1;
+  }
+
+  async cancelAll(reason: string, at: string) {
+    const rows = await this.sql<{ id: string }[]>`
+      UPDATE job_queue
+      SET cancellation_requested_at=${at}::timestamptz,
+          cancellation_reason=${reason},
+          status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END,
+          completed_at=CASE WHEN status='pending' THEN ${at}::timestamptz ELSE completed_at END,
+          updated_at=${at}::timestamptz
+      WHERE status IN ('pending','running')
+      RETURNING id
+    `;
+    return rows.length;
+  }
+
+  async isCancellationRequested(id: string) {
+    const rows = await this.sql<{ cancelled: boolean }[]>`
+      SELECT (cancellation_requested_at IS NOT NULL OR status='cancelled') AS cancelled
+      FROM job_queue WHERE id=${id} LIMIT 1
+    `;
+    return rows[0]?.cancelled ?? true;
   }
 
   async getStats() {
@@ -1977,6 +2026,7 @@ export function createPostgresRepositories(sql: Sql, context?: AuthContext): Rep
     captureTokens: new PostgresCaptureTokens(sql),
     rateLimits: new PostgresRateLimits(sql),
     oauthTokens: new PostgresOAuth(sql),
+    connectorOAuthStates: new PostgresConnectorOAuthStateRepository(sql),
     summaries: new PostgresSummaries(sql),
     feedback: new PostgresFeedback(sql),
     research: new PostgresResearch(sql),
@@ -1991,6 +2041,9 @@ export function createPostgresRepositories(sql: Sql, context?: AuthContext): Rep
     knowledgeBackfills: new PostgresKnowledgeBackfills(sql),
     publisherQueue: new PostgresPublisherQueue(sql),
     jobs: new PostgresJobs(sql),
+    lifecycle: context
+      ? new PostgresTenantLifecycleRepository(sql, context)
+      : tenantOnly<RepositorySet["lifecycle"]>("Account lifecycle"),
     agent: new PostgresAgent(sql),
     feed: context
       ? new PostgresFeedQuery(sql, context)

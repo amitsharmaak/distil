@@ -54,6 +54,12 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
     baseline,
   });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "lifecycle",
+    ownerId: context.userId,
+    migrationsDirectory: tenantMigrations,
+  });
 });
 afterAll(async () => harness.stop());
 

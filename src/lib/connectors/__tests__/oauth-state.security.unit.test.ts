@@ -18,10 +18,22 @@ class OneTimeStateStore implements ConnectorOAuthStateRepository {
   async create(state: ReturnType<typeof createConnectorOAuthState>) {
     this.entries.set(state.nonce, state);
   }
-  async consume(input: { nonce: string; provider: "gmail" | "slack"; now: string }) {
+  async consume(input: {
+    nonce: string;
+    provider: "gmail" | "slack";
+    userId: string;
+    sessionId?: string;
+    now: string;
+  }) {
     const state = this.entries.get(input.nonce);
-    if (!state || state.provider !== input.provider) return undefined;
-    // Mirrors DELETE ... WHERE nonce = $1 AND provider = $2 RETURNING *.
+    if (
+      !state ||
+      state.provider !== input.provider ||
+      state.userId !== input.userId ||
+      state.sessionId !== input.sessionId
+    )
+      return undefined;
+    // Mirrors the same-statement nonce/provider/user/session DELETE predicate.
     this.entries.delete(input.nonce);
     return state;
   }
@@ -31,7 +43,14 @@ describe("connector OAuth state contract", () => {
   it("binds a nonce to the authenticated user, session, provider, safe return path, expiry, and one use", async () => {
     const store = new OneTimeStateStore();
     const now = new Date("2026-09-07T12:00:00.000Z");
-    const state = createConnectorOAuthState(context, "gmail", "//attacker.example", now, "nonce-1");
+    const state = createConnectorOAuthState(
+      context,
+      "gmail",
+      "//attacker.example",
+      { pkceVerifierHash: "pkce-hash", redirectUri: "https://distil.test/callback" },
+      now,
+      "nonce-1"
+    );
     await store.create(state);
 
     await expect(
@@ -48,7 +67,14 @@ describe("connector OAuth state contract", () => {
 
   it("does not accept a state consumed under another authenticated account", async () => {
     const store = new OneTimeStateStore();
-    const state = createConnectorOAuthState(context, "slack", "/sources", new Date(), "nonce-2");
+    const state = createConnectorOAuthState(
+      context,
+      "slack",
+      "/sources",
+      { pkceVerifierHash: "pkce-hash", redirectUri: "https://distil.test/callback" },
+      new Date(),
+      "nonce-2"
+    );
     await store.create(state);
     const other = createAuthContext({
       ...context,
@@ -58,5 +84,35 @@ describe("connector OAuth state contract", () => {
     await expect(
       consumeConnectorOAuthState(store, { nonce: "nonce-2", provider: "slack", context: other })
     ).resolves.toBeUndefined();
+    await expect(
+      consumeConnectorOAuthState(store, { nonce: "nonce-2", provider: "gmail", context })
+    ).resolves.toBeUndefined();
+    const otherSession = createAuthContext({
+      ...context,
+      sessionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    });
+    await expect(
+      consumeConnectorOAuthState(store, {
+        nonce: "nonce-2",
+        provider: "slack",
+        context: otherSession,
+      })
+    ).resolves.toBeUndefined();
+    await expect(
+      consumeConnectorOAuthState(store, { nonce: "nonce-2", provider: "slack", context })
+    ).resolves.toBeDefined();
+  });
+
+  it("normalizes backslash-leading return paths", () => {
+    expect(
+      createConnectorOAuthState(
+        context,
+        "gmail",
+        "/\\hostile.example",
+        { pkceVerifierHash: "pkce-hash", redirectUri: "https://distil.test/callback" },
+        new Date(),
+        "nonce-3"
+      ).returnPath
+    ).toBe("/sources");
   });
 });

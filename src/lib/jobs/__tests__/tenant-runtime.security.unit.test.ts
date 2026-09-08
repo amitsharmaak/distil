@@ -26,6 +26,7 @@ function repositories(owner = userId) {
         status: "running",
       }),
       complete: jest.fn(),
+      isCancellationRequested: jest.fn().mockResolvedValue(false),
     },
     agent: { insertAuditLog: jest.fn() },
   };
@@ -109,6 +110,26 @@ describe("tenant job runtime", () => {
     ).resolves.toBe("rejected");
     expect(repos.jobs.claim).toHaveBeenCalledWith(jobId, "worker-42");
     expect(repos.agent.insertAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("acknowledges cooperative cancellation before invoking the handler", async () => {
+    const repos = repositories();
+    repos.jobs.isCancellationRequested.mockResolvedValue(true);
+    const handler = jest.fn();
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId,
+      jobType: "capture.enrich",
+      traceId,
+    });
+    await expect(
+      consumeTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        handlers: new Map([["capture.enrich", handler]]),
+      })
+    ).resolves.toBe("completed");
+    expect(handler).not.toHaveBeenCalled();
+    expect(repos.jobs.complete).toHaveBeenCalledWith(jobId);
   });
 
   it("records safe failures when no handler is registered or a handler throws a non-Error", async () => {

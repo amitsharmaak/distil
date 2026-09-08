@@ -15,6 +15,11 @@ import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { DigestStore } from "@/lib/digests/types";
 import type { FeedPage, FeedQuery } from "@/lib/feed/feed-query";
 import type { PassageSearchStore } from "@/lib/knowledge/retrieval";
+import type { ConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
+import type {
+  ControlPlaneLifecycleRepository,
+  TenantLifecycleRepository,
+} from "@/lib/lifecycle/ports";
 
 export interface ItemFilters {
   sourceType?: string;
@@ -592,6 +597,9 @@ export interface JobQueueRepository {
   dequeue(workerId: string): Promise<JobQueueRecord | undefined>;
   claim?(id: string, workerId: string): Promise<JobQueueRecord | undefined>;
   complete(id: string, error?: string): Promise<void>;
+  requestCancellation(id: string, reason: string, at: string): Promise<boolean>;
+  cancelAll(reason: string, at: string): Promise<number>;
+  isCancellationRequested(id: string): Promise<boolean>;
   getStats(): Promise<{ pending: number; running: number; completed: number; failed: number }>;
 }
 
@@ -644,6 +652,7 @@ export interface RepositorySet {
   captureTokens: CaptureTokenRepository;
   rateLimits: RateLimitRepository;
   oauthTokens: OAuthTokenRepository;
+  connectorOAuthStates: ConnectorOAuthStateRepository;
   summaries: SummaryRepository;
   feedback: FeedbackRepository;
   research: ResearchRepository;
@@ -658,6 +667,7 @@ export interface RepositorySet {
   knowledgeBackfills: KnowledgeBackfillRepository;
   publisherQueue: PublisherQueueRepository;
   jobs: JobQueueRepository;
+  lifecycle: TenantLifecycleRepository;
   agent: AgentRepository;
   /** Tenant-only PostgreSQL feed query surface. */
   feed: { list(query?: FeedQuery): Promise<FeedPage> };
@@ -680,4 +690,5 @@ export interface ControlPlaneAccountRepository {
 export interface ControlPlaneRepositorySet {
   auth: AuthRepositoryPort;
   accounts: ControlPlaneAccountRepository;
+  lifecycle: ControlPlaneLifecycleRepository;
 }

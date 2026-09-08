@@ -11,13 +11,14 @@ import {
   verifyAfterAgainstBaseline,
 } from "./verifier";
 
-export const TENANT_MIGRATION_STAGES = ["expand", "backfill", "contract"] as const;
+export const TENANT_MIGRATION_STAGES = ["expand", "backfill", "contract", "lifecycle"] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
 const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   expand: "0005_phase3_tenant_expand.sql",
   backfill: "0006_phase3_tenant_backfill.sql",
   contract: "0007_phase3_tenant_contract.sql",
+  lifecycle: "0008_phase3_lifecycle.sql",
 };
 
 interface AppliedMigrationRow {
@@ -72,6 +73,7 @@ async function assertContractVerification(
     client: transaction,
     ownerId,
     stage: "after",
+    through: "expand",
     ...(generatedAt ? { generatedAt } : {}),
   });
   const failures = [

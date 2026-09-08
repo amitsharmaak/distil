@@ -184,7 +184,8 @@ function requiredColumns(table: TenantTableClassification): Set<string> {
 export function verifyDiscoveredSchema(
   manifest: TenantMigrationManifest,
   columns: readonly DiscoveredColumn[],
-  stage: TenantMigrationStage
+  stage: TenantMigrationStage,
+  through: "expand" | "lifecycle" = "lifecycle"
 ): VerificationFailure[] {
   const failures: VerificationFailure[] = [];
   const discoveredTables = new Set(columns.map(({ schema, table }) => `${schema}.${table}`));
@@ -258,7 +259,8 @@ export function verifyDiscoveredSchema(
     const actual = columns.filter(
       (column) => column.schema === table.schema && column.table === table.table
     );
-    if (stage === "after" && actual.length === 0) {
+    const requiredAtThisStage = table.introducedIn !== "lifecycle" || through === "lifecycle";
+    if (stage === "after" && requiredAtThisStage && actual.length === 0) {
       failures.push({
         code: "MISSING_SUPPLEMENTAL_TABLE",
         table: name,
@@ -447,6 +449,7 @@ export interface BuildReportInput {
   readonly stage: TenantMigrationStage;
   readonly generatedAt?: Date;
   readonly manifest?: TenantMigrationManifest;
+  readonly through?: "expand" | "lifecycle";
 }
 
 export async function buildTenantMigrationReport(
@@ -459,7 +462,12 @@ export async function buildTenantMigrationReport(
   const discovered = parseDiscovery(
     await input.client.unsafe(buildSchemaDiscoverySql(manifest.applicationSchemas))
   );
-  const schemaFailures = verifyDiscoveredSchema(manifest, discovered, input.stage);
+  const schemaFailures = verifyDiscoveredSchema(
+    manifest,
+    discovered,
+    input.stage,
+    input.through ?? "lifecycle"
+  );
   if (schemaFailures.length > 0) {
     const error = new Error(
       `Tenant migration schema verification failed: ${schemaFailures.map(({ detail }) => detail).join("; ")}`

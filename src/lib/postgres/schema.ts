@@ -124,6 +124,11 @@ export const accountExports = pgTable(
     status: text().notNull().default("pending"),
     objectRef: text("object_ref"),
     contentHash: text("content_hash"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    manifestVersion: integer("manifest_version").notNull().default(1),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    failureCode: text("failure_code"),
+    updatedAt: time("updated_at").notNull().defaultNow(),
     requestedAt: time("requested_at").notNull().defaultNow(),
     completedAt: time("completed_at"),
     downloadExpiresAt: time("download_expires_at")
@@ -135,6 +140,7 @@ export const accountExports = pgTable(
   },
   (t) => [
     uniqueIndex("account_exports_user_id_idx").on(t.userId, t.id),
+    uniqueIndex("account_exports_user_idempotency_idx").on(t.userId, t.idempotencyKey),
     check(
       "account_exports_status_check",
       sql`${t.status} in ('pending','running','ready','failed','expired')`
@@ -156,6 +162,9 @@ export const accountDeletions = pgTable(
     cancelledAt: time("cancelled_at"),
     cancelledByActorId: uuid("cancelled_by_actor_id"),
     cancellationReason: text("cancellation_reason"),
+    failureCode: text("failure_code"),
+    startedAt: time("started_at"),
+    updatedAt: time("updated_at").notNull().defaultNow(),
     completedAt: time("completed_at"),
   },
   (t) => [
@@ -206,6 +215,67 @@ export const userEntitlements = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.entitlement] })]
 );
+
+export const userQuotas = pgTable(
+  "user_quotas",
+  {
+    userId: tenantOwner(),
+    quotaKey: text("quota_key").notNull(),
+    period: text().notNull(),
+    hardLimit: bigint("hard_limit", { mode: "number" }).notNull(),
+    updatedByActorId: uuid("updated_by_actor_id").notNull(),
+    updatedAt: time("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.quotaKey] }),
+    check("user_quotas_period_check", sql`${t.period} in ('day','month')`),
+    check("user_quotas_limit_check", sql`${t.hardLimit} >= 0`),
+  ]
+);
+
+export const connectorOAuthStates = pgTable(
+  "connector_oauth_states",
+  {
+    userId: tenantOwner(),
+    nonce: uuid().notNull(),
+    provider: text().notNull(),
+    sessionId: uuid("session_id"),
+    returnPath: text("return_path").notNull(),
+    pkceVerifierHash: text("pkce_verifier_hash").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    expiresAt: time("expires_at").notNull(),
+    createdAt: time("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.nonce] }),
+    uniqueIndex("connector_oauth_states_nonce_idx").on(t.nonce),
+    check("connector_oauth_states_provider_check", sql`${t.provider} in ('gmail','slack')`),
+  ]
+);
+
+/** Control-plane-only, content-free proof retained after the account row is purged. */
+export const accountDeletionTombstones = pgTable("account_deletion_tombstones", {
+  deletionId: uuid("deletion_id").primaryKey(),
+  completedAt: time("completed_at").notNull(),
+  verifierVersion: integer("verifier_version").notNull().default(1),
+  zeroRowCount: integer("zero_row_count").notNull(),
+  zeroObjectCount: integer("zero_object_count").notNull(),
+  authPurged: boolean("auth_purged").notNull(),
+  verificationHash: text("verification_hash").notNull(),
+});
+
+/** Privileged operations use allowlisted metadata and never persist account content. */
+export const operatorAuditEvents = pgTable("operator_audit_events", {
+  id: uuid().primaryKey(),
+  actorId: uuid("actor_id").notNull(),
+  action: text().notNull(),
+  targetUserHash: text("target_user_hash").notNull(),
+  reason: text().notNull(),
+  requestId: uuid("request_id").notNull(),
+  outcome: text().notNull(),
+  metadata: jsonb().$type<Record<string, string | number | boolean>>().notNull().default({}),
+  createdAt: time("created_at").notNull().defaultNow(),
+});
 
 export const items = pgTable(
   "items",
@@ -1141,6 +1211,8 @@ export const jobQueue = pgTable(
     lastError: text("last_error"),
     lockedAt: time("locked_at"),
     lockedBy: text("locked_by"),
+    cancellationRequestedAt: time("cancellation_requested_at"),
+    cancellationReason: text("cancellation_reason"),
     runAfter: time("run_after"),
     createdAt: time("created_at").notNull(),
     updatedAt: time("updated_at").notNull(),

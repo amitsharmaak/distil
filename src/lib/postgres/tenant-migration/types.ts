@@ -53,6 +53,7 @@ export interface ControlTableClassification {
   readonly table: string;
   readonly tenantBearing: false;
   readonly reason: string;
+  readonly introducedIn?: "expand" | "lifecycle";
 }
 
 export interface SupplementalTableClassification {
@@ -63,6 +64,7 @@ export interface SupplementalTableClassification {
   readonly lifecycle: "identity" | "account" | "normalized-link";
   readonly jsonColumns: readonly JsonColumnClassification[];
   readonly reason: string;
+  readonly introducedIn?: "expand" | "lifecycle";
 }
 
 export interface TenantProtectedTableClassification {

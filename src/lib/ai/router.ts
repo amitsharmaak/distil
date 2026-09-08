@@ -63,6 +63,12 @@ export async function assertTenantAIBudget(
   repositories: RepositorySet,
   now = new Date()
 ): Promise<void> {
+  const reservation = await repositories.lifecycle.consumeUsage({
+    date: now.toISOString().slice(0, 10),
+    operation: "ai.requests",
+    requestCount: 1,
+  });
+  if (!reservation.allowed) throw new AIQuotaExceededError("daily");
   const dailyBudget = configuredBudget("DISTIL_DAILY_AI_BUDGET");
   const rollingBudget = configuredBudget("DISTIL_ROLLING_30D_AI_BUDGET");
   const [daily, rolling] = await Promise.all([
@@ -267,6 +273,14 @@ class AIRouter {
       latencyMs: metrics.latency_ms,
       traceId: tenant.requestId,
     });
+    await repositories.lifecycle.consumeUsage({
+      date: new Date().toISOString().slice(0, 10),
+      operation: "ai.usage",
+      provider,
+      inputTokens: metrics.tokens_in,
+      outputTokens: metrics.tokens_out,
+      costMicrousd: Math.round(metrics.cost_estimate * 1_000_000),
+    });
     return result;
   }
 
@@ -342,6 +356,14 @@ class AIRouter {
       cost: estimateCost(model, tokensIn, tokensOut),
       latencyMs: Date.now() - start,
       traceId: tenant.requestId,
+    });
+    await repositories.lifecycle.consumeUsage({
+      date: new Date().toISOString().slice(0, 10),
+      operation: "ai.usage",
+      provider,
+      inputTokens: tokensIn,
+      outputTokens: tokensOut,
+      costMicrousd: Math.round(estimateCost(model, tokensIn, tokensOut) * 1_000_000),
     });
     return result;
   }

@@ -18,8 +18,15 @@ describe("Phase 3 tenant migration manifest", () => {
     const supplementalTableNames = tenantMigrationManifest.supplementalTables.map(
       ({ schema, table }) => `${schema}.${table}`
     );
-    expect([...tenantBearingTableNames, ...supplementalTableNames].sort()).toEqual(schemaTables);
-    expect(schemaTables).toHaveLength(45);
+    const schemaControlTables = tenantMigrationManifest.controlTables
+      .filter(({ table }) =>
+        ["account_deletion_tombstones", "operator_audit_events"].includes(table)
+      )
+      .map(({ schema, table }) => `${schema}.${table}`);
+    expect(
+      [...tenantBearingTableNames, ...supplementalTableNames, ...schemaControlTables].sort()
+    ).toEqual(schemaTables);
+    expect(schemaTables).toHaveLength(49);
   });
 
   it("classifies the migration ledger explicitly as non-tenant control data", () => {
@@ -32,7 +39,7 @@ describe("Phase 3 tenant migration manifest", () => {
   });
 
   it("enumerates every RLS-protected legacy, identity, account, and normalized-link table", () => {
-    expect(tenantProtectedTables).toHaveLength(44);
+    expect(tenantProtectedTables).toHaveLength(46);
     expect(tenantProtectedTables).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ table: "users", ownerColumn: "id" }),

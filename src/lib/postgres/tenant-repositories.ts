@@ -15,6 +15,7 @@ import type {
 
 import { createPostgresRepositories } from "./repositories";
 import { PostgresAuthRepository } from "./auth-repository";
+import { PostgresControlPlaneLifecycleRepository } from "./lifecycle-repositories";
 
 interface TenantSettingRow {
   user_id: string | null;
@@ -51,9 +52,18 @@ export async function withTenantTransaction<T>(
   context: AuthContext,
   operation: (transaction: Sql) => Promise<T>
 ): Promise<T> {
+  return withTenantTransactionOptions(sql, context, operation);
+}
+
+async function withTenantTransactionOptions<T>(
+  sql: Sql,
+  context: AuthContext,
+  operation: (transaction: Sql) => Promise<T>,
+  options?: string
+): Promise<T> {
   const trusted = parseAuthContext(context);
   let result!: T;
-  await sql.begin(async (transaction) => {
+  const run = async (transaction: TransactionSql) => {
     await transaction`SELECT
       set_config('app.user_id', ${trusted.userId}, true),
       set_config('app.actor_id', ${trusted.actorId}, true),
@@ -80,7 +90,9 @@ export async function withTenantTransaction<T>(
       throw new Error("Failed to establish transaction-local tenant context");
     }
     result = await operation(repositorySql(transaction));
-  });
+  };
+  if (options) await sql.begin(options, run);
+  else await sql.begin(run);
   return result;
 }
 
@@ -112,18 +124,25 @@ function bindRepositorySet(sql: Sql, context: AuthContext): RepositorySet {
         const method = repository[property as string];
         if (typeof method !== "function") return undefined;
         return (...args: unknown[]) =>
-          withTenantTransaction(sql, trusted, async (transaction) => {
-            const transactionRepositories = createPostgresRepositories(transaction, trusted);
-            const transactionRepository = transactionRepositories[key] as unknown as Record<
-              string,
-              RepositoryMethod
-            >;
-            return Reflect.apply(
-              transactionRepository[property as string],
-              transactionRepository,
-              args
-            );
-          });
+          withTenantTransactionOptions(
+            sql,
+            trusted,
+            async (transaction) => {
+              const transactionRepositories = createPostgresRepositories(transaction, trusted);
+              const transactionRepository = transactionRepositories[key] as unknown as Record<
+                string,
+                RepositoryMethod
+              >;
+              return Reflect.apply(
+                transactionRepository[property as string],
+                transactionRepository,
+                args
+              );
+            },
+            key === "lifecycle" && property === "readExportDatasets"
+              ? "isolation level repeatable read read only"
+              : undefined
+          );
       },
     });
     (bound as Record<string, unknown>)[key] = proxy;
@@ -199,6 +218,7 @@ export function createPostgresRepositoryAccess(
       return {
         auth: new PostgresAuthRepository(controlPlaneSql),
         accounts: new PostgresControlPlaneAccounts(controlPlaneSql, trusted),
+        lifecycle: new PostgresControlPlaneLifecycleRepository(controlPlaneSql),
       };
     },
   };

@@ -4,6 +4,7 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
   expect(Object.keys(schema).sort()).toEqual(
     [
       "agentActions",
+      "accountDeletionTombstones",
       "accountDeletions",
       "accountExports",
       "aiSummaries",
@@ -17,6 +18,7 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
       "claimEvidence",
       "collectionItems",
       "collections",
+      "connectorOAuthStates",
       "annotations",
       "contentChunks",
       "digestItems",
@@ -35,6 +37,7 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
       "knowledgeBackfillCheckpoints",
       "notifications",
       "oauthTokens",
+      "operatorAuditEvents",
       "publisherQueue",
       "personalPreferences",
       "rateLimitWindows",
@@ -45,6 +48,7 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
       "sessionMetadata",
       "usageCounters",
       "userEntitlements",
+      "userQuotas",
       "userSettings",
       "users",
       "workflowRuns",

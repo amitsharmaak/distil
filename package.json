@@ -40,7 +40,9 @@
     "db:tenant:verify": "tsx scripts/verify-tenant-migration.ts",
     "db:tenant:migrate": "tsx scripts/migrate-tenant.ts",
     "db:check": "drizzle-kit check",
-    "auth:invite": "tsx scripts/auth-invitations.ts"
+    "auth:invite": "tsx scripts/auth-invitations.ts",
+    "account:lifecycle": "tsx scripts/account-lifecycle.ts",
+    "account:verify-purge": "tsx scripts/verify-account-purge.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

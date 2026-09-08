@@ -80,6 +80,12 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
     baseline,
   });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "lifecycle",
+    ownerId: alphaContext.userId,
+    migrationsDirectory: tenantMigrations,
+  });
   await harness.sql`
     INSERT INTO users (id,status) VALUES (${betaContext.userId}::uuid,'active')
   `;

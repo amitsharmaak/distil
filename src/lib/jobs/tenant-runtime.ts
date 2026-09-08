@@ -26,6 +26,15 @@ export interface TenantJobRuntimeDependencies {
   workerId?: string;
 }
 
+export async function throwIfTenantJobCancelled(
+  repositories: RepositorySet,
+  jobId: string
+): Promise<void> {
+  if (await repositories.jobs.isCancellationRequested(jobId)) {
+    throw new Error("Job cancellation requested");
+  }
+}
+
 async function auditRejected(repositories: RepositorySet, traceId: string): Promise<void> {
   await repositories.agent.insertAuditLog({
     id: randomUUID(),
@@ -65,6 +74,10 @@ export async function consumeTenantJobEnvelope(
   if (!job || !ownsEnvelope(job, envelope)) {
     await auditRejected(repositories, envelope.traceId);
     return "rejected";
+  }
+  if (await repositories.jobs.isCancellationRequested(job.id)) {
+    await repositories.jobs.complete(job.id);
+    return "completed";
   }
 
   const handler = dependencies.handlers.get(job.job_type);

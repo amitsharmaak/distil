@@ -66,6 +66,12 @@ describeWithTenantMigration(
         migrationsDirectory: tenantMigrations,
         baseline,
       });
+      await applyTenantMigrationStage({
+        sql: owner.sql,
+        stage: "lifecycle",
+        ownerId: fixture.alpha.user.id,
+        migrationsDirectory: tenantMigrations,
+      });
 
       await owner.sql`
         INSERT INTO users (id)
