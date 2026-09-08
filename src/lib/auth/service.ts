@@ -3,11 +3,13 @@ import { AuthError } from "@/lib/auth/errors";
 import { verifyPassword } from "@/lib/auth/password";
 import { enforceRateLimit } from "@/lib/auth/rate-limit";
 import { createSessionToken, verifySessionToken } from "@/lib/auth/session";
+import type { AuthContext } from "@/lib/contracts";
 import type { RateLimitRepository } from "@/lib/repositories/ports";
 
 export interface LoginDependencies {
   passwordHash: string;
   sessionSecret: string;
+  context: AuthContext;
   rateLimits: RateLimitRepository;
 }
 
@@ -19,6 +21,8 @@ export async function login(
 ): Promise<string> {
   await enforceRateLimit(dependencies.rateLimits, {
     key: `login:${ip}`,
+    context: dependencies.context,
+    operation: "login",
     limit: LOGIN_RATE_LIMIT,
     windowSeconds: LOGIN_RATE_LIMIT_WINDOW_SECONDS,
     now,

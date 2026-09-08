@@ -6,12 +6,7 @@ describe("knowledge backfill CLI", () => {
   it("is dry-run by default and selects every non-vector Phase 2 backfill", () => {
     expect(parseOptions(["--user-id", userId])).toEqual({
       userId,
-      selectedKinds: [
-        "content_versions",
-        "chunks",
-        "legacy_artifacts",
-        "degraded_summaries",
-      ],
+      selectedKinds: ["content_versions", "chunks", "legacy_artifacts", "degraded_summaries"],
       batchSize: 25,
       execute: false,
       maxBatches: 10_000,

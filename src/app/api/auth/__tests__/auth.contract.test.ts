@@ -1,10 +1,8 @@
 jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
 jest.mock("@/lib/database", () => ({
-  getRepositorySet: jest.fn(),
   getTenantRepositories: jest.fn(),
 }));
 
-import { getRepositorySet } from "@/lib/database";
 import { getTenantRepositories } from "@/lib/database";
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { AccessDeniedError } from "@/lib/auth/account";
@@ -24,7 +22,6 @@ import { DELETE as tokenDelete } from "@/app/api/v1/capture-tokens/[id]/route";
 
 const origin = "https://distil.example";
 const sessionSecret = "a-secure-session-secret-with-more-than-32-bytes";
-const mockGetRepositorySet = getRepositorySet as jest.MockedFunction<typeof getRepositorySet>;
 const mockGetTenantRepositories = getTenantRepositories as jest.MockedFunction<
   typeof getTenantRepositories
 >;
@@ -64,6 +61,7 @@ beforeEach(() => {
   process.env.DISTIL_ALLOWED_ORIGINS = origin;
   process.env.DISTIL_SESSION_SECRET = sessionSecret;
   process.env.DISTIL_WEB_PASSWORD_HASH = passwordHash;
+  process.env.DISTIL_LEGACY_USER_ID = authContext.userId;
   captureTokens = {
     create: jest.fn().mockResolvedValue(undefined),
     findActiveByHash: jest.fn(),
@@ -85,18 +83,21 @@ beforeEach(() => {
       resetAt: "2026-03-01T00:15:00Z",
     }),
   };
-  mockGetRepositorySet.mockResolvedValue({ captureTokens, rateLimits } as unknown as RepositorySet);
+  mockGetTenantRepositories.mockResolvedValue({
+    captureTokens,
+    rateLimits,
+  } as unknown as RepositorySet);
   mockResolveRequestAuthContext.mockImplementation(async (request) => {
     if (!request.headers.get("cookie")) throw new AccessDeniedError("unauthenticated");
     return authContext;
   });
-  mockGetTenantRepositories.mockResolvedValue({ captureTokens } as unknown as RepositorySet);
 });
 
 afterAll(() => {
   delete process.env.DISTIL_ALLOWED_ORIGINS;
   delete process.env.DISTIL_SESSION_SECRET;
   delete process.env.DISTIL_WEB_PASSWORD_HASH;
+  delete process.env.DISTIL_LEGACY_USER_ID;
 });
 
 describe("POST /api/auth/login", () => {
@@ -110,7 +111,7 @@ describe("POST /api/auth/login", () => {
     );
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_REQUEST" } });
-    expect(mockGetRepositorySet).not.toHaveBeenCalled();
+    expect(mockGetTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("returns ORIGIN_NOT_ALLOWED before checking credentials", async () => {
@@ -125,7 +126,7 @@ describe("POST /api/auth/login", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "ORIGIN_NOT_ALLOWED" },
     });
-    expect(mockGetRepositorySet).not.toHaveBeenCalled();
+    expect(mockGetTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("rate limits attempts by client IP and rejects a wrong password", async () => {
@@ -137,7 +138,22 @@ describe("POST /api/auth/login", () => {
     const unauthorized = await loginPost(loginRequest);
     expect(unauthorized.status).toBe(401);
     expect(rateLimits.consume).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "login:203.0.113.4", limit: 10, windowSeconds: 900 })
+      expect.objectContaining({
+        key: "login:203.0.113.4",
+        userId: authContext.userId,
+        principalKind: "system",
+        principalId: authContext.userId,
+        operation: "login",
+        limit: 10,
+        windowSeconds: 900,
+      })
+    );
+    expect(mockGetTenantRepositories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: authContext.userId,
+        actorKind: "system",
+        actorId: authContext.userId,
+      })
     );
 
     rateLimits.consume.mockResolvedValue({

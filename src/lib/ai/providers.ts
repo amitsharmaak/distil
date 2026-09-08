@@ -18,16 +18,8 @@ export interface GenerateOptions {
 
 export interface AIProvider {
   readonly name: ProviderName;
-  generateText(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<string>;
-  generateJSON<T>(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<T>;
+  generateText(prompt: string, model: string, options?: GenerateOptions): Promise<string>;
+  generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T>;
 }
 
 /** Gemini provider — supports generateTextWithSearch for web grounding. */
@@ -50,11 +42,7 @@ export class GeminiProviderImpl implements GeminiProvider {
     this.genai = new GoogleGenerativeAI(apiKey);
   }
 
-  async generateText(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<string> {
+  async generateText(prompt: string, model: string, options?: GenerateOptions): Promise<string> {
     const m = this.genai.getGenerativeModel({
       model,
       generationConfig: {
@@ -66,11 +54,7 @@ export class GeminiProviderImpl implements GeminiProvider {
     return result.response.text();
   }
 
-  async generateJSON<T>(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<T> {
+  async generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T> {
     const jsonPrompt = `${prompt}\n\nRespond with valid JSON only, no other text.`;
     const text = await this.generateText(jsonPrompt, model, options);
     return parseJSON<T>(text);
@@ -96,11 +80,7 @@ export class OpenAIProviderImpl implements AIProvider {
     this.client = new OpenAI({ apiKey });
   }
 
-  async generateText(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<string> {
+  async generateText(prompt: string, model: string, options?: GenerateOptions): Promise<string> {
     const completion = await this.client.chat.completions.create(
       {
         model,
@@ -117,11 +97,7 @@ export class OpenAIProviderImpl implements AIProvider {
     return content;
   }
 
-  async generateJSON<T>(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<T> {
+  async generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T> {
     const jsonPrompt = `${prompt}\n\nRespond with valid JSON only, no other text.`;
     const text = await this.generateText(jsonPrompt, model, options);
     return parseJSON<T>(text);
@@ -136,11 +112,7 @@ export class AnthropicProviderImpl implements AIProvider {
     this.client = new Anthropic({ apiKey });
   }
 
-  async generateText(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<string> {
+  async generateText(prompt: string, model: string, options?: GenerateOptions): Promise<string> {
     const message = await this.client.messages.create(
       {
         model,
@@ -150,20 +122,14 @@ export class AnthropicProviderImpl implements AIProvider {
       },
       { timeout: options?.timeoutMs }
     );
-    const textBlock = message.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text",
-    );
+    const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {
       throw new Error("Anthropic returned empty response");
     }
     return textBlock.text;
   }
 
-  async generateJSON<T>(
-    prompt: string,
-    model: string,
-    options?: GenerateOptions,
-  ): Promise<T> {
+  async generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T> {
     const jsonPrompt = `${prompt}\n\nRespond with valid JSON only, no other text.`;
     const text = await this.generateText(jsonPrompt, model, options);
     return parseJSON<T>(text);
