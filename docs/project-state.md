@@ -961,7 +961,7 @@ Wave 2 began from the exact Wave 1 SHA in three isolated worktrees:
   research/agent/chat, notifications/settings, dormant connectors, loaders, and extension account
   separation.
 
-Wave 2 is complete and frozen at `b14529b984a0fb38fb7085edb719560f9a07a5e1`. The integration
+Wave 2 is complete and frozen at `428a0b023e2295b59fe864efeb2b26047b0ed6fa`. The integration
 branch now binds capture and durable jobs, feed/reader/retrieval/answers/digests/AI context, legacy
 agent and research paths, settings/notifications, dormant connector routes, and extension offline
 state to the authenticated tenant. Capture/job envelopes reject missing or forged owners, database
@@ -980,6 +980,8 @@ Wave 2 closure evidence on Node `v22.23.2`:
 - PostgreSQL 16 integration: all 10 sequential suites passed, including tenant views/upserts,
   migration compatibility, forged-envelope rejection, restricted runtime role behavior, FORCE RLS,
   missing-context denial, same-value cross-tenant rows, pooled-connection switching, and rollback.
+  The same suite also passed against one persistent external database, matching GitHub's service
+  container topology; the runner resets both application schemas between isolated Jest processes.
 - Lint/format, TypeScript, production build, desktop/mobile browser E2E (27 passed, 3 intentionally
   skipped behind disabled Phase 2 flags), and extension E2E (11 passed) all passed.
 
