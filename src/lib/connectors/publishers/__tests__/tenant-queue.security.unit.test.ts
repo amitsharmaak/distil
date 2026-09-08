@@ -50,6 +50,16 @@ describe("tenant publisher queue", () => {
     expect(repos.publisherQueue.listPending).toHaveBeenCalledWith("the-ken", 7);
   });
 
+  it("uses a bounded default batch size when callers do not choose one", async () => {
+    const repos = repositories();
+    repos.publisherQueue.listPending.mockResolvedValue([]);
+
+    await expect(
+      new TenantPublisherQueue(context, repos as never).nextPending("the-ken")
+    ).resolves.toEqual([]);
+    expect(repos.publisherQueue.listPending).toHaveBeenCalledWith("the-ken", 20);
+  });
+
   it("does not provide a user id to mutation methods after the repository is tenant-bound", async () => {
     const repos = repositories();
     const queue = new TenantPublisherQueue(context, repos as never);

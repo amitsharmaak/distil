@@ -91,6 +91,28 @@ describe("SearchExperience", () => {
     expect(destination).toContain("topic=systems");
   });
 
+  it("restores every supported search facet and forwards them to the tenant search API", async () => {
+    search =
+      "q=durable+queues&source=gmail,manual&contentType=video&priority=high&topic=systems&collection=collection-1&read=true&archive=include&dateFrom=2026-01-01T00%3A00%3A00.000Z&dateTo=2026-01-31T23%3A59%3A59.999Z";
+    render(<SearchExperience />);
+
+    await screen.findByRole("heading", { name: "Durable queues" });
+    expect(screen.getByText("10 active")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "gmail" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "manual" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "video" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "high" })).toHaveAttribute("aria-pressed", "true");
+    const filteredRequest = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes("source=gmail&source=manual"));
+    expect(filteredRequest).toContain("archive=include");
+    expect(filteredRequest).toContain("dateFrom=2026-01-01T00%3A00%3A00.000Z");
+    expect(filteredRequest).toContain("dateTo=2026-01-31T23%3A59%3A59.999Z");
+
+    fireEvent.submit(screen.getByRole("search"));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining("collection=collection-1"));
+  });
+
   it("shows a safe unavailable state for the API", async () => {
     search = "q=durable";
     fetchMock.mockResolvedValue({

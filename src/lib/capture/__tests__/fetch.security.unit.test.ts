@@ -155,4 +155,31 @@ describe("safe article fetch", () => {
       })
     ).rejects.toMatchObject({ code: "EMPTY_CONTENT" });
   });
+
+  it("handles bodyless responses and explicit timeouts without treating them as readable articles", async () => {
+    await expect(
+      fetchArticle("https://example.com", {
+        fetch: jest.fn().mockResolvedValue(new Response(null, { status: 204 })),
+        resolve: publicDns,
+        timeoutMs: 500,
+      })
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_CONTENT" });
+
+    await expect(
+      fetchArticle("https://example.com", {
+        fetch: jest.fn().mockResolvedValue(new Response(null, { status: 503 })),
+        resolve: publicDns,
+        timeoutMs: 500,
+      })
+    ).rejects.toMatchObject({ code: "UPSTREAM_503", kind: "transient" });
+  });
+
+  it("rejects a successful response that omits a supported content type", async () => {
+    await expect(
+      fetchArticle("https://example.com", {
+        fetch: jest.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]))),
+        resolve: publicDns,
+      })
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_CONTENT" });
+  });
 });

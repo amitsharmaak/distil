@@ -305,6 +305,45 @@ describe("Phase 2 reader service contracts", () => {
     });
   });
 
+  it("changes only the requested annotation field and leaves every omitted anchor field intact", async () => {
+    const annotation = {
+      id: "annotation-1",
+      itemId: "item-1",
+      selectedQuote: "quote",
+      prefix: "before",
+      suffix: "after",
+      contentHash: "hash",
+      contentVersion: "version",
+      status: "active" as const,
+    };
+    const repositories = fullRepositorySet({
+      annotations: {
+        listForItem: jest.fn().mockResolvedValue([annotation]),
+        update: jest
+          .fn()
+          .mockImplementation(async (id, patch) => ({ ...annotation, id, ...patch })),
+      },
+    });
+
+    await expect(
+      updateAnnotation(repositories, "item-1", annotation.id, { status: "orphaned" })
+    ).resolves.toMatchObject({ status: "orphaned" });
+    expect(repositories.annotations.update).toHaveBeenCalledWith(
+      annotation.id,
+      expect.objectContaining({ status: "orphaned" })
+    );
+    const patch = jest.mocked(repositories.annotations.update).mock.calls[0]?.[1] ?? {};
+    expect(patch).not.toEqual(
+      expect.objectContaining({
+        selectedQuote: expect.anything(),
+        prefix: expect.anything(),
+        suffix: expect.anything(),
+        contentHash: expect.anything(),
+        contentVersion: expect.anything(),
+      })
+    );
+  });
+
   it("supports collection lifecycle and membership event semantics", async () => {
     const repositories = fullRepositorySet();
     await expect(listCollections(repositories)).resolves.toEqual([]);
