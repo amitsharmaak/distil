@@ -9,7 +9,8 @@ export class LifecycleError extends Error {
       | "EXPIRED"
       | "UNAVAILABLE",
     readonly status: number,
-    message: string
+    message: string,
+    readonly recovery?: { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" }
   ) {
     super(message);
     this.name = "LifecycleError";
@@ -19,7 +20,13 @@ export class LifecycleError extends Error {
 export function lifecycleErrorResponse(error: unknown): Response {
   if (error instanceof LifecycleError) {
     return Response.json(
-      { error: { code: error.code, message: error.message } },
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.recovery ? { recovery: error.recovery } : {}),
+        },
+      },
       { status: error.status }
     );
   }

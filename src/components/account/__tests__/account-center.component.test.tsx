@@ -59,4 +59,41 @@ describe("AccountCenter deletion confirmation", () => {
     );
     expect(await screen.findByText(/Deletion status: requested/)).toBeInTheDocument();
   });
+
+  it("turns a typed fresh-auth failure into an explicit invite-only recovery state", async () => {
+    render(<AccountCenter />);
+    const exportButton = await screen.findByRole("button", { name: "Request export" });
+    fetchMock.mockResolvedValueOnce(
+      response(
+        {
+          error: {
+            code: "FRESH_AUTH_REQUIRED",
+            message: "Recent authentication is required for this account action",
+            recovery: { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" },
+          },
+        },
+        403
+      )
+    );
+
+    fireEvent.click(exportButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This invite-only build cannot safely renew authentication in place"
+    );
+    expect(screen.getByRole("button", { name: "Retry action" })).toBeInTheDocument();
+
+    fetchMock.mockResolvedValueOnce(
+      response({ export: { id: "export-1", status: "queued", requestedAt: "2026-09-08" } }, 202)
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry action" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/account/export", {
+        method: "POST",
+        headers: { "idempotency-key": expect.any(String) },
+      })
+    );
+    expect(await screen.findByText("queued")).toBeInTheDocument();
+  });
 });

@@ -1,7 +1,7 @@
 import { AccessDeniedError } from "@/lib/auth/account";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
-import { readProviderIdentity, requireFreshAuthentication } from "@/lib/auth/request-context";
+import { FRESH_AUTH_WINDOW_MS, readProviderIdentity } from "@/lib/auth/request-context";
 import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { createAuthContext, requestIdSchema, sessionIdSchema } from "@/lib/contracts";
 import { getTenantRepositories } from "@/lib/database";
@@ -29,13 +29,16 @@ export async function requireLifecycleRoute(
     (input.allowDeletionPending && account.status === "deletion_pending");
   if (!allowed) throw new AccessDeniedError("disabled");
   const now = new Date();
-  const freshUntil = new Date(identity.authenticatedAt.getTime() + 10 * 60 * 1000);
-  if (input.fresh) {
-    requireFreshAuthentication({
-      authenticatedAt: identity.authenticatedAt.toISOString(),
-      freshUntil: freshUntil.toISOString(),
-      isFresh: now.getTime() <= freshUntil.getTime(),
-    });
+  const freshUntil = new Date(identity.authenticatedAt.getTime() + FRESH_AUTH_WINDOW_MS);
+  if (input.fresh && now.getTime() > freshUntil.getTime()) {
+    // Neon Auth 0.5.0-beta has no reauthentication endpoint. Do not treat its
+    // ordinary session-expiry refresh as proof of a new authentication event.
+    throw new LifecycleError(
+      "FRESH_AUTH_REQUIRED",
+      403,
+      "Recent authentication is required for this account action",
+      { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" }
+    );
   }
   const requestId = requestIdSchema.safeParse(request.headers.get("x-trace-id"));
   const sessionId = sessionIdSchema.safeParse(identity.sessionId);

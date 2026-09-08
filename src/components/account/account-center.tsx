@@ -39,13 +39,31 @@ interface DeletionRequest {
   purgeAfter?: string;
 }
 
+type FreshAuthAction = "export" | "deletion" | "cancellation";
+
+interface AccountActionFailure {
+  code?: string;
+  message: string;
+  recovery?: { kind?: string };
+}
+
 const DELETE_CONFIRMATION = "DELETE MY ACCOUNT";
 
-function messageFor(response: Response, fallback: string): Promise<string> {
+function failureFor(response: Response, fallback: string): Promise<AccountActionFailure> {
   return response
     .json()
-    .then((payload: { error?: { message?: string } }) => payload.error?.message ?? fallback)
-    .catch(() => fallback);
+    .then(
+      (payload: { error?: { code?: string; message?: string; recovery?: { kind?: string } } }) => ({
+        code: payload.error?.code,
+        message: payload.error?.message ?? fallback,
+        recovery: payload.error?.recovery,
+      })
+    )
+    .catch(() => ({ message: fallback }));
+}
+
+async function messageFor(response: Response, fallback: string): Promise<string> {
+  return (await failureFor(response, fallback)).message;
 }
 
 export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) {
@@ -59,6 +77,22 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [saving, setSaving] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [freshAuthAction, setFreshAuthAction] = useState<FreshAuthAction>();
+
+  async function handleLifecycleFailure(
+    response: Response,
+    fallback: string,
+    action: FreshAuthAction
+  ) {
+    const failure = await failureFor(response, fallback);
+    setError(failure.message);
+    setFreshAuthAction(
+      failure.code === "FRESH_AUTH_REQUIRED" &&
+        failure.recovery?.kind === "CONTACT_OPERATOR_FOR_NEW_INVITATION"
+        ? action
+        : undefined
+    );
+  }
 
   async function load() {
     setError(undefined);
@@ -139,13 +173,17 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   async function requestExport() {
+    setError(undefined);
+    setFreshAuthAction(undefined);
     const response = await fetch("/api/v1/account/export", {
       method: "POST",
       headers: { "idempotency-key": crypto.randomUUID() },
     });
     if (!response.ok) {
-      setError(
-        await messageFor(response, "Could not request an export. Please authenticate again.")
+      await handleLifecycleFailure(
+        response,
+        "Could not request an export. Please authenticate again.",
+        "export"
       );
       return;
     }
@@ -173,14 +211,18 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   async function requestDeletion() {
+    setError(undefined);
+    setFreshAuthAction(undefined);
     const response = await fetch("/api/v1/account/deletion", {
       method: "POST",
       headers: { "content-type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ confirmation: DELETE_CONFIRMATION }),
     });
     if (!response.ok) {
-      setError(
-        await messageFor(response, "Could not request account deletion. Please authenticate again.")
+      await handleLifecycleFailure(
+        response,
+        "Could not request account deletion. Please authenticate again.",
+        "deletion"
       );
       return;
     }
@@ -192,13 +234,25 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   async function cancelDeletion() {
+    setError(undefined);
+    setFreshAuthAction(undefined);
     const response = await fetch("/api/v1/account/deletion", { method: "DELETE" });
     if (!response.ok) {
-      setError(await messageFor(response, "Could not cancel deletion. Please authenticate again."));
+      await handleLifecycleFailure(
+        response,
+        "Could not cancel deletion. Please authenticate again.",
+        "cancellation"
+      );
       return;
     }
     setDeletion(((await response.json()) as { deletion: DeletionRequest }).deletion);
     setNotice("Account deletion has been cancelled.");
+  }
+
+  function retryFreshAuthAction() {
+    if (freshAuthAction === "export") void requestExport();
+    if (freshAuthAction === "deletion") void requestDeletion();
+    if (freshAuthAction === "cancellation") void cancelDeletion();
   }
 
   if (!account) {
@@ -474,9 +528,27 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
         </p>
       ) : null}
       {error ? (
-        <p aria-live="polite" className="text-sm text-destructive">
-          {error}
-        </p>
+        freshAuthAction ? (
+          <div
+            aria-live="polite"
+            className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"
+            role="alert"
+          >
+            <p className="font-medium text-destructive">{error}</p>
+            <p className="mt-1 text-muted-foreground">
+              This invite-only build cannot safely renew authentication in place. Ask your Distil
+              operator for a new invitation sent to the exact email on this account, complete it,
+              then retry this action.
+            </p>
+            <Button className="mt-3" onClick={retryFreshAuthAction} size="sm" variant="outline">
+              Retry action
+            </Button>
+          </div>
+        ) : (
+          <p aria-live="polite" className="text-sm text-destructive">
+            {error}
+          </p>
+        )
       ) : null}
     </div>
   );
