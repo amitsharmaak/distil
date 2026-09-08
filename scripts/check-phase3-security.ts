@@ -70,7 +70,7 @@ if (
 
 const magicLinkSource = readFileSync(resolve(root, "src/lib/auth/magic-link.ts"), "utf8");
 if (
-  !/\b(?:enforceRateLimit|claimInvitationForDelivery|reserveInvitationDelivery)\b/.test(
+  !/\b(?:enforceRateLimit|claimInvitationForDelivery|reserveInvitationDelivery|claimInvitationDispatch)\b/.test(
     magicLinkSource
   )
 ) {
