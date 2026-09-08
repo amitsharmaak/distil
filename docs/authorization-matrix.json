@@ -782,6 +782,17 @@
       "notes": "Invitation/email rate limiting and replay control must occur before provider dispatch."
     },
     {
+      "path": "/api/auth/reauthenticate",
+      "source": "src/app/api/auth/reauthenticate/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "active_internal_account_plus_origin",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["auth_identities", "provider_sessions"],
+      "testProfile": "owner",
+      "notes": "The mapped provider identity selects the email; fixed same-origin callbacks create a new session authentication event."
+    },
+    {
       "path": "/api/auth/gmail/callback",
       "source": "src/app/api/auth/gmail/callback/route.ts",
       "methods": ["GET"],
@@ -2409,7 +2420,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 85,
+    "expectedApiRouteFileCount": 86,
     "expectedPageFileCount": 20,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

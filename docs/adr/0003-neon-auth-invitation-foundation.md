@@ -22,19 +22,19 @@ single-user session remains a bounded feature-off rollback bridge.
 
 ## Evidence and SDK decision
 
-Validation performed on 2026-09-07:
+Validation performed on 2026-09-07 and dependency disposition revalidated on 2026-09-08:
 
-| Item                   | Result                                                         |
-| ---------------------- | -------------------------------------------------------------- |
-| Distil                 | Next.js `16.3.4`, React `19.2.3`, Node `22.23.2`               |
-| Current SDK            | `@neondatabase/auth@0.5.0-beta` from the npm `latest` tag      |
-| Peer range             | `next >=16.0.0`, `react >=18.0.0`, `react-dom >=18.0.0`        |
-| Recommended server API | `createNeonAuth` from `@neondatabase/auth/next/server`         |
-| Next adapter API       | `auth.handler()`, `auth.middleware()`, and `auth.getSession()` |
-| Magic-link capability  | Declares `signIn.magicLink` and `/magic-link/verify` endpoints |
-| Production audit       | Blocked: 1 high and 7 moderate findings after pinning          |
-| Dependency graph       | Blocked: invalid Better Auth peer resolutions                  |
-| License review         | Blocked: AGPL packages pulled through the unused auth UI graph |
+| Item                   | Result                                                          |
+| ---------------------- | --------------------------------------------------------------- |
+| Distil                 | Next.js `16.3.4`, React `19.2.3`, Node `22.23.2`                |
+| Current SDK            | `@neondatabase/auth@0.5.0-beta` from the npm `latest` tag       |
+| Peer range             | `next >=16.0.0`, `react >=18.0.0`, `react-dom >=18.0.0`         |
+| Recommended server API | `createNeonAuth` from `@neondatabase/auth/next/server`          |
+| Next adapter API       | `auth.handler()`, `auth.middleware()`, and `auth.getSession()`  |
+| Magic-link capability  | Declares `signIn.magicLink` and `/magic-link/verify` endpoints  |
+| Production audit       | Reviewed: 6 moderate build-tool findings; no deployed path      |
+| Dependency graph       | Pass: official non-UI adapters plus a fail-closed local UI stub |
+| License review         | Pass: no AGPL package remains in the production lock graph      |
 
 The SDK is compatible with the repository's Next 16 version by declared peer dependency and its
 own development dependency uses Next `16.2.11`. It remains beta, so the Phase 3 implementation
@@ -42,13 +42,29 @@ must pin an exact vetted version rather than a caret range and include an upgrad
 validated SDK API is the post-v0.2 unified API; do not implement examples using the superseded
 `neonAuth`, `authApiHandler`, or `neonAuthMiddleware` entry points.
 
-Pinning also exposed release blockers that must not be waived merely because the selected server
-subpath compiles. `npm audit --omit=dev` reports eight production findings (one high, seven
-moderate). `npm ls` reports incompatible `better-call` peer resolutions under Better Auth. The
-package also installs `@neondatabase/auth-ui` even though Distil does not import it; that graph pulls
-AGPL-licensed `@triplit/client` and `ua-parser-js`. `FEATURE_NEON_AUTH` must remain off until Neon
-provides or Distil validates a dependency graph with resolved advisories/peers and an acceptable
-license posture. The pin in this repository is an integration target, not release approval.
+Pinning exposed release blockers that must not be waived merely because the selected server
+subpath compiles. The package installs `@neondatabase/auth-ui` even though Distil does not import
+it; the published UI graph contains an invalid Better Auth peer and pulls AGPL-licensed
+`@triplit/client` and `ua-parser-js`. The upstream package README now documents the UI as a
+separate install, but the published `0.5.0-beta` package metadata still declares it as mandatory.
+
+Distil therefore replaces only that unused dependency with the checked-in
+`vendor/neon-auth-ui-disabled` package. It throws if a legacy UI export is ever imported. The
+official `@neondatabase/auth/next` and `@neondatabase/auth/next/server` code remains pinned and is
+covered by compile and adapter tests; the invitation-only custom UI and magic-link sign-in path do
+not use the replaced package. The committed offline policy verifies that the peer conflict and AGPL
+packages are absent. This is a narrow isolation, not a license allowlist and not a fork of the auth
+runtime. Remove it when a vetted official release makes Auth UI separately installable.
+
+`npm audit --omit=dev` still reports six moderate findings through `drizzle-kit` and its old
+`esbuild` dependency, including the SDK's pinned `better-auth@1.6.23`. The underlying published
+advisory applies when the esbuild development server is running. Distil does not invoke
+`drizzle-kit`, esbuild's serve API, or any Better Auth schema-generation tool in its deployed
+runtime; Next compiles the reviewed adapter entry points into the application build. The finding is
+therefore accepted as non-exploitable in the deployed path, while dependency updates remain normal
+upgrade work. Upgrading Better Auth independently would override the SDK's exact runtime contract
+and is less safe than retaining the supported pin. The pin remains an integration target, not
+blanket approval for SDK UI or tooling exports.
 
 The eventual server configuration is conceptually:
 
@@ -65,7 +81,9 @@ unnecessary public configuration contract. Revalidate the exact package behavior
 
 Sources: [Neon Auth v0.2 migration guide](https://neon.com/docs/auth/migrate/from-auth-v0.1),
 [Neon Auth SDK changelog](https://neon.com/docs/changelog/2026-01-30), and
-[@neondatabase/auth on npm](https://www.npmjs.com/package/@neondatabase/auth).
+[@neondatabase/auth on npm](https://www.npmjs.com/package/@neondatabase/auth). Dependency
+disposition sources: [official Neon SDK auth README](https://github.com/neondatabase/neon-js/tree/main/packages/auth)
+and [esbuild advisory GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99).
 
 ## Authentication and authorization contract
 
@@ -134,6 +152,14 @@ sessions when an account is disabled or a high-risk account change occurs. Keep 
 `DISTIL_SESSION_SECRET` path until the migration has a rollback plan; do not mix its cookie with
 Neon Auth's cookie names.
 
+For an authenticated but stale session, `POST /api/auth/reauthenticate` resolves the mapped active
+account, selects its provider-verified email server-side, and invokes the official
+`signIn.magicLink` method. The email callback is fixed to the same-origin `/account` page; the
+provider's magic-link verification creates the new authentication session whose `createdAt` drives
+the existing ten-minute freshness check. Callers cannot choose the email or callback, and an
+unmapped, disabled, or unauthenticated identity cannot dispatch a link. This is a real provider
+ceremony, not session refresh relabeled as fresh authentication.
+
 ## Proxy, route, and webhook boundaries
 
 The existing `src/proxy.ts` owns CORS, rate limits, legacy session checks, capture-token paths,
@@ -193,9 +219,10 @@ supported, and must not be included in logs, analytics, referrers, or support ti
 
 Before moving `FEATURE_NEON_AUTH` to true, complete all of these:
 
-1. Replace or remediate the pinned SDK dependency graph: clear the production audit findings,
-   invalid Better Auth peers, and AGPL transitive-license review; then compile/build it against the
-   deployed Next 16 version and re-run the API review because the package is beta.
+1. Maintain the reviewed pinned SDK graph: the unused UI replacement must fail closed, the offline
+   dependency policy must remain free of invalid peers and AGPL packages, and the official adapter
+   entry points must compile/build against the deployed Next 16 version. Re-run the API, advisory,
+   and runtime-reachability review on every SDK upgrade because the package is beta.
 2. Prove magic-link-only configuration and resolve the self-registration limitation above in a
    disposable Preview branch with no real user data.
 3. Add unit tests for disabled/misconfigured flags, invite hashing/expiry/atomic consumption,

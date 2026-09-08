@@ -111,8 +111,9 @@ describe("AccountCenter lifecycle recovery", () => {
     fireEvent.click(exportButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This invite-only build cannot safely renew authentication in place"
+      "Send a new sign-in link to the verified email on this account"
     );
+    expect(screen.getByRole("button", { name: "Email verification link" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry action" })).toBeInTheDocument();
 
     fetchMock.mockResolvedValueOnce(
@@ -467,6 +468,38 @@ describe("AccountCenter lifecycle recovery", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry action" }));
     expect(await screen.findByText(/Deletion status: requested/)).toBeInTheDocument();
+  });
+
+  it("starts a real provider reauthentication ceremony for a stale session", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "Request deletion" }));
+    fireEvent.change(screen.getByLabelText("Type DELETE MY ACCOUNT to confirm"), {
+      target: { value: "DELETE MY ACCOUNT" },
+    });
+    fetchMock.mockResolvedValueOnce(
+      response(
+        {
+          error: {
+            code: "FRESH_AUTH_REQUIRED",
+            message: "Recent authentication is required",
+            recovery: { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" },
+          },
+        },
+        403
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm deletion" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce(response({ accepted: true }, 202));
+    fireEvent.click(screen.getByRole("button", { name: "Email verification link" }));
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/auth/reauthenticate", { method: "POST" });
+    expect(
+      await screen.findByText(
+        "Verification link sent. Open it in this browser, then retry the action."
+      )
+    ).toBeInTheDocument();
   });
 
   it("recovers cancellation after fresh authentication is renewed", async () => {

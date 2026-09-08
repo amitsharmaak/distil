@@ -53,7 +53,9 @@
     "@google/generative-ai": "^0.24.1",
     "@mozilla/readability": "^0.6.0",
     "@neondatabase/auth": "0.5.0-beta",
+    "@neondatabase/auth-ui": "file:vendor/neon-auth-ui-disabled",
     "@slack/web-api": "^7.19.0",
+    "@vercel/blob": "^2.8.0",
     "@vercel/queue": "^0.5.1",
     "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
@@ -113,6 +115,7 @@
     "typescript": "^5"
   },
   "overrides": {
+    "@neondatabase/auth-ui": "$@neondatabase/auth-ui",
     "fast-uri": "3.1.6"
   }
 }

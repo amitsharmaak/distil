@@ -321,9 +321,41 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
           </p>
         ) : null}
         {error ? (
-          <p aria-live="polite" className="text-sm text-destructive">
-            {error}
-          </p>
+          freshAuthAction ? (
+            <div
+              aria-live="polite"
+              className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"
+              role="alert"
+            >
+              <p className="font-medium text-destructive">{error}</p>
+              <p className="mt-1 text-muted-foreground">
+                Send a new sign-in link to the verified email on this account. Opening it creates a
+                new provider session; then retry this action.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  disabled={saving}
+                  onClick={() => void requestFreshAuthentication()}
+                  size="sm"
+                  variant="outline"
+                >
+                  Email verification link
+                </Button>
+                <Button
+                  disabled={saving}
+                  onClick={retryFreshAuthAction}
+                  size="sm"
+                  variant="outline"
+                >
+                  Retry action
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p aria-live="polite" className="text-sm text-destructive">
+              {error}
+            </p>
+          )
         ) : null}
       </div>
     );
@@ -333,6 +365,21 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     if (freshAuthAction === "export") void requestExport();
     if (freshAuthAction === "deletion") void requestDeletion();
     if (freshAuthAction === "cancellation") void cancelDeletion();
+  }
+
+  async function requestFreshAuthentication() {
+    setSaving(true);
+    setNotice(undefined);
+    try {
+      const response = await fetch("/api/auth/reauthenticate", { method: "POST" });
+      if (!response.ok) {
+        setError(await messageFor(response, "Could not send a verification link."));
+        return;
+      }
+      setNotice("Verification link sent. Open it in this browser, then retry the action.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!account) {
@@ -618,13 +665,22 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
           >
             <p className="font-medium text-destructive">{error}</p>
             <p className="mt-1 text-muted-foreground">
-              This invite-only build cannot safely renew authentication in place. Ask your Distil
-              operator for a new invitation sent to the exact email on this account, complete it,
-              then retry this action.
+              Send a new sign-in link to the verified email on this account. Opening it creates a
+              new provider session; then retry this action.
             </p>
-            <Button className="mt-3" onClick={retryFreshAuthAction} size="sm" variant="outline">
-              Retry action
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                disabled={saving}
+                onClick={() => void requestFreshAuthentication()}
+                size="sm"
+                variant="outline"
+              >
+                Email verification link
+              </Button>
+              <Button disabled={saving} onClick={retryFreshAuthAction} size="sm" variant="outline">
+                Retry action
+              </Button>
+            </div>
           </div>
         ) : (
           <p aria-live="polite" className="text-sm text-destructive">

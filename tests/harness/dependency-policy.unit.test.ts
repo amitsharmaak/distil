@@ -8,23 +8,20 @@ describe("Phase 3 offline dependency/license policy", () => {
     const packageLock = JSON.parse(
       readFileSync(resolve(process.cwd(), "package-lock.json"), "utf8")
     );
-    expect(phase3DependencyPolicyFindings(packageJson, packageLock)).toEqual([
-      {
-        id: "invalid-auth-peer",
-        package: "@better-auth/api-key",
-        detail: "requires better-auth ^1.7.3 but Neon Auth UI resolves 1.6.23",
-      },
-      {
-        id: "prohibited-license",
-        package: "@triplit/client@1.0.50",
-        detail: "production dependency declares AGPL-3.0-only",
-      },
-      {
-        id: "prohibited-license",
-        package: "ua-parser-js@2.0.10",
-        detail: "production dependency declares AGPL-3.0-or-later",
-      },
-    ]);
+    expect(packageJson.dependencies["@neondatabase/auth-ui"]).toBe(
+      "file:vendor/neon-auth-ui-disabled"
+    );
+    expect(packageJson.overrides["@neondatabase/auth-ui"]).toBe("$@neondatabase/auth-ui");
+    expect(packageLock.packages["node_modules/@neondatabase/auth-ui"]).toEqual({
+      resolved: "vendor/neon-auth-ui-disabled",
+      link: true,
+    });
+    expect(packageLock.packages["vendor/neon-auth-ui-disabled"]).toMatchObject({
+      name: "@neondatabase/auth-ui",
+      version: "0.3.0-beta-distil-disabled",
+      license: "UNLICENSED",
+    });
+    expect(phase3DependencyPolicyFindings(packageJson, packageLock)).toEqual([]);
   });
 
   it("passes a pinned, compatible, permissively licensed graph", () => {
