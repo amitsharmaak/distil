@@ -14,6 +14,7 @@ import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
+import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
 
 const CONNECTOR_API_PREFIXES = [
   "/api/auth/gmail",
@@ -36,17 +37,21 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
   const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
+  const finish = (response: NextResponse) =>
+    applyPrivateApiCacheControl(pathname, isApi ? applyCors(request, response) : response);
 
   if (connectorsDisabled(pathname)) {
-    return NextResponse.json(
-      { error: { code: "NOT_FOUND", message: "Connector routes are disabled" } },
-      { status: 404 }
+    return finish(
+      NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Connector routes are disabled" } },
+        { status: 404 }
+      )
     );
   }
 
   // Handle CORS preflight
   const preflightResponse = isApi ? handlePreflight(request) : null;
-  if (preflightResponse) return preflightResponse;
+  if (preflightResponse) return finish(preflightResponse);
 
   const traceId = crypto.randomUUID();
   let requestHeaders = new Headers(request.headers);
@@ -57,7 +62,7 @@ export async function proxy(request: NextRequest) {
   const neonFoundation = readNeonAuthFoundation();
   if (!neonFoundation.enabled) {
     const authError = await checkAuth(request);
-    if (authError) return authError;
+    if (authError) return finish(authError);
   } else {
     try {
       const auth = getNeonAuthServer();
@@ -68,7 +73,7 @@ export async function proxy(request: NextRequest) {
       });
       if (authorization.response) {
         authorization.response.headers.set("x-trace-id", traceId);
-        return isApi ? applyCors(request, authorization.response) : authorization.response;
+        return finish(authorization.response);
       }
       requestHeaders = authorization.requestHeaders ?? requestHeaders;
       providerHeaders = authorization.providerHeaders;
@@ -78,13 +83,13 @@ export async function proxy(request: NextRequest) {
         { status: 503 }
       );
       unavailable.headers.set("x-trace-id", traceId);
-      return isApi ? applyCors(request, unavailable) : unavailable;
+      return finish(unavailable);
     }
   }
 
   // Rate limiting
   const rateLimitError = isApi && !isInfrastructure ? checkRateLimit(request) : null;
-  if (rateLimitError) return rateLimitError;
+  if (rateLimitError) return finish(rateLimitError);
 
   // Add trace ID header for downstream use (Edge runtime uses Web Crypto API)
   requestHeaders.set("x-trace-id", traceId);
@@ -100,7 +105,7 @@ export async function proxy(request: NextRequest) {
   });
 
   // Apply CORS headers
-  return isApi ? applyCors(request, response) : response;
+  return finish(response);
 }
 
 export const config = {
