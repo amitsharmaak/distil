@@ -1420,3 +1420,46 @@ independent Shortcut and extension revocation/recovery with the web session inta
 Today, reader progress, note, highlight, search, grounded answer/citation, abstention and digest
 dismissal. Codex owns the migration, durable `202`, queued-to-ready, deduplication, controlled retry,
 queue health, connector shutdown, logs and rollback checks around that device session.
+
+#### Unified Preview preparation checkpoint — 2026-09-08
+
+Steps 1 and the unauthenticated/backend portion of step 2 are complete. Neon branch
+`br-polished-haze-b3z9qrdr` (`combined-acceptance-20260908`) was forked from the stable Phase 1
+`main` branch `br-spring-wildflower-b38agkuk` and auto-expires on 2026-09-12. Ordinary migrations
+`0001` through `0004` and tenant stages expand, backfill, contract and lifecycle are present. The
+before/after/lifecycle invariant reports passed and remain mode `0600` under the gitignored
+`artifacts/preview-clone-rehearsal/combined-acceptance-20260908/` directory.
+
+The migrated legacy bridge owner is `15baec07-275a-4ca8-be30-654db41155cf`. It was explicitly
+activated on this clone without creating a hosted identity or storing an email; this is required
+because lifecycle correctly disables capture credentials while an account remains
+`migration_pending`. A clone-local restricted login inherits `distil_runtime`; the application does
+not use the owner role. All 35 source items, 47 capture receipts and 18 token records were retained.
+The two accepted active token hashes and prefixes match the stable Phase 1 source exactly and are
+owned by this one user. No plaintext token was read, copied or reissued.
+
+The bounded knowledge backfill completed 32 content versions, 32 item chunking jobs producing 623
+chunks, 19 legacy artifacts and 14 degraded summaries with zero failures. An execute replay ran zero
+additional batches. The deliberately long initial run reflects sequential database round trips on
+the 623-chunk dataset; it is an operational optimization opportunity, not an acceptance blocker.
+
+Unified deployment `dpl_21NSGM7mgzevyA2ugJpqgg4qqfee` is Ready in `sin1` at
+`https://combined-acceptance-20260908.vercel.app`. It was built from state-only SHA `d1d7fe6` over
+accepted code SHA `933ad10`, uses the clone's pooled restricted-runtime URL, enables all Phase 2
+experience flags, and keeps hosted auth and connectors false. Stable Preview and Production aliases
+were not changed. Health returned 200; unauthenticated app/feed requests were denied; Gmail, Slack
+and publisher routes returned 404; the two queue functions are deployed; and 19 observed runtime log
+entries contained zero errors and zero secret-pattern matches.
+
+A clone-only synthetic capture returned durable 202, receipt
+`0274092e-7af7-4ef9-9866-5e592103e687` became ready in one attempt, duplicate submission returned 200
+with the same receipt, and revoking that synthetic token made the next request return 401. The token
+remains revoked. The PWA manifest exposes `/save`, standalone portrait display and 192/512 icons;
+there is no service worker route, so private feed data cannot be retained by an application offline
+cache.
+
+Still pending before the user device matrix: complete the correct-password authenticated desktop
+walkthrough, confirm private response cache headers, and run the controlled-retry check. Then point
+the existing Shortcut and extension to the unified alias and execute the combined physical-device
+checklist. The browser is intentionally waiting at the unified Preview login page; no password has
+been entered by automation.
