@@ -22,9 +22,9 @@ describe("tenant migration verification SQL", () => {
     expect(query).toContain("c.table_schema IN ('public')");
   });
 
-  it("excludes only the future owner column from stable row checksums", () => {
+  it("excludes only declared migration columns from stable row checksums", () => {
     const query = buildStableChecksumSql(items);
-    expect(query).toContain("to_jsonb(source) - 'user_id'");
+    expect(query).toContain("to_jsonb(tenant_row) - ARRAY['user_id']");
     expect(query).toContain("ORDER BY identity_key");
     expect(query).not.toMatch(/UPDATE|ALTER|DELETE|INSERT/);
   });

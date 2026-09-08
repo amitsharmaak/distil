@@ -133,7 +133,7 @@ describe("tenant migration verifier", () => {
     });
 
     expect(sql).toContain("to_jsonb(tenant_row)");
-    expect(sql).toContain('AS tenant_row');
+    expect(sql).toContain("AS tenant_row");
     expect(sql).not.toContain("to_jsonb(source)");
     expect(sql).toContain("ARRAY['user_id', 'derived_owner_kind']");
   });

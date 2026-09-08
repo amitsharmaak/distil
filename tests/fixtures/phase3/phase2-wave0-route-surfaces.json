@@ -86,6 +86,7 @@
   "POST /api/ai/summarize",
   "POST /api/auth/login",
   "POST /api/auth/logout",
+  "POST /api/auth/reauthenticate",
   "POST /api/auth/:path+",
   "POST /api/auth/devices/revoke-others",
   "POST /api/auth/invitations/request-link",

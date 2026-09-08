@@ -100,7 +100,7 @@ describe("Phase 3 authorization matrix", () => {
     const discovered = discoverNextRouteSurfaces(resolve(process.cwd(), "src/app/api"));
     const matrix = createPhase2Wave0AuthorizationMatrix(inventory);
 
-    expect(inventory).toHaveLength(118);
+    expect(inventory).toHaveLength(119);
     expect(() => assertRouteSurfaceInventory(inventory, discovered)).not.toThrow();
     expect(() =>
       assertAuthorizationCoverage(matrix, [...inventory, ...phase2Wave0WorkerSurfaces()])
