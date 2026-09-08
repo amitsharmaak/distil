@@ -1,6 +1,9 @@
 jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
 jest.mock("@/lib/auth/origin", () => ({ requireAllowedOrigin: jest.fn() }));
 jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
+jest.mock("@/lib/knowledge/answer-generator", () => ({
+  createRouterGroundedAnswerGenerator: jest.fn(),
+}));
 jest.mock("@/lib/knowledge/service", () => {
   const actual = jest.requireActual("@/lib/knowledge/service");
   return { ...actual, answerFromKnowledge: jest.fn() };
@@ -10,6 +13,7 @@ import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { AuthError } from "@/lib/auth/errors";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { getTenantRepositories } from "@/lib/database";
+import { createRouterGroundedAnswerGenerator } from "@/lib/knowledge/answer-generator";
 import { answerFromKnowledge } from "@/lib/knowledge/service";
 import { POST } from "../route";
 
@@ -20,6 +24,7 @@ const context = {
   requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 } as never;
 const passages = { search: jest.fn() };
+const generator = jest.fn();
 const request = (body: unknown) =>
   new Request("https://distil.example/api/v1/answers", {
     method: "POST",
@@ -33,6 +38,7 @@ beforeEach(() => {
   process.env.FEATURE_ANSWERS = "true";
   jest.mocked(resolveRequestAuthContext).mockResolvedValue(context);
   jest.mocked(getTenantRepositories).mockResolvedValue({ passages } as never);
+  jest.mocked(createRouterGroundedAnswerGenerator).mockReturnValue(generator);
   jest.mocked(answerFromKnowledge).mockResolvedValue({
     status: "abstained",
     intent: "specific",
@@ -89,6 +95,7 @@ describe("POST /api/v1/answers security", () => {
       context,
       request: expect.objectContaining({ query: "What is saved?" }),
       store: passages,
+      generator,
     });
   });
 });

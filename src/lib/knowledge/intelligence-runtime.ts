@@ -114,7 +114,12 @@ function buildPrompt(
   artifactType: "brief_summary" | "detailed_summary",
   chunks: ContentChunkRecord[]
 ): string {
-  const sources = chunks.map((chunk) => `CHUNK ${chunk.id}\n${chunk.content}`).join("\n\n---\n\n");
+  const sources = chunks
+    .map(
+      (chunk) =>
+        `CHUNK ${chunk.id} (UTF-16 length ${chunk.content.length}; valid offsets 0-${chunk.content.length})\n${chunk.content}`
+    )
+    .join("\n\n---\n\n");
   return `Create a ${artifactType === "brief_summary" ? "brief" : "detailed"} grounded summary of the saved item titled ${JSON.stringify(title)}.
 
 Return one JSON object with exactly these fields:

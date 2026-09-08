@@ -8,6 +8,7 @@
 /** All AI task types in the application. */
 export type AITask =
   | "summarize"
+  | "knowledge-answer"
   | "summarize-complex"
   | "prioritize"
   | "research-plan"
@@ -27,7 +28,8 @@ export interface ModelAssignment {
 
 /** Optimal model for each task when all providers are available. */
 export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
-  summarize: { provider: "gemini", model: "gemini-3-flash-preview" },
+  summarize: { provider: "gemini", model: "gemini-3.5-flash-lite" },
+  "knowledge-answer": { provider: "gemini", model: "gemini-3.5-flash-lite" },
   "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-6" },
   prioritize: { provider: "openai", model: "gpt-4o-mini" },
   "research-plan": { provider: "anthropic", model: "claude-sonnet-4-6" },
@@ -44,6 +46,7 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
  * Used by the router to estimate per-call spend and enforce the daily budget.
  */
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
   "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
   "gemini-2.5-flash-lite": { input: 0.075, output: 0.3 },
@@ -68,7 +71,8 @@ export const PROVIDER_FALLBACK_MODELS: Record<
   Record<AITask, string>
 > = {
   gemini: {
-    summarize: "gemini-2.5-flash",
+    summarize: "gemini-3.5-flash-lite",
+    "knowledge-answer": "gemini-3.5-flash-lite",
     "summarize-complex": "gemini-2.5-flash",
     prioritize: "gemini-2.5-flash",
     "research-plan": "gemini-2.5-flash",
@@ -81,6 +85,7 @@ export const PROVIDER_FALLBACK_MODELS: Record<
   },
   openai: {
     summarize: "gpt-4o-mini",
+    "knowledge-answer": "gpt-4o-mini",
     "summarize-complex": "gpt-4o",
     prioritize: "gpt-4o-mini",
     "research-plan": "gpt-4o",
@@ -93,6 +98,7 @@ export const PROVIDER_FALLBACK_MODELS: Record<
   },
   anthropic: {
     summarize: "claude-haiku-4-5",
+    "knowledge-answer": "claude-haiku-4-5",
     "summarize-complex": "claude-sonnet-4-6",
     prioritize: "claude-haiku-4-5",
     "research-plan": "claude-sonnet-4-6",

@@ -13,6 +13,7 @@ import { GEMINI_SEARCH_MODEL } from "./ai-config";
 export interface GenerateOptions {
   maxTokens?: number;
   temperature?: number;
+  timeoutMs?: number;
 }
 
 export interface AIProvider {
@@ -61,7 +62,7 @@ export class GeminiProviderImpl implements GeminiProvider {
         temperature: options?.temperature,
       },
     });
-    const result = await m.generateContent(prompt);
+    const result = await m.generateContent(prompt, { timeout: options?.timeoutMs });
     return result.response.text();
   }
 
@@ -100,12 +101,15 @@ export class OpenAIProviderImpl implements AIProvider {
     model: string,
     options?: GenerateOptions,
   ): Promise<string> {
-    const completion = await this.client.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: options?.maxTokens ?? 4096,
-      temperature: options?.temperature,
-    });
+    const completion = await this.client.chat.completions.create(
+      {
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: options?.maxTokens ?? 4096,
+        temperature: options?.temperature,
+      },
+      { timeout: options?.timeoutMs }
+    );
     const content = completion.choices[0]?.message?.content;
     if (!content) {
       throw new Error("OpenAI returned empty response");
@@ -137,12 +141,15 @@ export class AnthropicProviderImpl implements AIProvider {
     model: string,
     options?: GenerateOptions,
   ): Promise<string> {
-    const message = await this.client.messages.create({
-      model,
-      max_tokens: options?.maxTokens ?? 4096,
-      temperature: options?.temperature,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const message = await this.client.messages.create(
+      {
+        model,
+        max_tokens: options?.maxTokens ?? 4096,
+        temperature: options?.temperature,
+        messages: [{ role: "user", content: prompt }],
+      },
+      { timeout: options?.timeoutMs }
+    );
     const textBlock = message.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

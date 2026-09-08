@@ -2,6 +2,7 @@ import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getTenantRepositories } from "@/lib/database";
+import { createRouterGroundedAnswerGenerator } from "@/lib/knowledge/answer-generator";
 import { knowledgeErrorResponse, parseKnowledgeBody } from "@/lib/knowledge/http";
 import { answerFromKnowledge, answerRequestSchema, assertDateRange } from "@/lib/knowledge/service";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
@@ -25,12 +26,12 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     const repositories = await getTenantRepositories(context);
-    // No generator is wired until provider selection and its evaluation gate are complete.
     return Response.json(
       await answerFromKnowledge({
         context,
         request: input,
         store: repositories.passages,
+        generator: createRouterGroundedAnswerGenerator(context, repositories),
       })
     );
   } catch (error) {
