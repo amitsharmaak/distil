@@ -1028,3 +1028,79 @@ graph and AGPL transitive packages (`@triplit/client` and `ua-parser-js`). Neon 
 Preview provisioning, sender configuration, and the SDK dependency/legal decision are external
 gates. Do not provision real users, link Amit, remove the legacy bridge, or issue invitations until
 those gates and Waves 2-4 pass.
+
+### Wave 3 integration checkpoint — 2026-09-08
+
+Wave 3 implementation is integrated but **not frozen or accepted**. The current code candidate is
+`836bff9c9f1961baa7d6f1ba2ecba96142333e45`; this state-document update follows it. All work was
+branched from Wave 2 freeze `428a0b023e2295b59fe864efeb2b26047b0ed6fa`. No Preview or Production
+migration, hosted object-store write, invitation delivery, real-user creation, Amit identity link,
+or feature activation occurred.
+
+Integrated product behavior:
+
+- `/onboarding` and `/account` now provide exact-account profile, timezone and privacy settings,
+  session/device revocation, capture-token management, quota visibility, export status/download,
+  and explicit deletion request/cancellation. Deletion-pending identities can reach only the
+  account shell plus narrowly scoped deletion status/cancellation; export and deletion state
+  survives refresh.
+- Additive lifecycle migration `0008_phase3_lifecycle.sql` supplies export/deletion metadata,
+  tenant quotas, durable invitation-dispatch claims, OAuth state hardening, control-plane
+  tombstones/audit records, RLS/views/grants, and queue cancellation. The migration has not been
+  applied outside disposable local PostgreSQL tests.
+- Export is asynchronous and idempotent, produces a deterministic allowlisted manifest/ZIP through
+  fake/local tenant object stores, checks ownership before private download, and schedules
+  retention cleanup. Deletion immediately disables the account and cancels credentials/work,
+  supports a seven-day cancellation window, then performs resumable object/auth/relational purge
+  and content-free verification/tombstoning when all required adapters exist.
+- A signed Vercel `account-lifecycle` queue callback now registers the export, retention and deletion
+  handlers. Durable jobs are persisted before publish; replay republishes idempotently. Production
+  deletion fails before purge side effects when the required provider identity-purge adapter is
+  unavailable.
+- Central Neon-session CSRF enforcement covers every unsafe cookie-authenticated mutation; capture
+  and system callbacks retain their specialized authorization. Invitation provider dispatch uses
+  an atomic database claim, bounded lease/cooldown and retry backoff. Central structured logging
+  drops credentials, cookies, URLs, prompts/content, tool payloads/reasoning and raw error text.
+- The authorization inventory now covers 49 tables, 85 API source files, 118 route-method surfaces,
+  20 pages, and the lifecycle workers. Early Wave 4 harnesses cover tenant concurrency, pooled RLS,
+  forged/replayed queues, lifecycle recovery, query-plan seams and dependency policy, but final
+  Wave 4 acceptance remains gated on a Wave 3 freeze.
+
+Local candidate evidence, with all rollout flags explicitly false:
+
+- Lint and formatting passed with the same 10 pre-existing warnings; TypeScript passed.
+- Full deterministic Jest passed 161 suites / 1,141 tests before the final coverage additions.
+  The final coverage corpus passed 171 suites / 1,189 tests.
+- Changed-code coverage passed at 85.3% lines and 81.1% branches. Critical auth, capture, queue,
+  URL-safety and migration groups each exceeded 90% for statements, branches, functions and lines;
+  queue branch coverage is 92.9%.
+- All 11 sequential PostgreSQL 16 suites / 36 tests passed, including fresh lifecycle migration,
+  concurrent invitation claims, owner-only export, quota serialization, deletion cancellation and
+  final purge/tombstone, restricted runtime roles, forced RLS and pooled-tenant isolation.
+- Production build passed. Browser/accessibility regression passed 27 tests across desktop Chromium,
+  mobile Chromium and mobile WebKit; three enabled-Phase-2 cases remained intentionally skipped
+  behind disabled flags. Extension E2E passed 11/11.
+- The deterministic product/security audit has zero remaining code findings. The dependency gate is
+  intentionally red on three activation blockers: `@better-auth/api-key` requires Better Auth
+  `^1.7.3` while the pinned Neon Auth UI resolves `1.6.23`; `@triplit/client@1.0.50` declares
+  `AGPL-3.0-only`; and `ua-parser-js@2.0.10` declares `AGPL-3.0-or-later`.
+
+Wave 3 cannot freeze yet. Required remaining gates:
+
+1. Obtain a reviewed Neon Auth SDK/dependency/legal disposition that clears the peer and license
+   findings. The pinned beta exposes freshness checks but no documented reauthentication primitive;
+   stale destructive actions therefore return typed `FRESH_AUTH_REQUIRED` with operator-issued,
+   exact-email invitation recovery rather than an invented bypass.
+2. Implement and review a private hosted tenant object-store adapter and provider-admin identity/
+   session purge adapter. Fake/local adapters are test-only and production paths fail closed.
+3. Rehearse migration, backup/restore, export/deletion recovery and zero-row verification on an
+   isolated disposable Preview clone using synthetic users, with all traffic/workers initially
+   disabled. Record the Neon branch, migration ledger, object inventory and rollback evidence.
+4. Push this checkpoint, obtain green CI for one exact SHA, then run final Wave 4 performance,
+   failure, full regression and independent two-user adversarial acceptance. Do not enable
+   invitations or link a real identity before those records exist.
+
+Restart at this branch after the state commit. Verify `git status`, re-run
+`npm run audit:phase3-security -- --json` to confirm only the three dependency findings, and resolve
+the external gates above before creating any Preview resources. Keep `FEATURE_NEON_AUTH=false`,
+`FEATURE_CONNECTORS=false`, and every Phase 2 rollout flag false throughout the rehearsal.
