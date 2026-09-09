@@ -1435,10 +1435,11 @@ Next execution sequence:
 
 #### Hosted-auth activation rehearsal checkpoint — 2026-09-09 21:24 IST
 
-The approved disposable hosted-auth rehearsal is complete through the final operator cleanup gate.
-Accepted code SHA `aeb8166ffb97431c41ee62b1aacc9caf82373e85` is deployed as Preview deployment
-`dpl_D5F4pY6JFRcQwhruzcB7uPQZ6Djg` behind only the exact branch alias. GitHub Actions run
-[34372659168](https://github.com/amitsharmaak/distil/actions/runs/34372659168) passed the complete
+The approved disposable hosted-auth rehearsal and cleanup are complete. Accepted code SHA
+`d32d15f38baa71dc6c8cb3c95c59e7bf01fb844c` was deployed as Preview deployment
+`dpl_65x8KgqACp2f7PhYXQL4FmfRW9er` behind only the exact branch alias for the final live check, then
+removed during teardown. GitHub Actions run
+[34378061031](https://github.com/amitsharmaak/distil/actions/runs/34378061031) passed the complete
 nine-job quality gate for that exact SHA. Stable Preview and Production were not promoted or
 mutated, and the migrated legacy owner was not linked.
 
@@ -1461,17 +1462,21 @@ The live exercise found and fixed provider-integration defects that deterministi
 expose: full Neon endpoint-path handling, the magic-link verifier exchange, challenge-state
 preservation, safe asynchronous gate errors, private caching across auth routes, immediate
 revocation despite Neon cookie caching, and removal of the internal cache-bypass query from visible
-redirects. It also added the missing hosted-auth sign-out control. Final local verification passed
-186 suites / 1,304 tests, the seven-suite / 47-test isolation gate, dependency/license and security
-audits with zero findings, TypeScript, and lint/format with the same 10 known warnings and no errors.
+redirects. The closing sign-out check also found that the UI sent an empty POST rejected by Neon as
+415 and that successful provider sign-out must explicitly expire both the token and signed session
+cache cookies. Both defects are fixed and covered. Final local verification passed 186 suites /
+1,305 tests, the seven-suite / 47-test isolation gate, dependency/license and security audits with
+zero findings, TypeScript, and lint/format with the same 10 known warnings and no errors.
 
 Content-free evidence is stored at mode `0600` under
 `artifacts/preview-clone-rehearsal/phase3-auth-activation-20260909/`. It contains no addresses,
-links, credentials, cookies or database URLs. One active disposable browser session remains solely
-to verify the sign-out control. Await fresh operator confirmation before clicking it or deleting or
-disabling the disposable Neon/Vercel resources. After that cleanup, verify denial, remove the local
-ignored rehearsal environment file, and append the final teardown result here. Real-account linking,
-stable Preview promotion and every Production change remain separate gated decisions.
+links, credentials, cookies or database URLs. Final provider sign-out redirected to `/invite`, and
+the next protected `/account` request was denied and redirected to `/invite`. Teardown removed all
+15 branch-scoped Vercel variables and all 27 rehearsal deployments, including the branch alias; the
+disposable Neon branch was deleted and confirmed absent; and the local ignored rehearsal environment
+file was removed. Shared Preview configuration, the accepted unified Preview, other Neon branches,
+and Production were untouched. Real-account linking, stable Preview promotion and every Production
+change remain separate gated decisions.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
