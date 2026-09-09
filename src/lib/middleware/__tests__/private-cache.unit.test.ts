@@ -10,6 +10,21 @@ describe("private API cache policy", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
+  it("overrides cacheable headers for every authentication response", () => {
+    for (const pathname of [
+      "/api/auth",
+      "/api/auth/session",
+      "/api/auth/invitations/request-link",
+    ]) {
+      const response = new Response(null, {
+        headers: { "cache-control": "public, max-age=60" },
+      });
+
+      applyPrivateApiCacheControl(pathname, response);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+  });
+
   it("does not change public or infrastructure responses", () => {
     const response = new Response(null, {
       headers: { "cache-control": "public, max-age=60" },
