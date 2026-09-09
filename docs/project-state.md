@@ -1,13 +1,28 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-07 (Asia/Kolkata)
+Last updated: 2026-09-09 (Asia/Kolkata)
 
-This is the canonical, durable restart point for the Distil project across development sessions.
-Keep the product roadmap stable near the top and continuously update the active-phase status,
-decisions, resources, evidence, blockers, and exact next steps below it. Read this file before
-resuming work, and update it whenever material progress or a roadmap decision is made. It
+This file preserves the durable historical state of the Phase 2 implementation branch. Current
+cross-phase status and restart instructions live in `docs/project-state.md` on
+`codex/phase-3-tenancy`. Keep this historical record aligned with later acceptance decisions. It
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
+
+## State reconciliation — 2026-09-09
+
+This branch preserves the historical Phase 2 implementation freeze at `2ade16b`. Later acceptance
+work was forward-ported after Phase 3 tenancy landed and is authoritative in `docs/project-state.md`
+on `codex/phase-3-tenancy`.
+
+- **Phase 1 is complete:** all seven tasks closed in Preview-only operation with Production **no-go
+  for now**.
+- **Phase 2 implementation and automated acceptance are complete:** the reviewed tenancy-aware
+  forward-port is frozen at `933ad10aa94c35a72a8eb647f8170447f43d092e`.
+- **Strict Phase 2 device acceptance remains open only for touch highlighting:** fix `BUG-IOS-002`
+  so iPhone touch selection opens the anchored-highlight panel, then run the focused physical-device
+  retest. Semantic/vector retrieval and sophisticated multi-provider failover are deferred Phase
+  2.x enhancements.
+- **Phase 3 implementation is accepted:** activation and real-user rollout remain separately gated.
 
 ## How to use this file
 
@@ -16,11 +31,12 @@ At the start of a new session:
 1. Read this file and verify the recorded branch, worktree, commit, and external-resource state.
 2. Confirm any time-sensitive external state before acting; do not assume a local server or cloud
    deployment is still running.
-3. Resume from the first incomplete item under the active phase's next execution sequence.
+3. Consult the authoritative integrated state on `codex/phase-3-tenancy` before resuming work; do
+   not treat historical unchecked items here as current tasks.
 
-Whenever material work is completed, update the date, implementation/test evidence, external
-resource state, decisions, blockers, and next steps, then commit the update on the active integration
-branch. Keep secrets out of this file and record only variable names and masked resource metadata.
+Record new cross-phase work in the authoritative integrated state. Update this file only when a
+later decision changes how the historical Phase 2 record should be interpreted. Keep secrets out of
+both files and record only variable names and masked resource metadata.
 
 ## Distil's higher-level goal
 
@@ -145,7 +161,7 @@ The phases are ordered to validate the riskiest user behavior before adding brea
 describe product maturity, not fixed calendar dates. A later phase should not start broadly until
 the preceding exit gate is met, although research and prototypes may run ahead.
 
-### Phase 1 — Personal cloud capture and multi-device foundation (active)
+### Phase 1 — Personal cloud capture and multi-device foundation (complete)
 
 **Goal:** Make one user's Distil library securely available in the cloud and make article capture
 reliable from desktop and iPhone.
@@ -170,8 +186,8 @@ reliable from desktop and iPhone.
 user can sign in from browser/mobile, save from Chrome and other iPhone apps, see every accepted
 capture reach a correct terminal state, revoke either client independently, and recover from
 failures without duplicates or lost work. The Preview deployment and API-level capture acceptance
-are complete; real-device testing, the remaining release gates, and the production decision are
-still outstanding. Detailed progress begins below.
+are complete. The later integrated record accepted Task 6 with a non-blocking backlog and closed
+Task 7 in Preview-only mode on 2026-09-09. Production was not promoted.
 
 ### Phase 2 — Daily knowledge experience and intelligence quality
 
@@ -304,9 +320,9 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 - Distil uses Phase numbers **1 through 7**. There is no Phase 0 and no Phase 8 in this roadmap.
 - Baseline analysis and testing architecture are foundation work inside Phase 1.
-- Phase 2 implementation may proceed in isolated branches, worktrees, databases, and Preview
-  deployments while Phase 1 acceptance continues. Do not promote Phase 2 to the stable Preview or
-  Production until Phase 1 Preview and real-device validation are complete.
+- Phase 2 implementation was allowed to proceed in isolation while Phase 1 acceptance continued.
+  Phase 1 is now closed Preview-only; stable Preview or Production promotion still requires a
+  separate explicit release decision.
 - Do not add full Gmail or Slack hosting merely because code already exists; validate the source's
   user value and scope first in Phase 5.
 - Do not expose the application to additional users until Phase 3 tenant ownership and isolation are
@@ -319,10 +335,13 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 ---
 
-## Phase 1 current execution record
+## Historical Phase 1 execution snapshot (superseded)
 
-The remainder of this document records the exact state of the active Phase 1 implementation and its
-deployment work.
+The checklist below reflects the state when this Phase 2 branch was frozen. It is retained as
+history and is not a current restart queue. All Phase 1 Tasks 1–7 were later completed on the
+integrated branch, with a Production no-go-for-now decision.
+
+The remainder of this section preserves the Phase 1 snapshot inherited when this branch diverged.
 
 ### Phase 1 goal and scope
 
@@ -497,12 +516,11 @@ Do not create public/client-side variables for a database URL, capture token, se
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
 should not be used by the new clients.
 
-### Remaining Phase 1 execution queue
+### Historical Phase 1 execution queue (superseded)
 
-There are seven remaining tasks. Work through them in order and pick up one top-level task at a
-time. The nested checkboxes are that task's execution sequence, not additional Phase 1 tasks. Mark
-the top-level task complete only when all of its subtasks and completion evidence are present. Do
-not start Production work without the explicit decision in Task 7.
+At this historical snapshot seven tasks were tracked and only Tasks 1–2 were complete. The unchecked
+boxes below preserve that snapshot; they are not current work. The later integrated record completed
+all seven tasks and closed Phase 1 Preview-only.
 
 #### Task 1 — Make the GitHub quality gate green
 
@@ -612,9 +630,10 @@ mobile E2E failed; the aggregate `quality-gate` therefore failed. Evidence:
 
 - The Phase 1 branch is published to GitHub and deployed through the CLI, but it is not yet connected
   to Vercel CI/CD.
-- Tasks 1 and 2 are complete. Task 2's accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c`
-  passed all eight prerequisite jobs and the aggregate quality gate in run `34126389699`. Resume at
-  Task 3: connect the existing Vercel project to GitHub without deploying Production.
+- Historical snapshot: Tasks 1 and 2 were complete when this branch diverged. The later integrated
+  record completed Tasks 3–7 and closed Phase 1 Preview-only; do not resume this historical queue.
+  Task 2's accepted commit `6714a1c6cd84a3cae925860b84409ed56de3824c` passed all eight
+  prerequisite jobs and the aggregate quality gate in run `34126389699`.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - The AI provider selection and Preview AI secret are not set.
@@ -689,7 +708,14 @@ all Production resources remain out of scope until Phase 1 closes.
   Production resource was changed. Phase 3 may use this SHA as its frozen baseline. Any later Phase
   2 schema, API, or queue change requires explicit forward-port triage into Phase 3.
 
-Remaining Phase 2 release and acceptance gates:
+Historical Phase 2 release and acceptance gates, with current disposition:
+
+These were the open gates at the original `2ade16b` freeze. Later integrated work wired and accepted
+Gemini generation, passed the focused live evaluation, completed bounded resumable backfills on an
+isolated Neon branch, passed isolated Preview and desktop acceptance, and completed most of the
+physical-iPhone walkthrough. Semantic/vector retrieval was explicitly deferred to Phase 2.x. The
+only remaining strict device blocker is `BUG-IOS-002`, touch selection opening and saving an anchored
+highlight, followed by a focused iPhone retest.
 
 - Pin the production embedding provider/model/dimension, then add the compatible pgvector HNSW
   space, bounded embedding backfill, semantic retrieval, and reciprocal-rank fusion. Current search
@@ -798,12 +824,14 @@ Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
    coverage across the integrated product.
 
-#### Wave 3 — Isolated Preview and acceptance (pending)
+#### Wave 3 — Isolated Preview and automated acceptance (completed in integrated forward-port)
 
-Use a Phase 2-specific Neon branch/database and Vercel Preview. Apply additive migrations, verify
-dry-run backfill counts, enable knowledge features first, backfill chunks and embeddings in bounded
-idempotent batches, shadow retrieval and ranking, and then enable answers, personalization, and
-digests independently. Do not point the stable Preview alias at Phase 2 during this wave.
+The tenancy-aware forward-port at `933ad10` completed the isolated Neon/Vercel Preview, additive
+migrations, bounded idempotent content/chunk/artifact backfills, Gemini-backed grounded answers,
+live evaluation, desktop walkthrough, provider-disabled degradation, logs, and rollback checks.
+The stable Preview alias and Production were not promoted. Strict physical-device acceptance remains
+open only for the anchored touch-highlighting fix and focused retest recorded on the integrated
+branch.
 
 ### Persistence and behavior contract
 
