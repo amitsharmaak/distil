@@ -129,6 +129,28 @@ describe("composed Neon proxy authorization", () => {
     });
   });
 
+  it("removes the internal cache-bypass parameter from login redirects", async () => {
+    const authProvider = {
+      ...provider(),
+      middleware: jest.fn(
+        () => async (verificationRequest: NextRequest) =>
+          NextResponse.redirect(new URL("/invite", verificationRequest.url))
+      ),
+    };
+
+    const result = await authorizeNeonProxy(
+      new NextRequest("https://distil.example/api/v1/feed?cursor=owned"),
+      requestId,
+      {
+        provider: authProvider,
+        repositories: repositories(),
+        allowedOrigins,
+      }
+    );
+
+    expect(result.response?.headers.get("location")).toBe("https://distil.example/invite");
+  });
+
   it("returns public requests without invoking provider middleware", async () => {
     const publicProvider = provider();
     const request = new NextRequest("https://distil.example/api/health", {

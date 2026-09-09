@@ -99,6 +99,12 @@ export async function authorizeNeonProxy(
     verificationRequest
   );
   if (providerResponse.headers.get("x-middleware-next") !== "1") {
+    const location = providerResponse.headers.get("location");
+    if (location) {
+      const sanitizedLocation = new URL(location, request.url);
+      sanitizedLocation.searchParams.delete("disableCookieCache");
+      providerResponse.headers.set("location", sanitizedLocation.toString());
+    }
     return { response: providerResponse };
   }
 
