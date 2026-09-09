@@ -1478,6 +1478,22 @@ file was removed. Shared Preview configuration, the accepted unified Preview, ot
 and Production were untouched. Real-account linking, stable Preview promotion and every Production
 change remain separate gated decisions.
 
+#### Clean-start Production rollout decision — 2026-09-09 22:35 IST
+
+The operator approved direct Production activation as a fresh start with no imported users or data.
+Distil is a low-risk hobby project that Amit will initially use alone before inviting two or three
+trusted colleagues. The earlier hosted-auth, tenant-isolation and integrated product acceptance remain
+the release evidence; do not repeat the full synthetic, failure-injection or device matrices unless a
+Production smoke test exposes a regression.
+
+The proportionate release gate is: permit hosted auth in an explicitly SHA-bound Production build;
+pass normal CI; create a fresh empty database branch and apply the complete migration chain; configure
+the exact Production origin and hosted auth without `DISTIL_LEGACY_USER_ID`; deploy; then verify first
+invitation/sign-in, one capture, feed/reader visibility, one search, one grounded answer and
+sign-out/sign-in. No legacy backup, import, ownership backfill, account linking or Preview soak is
+required. Production rollback may use the prior deployment or recreate the empty environment while it
+remains disposable.
+
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
 The deferred Phase 2 release-blocking implementation is now completed and frozen at

@@ -99,3 +99,16 @@ After a clean rehearsal, update `docs/project-state.md` with non-secret evidence
 separate operator decision covering: stable Preview promotion, the first real invitation, the
 permanent internal UUID and provider mapping, ownership migration, rollback window, and later
 Production planning. None of those actions is implied by rehearsal success.
+
+## Clean-start Production activation
+
+After the operator explicitly approves a disposable clean start, Production may be activated without
+legacy ownership migration or another synthetic rehearsal. Use a fresh database, apply the complete
+migration chain, leave `DISTIL_LEGACY_USER_ID` absent, and bind
+`DISTIL_PHASE3_PRODUCTION_ORIGIN` plus `DISTIL_PHASE3_PRODUCTION_SHA` to the exact Production origin
+and deployed Git SHA. The reviewed Phase 2 product flags may be enabled in this mode.
+
+Require the normal exact-SHA CI gate, then deploy directly and perform a short smoke covering the
+first invitation and sign-in, one capture, feed/reader visibility, one search, one grounded answer,
+and sign-out/sign-in. The earlier hosted-auth and isolation rehearsal remains the acceptance evidence;
+do not repeat its full failure matrix unless the smoke test finds a regression.

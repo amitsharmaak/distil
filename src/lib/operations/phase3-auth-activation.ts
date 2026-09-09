@@ -19,8 +19,6 @@ const REQUIRED_VARIABLES = [
   "NEON_AUTH_COOKIE_SECRET",
   "NEXT_PUBLIC_API_BASE_URL",
   "DISTIL_ALLOWED_ORIGINS",
-  "DISTIL_PHASE3_REHEARSAL_ORIGIN",
-  "DISTIL_PHASE3_REHEARSAL_SHA",
   "VERCEL_GIT_COMMIT_SHA",
 ] as const;
 
@@ -52,9 +50,9 @@ function neonAuthOrigin(value: string | undefined): string | undefined {
 }
 
 /**
- * Validates a synthetic, unpromoted Phase 3 hosted-auth rehearsal without ever
- * returning configuration values. This is intentionally stricter than normal
- * application configuration because the rehearsal should vary only auth.
+ * Validates Phase 3 hosted-auth activation without ever returning configuration
+ * values. Preview retains the isolated rehearsal contract; Production permits
+ * the reviewed product flags after an explicit release-SHA binding.
  */
 export function phase3AuthActivationFindings(
   environment: Readonly<Record<string, string | undefined>>
@@ -65,30 +63,44 @@ export function phase3AuthActivationFindings(
   if (environment.FEATURE_NEON_AUTH !== "true") {
     add("auth-flag", "FEATURE_NEON_AUTH must be exactly true");
   }
-  if (environment.VERCEL_ENV !== "preview") {
-    add("preview-only", "VERCEL_ENV must be preview");
+  const deploymentEnvironment = environment.VERCEL_ENV;
+  const rehearsal = deploymentEnvironment === "preview";
+  const production = deploymentEnvironment === "production";
+  if (!rehearsal && !production) {
+    add("deployment-environment", "VERCEL_ENV must be preview or production");
   }
-  for (const name of DISABLED_DURING_AUTH_REHEARSAL) {
-    if (environment[name] !== "false") add("rollout-posture", `${name} must be exactly false`);
+  if (rehearsal) {
+    for (const name of DISABLED_DURING_AUTH_REHEARSAL) {
+      if (environment[name] !== "false") add("rollout-posture", `${name} must be exactly false`);
+    }
   }
   for (const name of REQUIRED_VARIABLES) {
     if (!environment[name]?.trim()) add("missing-variable", `${name} is required`);
   }
 
   const applicationOrigin = origin(environment.NEXT_PUBLIC_API_BASE_URL);
-  const rehearsalOrigin = origin(environment.DISTIL_PHASE3_REHEARSAL_ORIGIN);
+  const approvedOrigin = origin(
+    rehearsal
+      ? environment.DISTIL_PHASE3_REHEARSAL_ORIGIN
+      : environment.DISTIL_PHASE3_PRODUCTION_ORIGIN
+  );
   const authOrigin = neonAuthOrigin(environment.NEON_AUTH_BASE_URL);
   if (environment.NEXT_PUBLIC_API_BASE_URL && !applicationOrigin) {
     add("application-origin", "NEXT_PUBLIC_API_BASE_URL must be an exact HTTPS origin");
   }
-  if (environment.DISTIL_PHASE3_REHEARSAL_ORIGIN && !rehearsalOrigin) {
-    add("rehearsal-origin", "DISTIL_PHASE3_REHEARSAL_ORIGIN must be an exact HTTPS origin");
+  const approvedOriginName = rehearsal
+    ? "DISTIL_PHASE3_REHEARSAL_ORIGIN"
+    : "DISTIL_PHASE3_PRODUCTION_ORIGIN";
+  if (!environment[approvedOriginName]?.trim()) {
+    add("missing-variable", `${approvedOriginName} is required`);
+  } else if (!approvedOrigin) {
+    add("approved-origin", `${approvedOriginName} must be an exact HTTPS origin`);
   }
   if (environment.NEON_AUTH_BASE_URL && !authOrigin) {
     add("auth-origin", "NEON_AUTH_BASE_URL must be an HTTPS Neon database auth endpoint");
   }
-  if (applicationOrigin && rehearsalOrigin && applicationOrigin !== rehearsalOrigin) {
-    add("origin-binding", "application and rehearsal origins must match exactly");
+  if (applicationOrigin && approvedOrigin && applicationOrigin !== approvedOrigin) {
+    add("origin-binding", "application and approved origins must match exactly");
   }
   if (applicationOrigin && authOrigin && applicationOrigin === authOrigin) {
     add("auth-origin-binding", "application and auth service origins must be distinct");
@@ -117,12 +129,17 @@ export function phase3AuthActivationFindings(
     add("allowed-origins", "DISTIL_ALLOWED_ORIGINS must include the exact application origin");
   }
 
-  if (
-    environment.DISTIL_PHASE3_REHEARSAL_SHA &&
+  const approvedShaName = rehearsal
+    ? "DISTIL_PHASE3_REHEARSAL_SHA"
+    : "DISTIL_PHASE3_PRODUCTION_SHA";
+  const approvedSha = environment[approvedShaName];
+  if (!approvedSha?.trim()) {
+    add("missing-variable", `${approvedShaName} is required`);
+  } else if (
     environment.VERCEL_GIT_COMMIT_SHA &&
-    environment.DISTIL_PHASE3_REHEARSAL_SHA !== environment.VERCEL_GIT_COMMIT_SHA
+    approvedSha !== environment.VERCEL_GIT_COMMIT_SHA
   ) {
-    add("sha-binding", "rehearsal approval SHA must match the deployed Git SHA");
+    add("sha-binding", "approved release SHA must match the deployed Git SHA");
   }
 
   if (environment.DISTIL_LEGACY_USER_ID?.trim()) {

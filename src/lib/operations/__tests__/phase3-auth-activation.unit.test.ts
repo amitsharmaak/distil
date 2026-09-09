@@ -25,20 +25,38 @@ describe("Phase 3 auth activation preflight", () => {
     expect(phase3AuthActivationFindings(validEnvironment)).toEqual([]);
   });
 
+  it("accepts an explicitly SHA-bound clean-start Production release with product flags enabled", () => {
+    expect(
+      phase3AuthActivationFindings({
+        ...validEnvironment,
+        VERCEL_ENV: "production",
+        FEATURE_KNOWLEDGE_UI: "true",
+        FEATURE_SEARCH: "true",
+        FEATURE_ANSWERS: "true",
+        FEATURE_PERSONALIZATION: "true",
+        FEATURE_DIGESTS: "true",
+        DISTIL_PHASE3_REHEARSAL_ORIGIN: undefined,
+        DISTIL_PHASE3_REHEARSAL_SHA: undefined,
+        DISTIL_PHASE3_PRODUCTION_ORIGIN: "https://distil.example.test",
+        DISTIL_PHASE3_PRODUCTION_SHA: "abc123",
+        NEXT_PUBLIC_API_BASE_URL: "https://distil.example.test",
+        DISTIL_ALLOWED_ORIGINS: "https://distil.example.test",
+      })
+    ).toEqual([]);
+  });
+
   it("fails closed when activation is not isolated", () => {
     const findings = phase3AuthActivationFindings({
       ...validEnvironment,
       FEATURE_NEON_AUTH: "TRUE",
       FEATURE_CONNECTORS: "true",
       FEATURE_SEARCH: "true",
-      VERCEL_ENV: "production",
       DISTIL_LEGACY_USER_ID: "15baec07-275a-4ca8-be30-654db41155cf",
     });
 
     expect(findings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "auth-flag" }),
-        expect.objectContaining({ id: "preview-only" }),
         expect.objectContaining({ id: "synthetic-only" }),
       ])
     );
@@ -78,7 +96,7 @@ describe("Phase 3 auth activation preflight", () => {
     });
 
     expect(new Set(findings.map(({ id }) => id))).toEqual(
-      new Set(["application-origin", "auth-origin", "rehearsal-origin"])
+      new Set(["application-origin", "approved-origin", "auth-origin"])
     );
   });
 
