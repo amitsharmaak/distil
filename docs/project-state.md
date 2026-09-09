@@ -16,12 +16,10 @@ on `codex/phase-3-tenancy`.
 
 - **Phase 1 is complete:** all seven tasks closed in Preview-only operation with Production **no-go
   for now**.
-- **Phase 2 implementation and automated acceptance are complete:** the reviewed tenancy-aware
-  forward-port is frozen at `933ad10aa94c35a72a8eb647f8170447f43d092e`.
-- **Strict Phase 2 device acceptance remains open only for touch highlighting:** fix `BUG-IOS-002`
-  so iPhone touch selection opens the anchored-highlight panel, then run the focused physical-device
-  retest. Semantic/vector retrieval and sophisticated multi-provider failover are deferred Phase
-  2.x enhancements.
+- **Phase 2 is complete:** the reviewed tenancy-aware forward-port is frozen at
+  `933ad10aa94c35a72a8eb647f8170447f43d092e`. The user accepted the available physical-device
+  evidence and explicitly deferred `BUG-IOS-002` to the non-blocking backlog. Semantic/vector
+  retrieval and sophisticated multi-provider failover are optional Phase 2.x enhancements.
 - **Phase 3 implementation is accepted:** activation and real-user rollout remain separately gated.
 
 ## How to use this file
@@ -189,7 +187,7 @@ failures without duplicates or lost work. The Preview deployment and API-level c
 are complete. The later integrated record accepted Task 6 with a non-blocking backlog and closed
 Task 7 in Preview-only mode on 2026-09-09. Production was not promoted.
 
-### Phase 2 — Daily knowledge experience and intelligence quality
+### Phase 2 — Daily knowledge experience and intelligence quality (complete)
 
 **Goal:** Turn reliable capture into a habitually useful reading, recall, and sense-making product.
 
@@ -714,8 +712,8 @@ These were the open gates at the original `2ade16b` freeze. Later integrated wor
 Gemini generation, passed the focused live evaluation, completed bounded resumable backfills on an
 isolated Neon branch, passed isolated Preview and desktop acceptance, and completed most of the
 physical-iPhone walkthrough. Semantic/vector retrieval was explicitly deferred to Phase 2.x. The
-only remaining strict device blocker is `BUG-IOS-002`, touch selection opening and saving an anchored
-highlight, followed by a focused iPhone retest.
+later closure decision accepted the available device evidence and moved `BUG-IOS-002` to the
+non-blocking backlog.
 
 - Pin the production embedding provider/model/dimension, then add the compatible pgvector HNSW
   space, bounded embedding backfill, semantic retrieval, and reciprocal-rank fusion. Current search
@@ -829,9 +827,9 @@ Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 The tenancy-aware forward-port at `933ad10` completed the isolated Neon/Vercel Preview, additive
 migrations, bounded idempotent content/chunk/artifact backfills, Gemini-backed grounded answers,
 live evaluation, desktop walkthrough, provider-disabled degradation, logs, and rollback checks.
-The stable Preview alias and Production were not promoted. Strict physical-device acceptance remains
-open only for the anchored touch-highlighting fix and focused retest recorded on the integrated
-branch.
+The stable Preview alias and Production were not promoted. The later closure decision accepted the
+available physical-device evidence and deferred anchored touch highlighting to the non-blocking
+backlog recorded on the integrated branch.
 
 ### Persistence and behavior contract
 
