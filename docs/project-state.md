@@ -1416,17 +1416,17 @@ Local verification passed lint/format with the same 10 known warnings and zero e
 job for exact SHA `933ad10`. The in-app browser completed the focused desktop walkthrough, and CI's
 responsive desktop/mobile browser suite is green. One acceptance item remains human-only: run the
 same focused walkthrough on a physical iPhone. Until that is recorded, Phase 2 implementation and
-  automated acceptance were complete, while the strict minimum device gate was still pending at
-  this checkpoint. The later closure decision accepted the available device evidence and deferred
-  the remaining touch-highlighting bug.
+automated acceptance were complete, while the strict minimum device gate was still pending at
+this checkpoint. The later closure decision accepted the available device evidence and deferred
+the remaining touch-highlighting bug.
 
 The content-free private evidence summary is mode `0600` and gitignored at
 `artifacts/preview-clone-rehearsal/phase2-acceptance-20260908/summary.json`. It contains no secrets,
 connection strings, real-user data or captured content. Restart from code SHA `933ad10`, state
 checkpoint following this section, green CI run `34219562782`, disposable branch
-  `br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. The later
-  unified physical-iPhone session and explicit closure decision supersede this checkpoint's open
-  device-gate instruction.
+`br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. The later
+unified physical-iPhone session and explicit closure decision supersede this checkpoint's open
+device-gate instruction.
 
 ### Cross-phase acceptance reconciliation — 2026-09-08
 
