@@ -41,6 +41,14 @@ integration suite, all 131 unit suites / 942 tests, TypeScript, formatting, and 
 10 known warnings and zero errors. The current implementation branch is green; keep rollout flags
 false because activation and promotion remain separately approved operational steps.
 
+Hosted-auth activation preparation has started at `a8a0947310fb0bd9a6208d238457d4e7c3e03679`
+without changing any cloud resource or rollout flag. A new fail-closed build preflight restricts
+the first activation rehearsal to an explicitly SHA-bound, synthetic, unpromoted Preview with
+exact HTTPS origins, separated database roles, all unrelated flags false, and no legacy owner.
+`docs/runbooks/phase3-auth-activation.md` is the operator sequence. The first incomplete step is to
+provide two accessible synthetic test inboxes, then create the disposable Neon/Auth branch and
+unpromoted Vercel deployment; do not use a real identity as a shortcut.
+
 ## How to use this file
 
 At the start of a new session:
@@ -1376,6 +1384,45 @@ real-user data. The disposable Neon branch auto-expires on 2026-09-09. The two e
 are intentionally unpromoted. Next: retain the accepted SHA and flags-off posture until an operator
 separately approves rollout sequencing, Preview alias promotion, synthetic invitation rehearsal and
 eventual production migration; none is implied by Phase 3 implementation acceptance.
+
+### Hosted-auth activation preparation — 2026-09-09
+
+The first post-acceptance operational slice is committed at
+`a8a0947310fb0bd9a6208d238457d4e7c3e03679`. It adds a secret-free activation readiness audit and
+`docs/runbooks/phase3-auth-activation.md`. When `FEATURE_NEON_AUTH` is false, the normal build prints
+one skipped-preflight line and behaves as before. When it is true, the build now fails unless it is
+an explicitly approved synthetic Preview rehearsal: `VERCEL_ENV=preview`; connectors and every
+Phase 2 flag exactly false; runtime and migration database URLs distinct; auth, application and
+allowed origins exact HTTPS values; cookie secret length valid; approval and deployed Git SHAs
+identical; and `DISTIL_LEGACY_USER_ID` absent. Reports name only failed checks and variable names,
+never configuration values.
+
+Current evidence: the new six-case unit suite passed; the complete unit corpus passed 132 suites /
+948 tests; the Phase 3 isolation gate passed 7 suites / 47 tests; dependency/license and deterministic
+security audits passed with zero findings; lint/format passed with the same 10 known warnings and no
+errors; TypeScript and a flags-off production build passed. The full coverage corpus passed 182
+suites / 1,232 tests with 85.4% changed lines and 80.9% changed branches; every critical auth,
+capture, queue, URL-safety and migration group remained above 90%. A fully populated synthetic
+environment passed `npm run audit:phase3-activation -- --json`, while the ordinary local environment
+failed closed without printing values.
+
+No Neon branch, hosted-auth instance, identity, invitation, email, Vercel variable, deployment or
+alias was created or changed in this slice. The current npm registry still identifies the reviewed
+`@neondatabase/auth@0.5.0-beta` pin as `latest`; the official Neon API now documents branch-scoped
+Managed Better Auth configuration for exact domains, email providers and the magic-link plugin.
+Revalidate those live controls during provisioning rather than assuming the earlier console shape.
+
+Next execution sequence:
+
+1. Obtain two accessible synthetic test inboxes for magic-link delivery and second-device/session
+   testing. Do not use Amit's real email or link the migrated legacy owner.
+2. From a green exact-SHA state checkpoint, create a fresh auto-expiring Neon branch, enable
+   branch-scoped magic-link-only auth, and configure one exact unpromoted deployment origin.
+3. Deploy with the preflight contract satisfied and run the invitation, wrong-email/replay,
+   two-user isolation, second-device revocation, outage/retry, cookie, cache, logging and rollback
+   matrix in the runbook.
+4. Tear down or expire the disposable resources and record content-free evidence. Only after a clean
+   rehearsal ask for the separate real-account linking and stable Preview-promotion decision.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
