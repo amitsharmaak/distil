@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-09 (Asia/Kolkata)
+Last updated: 2026-09-10 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -15,17 +15,18 @@ This file on `codex/phase-3-tenancy` is the authoritative cross-phase state. The
 and Phase 2 branches retain their historical implementation records and point here for later
 acceptance decisions.
 
-- **Phase 1: complete.** All seven tasks are closed. The accepted operating mode is Preview-only;
-  Production is **no-go for now** and any later promotion is a new release activity.
+- **Phase 1: complete.** All seven tasks are closed. Its original Preview-only closure remains the
+  historical acceptance decision; the separately approved clean-start Production release is now
+  live as part of the Phase 3 activation recorded below.
 - **Phase 2: complete.** The reviewed tenancy-aware forward-port is frozen at
   `933ad10aa94c35a72a8eb647f8170447f43d092e`. The user accepted the physical-device evidence and
   explicitly deferred `BUG-IOS-002`, anchored highlighting from touch selection, to the non-blocking
   backlog. Semantic/vector retrieval and sophisticated multi-provider failover remain optional Phase
   2.x enhancements.
-- **Phase 3: implementation accepted.** Wave 4 is frozen at
-  `b93c2bac47f1fd46d83e9c05b05b3d644e768927`. All rollout flags remain false; real-user linking,
-  invitations, stable Preview promotion, and Production migration require separate operator
-  approval and are not unfinished implementation.
+- **Phase 3: implementation accepted; Production activation in progress.** Wave 4 is frozen at
+  `b93c2bac47f1fd46d83e9c05b05b3d644e768927`. The separately approved clean-start Production
+  deployment is live at the stable Production origin. The first invitation has been issued; initial
+  sign-in and the small user-level product smoke remain.
 
 The post-freeze PostgreSQL verification blocker is **resolved** at
 `874d55637da661b9a6cb29b63628ec79ba3c79af`. GitHub Actions run
@@ -1493,6 +1494,35 @@ invitation/sign-in, one capture, feed/reader visibility, one search, one grounde
 sign-out/sign-in. No legacy backup, import, ownership backfill, account linking or Preview soak is
 required. Production rollback may use the prior deployment or recreate the empty environment while it
 remains disposable.
+
+#### Clean-start Production deployment checkpoint — 2026-09-10 03:12 IST
+
+Production is live from exact release SHA `7b83ace5c9f1072f1be97a02dc44462750545615`.
+GitHub Actions run
+[34407300214](https://github.com/amitsharmaak/distil/actions/runs/34407300214) passed the full
+nine-job quality gate for that SHA. The two commits after functional activation commit `850b425`
+are metadata-only author-identity commits; GitHub links the final commit to the repository owner and
+the tested application tree is unchanged.
+
+Fresh Neon branch `br-damp-wildflower-b3kw15cu` (`distil-production`) in project
+`floral-river-70536503` received ordinary migrations `0001` through `0004`, the separated Phase 3
+roles, and tenant expand/backfill/contract/lifecycle migrations. Content-free verification passed;
+the branch started with zero users, zero items and zero hosted-auth identities. The application uses
+the restricted runtime login rather than the owner role. Branch-scoped hosted auth is enabled with
+magic links, sign-up controlled by the application invitation gate, no password or OAuth providers,
+and exactly `https://distil-pv-1850.vercel.app` as its trusted domain.
+
+Vercel Production deployment `dpl_BPBRvEN5zYgmxMWN4V8p8DKgF22f` is Ready and the stable origin
+`https://distil-pv-1850.vercel.app` points to it. The build passed the SHA-bound hosted-auth
+activation preflight. Live health returned 200 with `cache-control: no-store`; unauthenticated
+`/account`, `/feed` and `/api/v1/feed` requests redirected to `/invite`. The first owner invitation
+was issued and opened privately in the Distil browser tab without recording its address or token.
+
+The remaining proportionate acceptance is interactive: Amit enters the invited email in the open
+tab, requests and opens the magic link in that same browser, then verifies one capture,
+feed/reader visibility, one search, one grounded answer and sign-out/sign-in. Do not rerun the full
+synthetic, failure-injection or device matrices unless this smoke exposes a regression. After the
+interactive smoke, record its content-free result and close the Production activation checkpoint.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
