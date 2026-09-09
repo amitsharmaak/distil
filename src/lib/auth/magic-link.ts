@@ -22,6 +22,15 @@ export interface MagicLinkProvider extends ProviderIdentityPort {
   }): Promise<{ error: unknown | null }>;
 }
 
+/** Exchange Neon's one-time callback verifier before resolving the invited identity. */
+export async function exchangeMagicLinkSession<TRequest extends Request>(
+  request: TRequest,
+  middleware: (request: TRequest) => Promise<Response>
+): Promise<Response | undefined> {
+  const response = await middleware(request);
+  return response.headers.get("x-middleware-next") === "1" ? undefined : response;
+}
+
 export function neonMagicLinkProvider(auth: {
   getSession: ProviderIdentityPort["getSession"];
   signIn: {

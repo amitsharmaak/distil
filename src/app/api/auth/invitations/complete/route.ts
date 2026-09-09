@@ -1,13 +1,23 @@
-import { createInvitationCompletionHandler, neonMagicLinkProvider } from "@/lib/auth/magic-link";
+import type { NextRequest } from "next/server";
+import {
+  createInvitationCompletionHandler,
+  exchangeMagicLinkSession,
+  neonMagicLinkProvider,
+} from "@/lib/auth/magic-link";
 import { getNeonAuthServer } from "@/lib/auth/neon-server";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { readApplicationOrigin } from "@/lib/auth/app-origin";
 
-export async function GET(request: Request): Promise<Response> {
+export async function GET(request: NextRequest): Promise<Response> {
   let appOrigin: string;
   try {
     appOrigin = readApplicationOrigin();
     const auth = getNeonAuthServer();
+    const exchangeResponse = await exchangeMagicLinkSession(
+      request,
+      auth.middleware({ loginUrl: "/invite" })
+    );
+    if (exchangeResponse) return exchangeResponse;
     return createInvitationCompletionHandler({
       provider: neonMagicLinkProvider(auth),
       repositories: await getAuthRepositoryPort(),

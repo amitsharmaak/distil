@@ -1,6 +1,7 @@
 import {
   createInvitationCompletionHandler,
   createMagicLinkRequestHandler,
+  exchangeMagicLinkSession,
   neonMagicLinkProvider,
 } from "@/lib/auth/magic-link";
 import { issueInvitation } from "@/lib/auth/invitations";
@@ -39,6 +40,31 @@ function cookieValue(setCookie: string): string {
 }
 
 describe("invitation-gated magic links", () => {
+  it("returns the provider verifier-exchange redirect before invitation completion", async () => {
+    const redirect = Response.redirect(`${origin}/api/auth/invitations/complete`, 307);
+    const middleware = jest.fn(async () => redirect);
+
+    await expect(
+      exchangeMagicLinkSession(
+        new Request(`${origin}/api/auth/invitations/complete?neon_auth_session_verifier=value`),
+        middleware
+      )
+    ).resolves.toBe(redirect);
+  });
+
+  it("continues invitation completion after provider middleware allows the request", async () => {
+    const middleware = jest.fn(async () =>
+      new Response(null, { headers: { "x-middleware-next": "1" } })
+    );
+
+    await expect(
+      exchangeMagicLinkSession(
+        new Request(`${origin}/api/auth/invitations/complete`),
+        middleware
+      )
+    ).resolves.toBeUndefined();
+  });
+
   it("adapts the Neon provider without widening callback inputs", async () => {
     const session = { data: null, error: null };
     const auth = {
