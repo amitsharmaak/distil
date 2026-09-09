@@ -39,10 +39,7 @@ export async function exchangeMagicLinkSession<TRequest extends Request>(
 export function neonMagicLinkProvider(auth: {
   getSession: ProviderIdentityPort["getSession"];
   handler(): {
-    POST(
-      request: Request,
-      context: { params: Promise<{ path: string[] }> }
-    ): Promise<Response>;
+    POST(request: Request, context: { params: Promise<{ path: string[] }> }): Promise<Response>;
   };
 }): MagicLinkProvider {
   return {

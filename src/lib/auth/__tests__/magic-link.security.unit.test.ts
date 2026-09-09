@@ -54,23 +54,22 @@ describe("invitation-gated magic links", () => {
   });
 
   it("continues invitation completion after provider middleware allows the request", async () => {
-    const middleware = jest.fn(async () =>
-      new Response(null, { headers: { "x-middleware-next": "1" } })
+    const middleware = jest.fn(
+      async () => new Response(null, { headers: { "x-middleware-next": "1" } })
     );
 
     await expect(
-      exchangeMagicLinkSession(
-        new Request(`${origin}/api/auth/invitations/complete`),
-        middleware
-      )
+      exchangeMagicLinkSession(new Request(`${origin}/api/auth/invitations/complete`), middleware)
     ).resolves.toBeUndefined();
   });
 
   it("adapts the Neon provider without widening callback inputs", async () => {
     const session = { data: null, error: null };
-    const post = jest.fn().mockResolvedValue(
-      Response.json({ ok: true }, { headers: { "set-cookie": "challenge=value" } })
-    );
+    const post = jest
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ok: true }, { headers: { "set-cookie": "challenge=value" } })
+      );
     const auth = {
       getSession: jest.fn().mockResolvedValue(session),
       handler: () => ({ POST: post }),
