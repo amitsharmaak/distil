@@ -1506,3 +1506,52 @@ progress, note, anchored highlight, search, grounded citation/navigation, absten
 dismissal. Do not close Phase 1 Task 6 or the strict Phase 2 device gate until those results are
 recorded. Phase 1 Task 7 Production go/no-go and Phase 3 hosted-auth activation remain separate
 decisions after this combined device gate.
+
+#### Combined physical-iPhone acceptance checkpoint — 2026-09-09 15:38 IST
+
+The physical-device session ran against unified alias
+`https://combined-acceptance-20260908.vercel.app`, deployment
+`dpl_BG36KH7un4aNK4Cn8Q4fUbfa7K6X`, built from code SHA `a5ac594` with state-only descendant
+`b154f9c`. The existing iPhone Shortcut captured the MDN HTTP Caching article from Chrome. Receipt
+`2bf222e6-982e-4c07-a261-67ce29851f83` became ready in one attempt with source `ios-shortcut` and
+one item. Sharing the same canonical article from Safari returned the Shortcut's success notice but
+left exactly one receipt and one item; the token last-used timestamp advanced, proving the second
+authenticated request and deduplication. No token value or credential was recorded.
+
+Apple News is unavailable in India, so Google News was used as the candidate third app. Its share
+payload caused the Shortcut's initial `Get URLs from Shortcut Input` action to fail while converting
+text to a URL, before the no-URL branch could run. The user chose to defer this edge case rather than
+manually rebuild the Shortcut during acceptance. A later one-time Shortcut revision should extract
+the first HTTP(S) URL from text and route empty matches to `No web link found`; it requires no web
+deployment or database change. Plain-text URL, no-URL, Airplane Mode, deliberate Shortcut-token
+revocation/recovery, and browser-extension revocation/recovery were not run in this session.
+
+Installation from Safari succeeded and the Home Screen icon launched `/save` in standalone mode
+without browser chrome. Legacy authentication succeeded. The password field and Save form remained
+usable with the iOS keyboard open, the form could scroll, and the bottom safe area remained
+reachable. Two visual defects were observed: the login brand image rendered as a broken-image
+placeholder, and the authenticated global search header overlapped the iPhone status bar/Dynamic
+Island. The latter recurred across Today, reader, Ask and Digest views.
+
+Mobile Today, Feed, the NASA reader, Ask and Digests loaded. Grounded answering passed for “What are
+sporadic E layers formed from?” with the correct meteor-dust answer, an exact NASA passage and
+working citation navigation. Asking for the current Mumbai temperature produced the explicit
+saved-knowledge abstention and no invented answer. Search submission also worked; results appeared
+below the large filter panel with no in-view completion feedback and used the already accepted
+keyword degradation mode. The search result exposed raw HTML tags, and Today summaries exposed raw
+Markdown headings, so content sanitization/rendering remains defective on the mobile UI. The latest
+deterministic digest loaded and dismissing an item removed it. The existing clone-only note loaded
+in the reader, proving cross-device note persistence.
+
+Reader-position restoration did not resume near the prior scroll point on this device. The user
+explicitly waived that behavior for this release, so it is now non-blocking. Touch selection of
+reader text did not produce the `Save highlight` panel and the Highlights section remained at zero
+active; anchored highlighting therefore fails the physical-touch acceptance case.
+
+Stop the manual device loop here and fix the observed defects as one batch before asking for another
+focused retest. At minimum the strict Phase 2 device gate remains open for touch highlighting. Phase
+1 Task 6 also remains open unless its remaining Shortcut/offline/revocation cases are either passed
+or explicitly removed from the accepted release scope. Retest only the repaired status-bar/login
+asset/content-rendering/highlight surfaces plus whichever Phase 1 cases remain in scope; do not
+repeat the already passing capture, PWA keyboard, Today, grounded-answer, citation, abstention or
+digest cases.
