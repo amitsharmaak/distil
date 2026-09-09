@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-08 (Asia/Kolkata)
+Last updated: 2026-09-09 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -145,7 +145,7 @@ The phases are ordered to validate the riskiest user behavior before adding brea
 describe product maturity, not fixed calendar dates. A later phase should not start broadly until
 the preceding exit gate is met, although research and prototypes may run ahead.
 
-### Phase 1 — Personal cloud capture and multi-device foundation (active)
+### Phase 1 — Personal cloud capture and multi-device foundation (complete)
 
 **Goal:** Make one user's Distil library securely available in the cloud and make article capture
 reliable from desktop and iPhone.
@@ -170,8 +170,8 @@ reliable from desktop and iPhone.
 user can sign in from browser/mobile, save from Chrome and other iPhone apps, see every accepted
 capture reach a correct terminal state, revoke either client independently, and recover from
 failures without duplicates or lost work. The Preview deployment and API-level capture acceptance
-are complete; real-device testing, the remaining release gates, and the production decision are
-still outstanding. Detailed progress begins below.
+are complete. The accepted physical-device scope and deferred bug backlog are recorded below.
+Phase 1 closed in Preview-only mode on 2026-09-09; Production was not promoted.
 
 ### Phase 2 — Daily knowledge experience and intelligence quality
 
@@ -304,9 +304,9 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 - Distil uses Phase numbers **1 through 7**. There is no Phase 0 and no Phase 8 in this roadmap.
 - Baseline analysis and testing architecture are foundation work inside Phase 1.
-- Phase 2 implementation may proceed in isolated branches, worktrees, databases, and Preview
-  deployments while Phase 1 acceptance continues. Do not promote Phase 2 to the stable Preview or
-  Production until Phase 1 Preview and real-device validation are complete.
+- Phase 2 implementation was allowed to proceed in isolated branches, worktrees, databases, and
+  Preview deployments while Phase 1 acceptance continued. Phase 1 is now closed Preview-only; any
+  stable Preview or Production promotion remains a separate explicit release decision.
 - Do not add full Gmail or Slack hosting merely because code already exists; validate the source's
   user value and scope first in Phase 5.
 - Do not expose the application to additional users until Phase 3 tenant ownership and isolation are
@@ -499,10 +499,9 @@ should not be used by the new clients.
 
 ### Remaining Phase 1 execution queue
 
-Phase 1 has seven ordered top-level tasks. Tasks 1 through 5 are complete; resume with the combined
-Task 6 and Phase 2 physical-device acceptance described in the reconciliation checkpoint below.
-The nested checkboxes are each task's execution sequence, not additional Phase 1 tasks. Do not start
-Production work without the explicit decision in Task 7.
+Phase 1 has seven ordered top-level tasks. All seven are complete. The nested checkboxes are each
+task's execution sequence, not additional Phase 1 tasks. Task 6 was accepted with the explicitly
+deferred bugs and hardening checks recorded below; Task 7 closed Phase 1 in Preview-only operation.
 
 #### Task 1 — Make the GitHub quality gate green
 
@@ -600,39 +599,41 @@ Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview dep
 
 #### Task 6 — Complete real-device and Preview acceptance
 
-- [ ] On the iPhone 14 Pro Max, complete Chrome, Safari, Apple News, plain-text URL, no-URL, and
-      Airplane Mode cases from `docs/iphone-shortcut.md`.
-- [ ] Revoke the iPhone token, verify only the Shortcut fails, replace it, and verify recovery.
-- [ ] Revoke the extension token, verify only the extension fails, and confirm the signed web session
-      remains usable throughout.
-- [ ] Add `/save` to the iPhone Home Screen and verify icon, standalone display, status bar, keyboard,
-      safe areas, login persistence, and that private feed responses are not cached offline.
-- [ ] Run the full Preview smoke checklist in `docs/vercel-deployment.md`, including durable `202`,
+- [x] Accept the physical iPhone capture scope: Chrome capture and Safari deduplication passed in the
+      unified session; the earlier accepted no-URL guard remains valid. Apple News is unavailable in
+      India. Google News text conversion, plain-text replay and Airplane Mode are deferred below.
+- [x] Accept independent capture-client security from Task 5's revocation/replacement evidence and
+      the unified session's authenticated web continuity; repeat iPhone revocation is deferred as a
+      hardening check rather than a Phase 1 blocker.
+- [x] Accept the extension from Task 5's fresh/duplicate/offline/restart/revocation/recovery matrix;
+      repeat revocation against the disposable unified alias is deferred rather than duplicated.
+- [x] Accept `/save` Home Screen behavior: standalone launch, authentication, keyboard and bottom
+      safe area passed; the status-bar overlap and broken login asset are deferred bugs. Private API
+      responses are `private, no-store` and no service worker caches the feed.
+- [x] Run the full Preview smoke checklist in `docs/vercel-deployment.md`, including durable `202`,
       queued-to-ready, deduplication, controlled retry, queue health, connector shutdown, secret-free
       logs, and rollback evidence.
-- [ ] **Task 6 complete:** append timestamped device/smoke results against one Git SHA and deployment
-      ID, plus any accepted non-blocking limitation.
+- [x] **Task 6 complete (2026-09-09):** timestamped device/smoke results are bound to code SHA
+      `a5ac594`, state descendant `6544bac` and deployment `dpl_BG36KH7un4aNK4Cn8Q4fUbfa7K6X`.
+      Accepted limitations are isolated in the deferred backlog below.
 
 #### Task 7 — Make the Production decision and close Phase 1
 
-- [ ] Confirm Tasks 1–6 are complete for the same accepted commit.
-- [ ] Record an explicit Production **go** or **no-go** decision. A no-go leaves the accepted Preview
+- [x] Confirm Tasks 1–6 are complete for the accepted integrated Preview and evidence chain.
+- [x] Record a Production **no-go for now** decision. The accepted Preview remains available and
       running and closes Phase 1 in Preview-only operation.
-- [ ] If go: provision isolated Production Neon data and independent Production secrets; retain a
-      restore point and the source SQLite database. Never reuse Preview secrets or URLs.
-- [ ] If go: run the ledger-aware migration, dry-run and review the SQLite import, then execute it and
-      retain verification output.
-- [ ] If go: deploy only the Task 6 accepted SHA, create Production-specific client tokens, run the
-      complete smoke checklist, and verify the rollback procedure.
-- [ ] **Task 7 complete:** record the decision, final environment/deployment identifiers, security and
-      client evidence, rollback position, and Phase 2 starting point without storing secret values.
+- [x] Production provisioning, migration/import, secrets and deployment are not applicable under the
+      no-go decision and remain untouched.
+- [x] **Task 7 complete (2026-09-09):** Phase 1 is complete in Preview-only operation. A future
+      Production promotion is a new explicitly approved release activity, not unfinished Phase 1
+      implementation.
 
 ### Known blockers and decisions
 
 - The Phase 1 branch is published to GitHub and connected to Vercel CI/CD. Its stable Preview alias
   points to accepted application SHA `f4437bf`, deployment `dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`.
-- Tasks 1 through 5 are complete. Resume with Task 6 on the unified integrated Preview; Task 7 remains
-  the explicit Production go/no-go decision.
+- Tasks 1 through 7 are complete. Phase 1 closed in Preview-only operation on 2026-09-09 with the
+  deferred device bugs and hardening checks below explicitly removed from its exit gate.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - Gemini is selected and its key plus the `$1.00` application budget guardrail are Preview-scoped.
@@ -661,9 +662,9 @@ For deeper operational detail, also read `docs/phase-1-execution.md`, `docs/verc
 
 ## Phase 2 parallel implementation record
 
-Phase 2 development started on 2026-09-07 while Phase 1 acceptance continues. This is a development
-parallelism decision, not a release-gate waiver: the stable Phase 1 Preview database and alias and
-all Production resources remain out of scope until Phase 1 closes.
+Phase 2 development started on 2026-09-07 while Phase 1 acceptance was still underway. This was a
+development-parallelism decision, not a release-gate waiver. Phase 1 later closed Preview-only on
+2026-09-09; Production resources remain out of scope without a new explicit promotion decision.
 
 ### Approved product and architecture decisions
 
@@ -1498,8 +1499,9 @@ item was created and the receipt was left failed/retryable; its temporary token 
 inspection found only the expected retry-scheduled 502 entries from that deliberate failure, zero
 unexpected server errors and zero secret-pattern matches across 300 log entries.
 
-Backend/desktop preflight is therefore complete for this exact SHA and deployment. Remaining work
-is one combined physical iPhone session: Home Screen PWA/session/offline privacy; Shortcut capture
+Backend/desktop preflight was therefore complete for this exact SHA and deployment. At this
+checkpoint, the remaining work was one combined physical iPhone session: Home Screen
+PWA/session/offline privacy; Shortcut capture
 from Chrome, Safari, Apple News and plain-text URL; no-URL and Airplane Mode behavior; independent
 Shortcut and extension revocation/recovery with the web session intact; and mobile Today, reader
 progress, note, anchored highlight, search, grounded citation/navigation, abstention and digest
@@ -1549,9 +1551,42 @@ reader text did not produce the `Save highlight` panel and the Highlights sectio
 active; anchored highlighting therefore fails the physical-touch acceptance case.
 
 Stop the manual device loop here and fix the observed defects as one batch before asking for another
-focused retest. At minimum the strict Phase 2 device gate remains open for touch highlighting. Phase
-1 Task 6 also remains open unless its remaining Shortcut/offline/revocation cases are either passed
-or explicitly removed from the accepted release scope. Retest only the repaired status-bar/login
-asset/content-rendering/highlight surfaces plus whichever Phase 1 cases remain in scope; do not
-repeat the already passing capture, PWA keyboard, Today, grounded-answer, citation, abstention or
-digest cases.
+focused retest. The strict Phase 2 device gate remains open for touch highlighting. The following
+product decision explicitly removes the remaining device defects and hardening checks from the
+Phase 1 exit gate; do not repeat the already passing capture, PWA keyboard, Today, grounded-answer,
+citation, abstention or digest cases.
+
+### Deferred bug backlog after Phase 1 — accepted 2026-09-09
+
+These issues are real but are not Phase 1 closure blockers. Address them together in a later bug-fix
+wave, then run only focused regression checks against the affected surfaces.
+
+- [ ] **BUG-PWA-001 — iPhone top safe area:** keep the authenticated global header below the status
+      bar and Dynamic Island in standalone mode.
+- [ ] **BUG-PWA-002 — login brand asset:** replace the broken-image placeholder with the intended
+      packaged icon/logo and verify it offline-safe.
+- [ ] **BUG-IOS-001 — shared text URL extraction:** update the Shortcut so text payloads such as
+      Google News extract the first HTTP(S) URL and empty matches show `No web link found` rather
+      than a conversion error.
+- [ ] **BUG-IOS-002 — touch highlighting:** make iOS text selection open the anchored-highlight save
+      panel; verify save and reload on a physical device. This remains part of the open Phase 2
+      device gate even though it no longer blocks Phase 1.
+- [ ] **BUG-CONTENT-001 — raw markup:** prevent Markdown headings in Today summaries and HTML tags in
+      search snippets from leaking into visible text.
+- [ ] **BUG-SEARCH-001 — completion visibility:** after Search, move or scroll results into view or
+      provide clear result/loading feedback above the large Filters panel.
+- [ ] **BUG-READER-001 — reading position:** reader progress did not restore on the physical iPhone.
+      The user explicitly waived this behavior for the current release; retain it as low priority.
+
+Deferred verification follow-ups, also non-blocking for Phase 1, are the Shortcut plain-text URL and
+Airplane Mode cases plus repeat iPhone-token and extension-token revocation/recovery against a later
+integrated Preview. Task 5's accepted extension offline/restart/revocation/recovery evidence remains
+the security baseline.
+
+### Phase 1 closure decision — 2026-09-09
+
+Phase 1 Tasks 1 through 7 are complete. The accepted outcome is **Preview-only operation**; the
+Production decision is **no-go for now**. No Production database, secrets, migration, deployment,
+alias or client token was created or changed. The unified Preview and its evidence chain remain the
+accepted integration checkpoint. Any later Production promotion requires a new explicit approval
+and a fresh release gate; it is not pending Phase 1 implementation work.
