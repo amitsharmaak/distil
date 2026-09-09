@@ -205,7 +205,11 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
 
   async function signOut() {
     setError(undefined);
-    const response = await fetch("/api/auth/sign-out", { method: "POST" });
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
     if (!response.ok) {
       setError(await messageFor(response, "Could not sign out. Please try again."));
       return;

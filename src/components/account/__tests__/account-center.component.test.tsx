@@ -352,7 +352,11 @@ describe("AccountCenter lifecycle recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", { method: "POST" })
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
     );
     expect(mockReplace).toHaveBeenCalledWith("/invite");
     expect(mockRefresh).toHaveBeenCalledTimes(1);
