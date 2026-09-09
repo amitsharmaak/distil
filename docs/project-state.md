@@ -27,7 +27,10 @@ acceptance decisions.
   invitations, stable Preview promotion, and Production migration require separate operator
   approval and are not unfinished implementation.
 
-The post-freeze PostgreSQL verification blocker is **fixed locally; exact-SHA CI is pending**.
+The post-freeze PostgreSQL verification blocker is **resolved** at
+`874d55637da661b9a6cb29b63628ec79ba3c79af`. GitHub Actions run
+[34345277490](https://github.com/amitsharmaak/distil/actions/runs/34345277490) passed all eight
+quality gates for that exact SHA, including PostgreSQL integration and web/mobile E2E.
 Runs [34342210217](https://github.com/amitsharmaak/distil/actions/runs/34342210217), `34341305538`,
 and `34338696318` failed the invitation-dispatch concurrency case because its fixture used the
 fixed expiry `2026-09-09T09:00:00Z`. Once CI's database clock passed that instant, the repository
@@ -35,8 +38,8 @@ correctly rejected every claim as expired. The fixture now derives its expiry fr
 `statement_timestamp()`, keeping the test focused on atomic admission rather than wall-clock age;
 production invitation-dispatch logic is unchanged. Local verification passes every PostgreSQL
 integration suite, all 131 unit suites / 942 tests, TypeScript, formatting, and lint with the same
-10 known warnings and zero errors. Keep rollout flags false and do not activate or promote until
-the pushed candidate has green exact-SHA CI.
+10 known warnings and zero errors. The current implementation branch is green; keep rollout flags
+false because activation and promotion remain separately approved operational steps.
 
 ## How to use this file
 
