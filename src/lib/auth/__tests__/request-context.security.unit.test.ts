@@ -65,8 +65,9 @@ describe("request AuthContext resolution", () => {
   });
 
   it("uses only the internal active user id and preserves the locked AuthContext shape", async () => {
+    const authProvider = provider();
     const result = await resolveNeonAuthRequest(
-      provider(),
+      authProvider,
       repositories({ userId, primaryEmail: "amit@example.com", status: "active" }),
       requestId,
       now
@@ -80,6 +81,9 @@ describe("request AuthContext resolution", () => {
     expect(result.context).not.toHaveProperty("workspaceId");
     expect(result.context).not.toHaveProperty("providerSubject");
     expect(result.freshAuth.isFresh).toBe(true);
+    expect(authProvider.getSession).toHaveBeenCalledWith({
+      query: { disableCookieCache: "true" },
+    });
   });
 
   it.each([undefined, "migration_pending", "suspended", "deletion_pending", "deleted"] as const)(

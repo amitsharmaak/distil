@@ -43,7 +43,7 @@ export function neonMagicLinkProvider(auth: {
   };
 }): MagicLinkProvider {
   return {
-    getSession: () => auth.getSession(),
+    getSession: (input) => auth.getSession(input),
     requestMagicLink: async (input) => {
       const response = await auth.handler().POST(
         new Request(new URL("/api/auth/sign-in/magic-link", input.callbackURL), {

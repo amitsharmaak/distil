@@ -107,6 +107,28 @@ describe("composed Neon proxy authorization", () => {
     expect(result.providerHeaders?.get("x-middleware-next")).toBe("1");
   });
 
+  it("bypasses the provider cookie cache without changing the application request URL", async () => {
+    const request = new NextRequest("https://distil.example/api/v1/feed?cursor=owned");
+    const middleware = jest.fn(async (verificationRequest: NextRequest) => {
+      expect(verificationRequest.nextUrl.searchParams.get("disableCookieCache")).toBe("true");
+      expect(verificationRequest.nextUrl.searchParams.get("cursor")).toBe("owned");
+      return NextResponse.next();
+    });
+    const authProvider = { ...provider(), middleware: jest.fn(() => middleware) };
+
+    await authorizeNeonProxy(request, requestId, {
+      provider: authProvider,
+      repositories: repositories({ userId, status: "active" }),
+      allowedOrigins,
+    });
+
+    expect(request.nextUrl.searchParams.get("disableCookieCache")).toBeNull();
+    expect(request.nextUrl.searchParams.get("cursor")).toBe("owned");
+    expect(authProvider.getSession).toHaveBeenCalledWith({
+      query: { disableCookieCache: "true" },
+    });
+  });
+
   it("returns public requests without invoking provider middleware", async () => {
     const publicProvider = provider();
     const request = new NextRequest("https://distil.example/api/health", {

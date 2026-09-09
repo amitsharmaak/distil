@@ -86,7 +86,18 @@ export async function authorizeNeonProxy(
     return { requestHeaders: new Headers(request.headers) };
   }
 
-  const providerResponse = await dependencies.provider.middleware({ loginUrl: "/invite" })(request);
+  // Force the SDK middleware past its signed session-data cookie so a
+  // provider-side revocation takes effect on this request. Use a verification
+  // request rather than mutating the URL that continues to the application.
+  const verificationUrl = request.nextUrl.clone();
+  verificationUrl.searchParams.set("disableCookieCache", "true");
+  const verificationRequest = new NextRequest(verificationUrl, {
+    method: "GET",
+    headers: request.headers,
+  });
+  const providerResponse = await dependencies.provider.middleware({ loginUrl: "/invite" })(
+    verificationRequest
+  );
   if (providerResponse.headers.get("x-middleware-next") !== "1") {
     return { response: providerResponse };
   }

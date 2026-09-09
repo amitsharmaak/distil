@@ -20,7 +20,7 @@ export interface ProviderSessionResult {
 }
 
 export interface ProviderIdentityPort {
-  getSession(): Promise<ProviderSessionResult>;
+  getSession(input?: { query?: { disableCookieCache?: "true" } }): Promise<ProviderSessionResult>;
 }
 
 export function freshAuthMarker(
@@ -43,7 +43,10 @@ export function requireFreshAuthentication(marker: FreshAuthMarker): void {
 export async function readProviderIdentity(
   provider: ProviderIdentityPort
 ): Promise<ProviderIdentity> {
-  const result = await provider.getSession();
+  // Authorization must observe provider-side revocation on the next request.
+  // Neon's signed session-data cookie is a performance cache and can otherwise
+  // remain valid for several minutes after an individual device is revoked.
+  const result = await provider.getSession({ query: { disableCookieCache: "true" } });
   if (result.error || !result.data?.user || !result.data.session) {
     throw new AccessDeniedError("unauthenticated");
   }
