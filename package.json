@@ -9,7 +9,7 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsx scripts/check-phase3-auth-activation.ts --if-enabled && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint && node scripts/check-formatting.mjs",
@@ -26,6 +26,7 @@
     "test:phase3-security": "jest --runInBand tests/harness/phase3-authorization-inventory.unit.test.ts tests/harness/phase3-security.unit.test.ts tests/harness/dependency-policy.unit.test.ts",
     "audit:phase3-dependencies": "node scripts/check-phase3-dependencies.mjs",
     "audit:phase3-security": "tsx scripts/check-phase3-security.ts",
+    "audit:phase3-activation": "tsx scripts/check-phase3-auth-activation.ts",
     "test:e2e": "playwright test tests/e2e --project=desktop-chromium --project=mobile-chromium --project=mobile-webkit",
     "test:extension": "playwright test tests/extension --project=extension",
     "test:ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:e2e && npm run test:extension && npm run build",
