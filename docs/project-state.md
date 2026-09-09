@@ -27,15 +27,16 @@ acceptance decisions.
   invitations, stable Preview promotion, and Production migration require separate operator
   approval and are not unfinished implementation.
 
-Current branch verification is **red after the accepted freeze**. GitHub Actions run
-[34342210217](https://github.com/amitsharmaak/distil/actions/runs/34342210217) for reconciliation
-parent `f105a211b6de1b584e83d97e019fb16bb097ff3a` passed security, deterministic/isolation tests,
-coverage, build, extension E2E, and web/mobile E2E, but failed the PostgreSQL invitation-dispatch
-concurrency case in `lifecycle-repositories.integration.test.ts`: both concurrent claims returned
-false when exactly one must win. The failed-job retry reproduced it, as did runs `34341305538` and
-`34338696318` on the two preceding state descendants. Treat this as a current integration blocker
-before any further release or activation; it does not invalidate the earlier green accepted Wave 4
-freeze at `b93c2ba`.
+The post-freeze PostgreSQL verification blocker is **fixed locally; exact-SHA CI is pending**.
+Runs [34342210217](https://github.com/amitsharmaak/distil/actions/runs/34342210217), `34341305538`,
+and `34338696318` failed the invitation-dispatch concurrency case because its fixture used the
+fixed expiry `2026-09-09T09:00:00Z`. Once CI's database clock passed that instant, the repository
+correctly rejected every claim as expired. The fixture now derives its expiry from PostgreSQL's
+`statement_timestamp()`, keeping the test focused on atomic admission rather than wall-clock age;
+production invitation-dispatch logic is unchanged. Local verification passes every PostgreSQL
+integration suite, all 131 unit suites / 942 tests, TypeScript, formatting, and lint with the same
+10 known warnings and zero errors. Keep rollout flags false and do not activate or promote until
+the pushed candidate has green exact-SHA CI.
 
 ## How to use this file
 

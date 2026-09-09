@@ -542,7 +542,7 @@ it("atomically admits one concurrent invitation dispatch and safely releases bou
     VALUES
       (${invitationId}::uuid,'invite@example.com','email-hash','salt','token-hash',
        ${system.actorId}::uuid,'concurrency test','pending',
-       ${new Date(claimedAt.getTime() + 86_400_000).toISOString()}::timestamptz,
+       statement_timestamp() + interval '1 day',
        ${claimedAt.toISOString()}::timestamptz)`;
   const repository = new PostgresAuthRepository(runtimeSql);
   const claimIds = Array.from(
