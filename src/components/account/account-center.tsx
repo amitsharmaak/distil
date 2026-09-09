@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Download, Monitor, ShieldAlert, Trash2 } from "lucide-react";
+import { Download, LogOut, Monitor, ShieldAlert, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { TokenSettings } from "@/components/capture/token-settings";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ async function messageFor(response: Response, fallback: string): Promise<string>
 }
 
 export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) {
+  const router = useRouter();
   const [account, setAccount] = useState<AccountProfile>();
   const [accountStatus, setAccountStatus] = useState<AccountProfile["status"]>();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -199,6 +201,17 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     }
     setSessions((current) => current.filter((session) => session.current));
     setNotice("Other sessions have been revoked.");
+  }
+
+  async function signOut() {
+    setError(undefined);
+    const response = await fetch("/api/auth/sign-out", { method: "POST" });
+    if (!response.ok) {
+      setError(await messageFor(response, "Could not sign out. Please try again."));
+      return;
+    }
+    router.replace("/invite");
+    router.refresh();
   }
 
   async function requestExport() {
@@ -460,14 +473,20 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       {onboarding ? null : (
         <>
           <section className="rounded-xl border border-border bg-card p-5">
-            <div className="flex gap-3">
-              <Monitor className="mt-0.5 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="text-base font-semibold">Sessions and devices</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Revoke a device you do not recognize. This requires recent authentication.
-                </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex gap-3">
+                <Monitor className="mt-0.5 h-5 w-5 text-primary" />
+                <div>
+                  <h2 className="text-base font-semibold">Sessions and devices</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Revoke a device you do not recognize. This requires recent authentication.
+                  </p>
+                </div>
               </div>
+              <Button onClick={() => void signOut()} size="sm" variant="outline">
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </Button>
             </div>
             {sessions.length ? (
               <div className="mt-5 space-y-3">

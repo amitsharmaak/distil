@@ -2,6 +2,13 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+const mockReplace = jest.fn();
+const mockRefresh = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace, refresh: mockRefresh }),
+}));
+
 jest.mock("@/components/capture/token-settings", () => ({
   TokenSettings: () => <div>Capture token management</div>,
 }));
@@ -59,6 +66,8 @@ function mockActiveHydration(
 describe("AccountCenter lifecycle recovery", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    mockReplace.mockReset();
+    mockRefresh.mockReset();
   });
 
   it("requires an explicit typed confirmation before requesting deletion", async () => {
@@ -332,6 +341,35 @@ describe("AccountCenter lifecycle recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revoke other sessions" }));
     expect(await screen.findByText("Provider rejected revocation")).toBeInTheDocument();
     expect(screen.getByText("Other browser")).toBeInTheDocument();
+  });
+
+  it("signs out through the hosted-auth route and returns to the invite page", async () => {
+    mockActiveHydration({ sessions: [currentSession] });
+    render(<AccountCenter />);
+    expect(await screen.findByText("This device")).toBeInTheDocument();
+
+    fetchMock.mockResolvedValueOnce(response({ success: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", { method: "POST" })
+    );
+    expect(mockReplace).toHaveBeenCalledWith("/invite");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the account page available when sign-out fails", async () => {
+    mockActiveHydration({ sessions: [currentSession] });
+    render(<AccountCenter />);
+    expect(await screen.findByText("This device")).toBeInTheDocument();
+
+    fetchMock.mockResolvedValueOnce(
+      response({ error: { message: "Provider rejected sign-out" } }, 503)
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByText("Provider rejected sign-out")).toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("saves an onboarding profile and reports profile save failures", async () => {
