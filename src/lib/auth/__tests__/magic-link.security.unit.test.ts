@@ -67,9 +67,12 @@ describe("invitation-gated magic links", () => {
 
   it("adapts the Neon provider without widening callback inputs", async () => {
     const session = { data: null, error: null };
+    const post = jest.fn().mockResolvedValue(
+      Response.json({ ok: true }, { headers: { "set-cookie": "challenge=value" } })
+    );
     const auth = {
       getSession: jest.fn().mockResolvedValue(session),
-      signIn: { magicLink: jest.fn().mockResolvedValue({ error: null }) },
+      handler: () => ({ POST: post }),
     };
     const provider = neonMagicLinkProvider(auth);
     await expect(provider.getSession()).resolves.toBe(session);
@@ -79,8 +82,14 @@ describe("invitation-gated magic links", () => {
       newUserCallbackURL: `${origin}/api/auth/invitations/complete`,
       errorCallbackURL: `${origin}/access-denied`,
     };
-    await expect(provider.requestMagicLink(input)).resolves.toEqual({ error: null });
-    expect(auth.signIn.magicLink).toHaveBeenCalledWith(input);
+    await expect(provider.requestMagicLink(input)).resolves.toEqual({
+      error: null,
+      setCookieHeaders: ["challenge=value"],
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ params: expect.any(Promise) })
+    );
   });
 
   it("validates the invitation before provider dispatch and fixes every callback origin", async () => {
@@ -97,7 +106,12 @@ describe("invitation-gated magic links", () => {
     );
     const provider = {
       getSession: jest.fn(),
-      requestMagicLink: jest.fn().mockResolvedValue({ error: null }),
+      requestMagicLink: jest.fn().mockResolvedValue({
+        error: null,
+        setCookieHeaders: [
+          "__Secure-neon-auth.session_challenge=value; Path=/; HttpOnly; Secure; SameSite=Lax",
+        ],
+      }),
     };
     const handler = createMagicLinkRequestHandler({
       provider,
@@ -129,6 +143,7 @@ describe("invitation-gated magic links", () => {
     expect(setCookie).toContain(`${PENDING_INVITATION_COOKIE}=`);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("Secure");
+    expect(setCookie).toContain("__Secure-neon-auth.session_challenge=value");
     await expect(openPendingInvitation(cookieValue(setCookie), stateSecret)).resolves.toMatchObject(
       { nextPath: "/" }
     );

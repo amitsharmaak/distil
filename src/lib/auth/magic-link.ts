@@ -19,7 +19,7 @@ export interface MagicLinkProvider extends ProviderIdentityPort {
     callbackURL: string;
     newUserCallbackURL: string;
     errorCallbackURL: string;
-  }): Promise<{ error: unknown | null }>;
+  }): Promise<{ error: unknown | null; setCookieHeaders?: string[] }>;
 }
 
 /** Exchange Neon's one-time callback verifier before resolving the invited identity. */
@@ -33,18 +33,32 @@ export async function exchangeMagicLinkSession<TRequest extends Request>(
 
 export function neonMagicLinkProvider(auth: {
   getSession: ProviderIdentityPort["getSession"];
-  signIn: {
-    magicLink(input: {
-      email: string;
-      callbackURL?: string;
-      newUserCallbackURL?: string;
-      errorCallbackURL?: string;
-    }): Promise<{ error: unknown | null }>;
+  handler(): {
+    POST(
+      request: Request,
+      context: { params: Promise<{ path: string[] }> }
+    ): Promise<Response>;
   };
 }): MagicLinkProvider {
   return {
     getSession: () => auth.getSession(),
-    requestMagicLink: async (input) => auth.signIn.magicLink(input),
+    requestMagicLink: async (input) => {
+      const response = await auth.handler().POST(
+        new Request(new URL("/api/auth/sign-in/magic-link", input.callbackURL), {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: new URL(input.callbackURL).origin,
+          },
+          body: JSON.stringify(input),
+        }),
+        { params: Promise.resolve({ path: ["sign-in", "magic-link"] }) }
+      );
+      return {
+        error: response.ok ? null : new Error("provider rejected magic link"),
+        setCookieHeaders: response.headers.getSetCookie(),
+      };
+    },
   };
 }
 
@@ -113,7 +127,11 @@ export function createMagicLinkRequestHandler(dependencies: {
       });
       if (!completed) throw new Error("magic link dispatch claim was lost");
       dispatchClaim = undefined;
-      return accepted();
+      const response = await accepted();
+      for (const setCookie of result.setCookieHeaders ?? []) {
+        response.headers.append("set-cookie", setCookie);
+      }
+      return response;
     } catch (error) {
       if (dispatchClaim && !providerAccepted) {
         try {
