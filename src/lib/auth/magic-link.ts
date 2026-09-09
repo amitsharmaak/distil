@@ -6,12 +6,17 @@ import {
   openPendingInvitation,
   pendingInvitationCookieOptions,
   PENDING_INVITATION_COOKIE,
+  PENDING_INVITATION_TTL_SECONDS,
   sealPendingInvitation,
 } from "@/lib/auth/invite-state";
 import { readCookie } from "@/lib/auth/request";
 import { readProviderIdentity, type ProviderIdentityPort } from "@/lib/auth/request-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { AuthError } from "@/lib/auth/errors";
+
+// Public SDK constant in @neondatabase/auth/server; kept local so Jest does
+// not have to transform the package's ESM-only server entrypoint.
+export const NEON_AUTH_SESSION_CHALLENGE_COOKIE = "__Secure-neon-auth.session_challenge";
 
 export interface MagicLinkProvider extends ProviderIdentityPort {
   requestMagicLink(input: {
@@ -128,6 +133,18 @@ export function createMagicLinkRequestHandler(dependencies: {
       if (!completed) throw new Error("magic link dispatch claim was lost");
       dispatchClaim = undefined;
       const response = await accepted();
+      // The managed provider returns a one-time verifier on the email callback,
+      // while the SDK middleware requires this application-domain CSRF marker
+      // before exchanging it for a session cookie. Issuing the marker only
+      // after a valid invitation is dispatched keeps arbitrary login starts
+      // outside the public auth surface.
+      response.cookies.set(NEON_AUTH_SESSION_CHALLENGE_COOKIE, crypto.randomUUID(), {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: PENDING_INVITATION_TTL_SECONDS,
+      });
       for (const setCookie of result.setCookieHeaders ?? []) {
         response.headers.append("set-cookie", setCookie);
       }

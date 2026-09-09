@@ -2,6 +2,7 @@ import {
   createInvitationCompletionHandler,
   createMagicLinkRequestHandler,
   exchangeMagicLinkSession,
+  NEON_AUTH_SESSION_CHALLENGE_COOKIE,
   neonMagicLinkProvider,
 } from "@/lib/auth/magic-link";
 import { issueInvitation } from "@/lib/auth/invitations";
@@ -109,7 +110,7 @@ describe("invitation-gated magic links", () => {
       requestMagicLink: jest.fn().mockResolvedValue({
         error: null,
         setCookieHeaders: [
-          "__Secure-neon-auth.session_challenge=value; Path=/; HttpOnly; Secure; SameSite=Lax",
+          "__Secure-neon-auth.provider_hint=value; Path=/; HttpOnly; Secure; SameSite=Lax",
         ],
       }),
     };
@@ -143,7 +144,8 @@ describe("invitation-gated magic links", () => {
     expect(setCookie).toContain(`${PENDING_INVITATION_COOKIE}=`);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("Secure");
-    expect(setCookie).toContain("__Secure-neon-auth.session_challenge=value");
+    expect(setCookie).toContain("__Secure-neon-auth.provider_hint=value");
+    expect(setCookie).toContain(`${NEON_AUTH_SESSION_CHALLENGE_COOKIE}=`);
     await expect(openPendingInvitation(cookieValue(setCookie), stateSecret)).resolves.toMatchObject(
       { nextPath: "/" }
     );
