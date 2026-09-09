@@ -17,11 +17,11 @@ acceptance decisions.
 
 - **Phase 1: complete.** All seven tasks are closed. The accepted operating mode is Preview-only;
   Production is **no-go for now** and any later promotion is a new release activity.
-- **Phase 2: implementation and automated acceptance complete.** The reviewed tenancy-aware
-  forward-port is frozen at `933ad10aa94c35a72a8eb647f8170447f43d092e`. The strict physical-device
-  gate remains open only for `BUG-IOS-002`, anchored highlighting from touch selection, followed by
-  a focused iPhone retest. Semantic/vector retrieval and sophisticated multi-provider failover are
-  deferred Phase 2.x enhancements.
+- **Phase 2: complete.** The reviewed tenancy-aware forward-port is frozen at
+  `933ad10aa94c35a72a8eb647f8170447f43d092e`. The user accepted the physical-device evidence and
+  explicitly deferred `BUG-IOS-002`, anchored highlighting from touch selection, to the non-blocking
+  backlog. Semantic/vector retrieval and sophisticated multi-provider failover remain optional Phase
+  2.x enhancements.
 - **Phase 3: implementation accepted.** Wave 4 is frozen at
   `b93c2bac47f1fd46d83e9c05b05b3d644e768927`. All rollout flags remain false; real-user linking,
   invitations, stable Preview promotion, and Production migration require separate operator
@@ -201,7 +201,7 @@ failures without duplicates or lost work. The Preview deployment and API-level c
 are complete. The accepted physical-device scope and deferred bug backlog are recorded below.
 Phase 1 closed in Preview-only mode on 2026-09-09; Production was not promoted.
 
-### Phase 2 — Daily knowledge experience and intelligence quality (strict device gate pending)
+### Phase 2 — Daily knowledge experience and intelligence quality (complete)
 
 **Goal:** Turn reliable capture into a habitually useful reading, recall, and sense-making product.
 
@@ -743,8 +743,8 @@ The list below records what remained at the original `2ade16b` freeze. It is not
 queue. The provider, live evaluation, isolated Preview, migrations/backfills, desktop walkthrough,
 and most of the physical-iPhone walkthrough were completed by the tenancy-aware forward-port at
 `933ad10` and the unified acceptance deployment. Semantic/vector retrieval was explicitly deferred
-to Phase 2.x. Only the touch-highlighting retest described under `BUG-IOS-002` remains blocking for
-strict Phase 2 device acceptance.
+to Phase 2.x. The later Phase 2 closure decision accepted the available device evidence and moved
+the touch-highlighting issue to the non-blocking backlog.
 
 - Pin the production embedding provider/model/dimension, then add the compatible pgvector HNSW
   space, bounded embedding backfill, semantic retrieval, and reciprocal-rank fusion. Current search
@@ -853,14 +853,14 @@ Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
    coverage across the integrated product.
 
-#### Wave 3 — Isolated Preview and automated acceptance (completed and frozen; touch retest pending)
+#### Wave 3 — Isolated Preview and acceptance (completed and frozen)
 
 The integrated acceptance used isolated Neon/Vercel resources, applied the additive migrations,
 completed bounded idempotent content/chunk/artifact backfills, enabled and tested the knowledge
 features independently, and verified provider-disabled degradation, logs, and rollback. Embeddings
 were deliberately excluded because semantic/vector retrieval is deferred to Phase 2.x. The stable
-Preview alias and Production were not promoted. Only the physical-iPhone touch-highlighting retest
-remains open for strict device acceptance.
+Preview alias and Production were not promoted. The later closure decision accepted the available
+physical-iPhone evidence and deferred touch highlighting to the non-blocking backlog.
 
 ### Persistence and behavior contract
 
@@ -1416,14 +1416,17 @@ Local verification passed lint/format with the same 10 known warnings and zero e
 job for exact SHA `933ad10`. The in-app browser completed the focused desktop walkthrough, and CI's
 responsive desktop/mobile browser suite is green. One acceptance item remains human-only: run the
 same focused walkthrough on a physical iPhone. Until that is recorded, Phase 2 implementation and
-automated acceptance are complete, but the strict minimum device acceptance gate is **pending**.
+  automated acceptance were complete, while the strict minimum device gate was still pending at
+  this checkpoint. The later closure decision accepted the available device evidence and deferred
+  the remaining touch-highlighting bug.
 
 The content-free private evidence summary is mode `0600` and gitignored at
 `artifacts/preview-clone-rehearsal/phase2-acceptance-20260908/summary.json`. It contains no secrets,
 connection strings, real-user data or captured content. Restart from code SHA `933ad10`, state
 checkpoint following this section, green CI run `34219562782`, disposable branch
-`br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. Complete the
-physical iPhone walkthrough before calling the strict Phase 2 acceptance gate closed.
+  `br-noisy-river-b3iyu8s0` and isolated deployment `dpl_Bnz9mcnsA3CQNZq12EKH8DHBc3x6`. The later
+  unified physical-iPhone session and explicit closure decision supersede this checkpoint's open
+  device-gate instruction.
 
 ### Cross-phase acceptance reconciliation — 2026-09-08
 
@@ -1586,11 +1589,9 @@ explicitly waived that behavior for this release, so it is now non-blocking. Tou
 reader text did not produce the `Save highlight` panel and the Highlights section remained at zero
 active; anchored highlighting therefore fails the physical-touch acceptance case.
 
-Stop the manual device loop here and fix the observed defects as one batch before asking for another
-focused retest. The strict Phase 2 device gate remains open for touch highlighting. The following
-product decision explicitly removes the remaining device defects and hardening checks from the
-Phase 1 exit gate; do not repeat the already passing capture, PWA keyboard, Today, grounded-answer,
-citation, abstention or digest cases.
+At this checkpoint the manual device loop stopped with touch highlighting still open. The later
+product decision accepted Phase 2 and moved that issue to the non-blocking backlog. Do not repeat the
+already passing capture, PWA keyboard, Today, grounded-answer, citation, abstention or digest cases.
 
 ### Deferred bug backlog after Phase 1 — accepted 2026-09-09
 
@@ -1605,8 +1606,8 @@ wave, then run only focused regression checks against the affected surfaces.
       Google News extract the first HTTP(S) URL and empty matches show `No web link found` rather
       than a conversion error.
 - [ ] **BUG-IOS-002 — touch highlighting:** make iOS text selection open the anchored-highlight save
-      panel; verify save and reload on a physical device. This remains part of the open Phase 2
-      device gate even though it no longer blocks Phase 1.
+      panel; verify save and reload on a physical device. This is accepted as non-blocking and no
+      longer holds the Phase 2 gate open.
 - [ ] **BUG-CONTENT-001 — raw markup:** prevent Markdown headings in Today summaries and HTML tags in
       search snippets from leaking into visible text.
 - [ ] **BUG-SEARCH-001 — completion visibility:** after Search, move or scroll results into view or
@@ -1618,6 +1619,14 @@ Deferred verification follow-ups, also non-blocking for Phase 1, are the Shortcu
 Airplane Mode cases plus repeat iPhone-token and extension-token revocation/recovery against a later
 integrated Preview. Task 5's accepted extension offline/restart/revocation/recovery evidence remains
 the security baseline.
+
+### Phase 2 closure decision — 2026-09-09
+
+Phase 2 is complete. The user accepted the implemented product, automated acceptance, isolated
+Preview evidence, and available physical-iPhone walkthrough. `BUG-IOS-002` and the remaining items
+in the backlog above are explicitly deferred and do not reopen Phase 2. Any later fix is ordinary
+backlog work, not a Phase 2 acceptance requirement. Semantic/vector retrieval and sophisticated
+multi-provider failover remain optional Phase 2.x enhancements.
 
 ### Phase 1 closure decision — 2026-09-09
 
