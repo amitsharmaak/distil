@@ -36,6 +36,21 @@ function origin(value: string | undefined): string | undefined {
   }
 }
 
+function neonAuthOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" &&
+      /^\/[^/]+\/auth\/?$/.test(parsed.pathname) &&
+      !parsed.search &&
+      !parsed.hash
+      ? parsed.origin
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Validates a synthetic, unpromoted Phase 3 hosted-auth rehearsal without ever
  * returning configuration values. This is intentionally stricter than normal
@@ -62,7 +77,7 @@ export function phase3AuthActivationFindings(
 
   const applicationOrigin = origin(environment.NEXT_PUBLIC_API_BASE_URL);
   const rehearsalOrigin = origin(environment.DISTIL_PHASE3_REHEARSAL_ORIGIN);
-  const authOrigin = origin(environment.NEON_AUTH_BASE_URL);
+  const authOrigin = neonAuthOrigin(environment.NEON_AUTH_BASE_URL);
   if (environment.NEXT_PUBLIC_API_BASE_URL && !applicationOrigin) {
     add("application-origin", "NEXT_PUBLIC_API_BASE_URL must be an exact HTTPS origin");
   }
@@ -70,7 +85,7 @@ export function phase3AuthActivationFindings(
     add("rehearsal-origin", "DISTIL_PHASE3_REHEARSAL_ORIGIN must be an exact HTTPS origin");
   }
   if (environment.NEON_AUTH_BASE_URL && !authOrigin) {
-    add("auth-origin", "NEON_AUTH_BASE_URL must be an exact HTTPS origin");
+    add("auth-origin", "NEON_AUTH_BASE_URL must be an HTTPS Neon database auth endpoint");
   }
   if (applicationOrigin && rehearsalOrigin && applicationOrigin !== rehearsalOrigin) {
     add("origin-binding", "application and rehearsal origins must match exactly");

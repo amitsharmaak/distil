@@ -11,7 +11,7 @@ const validEnvironment = {
   VERCEL_ENV: "preview",
   DATABASE_URL: "postgres://runtime",
   DATABASE_MIGRATION_URL: "postgres://migration",
-  NEON_AUTH_BASE_URL: "https://auth-preview.example.test",
+  NEON_AUTH_BASE_URL: "https://auth-preview.example.test/neondb/auth",
   NEON_AUTH_COOKIE_SECRET: "a-secret-value-that-is-at-least-thirty-two-characters",
   NEXT_PUBLIC_API_BASE_URL: "https://phase3-auth.example.test",
   DISTIL_ALLOWED_ORIGINS: "https://phase3-auth.example.test",
@@ -49,7 +49,7 @@ describe("Phase 3 auth activation preflight", () => {
     const findings = phase3AuthActivationFindings({
       ...validEnvironment,
       DATABASE_MIGRATION_URL: validEnvironment.DATABASE_URL,
-      NEON_AUTH_BASE_URL: "http://auth-preview.example.test/path",
+      NEON_AUTH_BASE_URL: "http://auth-preview.example.test/neondb/auth",
       NEON_AUTH_COOKIE_SECRET: "short",
       DISTIL_ALLOWED_ORIGINS: "https://other.example.test,https://*.vercel.app",
       DISTIL_PHASE3_REHEARSAL_ORIGIN: "https://different.example.test",
@@ -69,15 +69,16 @@ describe("Phase 3 auth activation preflight", () => {
     );
   });
 
-  it("requires exact HTTPS origins without paths, queries, or fragments", () => {
+  it("requires exact application origins and the Neon database-auth endpoint path", () => {
     const findings = phase3AuthActivationFindings({
       ...validEnvironment,
+      NEON_AUTH_BASE_URL: "https://auth-preview.example.test/not-auth",
       NEXT_PUBLIC_API_BASE_URL: "https://phase3-auth.example.test/path",
       DISTIL_PHASE3_REHEARSAL_ORIGIN: "https://phase3-auth.example.test?candidate=1",
     });
 
     expect(new Set(findings.map(({ id }) => id))).toEqual(
-      new Set(["application-origin", "rehearsal-origin"])
+      new Set(["application-origin", "auth-origin", "rehearsal-origin"])
     );
   });
 
@@ -100,7 +101,7 @@ describe("Phase 3 auth activation preflight", () => {
   it("rejects an auth service hosted on the application origin", () => {
     const findings = phase3AuthActivationFindings({
       ...validEnvironment,
-      NEON_AUTH_BASE_URL: validEnvironment.NEXT_PUBLIC_API_BASE_URL,
+      NEON_AUTH_BASE_URL: `${validEnvironment.NEXT_PUBLIC_API_BASE_URL}/neondb/auth`,
     });
 
     expect(findings).toEqual([expect.objectContaining({ id: "auth-origin-binding" })]);

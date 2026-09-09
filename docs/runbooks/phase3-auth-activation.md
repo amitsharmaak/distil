@@ -39,8 +39,9 @@ The rehearsal build requires:
   changing dimension.
 - Separate `DATABASE_URL` and `DATABASE_MIGRATION_URL` values. The application uses the restricted
   runtime role; only migration/verification commands use the owner role.
-- Branch-scoped `NEON_AUTH_BASE_URL` and a unique `NEON_AUTH_COOKIE_SECRET` of at least 32
-  characters.
+- Branch-scoped HTTPS `NEON_AUTH_BASE_URL` in Neon database-auth endpoint form (for example,
+  `https://<branch-auth-host>/<database>/auth`) and a unique `NEON_AUTH_COOKIE_SECRET` of at least
+  32 characters.
 - `NEXT_PUBLIC_API_BASE_URL`, `DISTIL_ALLOWED_ORIGINS`, and
   `DISTIL_PHASE3_REHEARSAL_ORIGIN` bound to the same exact HTTPS deployment origin with no wildcard.
 - `DISTIL_PHASE3_REHEARSAL_SHA` equal to `VERCEL_GIT_COMMIT_SHA`.
