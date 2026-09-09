@@ -15,6 +15,7 @@ Phase 1 is complete. All seven tasks closed in the later integrated acceptance r
 The accepted operating mode is Preview-only with a Production **no-go for now**. Any future
 Production promotion is a new release activity, not pending Phase 1 work. The authoritative
 cross-phase restart point is `docs/project-state.md` on `codex/phase-3-tenancy`.
+Phase 2 is also complete; its remaining touch-highlighting bug is explicitly deferred.
 
 ## How to use this file
 
@@ -181,7 +182,7 @@ failures without duplicates or lost work. The Preview deployment and API-level c
 are complete. Task 6 was accepted with an explicit non-blocking backlog, and Task 7 closed Phase 1
 in Preview-only mode on 2026-09-09. Production was not promoted.
 
-### Phase 2 — Daily knowledge experience and intelligence quality
+### Phase 2 — Daily knowledge experience and intelligence quality (complete)
 
 **Goal:** Turn reliable capture into a habitually useful reading, recall, and sense-making product.
 
