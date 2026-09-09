@@ -9,6 +9,24 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
+## Current cross-phase status
+
+This file on `codex/phase-3-tenancy` is the authoritative cross-phase state. The dedicated Phase 1
+and Phase 2 branches retain their historical implementation records and point here for later
+acceptance decisions.
+
+- **Phase 1: complete.** All seven tasks are closed. The accepted operating mode is Preview-only;
+  Production is **no-go for now** and any later promotion is a new release activity.
+- **Phase 2: implementation and automated acceptance complete.** The reviewed tenancy-aware
+  forward-port is frozen at `933ad10aa94c35a72a8eb647f8170447f43d092e`. The strict physical-device
+  gate remains open only for `BUG-IOS-002`, anchored highlighting from touch selection, followed by
+  a focused iPhone retest. Semantic/vector retrieval and sophisticated multi-provider failover are
+  deferred Phase 2.x enhancements.
+- **Phase 3: implementation accepted.** Wave 4 is frozen at
+  `b93c2bac47f1fd46d83e9c05b05b3d644e768927`. All rollout flags remain false; real-user linking,
+  invitations, stable Preview promotion, and Production migration require separate operator
+  approval and are not unfinished implementation.
+
 ## How to use this file
 
 At the start of a new session:
@@ -173,7 +191,7 @@ failures without duplicates or lost work. The Preview deployment and API-level c
 are complete. The accepted physical-device scope and deferred bug backlog are recorded below.
 Phase 1 closed in Preview-only mode on 2026-09-09; Production was not promoted.
 
-### Phase 2 — Daily knowledge experience and intelligence quality
+### Phase 2 — Daily knowledge experience and intelligence quality (strict device gate pending)
 
 **Goal:** Turn reliable capture into a habitually useful reading, recall, and sense-making product.
 
@@ -195,7 +213,7 @@ Phase 1 closed in Preview-only mode on 2026-09-09; Production was not promoted.
 with citations; quality and cost regressions are measurable; users can understand and correct the
 system's decisions.
 
-### Phase 3 — Multi-user web application and tenant isolation
+### Phase 3 — Multi-user web application and tenant isolation (implementation accepted)
 
 **Goal:** Move from a protected single-user deployment to real accounts while preserving strict data
 isolation and personal ownership.
@@ -319,10 +337,9 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 ---
 
-## Phase 1 current execution record
+## Phase 1 execution record (complete)
 
-The remainder of this document records the exact state of the active Phase 1 implementation and its
-deployment work.
+This section records the completed Phase 1 implementation and deployment work.
 
 ### Phase 1 goal and scope
 
@@ -497,7 +514,7 @@ Do not create public/client-side variables for a database URL, capture token, se
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
 should not be used by the new clients.
 
-### Remaining Phase 1 execution queue
+### Completed Phase 1 execution queue
 
 Phase 1 has seven ordered top-level tasks. All seven are complete. The nested checkboxes are each
 task's execution sequence, not additional Phase 1 tasks. Task 6 was accepted with the explicitly
@@ -710,7 +727,14 @@ development-parallelism decision, not a release-gate waiver. Phase 1 later close
   Production resource was changed. Phase 3 may use this SHA as its frozen baseline. Any later Phase
   2 schema, API, or queue change requires explicit forward-port triage into Phase 3.
 
-Remaining Phase 2 release and acceptance gates:
+Historical Phase 2 release and acceptance gates, with current disposition:
+
+The list below records what remained at the original `2ade16b` freeze. It is not the current restart
+queue. The provider, live evaluation, isolated Preview, migrations/backfills, desktop walkthrough,
+and most of the physical-iPhone walkthrough were completed by the tenancy-aware forward-port at
+`933ad10` and the unified acceptance deployment. Semantic/vector retrieval was explicitly deferred
+to Phase 2.x. Only the touch-highlighting retest described under `BUG-IOS-002` remains blocking for
+strict Phase 2 device acceptance.
 
 - Pin the production embedding provider/model/dimension, then add the compatible pgvector HNSW
   space, bounded embedding backfill, semantic retrieval, and reciprocal-rank fusion. Current search
@@ -819,12 +843,14 @@ Wave 1 foundation evidence (historical checkpoint before Wave 2 integration):
 3. Add security, concurrency, accessibility, desktop Chromium, mobile Chromium, and mobile WebKit
    coverage across the integrated product.
 
-#### Wave 3 — Isolated Preview and acceptance (completed and frozen)
+#### Wave 3 — Isolated Preview and automated acceptance (completed and frozen; touch retest pending)
 
-Use a Phase 2-specific Neon branch/database and Vercel Preview. Apply additive migrations, verify
-dry-run backfill counts, enable knowledge features first, backfill chunks and embeddings in bounded
-idempotent batches, shadow retrieval and ranking, and then enable answers, personalization, and
-digests independently. Do not point the stable Preview alias at Phase 2 during this wave.
+The integrated acceptance used isolated Neon/Vercel resources, applied the additive migrations,
+completed bounded idempotent content/chunk/artifact backfills, enabled and tested the knowledge
+features independently, and verified provider-disabled degradation, logs, and rollback. Embeddings
+were deliberately excluded because semantic/vector retrieval is deferred to Phase 2.x. The stable
+Preview alias and Production were not promoted. Only the physical-iPhone touch-highlighting retest
+remains open for strict device acceptance.
 
 ### Persistence and behavior contract
 
