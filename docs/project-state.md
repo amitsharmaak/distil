@@ -48,6 +48,9 @@ exact HTTPS origins, separated database roles, all unrelated flags false, and no
 `docs/runbooks/phase3-auth-activation.md` is the operator sequence. The first incomplete step is to
 provide two accessible synthetic test inboxes, then create the disposable Neon/Auth branch and
 unpromoted Vercel deployment; do not use a real identity as a shortcut.
+GitHub Actions run
+[34346570029](https://github.com/amitsharmaak/distil/actions/runs/34346570029) passed every quality
+job for exact state checkpoint `4874c1d6ca50fe7745b484387f55e77fe6b2e67b`.
 
 ## How to use this file
 
@@ -1405,6 +1408,12 @@ suites / 1,232 tests with 85.4% changed lines and 80.9% changed branches; every 
 capture, queue, URL-safety and migration group remained above 90%. A fully populated synthetic
 environment passed `npm run audit:phase3-activation -- --json`, while the ordinary local environment
 failed closed without printing values.
+
+GitHub Actions run
+[34346570029](https://github.com/amitsharmaak/distil/actions/runs/34346570029) passed all nine jobs
+for exact state checkpoint `4874c1d6ca50fe7745b484387f55e77fe6b2e67b`: static checks; unit,
+component and contract tests; security; coverage; PostgreSQL integration; production build;
+extension E2E; desktop/mobile web E2E; and the aggregate gate.
 
 No Neon branch, hosted-auth instance, identity, invitation, email, Vercel variable, deployment or
 alias was created or changed in this slice. The current npm registry still identifies the reviewed
