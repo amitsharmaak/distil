@@ -1433,6 +1433,46 @@ Next execution sequence:
 4. Tear down or expire the disposable resources and record content-free evidence. Only after a clean
    rehearsal ask for the separate real-account linking and stable Preview-promotion decision.
 
+#### Hosted-auth activation rehearsal checkpoint — 2026-09-09 21:24 IST
+
+The approved disposable hosted-auth rehearsal is complete through the final operator cleanup gate.
+Accepted code SHA `aeb8166ffb97431c41ee62b1aacc9caf82373e85` is deployed as Preview deployment
+`dpl_D5F4pY6JFRcQwhruzcB7uPQZ6Djg` behind only the exact branch alias. GitHub Actions run
+[34372659168](https://github.com/amitsharmaak/distil/actions/runs/34372659168) passed the complete
+nine-job quality gate for that exact SHA. Stable Preview and Production were not promoted or
+mutated, and the migrated legacy owner was not linked.
+
+The disposable Neon project `floral-river-70536503` branch `br-wild-grass-b3q9la9f`
+(`phase3-auth-rehearsal-20260909`) received the complete migration chain and passed invariants. Its
+hosted-auth configuration is magic-link-only, accepts one exact HTTPS origin, and auto-expires on
+2026-09-10. Two isolated rehearsal identities completed invitation, magic-link and onboarding
+flows. Wrong-email, revoked, expired, reused, hostile-origin and tampered-callback checks failed
+closed with private generic responses; concurrent valid acceptance produced one delivery attempt
+and one success.
+
+Bidirectional live RLS checks passed for feed, search, nested resources, quota, export and mutation
+surfaces. Temporary rows and the short-lived probe role were removed. A session survived an
+exact-origin code redeploy with the stable cookie secret. Independent second-device sign-in then
+succeeded, revoking the original device immediately denied its next protected request, and account
+suspension/restoration immediately denied/restored access. The active Account view exposes the new
+hosted-auth `Sign out` control.
+
+The live exercise found and fixed provider-integration defects that deterministic tests did not
+expose: full Neon endpoint-path handling, the magic-link verifier exchange, challenge-state
+preservation, safe asynchronous gate errors, private caching across auth routes, immediate
+revocation despite Neon cookie caching, and removal of the internal cache-bypass query from visible
+redirects. It also added the missing hosted-auth sign-out control. Final local verification passed
+186 suites / 1,304 tests, the seven-suite / 47-test isolation gate, dependency/license and security
+audits with zero findings, TypeScript, and lint/format with the same 10 known warnings and no errors.
+
+Content-free evidence is stored at mode `0600` under
+`artifacts/preview-clone-rehearsal/phase3-auth-activation-20260909/`. It contains no addresses,
+links, credentials, cookies or database URLs. One active disposable browser session remains solely
+to verify the sign-out control. Await fresh operator confirmation before clicking it or deleting or
+disabling the disposable Neon/Vercel resources. After that cleanup, verify denial, remove the local
+ignored rehearsal environment file, and append the final teardown result here. Real-account linking,
+stable Preview promotion and every Production change remain separate gated decisions.
+
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
 The deferred Phase 2 release-blocking implementation is now completed and frozen at
