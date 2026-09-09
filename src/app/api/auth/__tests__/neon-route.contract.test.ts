@@ -50,4 +50,24 @@ describe("hosted-auth catch-all route", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(getNeonAuthServer).not.toHaveBeenCalled();
   });
+
+  it("expires the provider token and signed session cache after a successful sign-out", async () => {
+    const response = await POST(
+      new Request("https://distil.example/api/auth/sign-out", {
+        method: "POST",
+        headers: { origin: "https://distil.example" },
+      }),
+      context(["sign-out"])
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    const cookies = response.headers.getSetCookie();
+    expect(cookies).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^__Secure-neon-auth\.session_token=;.*Max-Age=0/),
+        expect.stringMatching(/^__Secure-neon-auth\.local\.session_data=;.*Max-Age=0/),
+      ])
+    );
+  });
 });

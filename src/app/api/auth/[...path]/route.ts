@@ -3,6 +3,23 @@ import { dispatchGatedNeonAuth, type NeonAuthHandler } from "@/lib/auth/neon-rou
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { AuthError } from "@/lib/auth/errors";
 
+const NEON_SESSION_COOKIES = [
+  "__Secure-neon-auth.session_token",
+  "__Secure-neon-auth.local.session_data",
+] as const;
+
+function expireNeonSessionCookies(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const name of NEON_SESSION_COOKIES) {
+    headers.append("set-cookie", `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function privateNoStore(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("cache-control", "private, no-store");
@@ -25,7 +42,10 @@ async function dispatch(
         return handlers[method as keyof typeof handlers] as NeonAuthHandler | undefined;
       },
     });
-    return privateNoStore(response);
+    const { path } = await context.params;
+    return privateNoStore(
+      response.ok && path.join("/") === "sign-out" ? expireNeonSessionCookies(response) : response
+    );
   } catch (error) {
     if (error instanceof AuthError) {
       return privateNoStore(
