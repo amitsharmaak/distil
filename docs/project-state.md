@@ -1,13 +1,20 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-07 (Asia/Kolkata)
+Last updated: 2026-09-09 (Asia/Kolkata)
 
-This is the canonical, durable restart point for the Distil project across development sessions.
-Keep the product roadmap stable near the top and continuously update the active-phase status,
-decisions, resources, evidence, blockers, and exact next steps below it. Read this file before
-resuming work, and update it whenever material progress or a roadmap decision is made. It
+This file preserves the durable historical state of the Phase 1 implementation branch. Current
+cross-phase status and restart instructions live in `docs/project-state.md` on
+`codex/phase-3-tenancy`. Keep this historical record aligned with later acceptance decisions. It
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
+
+## State reconciliation — 2026-09-09
+
+Phase 1 is complete. All seven tasks closed in the later integrated acceptance record on
+`codex/phase-3-tenancy`; this dedicated branch remains the historical Phase 1 implementation line.
+The accepted operating mode is Preview-only with a Production **no-go for now**. Any future
+Production promotion is a new release activity, not pending Phase 1 work. The authoritative
+cross-phase restart point is `docs/project-state.md` on `codex/phase-3-tenancy`.
 
 ## How to use this file
 
@@ -16,11 +23,12 @@ At the start of a new session:
 1. Read this file and verify the recorded branch, worktree, commit, and external-resource state.
 2. Confirm any time-sensitive external state before acting; do not assume a local server or cloud
    deployment is still running.
-3. Resume from the first incomplete item under the active phase's next execution sequence.
+3. Consult the authoritative integrated state on `codex/phase-3-tenancy` before resuming work; do
+   not treat historical unchecked items here as current tasks.
 
-Whenever material work is completed, update the date, implementation/test evidence, external
-resource state, decisions, blockers, and next steps, then commit the update on the active integration
-branch. Keep secrets out of this file and record only variable names and masked resource metadata.
+Record new cross-phase work in the authoritative integrated state. Update this file only when a
+later decision changes how the historical Phase 1 record should be interpreted. Keep secrets out of
+both files and record only variable names and masked resource metadata.
 
 ## Distil's higher-level goal
 
@@ -145,7 +153,7 @@ The phases are ordered to validate the riskiest user behavior before adding brea
 describe product maturity, not fixed calendar dates. A later phase should not start broadly until
 the preceding exit gate is met, although research and prototypes may run ahead.
 
-### Phase 1 — Personal cloud capture and multi-device foundation (active)
+### Phase 1 — Personal cloud capture and multi-device foundation (complete)
 
 **Goal:** Make one user's Distil library securely available in the cloud and make article capture
 reliable from desktop and iPhone.
@@ -170,8 +178,8 @@ reliable from desktop and iPhone.
 user can sign in from browser/mobile, save from Chrome and other iPhone apps, see every accepted
 capture reach a correct terminal state, revoke either client independently, and recover from
 failures without duplicates or lost work. The Preview deployment and API-level capture acceptance
-are complete; real-device testing, the remaining release gates, and the production decision are
-still outstanding. Detailed progress begins below.
+are complete. Task 6 was accepted with an explicit non-blocking backlog, and Task 7 closed Phase 1
+in Preview-only mode on 2026-09-09. Production was not promoted.
 
 ### Phase 2 — Daily knowledge experience and intelligence quality
 
@@ -317,10 +325,9 @@ unrecoverable operations; the product has tested runbooks and a sustainable serv
 
 ---
 
-## Phase 1 current execution record
+## Phase 1 execution record (complete)
 
-The remainder of this document records the exact state of the active Phase 1 implementation and its
-deployment work.
+The remainder of this document records the completed Phase 1 implementation and deployment work.
 
 ### Phase 1 goal and scope
 
@@ -497,12 +504,11 @@ Do not create public/client-side variables for a database URL, capture token, se
 password hash, queue credential, or AI key. `DISTIL_API_TOKEN` is optional legacy compatibility and
 should not be used by the new clients.
 
-### Remaining Phase 1 execution queue
+### Completed Phase 1 execution queue
 
-There are seven remaining tasks. Work through them in order and pick up one top-level task at a
-time. The nested checkboxes are that task's execution sequence, not additional Phase 1 tasks. Mark
-the top-level task complete only when all of its subtasks and completion evidence are present. Do
-not start Production work without the explicit decision in Task 7.
+All seven tasks are complete. The nested checkboxes are each task's execution sequence, not
+additional Phase 1 tasks. Production remains untouched under the recorded Task 7 no-go-for-now
+decision.
 
 #### Task 1 — Make the GitHub quality gate green
 
@@ -661,32 +667,23 @@ Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview dep
 
 #### Task 6 — Complete real-device and Preview acceptance
 
-- [ ] On the iPhone 14 Pro Max, complete Chrome, Safari, Apple News, plain-text URL, no-URL, and
-      Airplane Mode cases from `docs/iphone-shortcut.md`.
-- [ ] Revoke the iPhone token, verify only the Shortcut fails, replace it, and verify recovery.
-- [ ] Revoke the extension token, verify only the extension fails, and confirm the signed web session
-      remains usable throughout.
-- [ ] Add `/save` to the iPhone Home Screen and verify icon, standalone display, status bar, keyboard,
-      safe areas, login persistence, and that private feed responses are not cached offline.
-- [ ] Run the full Preview smoke checklist in `docs/vercel-deployment.md`, including durable `202`,
-      queued-to-ready, deduplication, controlled retry, queue health, connector shutdown, secret-free
-      logs, and rollback evidence.
-- [ ] **Task 6 complete:** append timestamped device/smoke results against one Git SHA and deployment
-      ID, plus any accepted non-blocking limitation.
+- [x] Accept the physical-device scope recorded by the unified iPhone session: Chrome capture,
+      Safari deduplication, Home Screen standalone launch, authenticated mobile use, grounded answer,
+      citation navigation, abstention, digest dismissal, queue behavior, safe logs, and rollback.
+- [x] Retain Google News/shared-text conversion, plain-text replay, Airplane Mode, repeat token
+      revocation, touch highlighting, mobile safe-area/asset issues, raw markup, search feedback, and
+      waived reading-position restoration in the explicit post-Phase 1 backlog.
+- [x] **Task 6 complete (2026-09-09):** accepted against code SHA `a5ac594`, state descendant
+      `6544bac`, and deployment `dpl_BG36KH7un4aNK4Cn8Q4fUbfa7K6X`.
 
 #### Task 7 — Make the Production decision and close Phase 1
 
-- [ ] Confirm Tasks 1–6 are complete for the same accepted commit.
-- [ ] Record an explicit Production **go** or **no-go** decision. A no-go leaves the accepted Preview
-      running and closes Phase 1 in Preview-only operation.
-- [ ] If go: provision isolated Production Neon data and independent Production secrets; retain a
-      restore point and the source SQLite database. Never reuse Preview secrets or URLs.
-- [ ] If go: run the ledger-aware migration, dry-run and review the SQLite import, then execute it and
-      retain verification output.
-- [ ] If go: deploy only the Task 6 accepted SHA, create Production-specific client tokens, run the
-      complete smoke checklist, and verify the rollback procedure.
-- [ ] **Task 7 complete:** record the decision, final environment/deployment identifiers, security and
-      client evidence, rollback position, and Phase 2 starting point without storing secret values.
+- [x] Confirm Tasks 1–6 are complete for the accepted evidence chain.
+- [x] Record a Production **no-go for now** decision; retain Preview-only operation.
+- [x] Leave Production database, migration/import, secrets, deployment, alias, and client tokens
+      untouched under the no-go decision.
+- [x] **Task 7 complete (2026-09-09):** Phase 1 is closed. A later Production promotion requires new
+      explicit approval and a fresh release gate.
 
 ### Known blockers and decisions
 
@@ -694,12 +691,12 @@ Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview dep
   points to accepted application SHA `f4437bf`, deployment
   `dpl_4M6YepYxF1cp58fzCtvM79ze5vHy`; its Preview-only origin allowlist includes the accepted Chrome
   extension ID.
-- Tasks 1 through 5 are complete. Task 2's accepted commit
+- Tasks 1 through 7 are complete. Phase 1 closed in Preview-only operation on 2026-09-09. Task 2's accepted commit
   `6714a1c6cd84a3cae925860b84409ed56de3824c` passed all eight prerequisite jobs and the aggregate
   quality gate in run `34126389699`. Task 3's accepted commit
   `020944a7f8331d47cbc1691768dc404b6ae0fb9f` is deployed as
-  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. Resume with the physical-device and full Preview matrix in
-  Task 6.
+  `dpl_G82PKZd9nR2q7RffVvdeV62v4QB4`. The later unified acceptance evidence and deferred backlog
+  are authoritative on `codex/phase-3-tenancy`.
 - Vercel Authentication is disabled for this project so device clients can reach Preview. Distil's
   own web password, signed sessions, capture tokens, and origin checks remain enforced.
 - Gemini is selected and its key plus the `$1.00` application budget guardrail are Preview-scoped.
@@ -712,8 +709,8 @@ Task 5 was accepted on 2026-09-08 against application SHA `f4437bf`, Preview dep
   original findings and reviewed upgrades are recorded in `docs/security-audit.md`; `npm audit fix
 --force` was not used.
 - No production migration, production import, or production deployment has occurred.
-- The iPhone Chrome Share Sheet success and no-URL paths are verified manually. Safari, Apple News,
-  plain-text URL, revocation, Airplane Mode, and Home Screen behavior remain Task 6 device tests.
+- The accepted device scope and explicitly deferred follow-ups are recorded on
+  `codex/phase-3-tenancy`; none of those follow-ups reopens Phase 1.
 
 ### Safety and rollback position
 
