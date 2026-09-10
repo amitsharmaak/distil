@@ -1547,7 +1547,25 @@ Phase 1–3 integration and Production-closure checkpoint `0d00e6b`. There was n
 The local-only `package-lock.json` modification and untracked `.nvmrc` in the former main checkout
 were explicitly discarded with operator approval before the fast-forward; the tracked Phase 3
 versions are now present. Future implementation, CI, and Vercel Production releases should originate
-from `main`. Historical phase branches are retained for evidence and have not been deleted.
+from `main`. Historical phase checkpoints are preserved as annotated tags; obsolete branches and
+their clean worktrees were removed in the cleanup recorded below.
+
+#### Repository branch and worktree cleanup — 2026-09-10
+
+The normalized `main` checkpoint `89e528d26cbc8ed07a2a59f97a2eede73939cdb4` passed all nine jobs
+in GitHub Actions run
+[34445387436](https://github.com/amitsharmaak/distil/actions/runs/34445387436). Vercel Production
+deployment `dpl_GuzfYKBR9eTHX9VPzoHg2yMbvXnz` is Ready from branch `main` at that exact SHA; the
+stable Production origin points to it and `/api/health` returns 200 with `cache-control: no-store`.
+
+Before cleanup, five annotated tags were pushed: `archive/phase-1-closure-2026-09-09`,
+`archive/phase-2-closure-2026-09-09`, `archive/phase-3-closure-2026-09-10`,
+`production/2026-09-10-main-normalized`, and
+`archive/legacy-unified-intelligence-layer-2026-03-12`. All 75 non-`main` remote branches, 74
+non-`main` local branches, and 62 clean secondary worktrees were then removed. No dirty worktree or
+uncommitted file was deleted during this branch-cleanup batch. The repository now has one local and
+remote branch, `main`, one worktree, and the five milestone tags. Future work should use short-lived
+`codex/<task>` branches and delete them after verified integration.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
