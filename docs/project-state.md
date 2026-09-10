@@ -11,9 +11,9 @@ provider keys.
 
 ## Current cross-phase status
 
-This file on `codex/phase-3-tenancy` is the authoritative cross-phase state. The dedicated Phase 1
-and Phase 2 branches retain their historical implementation records and point here for later
-acceptance decisions.
+This file on `main` is the authoritative cross-phase state. The dedicated Phase 1, Phase 2, and
+Phase 3 branches retain their historical implementation records; completed integration work is
+normalized onto `main` for all subsequent development and Production releases.
 
 - **Phase 1: complete.** All seven tasks are closed. Its original Preview-only closure remains the
   historical acceptance decision; the separately approved clean-start Production release is now
@@ -26,6 +26,10 @@ acceptance decisions.
 - **Phase 3: complete and live in Production.** Wave 4 remains frozen at
   `b93c2bac47f1fd46d83e9c05b05b3d644e768927`; clean-start Production activation and its focused
   first-user smoke are complete at release SHA `28a48f4211a142d5efe3e2744acf83acf5bc2262`.
+
+Repository normalization completed on 2026-09-10 by fast-forwarding `main` from `6852686` through
+the complete `codex/phase-3-tenancy` history at Production-closure checkpoint `0d00e6b`. The phase
+branch remains as historical evidence, but `main` is now the integration and release branch.
 
 The post-freeze PostgreSQL verification blocker is **resolved** at
 `874d55637da661b9a6cb29b63628ec79ba3c79af`. GitHub Actions run
@@ -1535,6 +1539,15 @@ Under the accepted hobby-project posture, the already-rehearsed sign-out/return 
 synthetic, failure-injection and device matrices were not repeated. Production activation is closed;
 the next work is ordinary use by Amit, then invitations for two or three trusted colleagues when he
 chooses.
+
+#### Main-branch normalization — 2026-09-10
+
+`main` was fast-forwarded without a merge commit from its former SHA `6852686` through the complete
+Phase 1–3 integration and Production-closure checkpoint `0d00e6b`. There was no branch divergence.
+The local-only `package-lock.json` modification and untracked `.nvmrc` in the former main checkout
+were explicitly discarded with operator approval before the fast-forward; the tracked Phase 3
+versions are now present. Future implementation, CI, and Vercel Production releases should originate
+from `main`. Historical phase branches are retained for evidence and have not been deleted.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
