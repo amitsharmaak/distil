@@ -11,14 +11,12 @@ import { AIProviderError } from "@/lib/ai/errors";
 import { AIQuotaExceededError } from "@/lib/ai/router";
 beforeEach(() => {
   jest.clearAllMocks();
-  jest
-    .mocked(requireTenantRoute)
-    .mockResolvedValue({
-      context: {},
-      repositories: {
-        items: { findById: jest.fn().mockResolvedValue({ id: "one", url: "https://example.com" }) },
-      },
-    } as never);
+  jest.mocked(requireTenantRoute).mockResolvedValue({
+    context: {},
+    repositories: {
+      items: { findById: jest.fn().mockResolvedValue({ id: "one", url: "https://example.com" }) },
+    },
+  } as never);
 });
 const request = () =>
   new NextRequest("https://distil.test/api/ai/summarize", {

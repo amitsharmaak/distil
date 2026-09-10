@@ -9,12 +9,10 @@ jest.mock("remark-gfm", () => ({ __esModule: true, default: () => {} }));
 jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "" } }));
 beforeEach(() => jest.mocked(global.fetch).mockReset());
 it("keeps the original readable after generation fails", async () => {
-  jest
-    .mocked(global.fetch)
-    .mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: "Service unavailable" }),
-    } as Response);
+  jest.mocked(global.fetch).mockResolvedValue({
+    ok: false,
+    json: async () => ({ error: "Service unavailable" }),
+  } as Response);
   render(<AISummary itemId="one" ogSummary="Original article remains readable" />);
   fireEvent.click(screen.getByText("Generate AI Summary"));
   await screen.findByText("Service unavailable");

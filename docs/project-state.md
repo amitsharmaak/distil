@@ -93,8 +93,10 @@ Reader failures preserve original/cached content; retry retains the failed lengt
 A synthetic summary using the local Gemini credential and the actual restricted Production
 database role reproduced a primary-model timeout and succeeded through the fallback. All test
 database writes were rolled back; no library item was inserted. The separate Production provider
-credential is protected and was not read or changed. Focused regression tests, TypeScript and lint
-are being completed before PR/CI and deployment verification. Preserve the empty library.
+credential is protected and was not read or changed. All 55 focused regression tests and TypeScript pass. PR #3 runs full CI; the first run passed
+Production build, PostgreSQL integration, security, unit/component tests, coverage and extension
+E2E. Two new test files needed a second formatting pass and were corrected before release.
+Web/mobile E2E and final exact-SHA CI/deployment verification remain pending. Preserve the empty library.
 
 ## How to use this file
 
