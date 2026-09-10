@@ -134,6 +134,61 @@ describe("invitation-gated magic links", () => {
     await expect(response.json()).resolves.toEqual({ accepted: true });
   });
 
+  it("does not disclose a provider rejection for a known returning user", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByEmail).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      primaryEmail: "amit@example.com",
+      status: "active",
+    } as never);
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest.fn().mockResolvedValue({ error: new Error("provider unavailable") }),
+    };
+    const response = await createReturningMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+    })(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com" }),
+      })
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ accepted: true });
+  });
+
+  it("rejects malformed returning-user input and fails closed on infrastructure errors", async () => {
+    const repositories = repository();
+    const provider = { getSession: jest.fn(), requestMagicLink: jest.fn() };
+    const handler = createReturningMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+    });
+    const malformed = await handler(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "not-an-email" }),
+      })
+    );
+    expect(malformed.status).toBe(400);
+
+    jest.mocked(repositories.findAccountByEmail).mockRejectedValueOnce(new Error("database down"));
+    const unavailable = await handler(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com" }),
+      })
+    );
+    expect(unavailable.status).toBe(503);
+  });
+
   it("completes returning sign-in only for an already mapped active identity", async () => {
     const repositories = repository();
     jest.mocked(repositories.findAccountByIdentity).mockResolvedValue({
@@ -157,6 +212,30 @@ describe("invitation-gated magic links", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(`${origin}/`);
+  });
+
+  it("denies returning sign-in when the mapped identity is no longer active", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByIdentity).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      status: "suspended",
+    } as never);
+    const provider = {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
+          session: { id: "provider-session", createdAt: new Date() },
+        },
+        error: null,
+      }),
+    };
+    const response = await createReturningMagicLinkCompletionHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+    })();
+
+    expect(response.headers.get("location")).toBe(`${origin}/access-denied`);
   });
 
   it("returns the provider verifier-exchange redirect before invitation completion", async () => {
