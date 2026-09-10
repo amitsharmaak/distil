@@ -413,7 +413,8 @@ describe("AccountCenter lifecycle recovery", () => {
         })
       )
     );
-    expect(await screen.findByText("Your account is ready.")).toBeInTheDocument();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
     unmount();
 
     fetchMock.mockReset();

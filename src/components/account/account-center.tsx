@@ -175,7 +175,12 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     }
     const payload = (await response.json()) as { account: AccountProfile };
     setAccount(payload.account);
-    setNotice(onboarding ? "Your account is ready." : "Account details saved.");
+    if (onboarding) {
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+    setNotice("Account details saved.");
   }
 
   async function revokeSession(id: string) {

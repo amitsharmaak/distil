@@ -5,6 +5,7 @@ import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 import { createDefaultCaptureProcessor, CaptureWorker } from "@/lib/capture/worker";
 import { parseCaptureQueueMessage, readLegacyCaptureQueueBridge } from "@/lib/capture/legacy-queue";
 import { getTenantRepositories } from "@/lib/database";
+import { indexCapturedItem } from "@/lib/knowledge/capture-index";
 import { createCaptureQueueConsumer } from "@/lib/queue/consumer";
 
 export const runtime = "nodejs";
@@ -42,6 +43,9 @@ async function consumeCaptureMessage(message: CaptureQueueMessageV2): Promise<vo
       context,
       items: repositories.items,
       rawContent: repositories.rawContent,
+      enqueueEnrichment: async (itemId) => {
+        await indexCapturedItem({ context, repositories, itemId });
+      },
     }),
     audit: async ({ action, traceId }) => {
       await repositories.agent.insertAuditLog({ id: crypto.randomUUID(), action, traceId });
