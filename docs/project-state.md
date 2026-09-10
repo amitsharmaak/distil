@@ -27,9 +27,8 @@ normalized onto `main` for all subsequent development and Production releases.
   `b93c2bac47f1fd46d83e9c05b05b3d644e768927`; clean-start Production activation and its focused
   first-user smoke are complete at release SHA `28a48f4211a142d5efe3e2744acf83acf5bc2262`.
 
-The custom-domain cutover to `https://distilai.app` is live and awaiting only Amit's returning-user
-magic-link smoke. The former stable origin remains trusted temporarily as a rollback path; remove
-that trust only after the new-domain session is confirmed.
+The custom-domain cutover to `https://distilai.app` is complete. Amit confirmed returning-user
+magic-link sign-in and Today on the new origin, and Neon Auth now trusts only the new apex domain.
 
 Repository normalization completed on 2026-09-10 by fast-forwarding `main` from `6852686` through
 the complete `codex/phase-3-tenancy` history at Production-closure checkpoint `0d00e6b`. The phase
@@ -1544,13 +1543,13 @@ synthetic, failure-injection and device matrices were not repeated. Production a
 the next work is ordinary use by Amit, then invitations for two or three trusted colleagues when he
 chooses.
 
-#### Custom Production domain cutover — awaiting authenticated smoke — 2026-09-10 16:10 IST
+#### Custom Production domain cutover complete — 2026-09-10
 
 `distilai.app` was purchased through Vercel and attached to the existing `project-evgf1` project.
 The apex is the canonical Production origin, and `www.distilai.app` returns a permanent redirect to
-the apex. Vercel Production origin variables and Neon Auth's branch-scoped trusted-domain list now
-include the apex; the former `distil-pv-1850.vercel.app` trusted origin remains only for rollback
-until the authenticated smoke completes.
+the apex. Vercel Production origin variables use the apex. After the authenticated smoke passed,
+the former `distil-pv-1850.vercel.app` origin was removed from Neon Auth; the branch-scoped trusted
+domain list now contains only `https://distilai.app`.
 
 Moving to a new cookie origin exposed a pre-existing returning-user gap: `/invite` accepted only a
 fresh operator invitation, while an existing browser session could not move between domains. Release
@@ -1570,10 +1569,10 @@ errors, and the Production build. Deployment `dpl_25ZWEPW1rSgGZPLuHqRW5XGxGJqw` 
 aliased to the apex and `www`. Unauthenticated health, rendered sign-in page, non-disclosing unknown
 email response, hostile-origin rejection, and `www` redirect checks passed.
 
-Next steps: Amit enters the already-linked account email at `https://distilai.app/invite`, opens the
-one-time link on the same device, and confirms that Today loads. After that succeeds, remove the old
-Neon trusted origin and update the browser-extension and iPhone Shortcut API bases to
-`https://distilai.app`; then mark this cutover complete.
+Amit completed the returning-user magic-link flow on `https://distilai.app` and confirmed that Today
+loads. Production health remained green after the old trusted origin was removed. The non-blocking
+physical-client handoff is to change the saved Distil origin in the browser extension and the API
+base in the iPhone Shortcut to `https://distilai.app` before their next capture.
 
 #### Main-branch normalization — 2026-09-10
 
