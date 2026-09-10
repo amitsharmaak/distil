@@ -10,7 +10,11 @@
  */
 
 import crypto from "crypto";
-import { createTenantAIRouter, getEffectiveModel } from "./router";
+import { createTenantAIRouter } from "./router";
+import { SchemaType, type ResponseSchema } from "@google/generative-ai";
+import { z } from "zod";
+import { AIProviderError } from "./errors";
+import type { AITask } from "./ai-config";
 import {
   summarizePrompt,
   chunkSummarizePrompt,
@@ -21,6 +25,23 @@ import type { RepositorySet } from "@/lib/repositories/ports";
 import type { SummaryOutput } from "./types";
 
 export type { SummaryOutput };
+
+const summarySchema = z.object({
+  overview: z.string().trim().min(1),
+  keyPoints: z.array(z.string().trim().min(1)).min(1),
+  whyItMatters: z.string().optional(),
+  notableQuotes: z.array(z.string()).optional(),
+});
+const responseSchema: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    overview: { type: SchemaType.STRING },
+    keyPoints: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    whyItMatters: { type: SchemaType.STRING },
+    notableQuotes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+  },
+  required: ["overview", "keyPoints"],
+};
 
 /** Estimate token count as ~4 chars per token. */
 function estimateTokens(text: string): number {
@@ -135,6 +156,19 @@ export async function generateSummary(
   const estimatedTokens = estimateTokens(content);
 
   let output: SummaryOutput;
+  let model = "";
+  const ai = createTenantAIRouter(context, repositories);
+  async function generate(prompt: string, task: AITask): Promise<SummaryOutput> {
+    const result = await ai.generateJSONWithMetadata<SummaryOutput>(prompt, task, {
+      responseSchema,
+      timeoutMs: 15_000,
+      maxAttempts: 1,
+    });
+    const parsed = summarySchema.safeParse(result.value);
+    if (!parsed.success) throw new AIProviderError("invalid_output", result.provider, result.model);
+    model = result.model;
+    return parsed.data;
+  }
 
   if (estimatedTokens > 8000) {
     // Map-reduce: chunk → summarize each → synthesize
@@ -144,44 +178,24 @@ export async function generateSummary(
     const chunkOutputs: SummaryOutput[] = [];
     for (let i = 0; i < chunks.length; i++) {
       const prompt = chunkSummarizePrompt(chunks[i], i, chunks.length);
-      const chunkOutput = await createTenantAIRouter(
-        context,
-        repositories
-      ).generateJSON<SummaryOutput>(prompt, "summarize");
+      const chunkOutput = await generate(prompt, "summarize");
       chunkOutputs.push(chunkOutput);
     }
 
     const chunkSummaries = chunkOutputs.map((o) => JSON.stringify(o, null, 2));
     const synthesizePrompt = synthesizeChunkSummariesPrompt(chunkSummaries, item);
-    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
-      synthesizePrompt,
-      "summarize-complex"
-    );
+    output = await generate(synthesizePrompt, "summarize-complex");
   } else if (estimatedTokens >= 2000) {
     // Medium: single summarize-complex call
     const prompt = summarizePrompt(item, length);
-    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
-      prompt,
-      "summarize-complex"
-    );
+    output = await generate(prompt, "summarize-complex");
   } else {
     // Short: single summarize call
     const prompt = summarizePrompt(item, length);
-    output = await createTenantAIRouter(context, repositories).generateJSON<SummaryOutput>(
-      prompt,
-      "summarize"
-    );
+    output = await generate(prompt, "summarize");
   }
 
   const summary = renderSummaryMarkdown(output);
-  const task =
-    estimatedTokens > 8000
-      ? "summarize-complex"
-      : estimatedTokens >= 2000
-        ? "summarize-complex"
-        : "summarize";
-  const { model } = getEffectiveModel(task);
-
   await repositories.summaries.upsert({
     id: crypto.randomUUID(),
     itemId,

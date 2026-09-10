@@ -59,6 +59,43 @@ GitHub Actions run
 [34346570029](https://github.com/amitsharmaak/distil/actions/runs/34346570029) passed every quality
 job for exact state checkpoint `4874c1d6ca50fe7745b484387f55e77fe6b2e67b`.
 
+### Production library reset — 2026-09-10
+
+At Amit's explicit request for a clean slate before adding content incrementally, the Production
+library on Neon branch `br-damp-wildflower-b3kw15cu` (`distil-production`, project
+`floral-river-70536503`) was cleared in one database transaction. The operation removed 3 items,
+6 capture receipts, 3 raw responses, 4 content versions, 199 chunks, 4 intelligence artifacts and
+4 knowledge-backfill checkpoints. All 32 targeted content/processing tables were verified empty,
+including summaries, notes, highlights, collections, digests, research, chat and job queues.
+The preflight found no queued/processing captures and no account exports.
+
+Account identity, hosted authentication, the existing capture token, invitations, preferences,
+settings, security/usage accounting and migration records were preserved. No application code,
+deployment, Preview data or provider configuration changed. No new captures were submitted during
+verification. Next: add one item at a time and check capture, readable extraction, summary and search;
+the separately observed summary API failure remains unresolved by this data reset.
+
+### Summary reliability repair — 2026-09-10 (verification in progress)
+
+The screenshot's summary request returned HTTP 500 on the old Vercel-origin deployment
+`dpl_DX7YbDtESu2kCJ5vsAgQU8zQ8yD7` at `ba303400`; its log omitted the underlying SDK error.
+Live inspection found `distilai.app` on `ebbd9fb`, while the old Vercel origin still served the
+older deployment. The original historical failure cannot be classified retroactively.
+
+The current tenant-aware summary path had lost the earlier native structured-output and
+model-quota fallback protections. Branch `codex/summary-reliability` restores native Gemini JSON,
+validates required summary fields before caching, and performs a separately budget-admitted
+same-provider fallback to `gemini-3.1-flash-lite` on quota, timeout or service failure. Each summary
+model attempt has a 15-second timeout; cache and audit metadata use the actual successful model.
+Sanitized error codes distinguish provider failures from tenant budgets without exposing payloads.
+Reader failures preserve original/cached content; retry retains the failed length and force flag.
+
+A synthetic summary using the local Gemini credential and the actual restricted Production
+database role reproduced a primary-model timeout and succeeded through the fallback. All test
+database writes were rolled back; no library item was inserted. The separate Production provider
+credential is protected and was not read or changed. Focused regression tests, TypeScript and lint
+are being completed before PR/CI and deployment verification. Preserve the empty library.
+
 ## How to use this file
 
 At the start of a new session:
