@@ -1,6 +1,8 @@
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
+import type { ExtractedContent } from "@/lib/content-extractor";
 import type { ProcessingResult, RawContent } from "@/lib/intelligence/types";
+import { extractOGFromHtml } from "@/lib/og";
 import type {
   CaptureRecord,
   CaptureRepository,
@@ -11,10 +13,10 @@ import { captureQueueMessageSchema } from "./schema";
 import { CaptureProcessingError, CaptureRetryScheduledError, processingError } from "./errors";
 import { fetchArticle, type SafeFetchOptions } from "./fetch";
 import { normalizeCaptureUrl } from "./url-safety";
-import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 
 export const MAX_CAPTURE_ATTEMPTS = 5;
 export const CAPTURE_PROCESSING_STALE_MS = 6 * 60 * 1000;
+const MIN_READABLE_TEXT_CHARACTERS = 80;
 
 export interface CaptureProcessorResult {
   status: "ready" | "rejected";
@@ -141,6 +143,7 @@ export interface DefaultCaptureProcessorDependencies {
   items: ItemRepository;
   rawContent?: RawContentRepository;
   fetchOptions?: SafeFetchOptions;
+  extractContent?: (html: string, url: string) => ExtractedContent | null;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
   enqueueEnrichment?: (itemId: string) => Promise<void>;
   now?: () => Date;
@@ -189,23 +192,47 @@ export function createDefaultCaptureProcessor(
       const existing = await dependencies.items.findByNormalizedUrl(
         normalizeCaptureUrl(article.url)
       );
-      const item =
-        existing ??
-        (await dependencies.items.insert({
-          id: capture.id,
-          title: capture.title ?? new URL(article.url).hostname,
-          summary: capture.notes ?? capture.title ?? "Captured for later reading",
-          fullContent: sanitizeArticleHtml(article.body),
-          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
-          contentType: "article",
-          topics: capture.topics,
-          url: article.url,
-          priority: capture.priority,
-          isRead: false,
-          createdAt: fetchedAt,
-          contentExtractedAt: fetchedAt,
-          processingStatus: "ready",
-        }));
+
+      if (existing) {
+        await rawContent.attachItem(capture.id, existing.id);
+        return { status: "ready", itemId: existing.id };
+      }
+
+      const extractContent =
+        dependencies.extractContent ??
+        (await import("@/lib/content-extractor")).extractContentFromHtml;
+      const extracted = extractContent(article.body, article.url);
+      const readableText = extracted?.textContent.replace(/\s+/g, " ").trim() ?? "";
+      if (!extracted?.content || readableText.length < MIN_READABLE_TEXT_CHARACTERS) {
+        return {
+          status: "rejected",
+          reason: "Distil could not identify enough readable article content on this page",
+        };
+      }
+
+      const og = extractOGFromHtml(article.body);
+      const item = await dependencies.items.insert({
+        id: capture.id,
+        title: capture.title ?? og.title ?? extracted.title ?? new URL(article.url).hostname,
+        summary:
+          capture.notes ??
+          og.description ??
+          `${readableText.slice(0, 277)}${readableText.length > 277 ? "..." : ""}`,
+        fullContent: extracted.content,
+        sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+        contentType: "article",
+        topics: capture.topics,
+        author: extracted.byline ?? og.author ?? undefined,
+        publication: og.siteName ?? undefined,
+        url: article.url,
+        priority: capture.priority,
+        isRead: false,
+        createdAt: fetchedAt,
+        thumbnailUrl: og.image ?? undefined,
+        extractedLinks: extracted.extractedLinks,
+        contentExtractedAt: fetchedAt,
+        processingStatus: "ready",
+      });
       await rawContent.attachItem(capture.id, item.id);
       // Capture durability is independent of AI availability or quota. Enrichment
       // is best-effort asynchronous work and never rolls the accepted item back.
