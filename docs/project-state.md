@@ -75,7 +75,7 @@ deployment, Preview data or provider configuration changed. No new captures were
 verification. Next: add one item at a time and check capture, readable extraction, summary and search;
 the separately observed summary API failure remains unresolved by this data reset.
 
-### Summary reliability repair — 2026-09-10 (verification in progress)
+### Summary reliability repair — 2026-09-10
 
 The screenshot's summary request returned HTTP 500 on the old Vercel-origin deployment
 `dpl_DX7YbDtESu2kCJ5vsAgQU8zQ8yD7` at `ba303400`; its log omitted the underlying SDK error.
@@ -83,7 +83,8 @@ Live inspection found `distilai.app` on `ebbd9fb`, while the old Vercel origin s
 older deployment. The original historical failure cannot be classified retroactively.
 
 The current tenant-aware summary path had lost the earlier native structured-output and
-model-quota fallback protections. Branch `codex/summary-reliability` restores native Gemini JSON,
+model-quota fallback protections. PR [#3](https://github.com/amitsharmaak/distil/pull/3), merged at
+`e753d2ca5a0a6cae936a34cd79db85b641098425`, restores native Gemini JSON,
 validates required summary fields before caching, and performs a separately budget-admitted
 same-provider fallback to `gemini-3.1-flash-lite` on quota, timeout or service failure. Each summary
 model attempt has a 15-second timeout; cache and audit metadata use the actual successful model.
@@ -93,10 +94,20 @@ Reader failures preserve original/cached content; retry retains the failed lengt
 A synthetic summary using the local Gemini credential and the actual restricted Production
 database role reproduced a primary-model timeout and succeeded through the fallback. All test
 database writes were rolled back; no library item was inserted. The separate Production provider
-credential is protected and was not read or changed. All 55 focused regression tests and TypeScript pass. PR #3 runs full CI; the first run passed
-Production build, PostgreSQL integration, security, unit/component tests, coverage and extension
-E2E. Two new test files needed a second formatting pass and were corrected before release.
-Web/mobile E2E and final exact-SHA CI/deployment verification remain pending. Preserve the empty library.
+credential is protected and was not read or changed. All 55 focused regression tests and TypeScript pass. Full exact-head CI passed at
+`75db750f856954476366d34e01437dd1fad10159` in runs
+[34479213836](https://github.com/amitsharmaak/distil/actions/runs/34479213836) and
+[34479217348](https://github.com/amitsharmaak/distil/actions/runs/34479217348), including PostgreSQL,
+security, web/mobile and extension E2E, and the Production build. Changed coverage was 95.7% of
+lines and 93.3% of branches. Lint has the same 10 warnings and zero errors. The two first-run
+formatting findings were corrected before merge.
+
+Release uses the existing exact-SHA Production gate: a main commit must pass CI before updating
+`DISTIL_PHASE3_PRODUCTION_SHA` and redeploying that commit. The first automatic deployment of the
+merge correctly stopped on the old release pin. Documentation-only checkpoint commits contain
+no further runtime changes. Both the custom domain and legacy Vercel alias must resolve to the
+released deployment so extension traffic cannot use the obsolete code. Next product verification
+is one deliberate user capture on `https://distilai.app`; preserve the empty library until then.
 
 ## How to use this file
 
