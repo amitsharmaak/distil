@@ -94,7 +94,8 @@ Reader failures preserve original/cached content; retry retains the failed lengt
 A synthetic summary using the local Gemini credential and the actual restricted Production
 database role reproduced a primary-model timeout and succeeded through the fallback. All test
 database writes were rolled back; no library item was inserted. The separate Production provider
-credential is protected and was not read or changed. All 55 focused regression tests and TypeScript pass. Full exact-head CI passed at
+credential is protected and was not read or changed. All 56 focused regression tests and TypeScript pass. The final accounting check restores the
+previously accepted fallback model rates (USD 0.25/M input tokens and 1.5/M output tokens). Full exact-head CI passed at
 `75db750f856954476366d34e01437dd1fad10159` in runs
 [34479213836](https://github.com/amitsharmaak/distil/actions/runs/34479213836) and
 [34479217348](https://github.com/amitsharmaak/distil/actions/runs/34479217348), including PostgreSQL,

@@ -89,3 +89,21 @@ it.each([503, 504])("falls back for a temporary model failure (%s)", async (stat
       .model
   ).toBe("gemini-3.1-flash-lite");
 });
+
+it("accounts for fallback tokens at the accepted model rates", async () => {
+  const output = { overview: "ok", keyPoints: ["one"] };
+  generateJSON
+    .mockRejectedValueOnce(Object.assign(new Error("quota"), { status: 429 }))
+    .mockResolvedValueOnce(output);
+  await getRouter().generateTenantJSON(context, repos, "synthetic", "summarize");
+  const cost =
+    (Math.ceil("synthetic".length / 4) * 0.25 +
+      Math.ceil(JSON.stringify(output).length / 4) * 1.5) /
+    1_000_000;
+  expect(repos.agent.insertAuditLog).toHaveBeenCalledWith(
+    expect.objectContaining({ cost: expect.closeTo(cost, 12) })
+  );
+  expect(repos.lifecycle.consumeUsage).toHaveBeenLastCalledWith(
+    expect.objectContaining({ costMicrousd: Math.round(cost * 1_000_000) })
+  );
+});

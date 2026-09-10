@@ -47,7 +47,7 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
  */
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
-  "gemini-3.1-flash-lite": { input: 0.075, output: 0.3 },
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
   "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
   "gemini-2.5-flash-lite": { input: 0.075, output: 0.3 },
