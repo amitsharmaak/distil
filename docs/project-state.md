@@ -27,6 +27,10 @@ normalized onto `main` for all subsequent development and Production releases.
   `b93c2bac47f1fd46d83e9c05b05b3d644e768927`; clean-start Production activation and its focused
   first-user smoke are complete at release SHA `28a48f4211a142d5efe3e2744acf83acf5bc2262`.
 
+The custom-domain cutover to `https://distilai.app` is live and awaiting only Amit's returning-user
+magic-link smoke. The former stable origin remains trusted temporarily as a rollback path; remove
+that trust only after the new-domain session is confirmed.
+
 Repository normalization completed on 2026-09-10 by fast-forwarding `main` from `6852686` through
 the complete `codex/phase-3-tenancy` history at Production-closure checkpoint `0d00e6b`. The phase
 branch remains as historical evidence, but `main` is now the integration and release branch.
@@ -1539,6 +1543,37 @@ Under the accepted hobby-project posture, the already-rehearsed sign-out/return 
 synthetic, failure-injection and device matrices were not repeated. Production activation is closed;
 the next work is ordinary use by Amit, then invitations for two or three trusted colleagues when he
 chooses.
+
+#### Custom Production domain cutover — awaiting authenticated smoke — 2026-09-10 16:10 IST
+
+`distilai.app` was purchased through Vercel and attached to the existing `project-evgf1` project.
+The apex is the canonical Production origin, and `www.distilai.app` returns a permanent redirect to
+the apex. Vercel Production origin variables and Neon Auth's branch-scoped trusted-domain list now
+include the apex; the former `distil-pv-1850.vercel.app` trusted origin remains only for rollback
+until the authenticated smoke completes.
+
+Moving to a new cookie origin exposed a pre-existing returning-user gap: `/invite` accepted only a
+fresh operator invitation, while an existing browser session could not move between domains. Release
+`cbd489a2041a47a6736de9cd7884d03eb0bcd4b9` adds an existing-account magic-link path without
+opening self-registration. Provider dispatch requires an exact normalized-email match to both an
+active internal user and an existing Neon identity; unknown, inactive and rate-limited addresses
+receive the same accepted response without provider dispatch. Migration
+`0009_phase3_returning_auth.sql` is applied and verified in Production with only the restricted
+runtime function grant.
+
+GitHub Actions run
+[34466491421](https://github.com/amitsharmaak/distil/actions/runs/34466491421) passed all eight jobs
+for the exact release SHA. Local verification passed 187 coverage suites / 1,262 tests with 96.1%
+changed lines and 88.4% changed branches, all 134 unit suites / 963 tests, the focused nine-test
+PostgreSQL lifecycle/auth suite, TypeScript, lint/format with the existing 10 warnings and zero
+errors, and the Production build. Deployment `dpl_25ZWEPW1rSgGZPLuHqRW5XGxGJqw` is Ready and
+aliased to the apex and `www`. Unauthenticated health, rendered sign-in page, non-disclosing unknown
+email response, hostile-origin rejection, and `www` redirect checks passed.
+
+Next steps: Amit enters the already-linked account email at `https://distilai.app/invite`, opens the
+one-time link on the same device, and confirms that Today loads. After that succeeds, remove the old
+Neon trusted origin and update the browser-extension and iPhone Shortcut API bases to
+`https://distilai.app`; then mark this cutover complete.
 
 #### Main-branch normalization — 2026-09-10
 
