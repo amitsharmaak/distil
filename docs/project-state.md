@@ -23,10 +23,9 @@ acceptance decisions.
   explicitly deferred `BUG-IOS-002`, anchored highlighting from touch selection, to the non-blocking
   backlog. Semantic/vector retrieval and sophisticated multi-provider failover remain optional Phase
   2.x enhancements.
-- **Phase 3: implementation accepted; Production activation in progress.** Wave 4 is frozen at
-  `b93c2bac47f1fd46d83e9c05b05b3d644e768927`. The separately approved clean-start Production
-  deployment is live at the stable Production origin. The first invitation has been issued; initial
-  sign-in and the small user-level product smoke remain.
+- **Phase 3: complete and live in Production.** Wave 4 remains frozen at
+  `b93c2bac47f1fd46d83e9c05b05b3d644e768927`; clean-start Production activation and its focused
+  first-user smoke are complete at release SHA `28a48f4211a142d5efe3e2744acf83acf5bc2262`.
 
 The post-freeze PostgreSQL verification blocker is **resolved** at
 `874d55637da661b9a6cb29b63628ec79ba3c79af`. GitHub Actions run
@@ -1495,14 +1494,13 @@ sign-out/sign-in. No legacy backup, import, ownership backfill, account linking 
 required. Production rollback may use the prior deployment or recreate the empty environment while it
 remains disposable.
 
-#### Clean-start Production deployment checkpoint — 2026-09-10 03:12 IST
+#### Clean-start Production activation complete — 2026-09-10 11:50 IST
 
-Production is live from exact release SHA `7b83ace5c9f1072f1be97a02dc44462750545615`.
+Production is live from exact release SHA `28a48f4211a142d5efe3e2744acf83acf5bc2262`.
 GitHub Actions run
-[34407300214](https://github.com/amitsharmaak/distil/actions/runs/34407300214) passed the full
-nine-job quality gate for that SHA. The two commits after functional activation commit `850b425`
-are metadata-only author-identity commits; GitHub links the final commit to the repository owner and
-the tested application tree is unchanged.
+[34444029503](https://github.com/amitsharmaak/distil/actions/runs/34444029503) passed the full
+nine-job quality gate for that SHA. Initial bootstrap release `7b83ace` and CI run `34407300214`
+remain the predecessor evidence; `28a48f4` contains the two focused fixes found by the live smoke.
 
 Fresh Neon branch `br-damp-wildflower-b3kw15cu` (`distil-production`) in project
 `floral-river-70536503` received ordinary migrations `0001` through `0004`, the separated Phase 3
@@ -1512,17 +1510,31 @@ the restricted runtime login rather than the owner role. Branch-scoped hosted au
 magic links, sign-up controlled by the application invitation gate, no password or OAuth providers,
 and exactly `https://distil-pv-1850.vercel.app` as its trusted domain.
 
-Vercel Production deployment `dpl_BPBRvEN5zYgmxMWN4V8p8DKgF22f` is Ready and the stable origin
+Vercel Production deployment `dpl_6TgNfMKoNmwwCAYeo3jhW8FgQs6A` is Ready and the stable origin
 `https://distil-pv-1850.vercel.app` points to it. The build passed the SHA-bound hosted-auth
 activation preflight. Live health returned 200 with `cache-control: no-store`; unauthenticated
 `/account`, `/feed` and `/api/v1/feed` requests redirected to `/invite`. The first owner invitation
-was issued and opened privately in the Distil browser tab without recording its address or token.
+completed hosted-auth sign-in and onboarding without recording its address, token or cookies.
 
-The remaining proportionate acceptance is interactive: Amit enters the invited email in the open
-tab, requests and opens the magic link in that same browser, then verifies one capture,
-feed/reader visibility, one search, one grounded answer and sign-out/sign-in. Do not rerun the full
-synthetic, failure-injection or device matrices unless this smoke exposes a regression. After the
-interactive smoke, record its content-free result and close the Production activation checkpoint.
+The focused authenticated smoke passed Today, capture, durable ready state, feed visibility, the
+reader, keyword search and grounded citations. The initial Wikipedia candidate correctly surfaced
+its upstream HTTP 403; the MDN HTTP Caching article then reached ready and was visible in Feed and
+Reader. Search returned 34 tenant-scoped matches, and Ask produced an exact-source citation fallback
+without inventing an answer when live model generation was unavailable. The known raw-HTML search
+snippet defect remains `BUG-CONTENT-001`; monitor model generation on ordinary use and investigate
+only if fallback recurs.
+
+The smoke exposed two real integration defects. Onboarding saved successfully but did not navigate
+to Today; it now replaces the route with `/` after the account update. More importantly, new captures
+were marked ready without creating Phase 2 content versions or chunks. The capture queue now performs
+an idempotent deterministic knowledge-index step. The one predecessor MDN item received a bounded
+catch-up pass; a fresh post-patch Cache-Control capture automatically reached ready and created 88
+tenant-owned chunks. Focused local verification passed 3 suites / 33 tests, TypeScript and lint.
+
+Under the accepted hobby-project posture, the already-rehearsed sign-out/return flow and full
+synthetic, failure-injection and device matrices were not repeated. Production activation is closed;
+the next work is ordinary use by Amit, then invitations for two or three trusted colleagues when he
+chooses.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
