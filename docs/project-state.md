@@ -1570,9 +1570,34 @@ aliased to the apex and `www`. Unauthenticated health, rendered sign-in page, no
 email response, hostile-origin rejection, and `www` redirect checks passed.
 
 Amit completed the returning-user magic-link flow on `https://distilai.app` and confirmed that Today
-loads. Production health remained green after the old trusted origin was removed. The non-blocking
-physical-client handoff is to change the saved Distil origin in the browser extension and the API
-base in the iPhone Shortcut to `https://distilai.app` before their next capture.
+loads. Production health remained green after the old trusted origin was removed. The browser
+extension is now configured for `https://distilai.app`; its fresh TechCrunch capture reached the
+Production queue. Changing the iPhone Shortcut API base to the apex remains a non-blocking physical
+handoff before its next capture.
+
+#### Production reader extraction repair complete — 2026-09-10
+
+A real browser-extension capture of a public TechCrunch article exposed a queue-composition defect:
+the durable non-pipeline path sanitized and stored the complete fetched page instead of running the
+already-available Readability extractor. The item was marked `ready` with 25,211 characters of
+navigation, promotion and article markup even though the preserved 213,837-character response
+contained the complete article. This was not an extension, paywall or upstream-fetch failure.
+
+PR [#1](https://github.com/amitsharmaak/distil/pull/1) now extracts and sanitizes the readable body
+from the already fetched, DNS-pinned response before insertion, retains Open Graph metadata and
+article links, and rejects pages with fewer than 80 readable characters instead of silently storing
+site chrome. Merge commit `b90a30e5d81cd6e812afa3d907967b078730ab91` passed the exact-SHA
+quality gate in GitHub Actions run
+[34473528231](https://github.com/amitsharmaak/distil/actions/runs/34473528231). Local verification
+passed 187 coverage suites / 1,265 tests, 92.3% changed lines, 90.3% changed branches, TypeScript,
+lint/format with the existing warnings and zero errors, and the Production build.
+
+Production deployment `dpl_BvwtbcKKnPSAPdhDrGvmdYxtsDZa` is Ready and aliased to `distilai.app`.
+Health returned 200 with `cache-control: no-store`. The affected item was re-extracted from its
+preserved raw response without another upstream fetch: its reader HTML is now 2,914 characters,
+the latest knowledge version has two chunks, and author/publication resolve to Julie Bort and
+TechCrunch. An authenticated reader reload showed the article lead and body while the former site
+menu and ticket promotions were absent. No extension configuration change is required.
 
 #### Main-branch normalization — 2026-09-10
 
