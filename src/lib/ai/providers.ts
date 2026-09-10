@@ -3,17 +3,21 @@
  * SERVER-SIDE ONLY.
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type ResponseSchema } from "@google/generative-ai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "@/lib/config";
 import type { ProviderName } from "./ai-config";
 import { GEMINI_SEARCH_MODEL } from "./ai-config";
+import { withRetry } from "./retry";
+import { AIProviderError, toAIProviderError, isRetryableProviderFailure } from "./errors";
 
 export interface GenerateOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  responseSchema?: ResponseSchema;
+  maxAttempts?: number;
 }
 
 export interface AIProvider {
@@ -55,9 +59,33 @@ export class GeminiProviderImpl implements GeminiProvider {
   }
 
   async generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T> {
-    const jsonPrompt = `${prompt}\n\nRespond with valid JSON only, no other text.`;
-    const text = await this.generateText(jsonPrompt, model, options);
-    return parseJSON<T>(text);
+    const m = this.genai.getGenerativeModel({
+      model,
+      generationConfig: {
+        maxOutputTokens: options?.maxTokens,
+        temperature: options?.temperature,
+        responseMimeType: "application/json",
+        responseSchema: options?.responseSchema,
+      },
+    });
+    try {
+      const result = await withRetry(
+        () => m.generateContent(prompt, { timeout: options?.timeoutMs ?? 15_000 }),
+        {
+          maxAttempts: options?.maxAttempts ?? 2,
+          baseDelay: 250,
+          maxDelay: 250,
+          shouldRetry: isRetryableProviderFailure,
+        }
+      );
+      try {
+        return parseJSON<T>(result.response.text());
+      } catch {
+        throw new AIProviderError("invalid_output", this.name, model);
+      }
+    } catch (error) {
+      throw toAIProviderError(error, this.name, model);
+    }
   }
 
   async generateTextWithSearch(prompt: string): Promise<string> {

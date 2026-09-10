@@ -198,6 +198,10 @@ export function AISummary({
     !initialBriefSummary && initialDetailedSummary ? "detailed" : "brief"
   );
   const [loading, setLoading] = useState(false);
+  const [retryRequest, setRetryRequest] = useState<{
+    length: SummaryLength;
+    force: boolean;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(hasInitialSummary ? "ai" : "original");
 
@@ -211,6 +215,7 @@ export function AISummary({
 
   async function generate(length: SummaryLength, force = false) {
     setLoading(true);
+    setRetryRequest({ length, force });
     setError(null);
     try {
       const res = await fetch(`${config.apiBaseUrl}/api/ai/summarize`, {
@@ -220,7 +225,11 @@ export function AISummary({
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to generate summary");
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.message || "Failed to generate summary"
+        );
       }
       const data = await res.json();
       if (length === "brief") {
@@ -347,18 +356,20 @@ export function AISummary({
             variant="outline"
             size="sm"
             className="mt-2"
-            onClick={() => generate(summaryLength)}
+            onClick={() =>
+              generate(retryRequest?.length ?? summaryLength, retryRequest?.force ?? false)
+            }
           >
             Try Again
           </Button>
         </div>
       )}
 
-      {!loading && !error && viewMode === "ai" && aiSummary && (
+      {!loading && viewMode === "ai" && aiSummary && (
         <StructuredSummaryMarkdown content={aiSummary} />
       )}
 
-      {!loading && !error && (viewMode === "original" || !aiSummary) && (
+      {!loading && (viewMode === "original" || !aiSummary) && (
         <div>
           {processedContent ? (
             <div

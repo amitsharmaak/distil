@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from "crypto";
+import { toAIProviderError } from "./errors";
 import type { AIProvider, GenerateOptions } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider } from "./providers";
@@ -46,6 +47,7 @@ const BUDGET_WARN_THRESHOLD = 0.9;
 const ROLLING_WINDOW_DAYS = 30;
 
 export class AIQuotaExceededError extends Error {
+  readonly code = "AI_BUDGET";
   constructor(readonly window: "daily" | "rolling") {
     super(`The ${window} AI budget is exhausted`);
     this.name = "AIQuotaExceededError";
@@ -338,12 +340,58 @@ class AIRouter {
     task: AITask,
     options?: GenerateOptions
   ): Promise<T> {
+    return (
+      await this.generateTenantJSONWithMetadata<T>(context, repositories, prompt, task, options)
+    ).value;
+  }
+
+  async generateTenantJSONWithMetadata<T>(
+    context: AuthContext,
+    repositories: RepositorySet,
+    prompt: string,
+    task: AITask,
+    options?: GenerateOptions
+  ): Promise<{ value: T; model: string; provider: ProviderName }> {
     const tenant = parseAuthContext(context);
     await assertTenantAIBudget(repositories);
-    const { provider, model } = this.getEffectiveModel(task);
+    const assignment = this.getEffectiveModel(task);
+    const provider = assignment.provider;
+    let model = assignment.model;
     const tokensIn = estimateTokens(prompt);
     const start = Date.now();
-    const result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+    let result: T;
+    try {
+      result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+    } catch (error) {
+      const failure = toAIProviderError(error, provider, model);
+      // Recover from model-specific availability failures without switching provider accounts.
+      if (
+        !["quota", "timeout", "server"].includes(failure.category) ||
+        provider !== "gemini" ||
+        !["summarize", "summarize-complex"].includes(task) ||
+        model === "gemini-3.1-flash-lite"
+      ) {
+        throw failure;
+      }
+      aiLogger.warn(
+        {
+          event: "summary_model_fallback",
+          provider,
+          model,
+          errorCode: failure.code,
+          traceId: tenant.requestId,
+        },
+        "Summary model quota fallback"
+      );
+      // The fallback must pass tenant admission independently.
+      await assertTenantAIBudget(repositories);
+      model = "gemini-3.1-flash-lite";
+      try {
+        result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+      } catch (fallbackError) {
+        throw toAIProviderError(fallbackError, provider, model);
+      }
+    }
     const output = JSON.stringify(result);
     const tokensOut = estimateTokens(output);
     await repositories.agent.insertAuditLog({
@@ -365,7 +413,7 @@ class AIRouter {
       outputTokens: tokensOut,
       costMicrousd: Math.round(estimateCost(model, tokensIn, tokensOut) * 1_000_000),
     });
-    return result;
+    return { value: result, model, provider };
   }
 
   async generateTextWithSearch(prompt: string): Promise<string> {
@@ -477,6 +525,15 @@ export function createTenantAIRouter(context: AuthContext, repositories: Reposit
     },
     generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions) {
       return _getRouter().generateTenantJSON<T>(tenant, repositories, prompt, task, options);
+    },
+    generateJSONWithMetadata<T>(prompt: string, task: AITask, options?: GenerateOptions) {
+      return _getRouter().generateTenantJSONWithMetadata<T>(
+        tenant,
+        repositories,
+        prompt,
+        task,
+        options
+      );
     },
   });
 }

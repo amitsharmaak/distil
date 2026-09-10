@@ -132,7 +132,13 @@ Voice mode democratises AI-assisted coding for developers with repetitive strain
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCreateTenantAIRouter.mockReturnValue({ generateJSON: mockGenerateJSON });
+  mockCreateTenantAIRouter.mockReturnValue({
+    generateJSONWithMetadata: async (...args: unknown[]) => ({
+      value: await mockGenerateJSON(...args),
+      model: mockGetEffectiveModel().model,
+      provider: "gemini",
+    }),
+  });
   mockGetEffectiveModel.mockReturnValue({ model: "gemini-2.5-flash" });
 
   // Defaults: no cached summary, item found in DB, generateJSON returns brief output.
@@ -334,5 +340,30 @@ describe("generateSummary — TechCrunch article fixture", () => {
     });
     expect(second.cached).toBe(true);
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("summary output safety", () => {
+  it.each([
+    { overview: "ok" },
+    { overview: "", keyPoints: ["point"] },
+    { overview: "ok", keyPoints: [] },
+  ])("rejects malformed output without caching it", async (output) => {
+    mockGenerateJSON.mockResolvedValue(output);
+    await expect(generateSummary(context, repositories, techCrunchItem.id)).rejects.toMatchObject({
+      code: "AI_INVALID_OUTPUT",
+    });
+    expect(mockUpsertAISummary).not.toHaveBeenCalled();
+  });
+  it("caches the actual fallback model returned by the tenant router", async () => {
+    mockGetEffectiveModel.mockReturnValue({ model: "gemini-3.1-flash-lite" });
+    await generateSummary(context, repositories, techCrunchItem.id);
+    expect(mockUpsertAISummary).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gemini-3.1-flash-lite" })
+    );
+    expect(mockGenerateJSON.mock.calls[0][2].responseSchema.required).toEqual([
+      "overview",
+      "keyPoints",
+    ]);
   });
 });
