@@ -20,6 +20,7 @@ describe("lifecycle route fresh authentication", () => {
       missing: [],
     });
     jest.mocked(getAuthRepositoryPort).mockResolvedValue({
+      findAccountByEmail: jest.fn(),
       findAccountByIdentity: jest.fn().mockResolvedValue({
         userId: "11111111-1111-4111-8111-111111111111",
         primaryEmail: "amit@example.com",

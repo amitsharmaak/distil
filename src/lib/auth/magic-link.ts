@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { AccessDeniedError } from "@/lib/auth/account";
-import { acceptInvitation, validateInvitation } from "@/lib/auth/invitations";
+import { acceptInvitation, normalizeEmail, validateInvitation } from "@/lib/auth/invitations";
 import {
   openPendingInvitation,
   pendingInvitationCookieOptions,
@@ -25,6 +26,19 @@ export interface MagicLinkProvider extends ProviderIdentityPort {
     newUserCallbackURL: string;
     errorCallbackURL: string;
   }): Promise<{ error: unknown | null; setCookieHeaders?: string[] }>;
+}
+
+const returningEmailSchema = z.string().trim().email().max(320);
+
+function attachMagicLinkCookies(response: NextResponse, setCookieHeaders: string[] = []): void {
+  response.cookies.set(NEON_AUTH_SESSION_CHALLENGE_COOKIE, crypto.randomUUID(), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: PENDING_INVITATION_TTL_SECONDS,
+  });
+  for (const setCookie of setCookieHeaders) response.headers.append("set-cookie", setCookie);
 }
 
 /** Exchange Neon's one-time callback verifier before resolving the invited identity. */
@@ -135,16 +149,7 @@ export function createMagicLinkRequestHandler(dependencies: {
       // before exchanging it for a session cookie. Issuing the marker only
       // after a valid invitation is dispatched keeps arbitrary login starts
       // outside the public auth surface.
-      response.cookies.set(NEON_AUTH_SESSION_CHALLENGE_COOKIE, crypto.randomUUID(), {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: PENDING_INVITATION_TTL_SECONDS,
-      });
-      for (const setCookie of result.setCookieHeaders ?? []) {
-        response.headers.append("set-cookie", setCookie);
-      }
+      attachMagicLinkCookies(response, result.setCookieHeaders);
       return response;
     } catch (error) {
       if (dispatchClaim && !providerAccepted) {
@@ -167,6 +172,88 @@ export function createMagicLinkRequestHandler(dependencies: {
         { status: 503 }
       );
     }
+  };
+}
+
+/**
+ * Sends a magic link only when the normalized address belongs to an active,
+ * already-linked Distil account. Unknown and rate-limited addresses receive
+ * the same accepted response without provider dispatch to avoid enumeration.
+ */
+export function createReturningMagicLinkRequestHandler(dependencies: {
+  provider: MagicLinkProvider;
+  repositories: AuthRepositoryPort;
+  appOrigin: string;
+  beforeDispatch?: (
+    account: NonNullable<Awaited<ReturnType<AuthRepositoryPort["findAccountByEmail"]>>>,
+    request: Request
+  ) => Promise<void>;
+}) {
+  return async function POST(request: Request): Promise<Response> {
+    try {
+      requireAllowedOrigin(request, new Set([dependencies.appOrigin]));
+      const body = (await request.json()) as { email?: unknown };
+      const email = returningEmailSchema.parse(body.email);
+      const account = await dependencies.repositories.findAccountByEmail(normalizeEmail(email));
+      const accepted = () => NextResponse.json({ accepted: true }, { status: 202 });
+      if (!account?.primaryEmail) return accepted();
+      try {
+        await dependencies.beforeDispatch?.(account, request);
+      } catch (error) {
+        if (error instanceof AuthError && error.code === "RATE_LIMITED") return accepted();
+        throw error;
+      }
+      const completeUrl = new URL("/api/auth/sign-in/complete", dependencies.appOrigin).toString();
+      const deniedUrl = new URL("/access-denied", dependencies.appOrigin).toString();
+      const result = await dependencies.provider.requestMagicLink({
+        email: account.primaryEmail,
+        callbackURL: completeUrl,
+        newUserCallbackURL: completeUrl,
+        errorCallbackURL: deniedUrl,
+      });
+      if (result.error) return accepted();
+      const response = accepted();
+      attachMagicLinkCookies(response, result.setCookieHeaders);
+      return response;
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return Response.json(
+          { error: { code: error.code, message: "Unable to continue" } },
+          { status: error.status }
+        );
+      }
+      if (error instanceof z.ZodError || error instanceof SyntaxError) {
+        return Response.json(
+          { error: { code: "INVALID_REQUEST", message: "Unable to continue" } },
+          { status: 400 }
+        );
+      }
+      return Response.json(
+        { error: { code: "AUTH_UNAVAILABLE", message: "Unable to continue" } },
+        { status: 503 }
+      );
+    }
+  };
+}
+
+export function createReturningMagicLinkCompletionHandler(dependencies: {
+  provider: ProviderIdentityPort;
+  repositories: AuthRepositoryPort;
+  appOrigin: string;
+}) {
+  return async function GET(): Promise<Response> {
+    let destination = "/access-denied";
+    try {
+      const identity = await readProviderIdentity(dependencies.provider);
+      const account = await dependencies.repositories.findAccountByIdentity({
+        provider: identity.provider,
+        providerSubject: identity.subject,
+      });
+      if (account?.status === "active") destination = "/";
+    } catch {
+      destination = "/access-denied";
+    }
+    return NextResponse.redirect(new URL(destination, dependencies.appOrigin));
   };
 }
 

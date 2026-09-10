@@ -1,10 +1,13 @@
 import {
   createInvitationCompletionHandler,
   createMagicLinkRequestHandler,
+  createReturningMagicLinkCompletionHandler,
+  createReturningMagicLinkRequestHandler,
   exchangeMagicLinkSession,
   NEON_AUTH_SESSION_CHALLENGE_COOKIE,
   neonMagicLinkProvider,
 } from "@/lib/auth/magic-link";
+import { AuthError } from "@/lib/auth/errors";
 import { issueInvitation } from "@/lib/auth/invitations";
 import {
   openPendingInvitation,
@@ -30,6 +33,7 @@ function repository(): AuthRepositoryPort & { invitation?: InvitationRecord } {
     completeInvitationDispatch: jest.fn().mockResolvedValue(true),
     failInvitationDispatch: jest.fn().mockResolvedValue(true),
     consumeInvitationAndLinkIdentity: jest.fn(),
+    findAccountByEmail: jest.fn(),
     findAccountByIdentity: jest.fn(),
   };
   return result;
@@ -41,6 +45,120 @@ function cookieValue(setCookie: string): string {
 }
 
 describe("invitation-gated magic links", () => {
+  it("sends returning-user magic links only for an existing active account", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByEmail).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      primaryEmail: "amit@example.com",
+      status: "active",
+    } as never);
+    const provider = {
+      getSession: jest.fn(),
+      requestMagicLink: jest.fn().mockResolvedValue({
+        error: null,
+        setCookieHeaders: ["provider-challenge=value; Path=/; HttpOnly; Secure"],
+      }),
+    };
+    const beforeDispatch = jest.fn();
+    const response = await createReturningMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      beforeDispatch,
+    })(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: " AMIT@example.com " }),
+      })
+    );
+
+    expect(response.status).toBe(202);
+    expect(repositories.findAccountByEmail).toHaveBeenCalledWith("amit@example.com");
+    expect(beforeDispatch).toHaveBeenCalledTimes(1);
+    expect(provider.requestMagicLink).toHaveBeenCalledWith({
+      email: "amit@example.com",
+      callbackURL: `${origin}/api/auth/sign-in/complete`,
+      newUserCallbackURL: `${origin}/api/auth/sign-in/complete`,
+      errorCallbackURL: `${origin}/access-denied`,
+    });
+    expect(response.headers.get("set-cookie")).toContain(NEON_AUTH_SESSION_CHALLENGE_COOKIE);
+  });
+
+  it("does not disclose or dispatch for an unknown returning-user email", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByEmail).mockResolvedValue(undefined);
+    const provider = { getSession: jest.fn(), requestMagicLink: jest.fn() };
+    const response = await createReturningMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+    })(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "unknown@example.com" }),
+      })
+    );
+
+    expect(response.status).toBe(202);
+    expect(provider.requestMagicLink).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ accepted: true });
+  });
+
+  it("does not disclose or dispatch when a returning-user request is rate limited", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByEmail).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      primaryEmail: "amit@example.com",
+      status: "active",
+    } as never);
+    const provider = { getSession: jest.fn(), requestMagicLink: jest.fn() };
+    const response = await createReturningMagicLinkRequestHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+      beforeDispatch: async () => {
+        throw new AuthError("RATE_LIMITED", 429, "Rate limit exceeded");
+      },
+    })(
+      new Request(`${origin}/api/auth/sign-in/request-link`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: "amit@example.com" }),
+      })
+    );
+
+    expect(response.status).toBe(202);
+    expect(provider.requestMagicLink).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ accepted: true });
+  });
+
+  it("completes returning sign-in only for an already mapped active identity", async () => {
+    const repositories = repository();
+    jest.mocked(repositories.findAccountByIdentity).mockResolvedValue({
+      userId: "20000000-0000-4000-8000-000000000002",
+      status: "active",
+    } as never);
+    const provider = {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
+          session: { id: "provider-session", createdAt: new Date() },
+        },
+        error: null,
+      }),
+    };
+    const response = await createReturningMagicLinkCompletionHandler({
+      provider,
+      repositories,
+      appOrigin: origin,
+    })();
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${origin}/`);
+  });
+
   it("returns the provider verifier-exchange redirect before invitation completion", async () => {
     const redirect = Response.redirect(`${origin}/api/auth/invitations/complete`, 307);
     const middleware = jest.fn(async () => redirect);

@@ -65,6 +65,9 @@ function fakeRepositories(): AuthRepositoryPort & {
       repository.invitation.consumedAt = input.consumedAt;
       return account;
     },
+    async findAccountByEmail() {
+      return account;
+    },
     async findAccountByIdentity() {
       return account;
     },

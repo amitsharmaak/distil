@@ -96,6 +96,11 @@ and [esbuild advisory GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/secu
 3. The invite landing page checks the token before requesting a magic link. It allows only a
    callback URL from the exact application origin allowlist and keeps the intended destination in
    server state, not a user-controlled redirect parameter.
+   The same page may also start sign-in for an existing account, but only after a security-definer
+   lookup confirms an exact normalized-email match to an active internal user. Unknown, disabled,
+   and rate-limited addresses receive the same generic accepted response without provider
+   dispatch, preventing this path from becoming self-service signup or an account-enumeration
+   oracle.
 4. On a verified Neon Auth session, an idempotent server transaction consumes the matching active
    invite, creates or reactivates the internal `users` account with active status, and creates the
    identity mapping. It must compare the verified email with the invite email using the product's
@@ -110,13 +115,11 @@ and [esbuild advisory GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/secu
    then, Distil's operator-issued invitation and active-account records remain independently
    enforceable and auditable.
 
-There is one important feasibility limitation: the validated magic-link endpoint accepts an email
-and may create an identity. App-side enforcement can guarantee that an uninvited identity receives
-no Distil data, but it cannot by itself guarantee that no provider identity is created through a
-generic auth endpoint. Before enabling, verify in the Neon console and pinned SDK whether
-self-registration can be disabled for magic links. If it cannot, either accept harmless orphaned
-identities with no active internal account or put link issuance behind an invite-validating server route and
-ensure the generic endpoint is not publicly usable. This is an enablement gate, not an assumption.
+The provider's generic magic-link endpoint accepts an email and may create an identity, so it must
+not be the public application entry point. Distil puts provider dispatch behind either a valid
+operator-issued invitation or the exact active-account lookup above. App-side authorization still
+denies any provider identity without an active internal mapping, and the generic provider endpoint
+remains outside the public route surface.
 
 ## Internal identity mapping
 

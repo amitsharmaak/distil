@@ -49,8 +49,12 @@ export async function dispatchGatedNeonAuth(
   const allowedOrigins = needsAllowedOrigins ? dependencies.loadAllowedOrigins() : undefined;
   if (path.join("/") === "magic-link/verify") {
     const expectedPaths: Record<string, readonly string[]> = {
-      callbackURL: ["/api/auth/invitations/complete", "/account"],
-      newUserCallbackURL: ["/api/auth/invitations/complete", "/access-denied"],
+      callbackURL: ["/api/auth/invitations/complete", "/api/auth/sign-in/complete", "/account"],
+      newUserCallbackURL: [
+        "/api/auth/invitations/complete",
+        "/api/auth/sign-in/complete",
+        "/access-denied",
+      ],
       errorCallbackURL: ["/access-denied"],
     };
     const requestUrl = new URL(request.url);

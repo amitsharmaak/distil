@@ -97,6 +97,12 @@ beforeAll(async () => {
     ownerId: alpha.userId,
     migrationsDirectory: tenantMigrations,
   });
+  await applyTenantMigrationStage({
+    sql: harness.sql,
+    stage: "returning-auth",
+    ownerId: alpha.userId,
+    migrationsDirectory: tenantMigrations,
+  });
   await harness.sql.unsafe(`
     CREATE ROLE ${runtimeRole} LOGIN PASSWORD '${runtimePassword}' NOSUPERUSER NOBYPASSRLS;
     GRANT distil_runtime TO ${runtimeRole};
@@ -117,6 +123,26 @@ beforeEach(async () => {
     INSERT INTO users (id,status,primary_email)
     VALUES (${alpha.userId}::uuid,'active','alpha@example.com'),
            (${beta.userId}::uuid,'active','beta@example.com')`;
+});
+
+it("resolves only an exact active returning-user email through the runtime role", async () => {
+  await harness.sql`
+    INSERT INTO auth_identities
+      (id,user_id,provider,provider_subject,email,email_verified)
+    VALUES
+      ('50000000-0000-4000-8000-000000000081'::uuid,${alpha.userId}::uuid,
+       'neon','alpha-provider-subject','alpha@example.com',true)`;
+  const repository = new PostgresAuthRepository(runtimeSql);
+  await expect(repository.findAccountByEmail("alpha@example.com")).resolves.toMatchObject({
+    userId: alpha.userId,
+    primaryEmail: "alpha@example.com",
+    status: "active",
+  });
+  await expect(repository.findAccountByEmail("ALPHA@example.com")).resolves.toBeUndefined();
+  await expect(repository.findAccountByEmail("missing@example.com")).resolves.toBeUndefined();
+
+  await harness.sql`UPDATE users SET status='suspended' WHERE id=${alpha.userId}::uuid`;
+  await expect(repository.findAccountByEmail("alpha@example.com")).resolves.toBeUndefined();
 });
 
 afterAll(async () => {

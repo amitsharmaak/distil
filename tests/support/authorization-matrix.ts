@@ -204,9 +204,11 @@ const publicRouteSurfaces = new Set([
   "GET /api/auth/slack/callback",
   "GET /api/auth/:path+",
   "GET /api/auth/invitations/complete",
+  "GET /api/auth/sign-in/complete",
   "POST /api/auth/login",
   "POST /api/auth/:path+",
   "POST /api/auth/invitations/request-link",
+  "POST /api/auth/sign-in/request-link",
 ]);
 
 const systemRouteSurfaces = new Set(["GET /api/cron/digests"]);

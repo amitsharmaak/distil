@@ -11,7 +11,13 @@ import {
   verifyAfterAgainstBaseline,
 } from "./verifier";
 
-export const TENANT_MIGRATION_STAGES = ["expand", "backfill", "contract", "lifecycle"] as const;
+export const TENANT_MIGRATION_STAGES = [
+  "expand",
+  "backfill",
+  "contract",
+  "lifecycle",
+  "returning-auth",
+] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
 const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
@@ -19,6 +25,7 @@ const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   backfill: "0006_phase3_tenant_backfill.sql",
   contract: "0007_phase3_tenant_contract.sql",
   lifecycle: "0008_phase3_lifecycle.sql",
+  "returning-auth": "0009_phase3_returning_auth.sql",
 };
 
 interface AppliedMigrationRow {
@@ -89,7 +96,7 @@ async function assertContractVerification(
   }
 }
 
-/** Apply exactly one lifecycle stage; callers must pause for each gate. */
+/** Apply exactly one staged tenant migration; callers must pause for each gate. */
 export async function applyTenantMigrationStage(
   options: ApplyTenantMigrationOptions
 ): Promise<AppliedTenantMigration> {

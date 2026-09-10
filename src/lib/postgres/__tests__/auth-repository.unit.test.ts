@@ -14,6 +14,26 @@ function sqlDouble(rowsByOperation: Record<string, unknown[]>) {
 }
 
 describe("PostgresAuthRepository", () => {
+  it("uses an exact-key security-definer function for active email lookup", async () => {
+    const fake = sqlDouble({
+      distil_resolve_active_auth_email: [
+        {
+          user_id: "11111111-1111-4111-8111-111111111111",
+          primary_email: "amit@example.com",
+          status: "active",
+        },
+      ],
+    });
+    const repository = new PostgresAuthRepository(fake.sql);
+
+    await expect(repository.findAccountByEmail("amit@example.com")).resolves.toMatchObject({
+      userId: "11111111-1111-4111-8111-111111111111",
+      status: "active",
+    });
+    expect(fake.queries[0]).toContain("distil_resolve_active_auth_email");
+    expect(fake.queries[0]).not.toContain("FROM users");
+  });
+
   it("uses exact-key security-definer functions for runtime identity lookup", async () => {
     const fake = sqlDouble({
       distil_resolve_auth_identity: [

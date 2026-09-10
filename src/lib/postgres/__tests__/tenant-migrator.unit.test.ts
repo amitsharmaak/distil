@@ -89,4 +89,23 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+
+  it("applies returning auth only after the lifecycle ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "returning-auth", ownerId })
+    ).resolves.toMatchObject({
+      stage: "returning-auth",
+      file: "0009_phase3_returning_auth.sql",
+      alreadyApplied: false,
+    });
+  });
 });

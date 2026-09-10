@@ -9,15 +9,22 @@ export default function InvitePage() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const invitationToken = new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
-    window.history.replaceState({}, "", "/invite");
-    const response = await fetch("/api/auth/invitations/request-link", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: data.get("email"), invitationToken, next: "/onboarding" }),
-    });
+    const acceptingInvitation = Boolean(invitationToken);
+    if (acceptingInvitation) window.history.replaceState({}, "", "/invite");
+    const response = await fetch(
+      acceptingInvitation ? "/api/auth/invitations/request-link" : "/api/auth/sign-in/request-link",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: data.get("email"),
+          ...(acceptingInvitation ? { invitationToken, next: "/onboarding" } : {}),
+        }),
+      }
+    );
     setMessage(
       response.ok
-        ? "Check your email for a one-time sign-in link."
+        ? "If this email is eligible, a one-time sign-in link is on its way."
         : "Unable to continue. Ask the operator who invited you for a new invitation."
     );
   }
@@ -26,9 +33,9 @@ export default function InvitePage() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
       <meta content="no-referrer" name="referrer" />
       <div>
-        <h1 className="text-2xl font-semibold">Accept your Distil invitation</h1>
+        <h1 className="text-2xl font-semibold">Sign in to Distil</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Enter the verified email address that received this invitation.
+          Enter the email address linked to your Distil account or invitation.
         </p>
       </div>
       <form className="flex flex-col gap-3" onSubmit={submit}>

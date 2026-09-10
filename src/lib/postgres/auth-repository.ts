@@ -184,4 +184,11 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     `;
     return mapAccount(row);
   }
+
+  async findAccountByEmail(email: string): Promise<LinkedAccount | undefined> {
+    const [row] = await this.sql<AccountRow[]>`
+      SELECT * FROM distil_resolve_active_auth_email(${email})
+    `;
+    return mapAccount(row);
+  }
 }

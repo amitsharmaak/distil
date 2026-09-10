@@ -62,6 +62,7 @@ export interface InvitationRepositoryPort {
 }
 
 export interface AuthIdentityRepositoryPort {
+  findAccountByEmail(email: string): Promise<LinkedAccount | undefined>;
   findAccountByIdentity(input: {
     provider: ProviderIdentity["provider"];
     providerSubject: string;

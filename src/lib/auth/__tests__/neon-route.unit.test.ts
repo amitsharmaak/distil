@@ -137,6 +137,27 @@ describe("Neon Auth route gate", () => {
     expect(response.status).toBe(405);
   });
 
+  it("allows the fixed returning-user magic-link callback", async () => {
+    const requestUrl = new URL("https://distil.example/api/auth/magic-link/verify");
+    requestUrl.searchParams.set("callbackURL", "https://distil.example/api/auth/sign-in/complete");
+    requestUrl.searchParams.set(
+      "newUserCallbackURL",
+      "https://distil.example/api/auth/sign-in/complete"
+    );
+    requestUrl.searchParams.set("errorCallbackURL", "https://distil.example/access-denied");
+    const handler = jest.fn(async () => new Response(null, { status: 204 }));
+    const response = await dispatchGatedNeonAuth(
+      new Request(requestUrl),
+      { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
+      {
+        loadAllowedOrigins: () => new Set(["https://distil.example"]),
+        loadHandler: jest.fn(() => handler),
+      }
+    );
+    expect(response.status).toBe(204);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("allows the fixed same-origin reauthentication callback", async () => {
     const requestUrl = new URL("https://distil.example/api/auth/magic-link/verify");
     requestUrl.searchParams.set("callbackURL", "https://distil.example/account?reauthenticated=1");

@@ -16,6 +16,7 @@ const USAGE = `Usage:
   npm run db:tenant:migrate -- --stage backfill --amit-user-id <uuid>
   npm run db:tenant:migrate -- --stage contract --amit-user-id <uuid> --baseline <before.json>
   npm run db:tenant:migrate -- --stage lifecycle --amit-user-id <uuid>
+  npm run db:tenant:migrate -- --stage returning-auth --amit-user-id <uuid>
 
 Only one stage is applied per invocation. Contract re-runs after verification inside the same transaction.`;
 

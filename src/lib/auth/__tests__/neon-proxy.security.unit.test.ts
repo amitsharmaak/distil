@@ -55,6 +55,7 @@ function repositories(account?: LinkedAccount): AuthRepositoryPort {
     completeInvitationDispatch: jest.fn(),
     failInvitationDispatch: jest.fn(),
     consumeInvitationAndLinkIdentity: jest.fn(),
+    findAccountByEmail: jest.fn(),
     findAccountByIdentity: jest.fn().mockResolvedValue(account),
   };
 }
