@@ -251,13 +251,47 @@ describe("CaptureWorker state machine", () => {
 });
 
 describe("default capture processor", () => {
+  const readableArticle = `<!doctype html>
+    <html>
+      <head>
+        <title>Harvey raises another round | Example News</title>
+        <meta property="og:title" content="Harvey raises another round">
+        <meta property="og:description" content="The legal AI company has raised fresh funding.">
+        <meta property="og:site_name" content="Example News">
+        <meta name="author" content="Julie Reporter">
+      </head>
+      <body>
+        <header><nav>Latest Startups Venture Events Newsletters Subscribe Sign in</nav></header>
+        <main><article>
+          <h1>Harvey raises another round</h1>
+          <p>The legal AI company has raised another large funding round after sustained growth.</p>
+          <p>The investment will support product development and expansion into new markets.</p>
+          <p>Executives said customer demand continued to increase throughout the year.</p>
+        </article></main>
+        <aside>More stories, promotions, conference tickets, and unrelated navigation links.</aside>
+      </body>
+    </html>`;
+  const extractedArticle = {
+    title: "Harvey raises another round",
+    byline: "Julie Reporter",
+    content: `<article>
+      <h1>Harvey raises another round</h1>
+      <p>The legal AI company has raised another large funding round after sustained growth.</p>
+      <p>The investment will support product development and expansion into new markets.</p>
+      <p>Executives said customer demand continued to increase throughout the year.</p>
+    </article>`,
+    textContent:
+      "The legal AI company has raised another large funding round after sustained growth. " +
+      "The investment will support product development and expansion into new markets. " +
+      "Executives said customer demand continued to increase throughout the year.",
+    extractedLinks: [],
+  };
   const fetchOptions = {
     resolve: publicDns,
     fetch: jest
       .fn()
       .mockImplementation(
-        async () =>
-          new Response("<article>Readable</article>", { headers: { "content-type": "text/html" } })
+        async () => new Response(readableArticle, { headers: { "content-type": "text/html" } })
       ),
   };
 
@@ -274,13 +308,10 @@ describe("default capture processor", () => {
       items: items as never,
       rawContent: rawContent as never,
       enqueueEnrichment,
+      extractContent: jest.fn().mockReturnValue(extractedArticle),
       fetchOptions: {
         resolve: publicDns,
-        fetch: jest.fn().mockResolvedValue(
-          new Response("<article onclick='steal()'>Readable</article>", {
-            headers: { "content-type": "text/html" },
-          })
-        ),
+        fetch: jest.fn().mockResolvedValue(new Response(readableArticle)),
       },
     });
 
@@ -294,10 +325,115 @@ describe("default capture processor", () => {
     expect(items.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         processingStatus: "ready",
-        fullContent: expect.not.stringContaining("onclick"),
+        title: "Harvey raises another round",
+        summary: "The legal AI company has raised fresh funding.",
+        author: "Julie Reporter",
+        publication: "Example News",
+        fullContent: expect.stringContaining("The legal AI company"),
       })
     );
+    expect(items.insert.mock.calls[0][0].fullContent).not.toContain("Latest Startups Venture");
+    expect(items.insert.mock.calls[0][0].fullContent).not.toContain("conference tickets");
     expect(rawContent.attachItem).toHaveBeenCalled();
+  });
+
+  it("rejects a navigation shell instead of marking page chrome as readable content", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn(),
+    };
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest
+          .fn()
+          .mockResolvedValue(new Response("<html><body><nav>Home Sign in</nav></body></html>")),
+      },
+    });
+
+    await expect(processor(captureRecord())).resolves.toEqual({
+      status: "rejected",
+      reason: "Distil could not identify enough readable article content on this page",
+    });
+    expect(rawContent.insert).toHaveBeenCalled();
+    expect(items.insert).not.toHaveBeenCalled();
+    expect(rawContent.attachItem).not.toHaveBeenCalled();
+  });
+
+  it("preserves capture overrides and falls back to extracted metadata", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const extractContent = jest.fn().mockReturnValue({
+      ...extractedArticle,
+      title: "Extractor title",
+      byline: null,
+      textContent: "A compact readable article body. ".repeat(4),
+    });
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent,
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(
+          new Response(`<!doctype html><html><head>
+            <meta name="author" content="Metadata Author">
+          </head><body>${extractedArticle.content}</body></html>`)
+        ),
+      },
+    });
+
+    await expect(
+      processor(captureRecord({ title: "Saved title", notes: "Saved note" }))
+    ).resolves.toEqual({ status: "ready", itemId: captureRecord().id });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Saved title",
+        summary: "Saved note",
+        author: "Metadata Author",
+        publication: undefined,
+        thumbnailUrl: undefined,
+      })
+    );
+  });
+
+  it("uses extracted title and body text when page metadata is absent", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const readableText = "A readable sentence without page metadata. ".repeat(3).trim();
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue({
+        ...extractedArticle,
+        title: "Extractor title",
+        byline: null,
+        textContent: readableText,
+      }),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response("<html><body>article</body></html>")),
+      },
+    });
+
+    await processor(captureRecord());
+
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Extractor title", summary: readableText })
+    );
   });
 
   it("requires a raw-content repository for the durable non-pipeline path", async () => {
