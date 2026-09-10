@@ -110,6 +110,17 @@ no further runtime changes. Both the custom domain and legacy Vercel alias must 
 released deployment so extension traffic cannot use the obsolete code. Next product verification
 is one deliberate user capture on `https://distilai.app`; preserve the empty library until then.
 
+Production acceptance: release `5f45bba75aa2054fbaf909f31579a9bc8dcae999` passed every job in
+[34480071134](https://github.com/amitsharmaak/distil/actions/runs/34480071134). After updating the
+release pin, deployment `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` reached Ready. Both `distilai.app` and
+`distil-pv-1850.vercel.app` were explicitly assigned to it and returned health 200 with
+`cache-control: no-store`. Post-release verification found zero items, capture receipts, raw
+responses, chunks and summaries; one user and the existing capture token remain intact. No test
+item was created. The browser was left at the canonical site's sign-in page; the operator must
+sign in there before the first deliberate fresh capture. The original screenshot's provider cause
+remains unavailable in historical logs; the reproduced timeout recovery and new diagnostics are
+verified as described above. Documentation-only descendants contain the same accepted runtime code.
+
 ## How to use this file
 
 At the start of a new session:
