@@ -1554,9 +1554,11 @@ their clean worktrees were removed in the cleanup recorded below.
 
 The normalized `main` checkpoint `89e528d26cbc8ed07a2a59f97a2eede73939cdb4` passed all nine jobs
 in GitHub Actions run
-[34445387436](https://github.com/amitsharmaak/distil/actions/runs/34445387436). Vercel Production
-deployment `dpl_GuzfYKBR9eTHX9VPzoHg2yMbvXnz` is Ready from branch `main` at that exact SHA; the
-stable Production origin points to it and `/api/health` returns 200 with `cache-control: no-store`.
+[34445387436](https://github.com/amitsharmaak/distil/actions/runs/34445387436). Its first
+main-sourced Vercel Production deployment, `dpl_GuzfYKBR9eTHX9VPzoHg2yMbvXnz`, reached Ready and
+passed `/api/health` with `cache-control: no-store`. The later state-only cleanup checkpoint follows
+the same exact-SHA deployment gate; consult the Vercel deployment history for the current deployment
+identifier rather than treating this first normalization deployment as a permanent alias target.
 
 Before cleanup, five annotated tags were pushed: `archive/phase-1-closure-2026-09-09`,
 `archive/phase-2-closure-2026-09-09`, `archive/phase-3-closure-2026-09-10`,
@@ -1566,6 +1568,11 @@ non-`main` local branches, and 62 clean secondary worktrees were then removed. N
 uncommitted file was deleted during this branch-cleanup batch. The repository now has one local and
 remote branch, `main`, one worktree, and the five milestone tags. Future work should use short-lived
 `codex/<task>` branches and delete them after verified integration.
+
+GitHub now deletes merged branches automatically. `main` protection requires an up-to-date branch,
+the `quality-gate` check, the Vercel check, a pull request with resolved conversations, and linear
+history; force-push and branch deletion are disabled. Administrator bypass remains available for the
+accepted low-risk hobby-project posture.
 
 ### Phase 2 minimum acceptance completion — 2026-09-08
 
