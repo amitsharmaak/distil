@@ -1,4 +1,4 @@
-name: Phase 1 quality gate
+name: Quality gate
 
 on:
   pull_request:

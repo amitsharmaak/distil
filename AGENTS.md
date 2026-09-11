@@ -46,8 +46,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `getRepositorySet()` (legacy Phase 1 shape) and `getControlPlaneRepositories(SystemContext)`.
   Runtime driver is `postgres.js` (`src/lib/postgres/client.ts`, max 4 connections,
   `prepare: false` for Neon's pooler). Drizzle is used for the declarative schema in
-  `src/lib/postgres/schema.ts` only; there is no `drizzle.config.ts`, so `db:generate` and
-  `db:check` are not live workflows.
+  `src/lib/postgres/schema.ts` only; there is no `drizzle.config.ts` and no drizzle-kit
+  workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
   `src/lib/postgres/tenant-migrations/0005–0009` (Phase 3 expand/backfill/contract/lifecycle/

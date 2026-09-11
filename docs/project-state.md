@@ -25,29 +25,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `/Users/amitsharma/Projects/distil`; no local or remote task branches remain. This bootstrap was
   done on `claude/agent-guidance-bootstrap` (docs only).
 - **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
-  short entry point that points at `AGENTS.md` and this file; this handoff section added. No code,
-  test, configuration, deployment or cloud resource changed.
+  short entry point that points at `AGENTS.md` and this file; this handoff section added. The
+  documentation reconciliation below is also complete on the same branch. No deployment or cloud
+  resource changed.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
   written ownership split in this section.
-- **Blockers / open documentation conflicts (not yet fixed, all non-blocking):**
-  - `README.md`, `CONTRIBUTING.md`, `scripts/setup.sh` and `npm run setup` still describe SQLite
-    as the database, reference a `.env.example` that does not exist, and list obsolete Slack bot-
-    token and generic-host deployment steps. Decide whether README stays a public-facing pitch or
-    becomes accurate; then rewrite or trim.
-  - `docs/ARCHITECTURE.md` describes the legacy `/api/items` fire-and-forget pipeline; the hosted
-    path is `/api/v1/captures` plus Vercel Queue. Mark it legacy or update it.
-  - `package.json` keeps `db:generate` / `db:check` (drizzle-kit) although no `drizzle.config.ts`
-    exists; either add the config or remove the scripts.
-  - `.github/workflows/ci.yml` is still named "Phase 1 quality gate"; cosmetic.
-  - `src/lib/notifications.ts` and `src/lib/sync-scheduler.ts` still import the SQLite module
-    directly; harmless while connectors are disabled, but it is the last runtime SQLite dependency.
+- **Blockers / open items (all non-blocking):**
+  - `src/lib/notifications.ts` still imports the SQLite module statically but has no importers
+    anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-- **Verification at this checkpoint (locally verified on 2026-09-11):** clean tree on `main` equal
-  to `origin/main`; `npx tsc --noEmit` passed; Prettier passes on the changed Markdown files.
-  Not re-run: Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
+- **Verification at this checkpoint (locally verified on 2026-09-11):** `main` equal to
+  `origin/main` before branching; `npx tsc --noEmit` passed after the scheduler change; ESLint on
+  the changed source file passed; `src/lib/__tests__` passed 6 suites / 63 tests; Prettier passes
+  on every changed file. Not re-run: full Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
   so a local `npm run dev` here runs the legacy SQLite path and is not representative of
   Production; Postgres integration tests need Docker or `DISTIL_TEST_POSTGRES_URL`.
 - **Previously recorded external state (not re-checked today):** Production deployment
@@ -55,16 +48,36 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
 - **Exact next steps:**
-  1. Amit: review and merge the bootstrap PR (docs only, no runtime change; the Production release
-     pin does not need to move).
+  1. Amit: review and merge the bootstrap PR. It is documentation plus one lazy-import change in
+     `src/lib/sync-scheduler.ts`; CI must pass on it, but no Production release is required
+     because the scheduler is disabled in hosted deployments.
   2. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
   3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
-     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) resolve the
-     documentation conflicts above; (c) small mobile-web fixes `BUG-PWA-001/002` and the Shortcut
-     URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) delete or
+     port the dead `notifications.ts` module; (c) small mobile-web fixes `BUG-PWA-001/002` and
+     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Documentation reconciliation — 2026-09-11
+
+Branch `claude/agent-guidance-bootstrap`, integrated by Claude Code from four bounded subagent
+tasks with non-overlapping file ownership. Changes: `README.md`, `CONTRIBUTING.md` and
+`scripts/setup.sh` rewritten for the PostgreSQL/Neon/Vercel system (no more SQLite, `.env.example`,
+Slack bot-token or generic-host claims; `setup.sh` now writes an empty-valued `.env.local`
+template). `docs/ARCHITECTURE.md` restructured into a verified hosted-architecture section and a
+clearly labeled legacy compatibility section; FTS5/`pendingIngestions`/CORS-wildcard claims removed.
+Dead `db:generate` and `db:check` scripts removed from `package.json` (no `drizzle.config.ts`
+exists; `drizzle-kit` devDependency kept). CI workflow renamed "Quality gate"; job ids and the
+`quality-gate` check name are unchanged so branch protection still matches.
+
+One runtime change: `src/lib/sync-scheduler.ts` now imports the legacy SQLite module lazily, so
+better-sqlite3 no longer opens a database file at boot on hosts where the scheduler is disabled.
+`src/lib/notifications.ts` was left as is because nothing imports it. Locally verified:
+TypeScript, ESLint on the changed file, `src/lib/__tests__` (6 suites / 63 tests), Prettier on all
+changed files. Not run: full Jest, PostgreSQL integration, E2E, production build; CI must supply
+those before merge.
 
 ## Current cross-phase status
 
