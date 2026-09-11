@@ -1,18 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Bell, X, Bot, Activity } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { NotificationPanel } from "@/components/notifications/notification-panel";
-import { ChatPanel } from "@/components/agent/chat-panel";
-import { AgentStatusPanel } from "@/components/agent/agent-status-panel";
-import { config } from "@/lib/config";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 function formatDate() {
   return new Date().toLocaleDateString("en-US", {
@@ -22,158 +13,41 @@ function formatDate() {
   });
 }
 
-export function Topbar() {
-  const router = useRouter();
-  const [searchValue, setSearchValue] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [open, setOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchValue(value);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (value.trim() === "") {
-        router.push("/search");
-        return;
-      }
-      debounceRef.current = setTimeout(() => {
-        router.push(`/search?q=${encodeURIComponent(value.trim())}`);
-      }, 300);
-    },
-    [router]
-  );
-
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        const v = searchValue.trim();
-        router.push(v ? `/search?q=${encodeURIComponent(v)}` : "/search");
-      }
-      if (e.key === "Escape") {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        setSearchValue("");
-        router.push("/search");
-      }
-    },
-    [router, searchValue]
-  );
-
-  const handleSearchClear = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearchValue("");
-    router.push("/search");
-  }, [router]);
-
-  const fetchCount = useCallback(() => {
-    fetch(`${config.apiBaseUrl}/api/notifications`)
-      .then((res) => res.json())
-      .then((data) => setUnreadCount(data.unreadCount ?? 0))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetchCount();
-    const interval = setInterval(fetchCount, 30000);
-    return () => clearInterval(interval);
-  }, [fetchCount]);
-
-  useEffect(() => {
-    if (!open) fetchCount();
-  }, [open, fetchCount]);
-
+export function Topbar({
+  showSearch = true,
+  backHref,
+}: {
+  showSearch?: boolean;
+  /** When set, a "Back to feed" link replaces the date on small screens. */
+  backHref?: string;
+}) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* Date */}
-      <span className="hidden text-[13px] text-muted-foreground md:block">{formatDate()}</span>
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {backHref ? (
+        <Link
+          href={backHref}
+          className="inline-flex h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground md:h-9"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to feed
+        </Link>
+      ) : (
+        <span className="hidden text-[13px] text-muted-foreground md:block">{formatDate()}</span>
+      )}
 
-      {/* Search */}
-      <div className="relative ml-auto flex max-w-sm flex-1 items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search articles, topics, authors..."
-            className="pl-9 pr-8 h-9 md:text-sm"
-            value={searchValue}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-          />
-          {searchValue && (
-            <button
-              onClick={handleSearchClear}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Ask Distil */}
-        <Sheet open={chatOpen} onOpenChange={setChatOpen}>
-          <SheetTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              aria-label="Ask Distil"
-            >
-              <Bot className="h-4 w-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent
-            side="right"
-            className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
-            showCloseButton={true}
+      <div className="ml-auto flex items-center gap-1">
+        {showSearch && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground"
+            asChild
           >
-            <SheetTitle className="sr-only">Distil Agent</SheetTitle>
-            <Tabs defaultValue="chat" className="flex h-full flex-col">
-              <TabsList className="h-12 w-full justify-start rounded-none border-b px-4">
-                <TabsTrigger value="chat" className="gap-2">
-                  <Bot className="h-4 w-4" />
-                  Ask Distil
-                </TabsTrigger>
-                <TabsTrigger value="activity" className="gap-2">
-                  <Activity className="h-4 w-4" />
-                  Activity
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="chat" className="m-0 min-h-0 flex-1">
-                <ChatPanel />
-              </TabsContent>
-              <TabsContent value="activity" className="m-0 min-h-0 flex-1 overflow-hidden">
-                <AgentStatusPanel />
-              </TabsContent>
-            </Tabs>
-          </SheetContent>
-        </Sheet>
-      </div>
-
-      {/* Right actions */}
-      <div className="flex items-center gap-2">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-9 w-9"
-              aria-label="Notifications"
-            >
-              <Bell className="h-[18px] w-[18px]" />
-              {unreadCount > 0 && (
-                <Badge className="absolute -right-1 -top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full p-0 text-[10px]">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </Badge>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-0">
-            <NotificationPanel onClose={() => setOpen(false)} onCountChange={setUnreadCount} />
-          </PopoverContent>
-        </Popover>
+            <Link href="/search" aria-label="Search">
+              <Search className="h-[18px] w-[18px]" />
+            </Link>
+          </Button>
+        )}
+        <ThemeToggle collapsed className="h-11 w-11 md:h-9 md:w-9" />
       </div>
     </header>
   );

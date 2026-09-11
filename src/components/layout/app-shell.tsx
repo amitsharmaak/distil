@@ -6,17 +6,18 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 
+/** Reader routes (`/feed/<id>`) drop the mobile tab bar so only the action bar stays fixed. */
+export function isReaderPath(pathname: string): boolean {
+  return /^\/feed\/[^/]+$/.test(pathname);
+}
+
 export function AppShell({
   children,
   showAnswers = true,
-  showDigests = true,
-  showKnowledgeUi = true,
   showSearch = true,
 }: {
   children: React.ReactNode;
   showAnswers?: boolean;
-  showDigests?: boolean;
-  showKnowledgeUi?: boolean;
   showSearch?: boolean;
 }) {
   const pathname = usePathname();
@@ -26,14 +27,14 @@ export function AppShell({
     return <main className="min-h-screen">{children}</main>;
   }
 
+  const reader = isReaderPath(pathname);
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
         showAnswers={showAnswers}
-        showDigests={showDigests}
-        showKnowledgeUi={showKnowledgeUi}
         showSearch={showSearch}
       />
       <div
@@ -41,11 +42,17 @@ export function AppShell({
           sidebarCollapsed ? "md:pl-16" : "md:pl-64"
         }`}
       >
-        <Topbar />
-        <main className="px-4 py-4 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 md:px-8 md:pb-6">
+        <Topbar showSearch={showSearch} backHref={reader ? "/feed" : undefined} />
+        <main
+          className={
+            reader
+              ? "px-4 py-4 sm:px-6 sm:py-6 md:px-8"
+              : "px-4 py-4 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 md:px-8 md:pb-6"
+          }
+        >
           {children}
         </main>
-        <MobileNav showAnswers={showAnswers} showDigests={showDigests} showSearch={showSearch} />
+        {!reader && <MobileNav />}
       </div>
     </div>
   );

@@ -21,43 +21,82 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `69b0e04` (squash merge of PR
-  [#4](https://github.com/amitsharmaak/distil/pull/4)); one worktree at
-  `/Users/amitsharma/Projects/distil`; no task branches remain. Production still serves release
-  `5f45bba`; the merged change does not require a release because the scheduler is disabled in
-  hosted deployments.
-- **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
-  short entry point that points at `AGENTS.md` and this file; this handoff section added. The
-  documentation reconciliation below is also complete on the same branch. No deployment or cloud
-  resource changed.
-- **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
-  Claude-specific notes; progress is recorded only in this file. Task branches are named
-  `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
-  written ownership split in this section.
+- **Branch / worktree:** `main` at `780538b`. Branch `claude/ui-simplification` (this checkpoint)
+  in worktree `/Users/amitsharma/Projects/distil-ui-simplification`, opened as a PR to `main`.
+  The primary checkout `/Users/amitsharma/Projects/distil` was on `claude/bug-content-search`
+  (`6cd2635`, clean) when this work started and was left untouched; a second worktree
+  `/Users/amitsharma/Projects/distil-password-login` holds `claude/password-login`. Production
+  still serves release `5f45bba`; the UI simplification needs a release to reach users but none
+  has been authorized.
+- **Progress at this checkpoint (UI simplification, 2026-09-11):** the design critique found the
+  shell contradicted the "calm reading" intent: 8 mobile tabs at 10px, four fixed chrome layers on
+  the reader, three search entry points, two Ask surfaces, six Settings tabs, ~10 feed controls.
+  Implemented on `claude/ui-simplification`:
+  - Mobile tab bar: Today, Feed, Save, Settings (12px labels). Desktop sidebar: Today, Feed,
+    Search, Ask, Save, Settings (Search/Ask still flag-gated).
+  - Top bar: date, a search icon linking to `/search`, icon-only theme toggle (mobile gains a
+    theme control). Removed: search-on-type input, the agent Sheet, the notification bell and its
+    30s polling. `ThemeToggle` takes an optional `className`.
+  - Reader (`/feed/[id]`): `AppShell.isReaderPath` drops the mobile tab bar and the nav padding,
+    passes `backHref="/feed"` to `Topbar`; the page's own sticky Back strip is gone and
+    `DetailActionBar` sits at `bottom-0` on every breakpoint.
+  - Settings: two tabs, Capture (`TokenSettings`) and Account (links to `/account`, `/digests`,
+    `/collections`, `/archive`). Agent, Topics, Notifications, Email Intelligence tabs removed
+    from the page; their APIs are untouched.
+  - Feed toolbar: sort select + Unread/All inline on every breakpoint; priority/source/type/topic/
+    collection, archive, dates and card/compact layout live in the Filters bottom sheet. Props of
+    `FeedFilters` unchanged.
+  - Feed page: an API error or a payload without `items` now renders a "Feed is unavailable" card
+    instead of crashing on `items.some` (the crash reproduced locally on an unauthenticated
+    session).
+  - Tests rewritten for mobile-nav, sidebar, topbar, app-shell (reader-route cases added), feed
+    page (error and empty-payload cases; network failure now expects the error card, not the
+    empty state); `tests/e2e/phase2.spec.ts` no longer expects Digests in navigation.
+- **Decisions recorded here:** Amit chose "unlink only": `/topics`, `/sources`, `/research`,
+  `/digests`, `/collections`, `/archive` and the removed Settings tabs stay routable and their
+  code stays in the tree; `/topics`, `/sources` and `/research` now have no inbound links and are
+  deletion candidates. `AGENTS.md` describes architecture; `CLAUDE.md` holds only Claude-specific
+  notes; progress is recorded only in this file. Task branches are named `<agent>/<task>`
+  (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a written
+  ownership split in this section.
 - **Blockers / open items (all non-blocking):**
   - `src/lib/notifications.ts` still imports the SQLite module statically but has no importers
     anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-- **Verification at this checkpoint (locally verified on 2026-09-11):** `main` equal to
-  `origin/main` before branching; `npx tsc --noEmit` passed after the scheduler change; ESLint on
-  the changed source file passed; `src/lib/__tests__` passed 6 suites / 63 tests; Prettier passes
-  on every changed file. Not re-run: full Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
-  so a local `npm run dev` here runs the legacy SQLite path and is not representative of
-  Production; Postgres integration tests need Docker or `DISTIL_TEST_POSTGRES_URL`.
+- **Verification at this checkpoint (locally verified on 2026-09-11, UI simplification):**
+  `main` equal to `origin/main` at `780538b` before branching; `npx tsc --noEmit` passed;
+  `npm run lint` passed (0 errors, pre-existing warnings only); full `npm test` passed
+  (195 suites / 1377 tests); visual check of Today, Feed, Settings at 375px and Feed at desktop
+  on a worktree dev server with all Phase 2 UI flags on (no session, so data-backed content shows
+  the new error cards; the reader route 500s server-side on an unauthenticated session exactly as
+  on `main`). `npm run test:e2e` (flags off, as in CI) passed 27 / 3 skipped across
+  desktop-chromium, mobile-chromium and mobile-webkit. The flags-on variant of
+  `tests/e2e/phase2.spec.ts` (never run in CI) passes its navigation assertions after this change
+  but fails at its final `/feed/phase2-fixture` step with a server-side `AccessDeniedError`;
+  the same step fails identically on unmodified `main`, so it is a pre-existing gap in that
+  spec, not a regression. Not run: PostgreSQL integration, build. The local `.env.local` has no `DATABASE_URL`, so a local `npm run dev` runs the legacy
+  SQLite path and is not representative of Production; Postgres integration tests need Docker or
+  `DISTIL_TEST_POSTGRES_URL`.
 - **Previously recorded external state (not re-checked today):** Production deployment
   `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
 - **Exact next steps:**
-  1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+  1. Amit: review and merge the `claude/ui-simplification` PR, then decide whether to release it
+     (a release is required for the simplified shell to reach `distilai.app`; not authorized
+     yet). After merge, remove the worktree with `git worktree remove
+/Users/amitsharma/Projects/distil-ui-simplification`.
+  2. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
-  2. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
-     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) delete or
-     port the dead `notifications.ts` module; (c) small mobile-web fixes `BUG-PWA-001/002` and
-     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+     `BUG-SEARCH-001` result visibility (branch `claude/bug-content-search` exists at `6cd2635`
+     and may already cover this; check before duplicating); (b) delete the now-unlinked
+     `/topics`, `/sources`, `/research` routes and the dead `notifications.ts` module; (c) small
+     mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4
+     mobile work starts only on an explicit decision.
 
 ### Documentation reconciliation — 2026-09-11
 

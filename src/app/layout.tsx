@@ -59,12 +59,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <TooltipProvider>
-            <AppShell
-              showAnswers={flags.answers}
-              showDigests={flags.digests}
-              showKnowledgeUi={flags.knowledgeUi}
-              showSearch={flags.search}
-            >
+            <AppShell showAnswers={flags.answers} showSearch={flags.search}>
               {children}
             </AppShell>
           </TooltipProvider>

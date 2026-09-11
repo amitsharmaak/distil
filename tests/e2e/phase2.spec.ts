@@ -29,7 +29,10 @@ test("keeps disabled Phase 2 destinations out of browser navigation and direct r
   await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });
 
-test("renders enabled Phase 2 navigation and deterministic core states", async ({ page }) => {
+test("renders enabled Phase 2 navigation and deterministic core states", async ({
+  page,
+  isMobile,
+}) => {
   test.skip(!allPhase2UiEnabled, "Run with all Phase 2 UI flags enabled.");
   await mockTodayFeed(page);
   await page.route("**/api/v1/search?*", (route) =>
@@ -79,9 +82,18 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   );
 
   await page.goto("/");
-  await expect(page.locator('a[href="/search"]:visible')).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Ask" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Digests" })).toBeVisible();
+  // Desktop shows the sidebar entry plus the top bar icon; mobile shows the icon only.
+  await expect(page.locator('a[href="/search"]:visible').first()).toBeVisible();
+  expect(await page.locator('a[href="/search"]:visible').count()).toBeLessThanOrEqual(2);
+  // Ask lives in the desktop sidebar only; the phone bar is Today / Feed / Save / Settings.
+  if (isMobile) {
+    await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Save" })).toBeVisible();
+  } else {
+    await expect(page.getByRole("link", { name: "Ask" })).toBeVisible();
+  }
+  // Digests left primary navigation in the 2026-09 simplification; Settings links to it.
+  await expect(page.getByRole("link", { name: "Digests" })).toHaveCount(0);
 
   await page.goto("/search?q=padel");
   await expect(page.getByRole("heading", { name: "Search your knowledge" })).toBeVisible();

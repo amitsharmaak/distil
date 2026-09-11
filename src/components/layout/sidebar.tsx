@@ -6,16 +6,11 @@ import { usePathname } from "next/navigation";
 import {
   Newspaper,
   Rss,
-  Hash,
-  Plug,
   Search,
   Settings,
   BookmarkPlus,
-  Archive,
-  Folder,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,15 +21,9 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/digests", label: "Digests", icon: Sparkles },
   { href: "/search", label: "Search", icon: Search },
   { href: "/ask", label: "Ask", icon: Bot },
-  { href: "/collections", label: "Collections", icon: Folder },
-  { href: "/archive", label: "Archive", icon: Archive },
   { href: "/save", label: "Save", icon: BookmarkPlus },
-  { href: "/topics", label: "Topics", icon: Hash },
-  { href: "/sources", label: "Sources", icon: Plug },
-  { href: "/research", label: "Research", icon: Search },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -42,15 +31,11 @@ export function Sidebar({
   collapsed: controlledCollapsed,
   onCollapsedChange,
   showAnswers = true,
-  showDigests = true,
-  showKnowledgeUi = true,
   showSearch = true,
 }: {
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   showAnswers?: boolean;
-  showDigests?: boolean;
-  showKnowledgeUi?: boolean;
   showSearch?: boolean;
 }) {
   const pathname = usePathname();
@@ -90,10 +75,8 @@ export function Sidebar({
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {navItems
           .filter((item) => {
-            if (item.href === "/digests") return showDigests;
             if (item.href === "/search") return showSearch;
             if (item.href === "/ask") return showAnswers;
-            if (item.href === "/collections" || item.href === "/archive") return showKnowledgeUi;
             return true;
           })
           .map((item) => {

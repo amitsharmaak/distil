@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { headers } from "next/headers";
-import { ArrowLeft, Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
+import { Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { getTenantRepositories } from "@/lib/database";
@@ -199,16 +199,8 @@ export default async function ItemDetailPage({
   });
 
   return (
-    <div className="distil-reader-page mx-auto max-w-2xl pb-24 md:pb-20">
-      {/* Back navigation */}
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 md:-mx-8 bg-background/80 px-4 sm:px-6 md:px-8 py-3 backdrop-blur-sm">
-        <Link
-          href="/feed"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to feed
-        </Link>
-      </div>
+    <div className="distil-reader-page mx-auto max-w-2xl pb-20">
+      {/* "Back to feed" lives in the top bar (AppShell passes backHref on reader routes). */}
 
       {/* Keyboard prev / next (invisible) */}
       <ArticleNavigation

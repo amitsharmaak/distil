@@ -6,23 +6,28 @@ import { MobileNav } from "../mobile-nav";
 jest.mock("next/navigation", () => ({ usePathname: () => "/save" }));
 
 describe("MobileNav", () => {
-  it("marks the active page and reserves a full control row above the safe area", () => {
+  it("renders the four primary destinations and marks the active page", () => {
     const { container } = render(<MobileNav />);
+
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/",
+      "/feed",
+      "/save",
+      "/settings",
+    ]);
     expect(screen.getByRole("link", { name: "Save" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Feed" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Digests" })).toHaveAttribute("href", "/digests");
-    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
-    expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
     expect(container.querySelector("nav")).toHaveClass(
       "h-[calc(4rem+env(safe-area-inset-bottom,0px))]"
     );
   });
 
-  it("removes disabled Phase 2 destinations supplied by the server", () => {
-    render(<MobileNav showAnswers={false} showDigests={false} showSearch={false} />);
-    expect(screen.queryByRole("link", { name: "Ask" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Feed" })).toBeInTheDocument();
+  it("does not expose secondary destinations on the phone bar", () => {
+    render(<MobileNav />);
+
+    for (const name of ["Digests", "Search", "Ask", "Research", "Topics", "Sources"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
   });
 });
