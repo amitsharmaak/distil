@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-10 (Asia/Kolkata)
+Last updated: 2026-09-11 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -8,6 +8,84 @@ decisions, resources, evidence, blockers, and exact next steps below it. Read th
 resuming work, and update it whenever material progress or a roadmap decision is made. It
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
+
+## Current handoff — 2026-09-11
+
+This section is the only forward-looking instruction block in this file. Everything from
+"Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
+reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
+
+- **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
+  ordinary capture and reading, adding items one at a time and checking capture, readable
+  extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
+  files only. Nominate the integration owner per task in this section when both agents are active;
+  default is the agent that opens the PR.
+- **Branch / worktree:** `main` at `4a300f7` is the release baseline; one worktree at
+  `/Users/amitsharma/Projects/distil`; no local or remote task branches remain. This bootstrap was
+  done on `claude/agent-guidance-bootstrap` (docs only).
+- **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
+  short entry point that points at `AGENTS.md` and this file; this handoff section added. The
+  documentation reconciliation below is also complete on the same branch. No deployment or cloud
+  resource changed.
+- **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
+  Claude-specific notes; progress is recorded only in this file. Task branches are named
+  `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
+  written ownership split in this section.
+- **Blockers / open items (all non-blocking):**
+  - `src/lib/notifications.ts` still imports the SQLite module statically but has no importers
+    anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
+  - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
+    `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
+- **Verification at this checkpoint (locally verified on 2026-09-11):** `main` equal to
+  `origin/main` before branching; `npx tsc --noEmit` passed after the scheduler change; ESLint on
+  the changed source file passed; `src/lib/__tests__` passed 6 suites / 63 tests; Prettier passes
+  on every changed file. Not re-run: full Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
+  so a local `npm run dev` here runs the legacy SQLite path and is not representative of
+  Production; Postgres integration tests need Docker or `DISTIL_TEST_POSTGRES_URL`.
+- **Previously recorded external state (not re-checked today):** Production deployment
+  `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
+  `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
+  token; Neon production branch `br-damp-wildflower-b3kw15cu`.
+- **Exact next steps:**
+  1. Amit: review and merge the bootstrap PR. It is documentation plus one lazy-import change in
+     `src/lib/sync-scheduler.ts`; CI must pass on it, but no Production release is required
+     because the scheduler is disabled in hosted deployments.
+  2. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+     confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
+     the iPhone Shortcut API base to the apex before its next capture.
+  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+     state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
+     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) delete or
+     port the dead `notifications.ts` module; (c) small mobile-web fixes `BUG-PWA-001/002` and
+     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Documentation reconciliation — 2026-09-11
+
+Branch `claude/agent-guidance-bootstrap`, integrated by Claude Code from four bounded subagent
+tasks with non-overlapping file ownership. Changes: `README.md`, `CONTRIBUTING.md` and
+`scripts/setup.sh` rewritten for the PostgreSQL/Neon/Vercel system (no more SQLite, `.env.example`,
+Slack bot-token or generic-host claims; `setup.sh` now writes an empty-valued `.env.local`
+template). `docs/ARCHITECTURE.md` restructured into a verified hosted-architecture section and a
+clearly labeled legacy compatibility section; FTS5/`pendingIngestions`/CORS-wildcard claims removed.
+Dead `db:generate` and `db:check` scripts removed from `package.json` (no `drizzle.config.ts`
+exists; `drizzle-kit` devDependency kept). CI workflow renamed "Quality gate"; job ids and the
+`quality-gate` check name are unchanged so branch protection still matches.
+
+One runtime change: `src/lib/sync-scheduler.ts` now imports the legacy SQLite module lazily, so
+better-sqlite3 no longer opens a database file at boot on hosts where the scheduler is disabled.
+`src/lib/notifications.ts` was left as is because nothing imports it. Locally verified:
+TypeScript, ESLint on the changed file, `src/lib/__tests__` (6 suites / 63 tests), Prettier on all
+changed files. Not run: full Jest, PostgreSQL integration, E2E, production build; CI must supply
+those before merge.
+
+PR [#4](https://github.com/amitsharmaak/distil/pull/4) first CI run
+[34570240172](https://github.com/amitsharmaak/distil/actions/runs/34570240172) passed seven jobs
+and failed only the coverage gate: the 12 changed scheduler lines had 0% coverage against the 80%
+changed-code threshold. `src/lib/__tests__/sync-scheduler.unit.test.ts` was added (6 tests: no
+tokens, stale and recent last-sync for Gmail and Slack, disabled interval, double start, Gmail
+failure not blocking Slack), mocking the legacy SQLite module so better-sqlite3 never loads. Local
+file coverage is 88.9% lines; TypeScript, ESLint and Prettier pass. Awaiting the re-run.
 
 ## Current cross-phase status
 

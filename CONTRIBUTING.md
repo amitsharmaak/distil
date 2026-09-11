@@ -1,91 +1,67 @@
 # Contributing to Distil
 
-Thanks for your interest in contributing! This document covers everything you need to go from zero to pull request.
+This is a short guide to get you from zero to pull request. For the full picture — system
+architecture, session protocol, authorization boundaries — read [AGENTS.md](AGENTS.md); this file
+is a summary, not a replacement.
 
-## Quick Start
+## Setup
 
 ```bash
 git clone https://github.com/amitsharmaak/distil.git
 cd distil
 npm install
-cp .env.example .env.local
-# Edit .env.local — set at least GEMINI_API_KEY (or another AI provider key)
+# Create .env.local with DATABASE_URL, DATABASE_MIGRATION_URL, DISTIL_SESSION_SECRET,
+# DISTIL_ALLOWED_ORIGINS, NEXT_PUBLIC_API_BASE_URL, and an AI provider key (see scripts/setup.sh)
+npm run db:migrate
+npm run db:tenant:migrate
 npm run dev
 ```
 
-The app starts at `http://localhost:3000`. The SQLite database is created automatically on first run — no migrations needed.
+See [README.md](README.md) for details.
 
-## Project Structure
+## Branches and PRs
 
-```
-src/
-├── app/           # Next.js pages and API routes
-├── components/    # React components, organized by feature
-└── lib/           # The intelligence core (server-only)
-    ├── ai/        # AI providers, routing, summarization, research
-    ├── intelligence/ # Unified 5-stage ingestion pipeline
-    ├── agent/     # Conversational agent and RAG
-    ├── connectors/ # Gmail, Slack, authenticated publishers
-    ├── middleware/ # Auth, rate-limiting, CORS, tracing
-    └── db.ts      # SQLite singleton and all CRUD helpers
-browser-extension/ # Chrome MV3 extension
-```
+- Branch from current `main`, named `<agent>/<task>` (e.g. `claude/...`, `codex/...`) for coding
+  agents, or `feat/your-feature` / `fix/your-bug` for humans.
+- `main` is protected: PRs require the `quality-gate` CI check to pass, resolved conversations,
+  and linear history.
+- Run the suites that cover what you touched, plus `npm run typecheck` and `npm run lint`, before
+  opening a PR.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deeper walkthrough of non-obvious design decisions.
+## Test naming conventions
 
-## Development Workflow
+Naming decides which runner picks up a test file:
 
-1. **Fork and branch** — branch from `main` using `feat/your-feature` or `fix/your-bug`
-2. **Make changes** — follow the conventions below
-3. **Run tests** — `npm test` must pass before you submit
-4. **Lint and format** — `npm run lint && npm run format`
-5. **Open a PR** — describe what changed and why; include a test plan
+- `*.unit.test.ts(x)`
+- `*.component.test.tsx` (jsdom docblock)
+- `*.contract.test.ts`
+- `*.security.unit.test.ts`
+- `*.integration.test.ts` (PostgreSQL, via Testcontainers or `DISTIL_TEST_POSTGRES_URL`)
+- `*.sqlite-integration.test.ts` (legacy compatibility)
+- `*.live.test.ts` (opt-in only, contacts real providers)
 
-## Running Tests
+Shared fixtures live in `tests/support/`, the Phase 3 two-tenant harness in `tests/harness/`,
+security specs in `tests/security/`, Playwright suites in `tests/e2e/` and `tests/extension/`. See
+`tests/README.md`.
 
-```bash
-npm test              # all tests
-npm run test:watch    # watch mode during development
-npm run test:coverage # coverage report
-```
+## Code conventions
 
-Tests use in-memory SQLite (`DB_PATH=":memory:"`) — they never touch your local `data/distil.db`. No API keys are needed to run the test suite.
+- Server-only modules (`src/lib/ai/`, `intelligence/`, `agent/`, `knowledge/`, `postgres/`,
+  `capture/`, `auth/`, `database.ts`, `db.ts`) are never imported from `"use client"` components.
+- Read environment variables only through `src/lib/config.ts` and the flag module; never
+  `process.env` elsewhere.
+- Client components call the API through `config.apiBaseUrl`; new clients use `/api/v1/*`.
+- Every new route, worker, query or AI context path must take a verified `AuthContext` and be
+  added to `docs/authorization-matrix.json` with matching adversarial tests.
+- Logs must not contain credentials, cookies, URLs with tokens, prompts, content or raw error
+  text (`src/lib/logger.ts` conventions).
+- AI-generated markdown renders through `react-markdown` + `remark-gfm`; sanitize HTML with
+  `content-sanitizer.ts`.
+- shadcn/ui primitives go in `src/components/ui/` via `npx shadcn@latest add <component>`.
+- Prettier (`printWidth` 100) and ESLint are enforced on changed files; the lint baseline is 10
+  known warnings and zero errors.
 
-## Code Conventions
+## Full guide
 
-- **Server-only modules** — `src/lib/ai/`, `src/lib/intelligence/`, `src/lib/agent/`, and `src/lib/db.ts` are server-only. Never import them from `"use client"` components.
-- **API base URL** — client components fetch via `config.apiBaseUrl` from `src/lib/config.ts`, not hardcoded strings.
-- **UI components** — add shadcn/ui primitives with `npx shadcn@latest add <component>`; they go in `src/components/ui/`.
-- **AI prompts** — all prompt templates live in `src/lib/prompts/` (split by domain). `index.ts` re-exports everything.
-- **Environment variables** — all env vars are exported from `src/lib/config.ts`. Never read `process.env` directly outside that file.
-- **Comments** — only add a comment when the *why* is non-obvious. Well-named identifiers are preferred over explanatory comments.
-
-## How to Add a New AI Provider
-
-1. Implement the `AIProvider` interface in `src/lib/ai/providers.ts`
-2. Add your provider's model names to `src/lib/ai/ai-config.ts` (`DEFAULT_MODEL_CONFIG`, `PROVIDER_FALLBACK_MODELS`, `MODEL_COSTS`)
-3. Register it in `createProviders()` in `providers.ts` — the router picks it up automatically
-4. Add the API key env var to `.env.example` and `src/lib/config.ts`
-
-## How to Add a New Source Connector
-
-Connectors live in `src/lib/connectors/`. A connector is responsible for fetching raw content and handing it to `processContent()` from `src/lib/intelligence/pipeline.ts`. The pipeline handles classification, relevance gating, extraction, analysis, and enrichment — the connector just needs to provide a URL or raw body.
-
-Look at `src/lib/connectors/slack.ts` for a simple reference implementation.
-
-## How to Add a New Authenticated Publisher
-
-Publishers (paywalled sites like The Ken) use Playwright with a persisted login session. Adding a publisher is one file + one registry line:
-
-1. Create `src/lib/connectors/publishers/publishers/<id>.ts` implementing `PublisherDefinition`
-2. Add it to `ALL_PUBLISHERS` in `src/lib/connectors/publishers/registry.ts`
-
-See `docs/authenticated-publisher-framework.md` for full details.
-
-## Commit Style
-
-Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`. Keep the subject line under 72 characters. Explain *why* in the body if the change isn't obvious from the diff.
-
-## Questions?
-
-Open an issue — happy to help.
+Read [AGENTS.md](AGENTS.md) for the complete architecture, session protocol, and authorization
+rules before making non-trivial changes.

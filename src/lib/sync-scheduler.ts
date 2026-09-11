@@ -18,8 +18,15 @@
  */
 
 import { config } from "./config";
-import { getUserSetting, setUserSetting, getOAuthTokensByProvider } from "./db";
 import { connectorLogger } from "./logger";
+
+// The legacy SQLite module is imported lazily. `./db` loads better-sqlite3 and
+// opens a database file at module-evaluation time, so a static import would do
+// that on every server boot — including hosted deployments where DATABASE_URL
+// is set and the scheduler is disabled (SYNC_INTERVAL_HOURS=0). Importing it
+// only inside the code paths that actually use it keeps the legacy driver off
+// the hosted startup path entirely.
+const legacyDb = () => import("./db");
 
 // How often to check whether a sync is due (independent of the sync interval).
 // Keeping this at 15 minutes means the app catches up within 15 min of coming
@@ -50,21 +57,14 @@ export function startSyncScheduler(): void {
     return;
   }
 
-  connectorLogger.info(
-    { intervalHours },
-    "Starting background sync scheduler",
-  );
+  connectorLogger.info({ intervalHours }, "Starting background sync scheduler");
 
   // Catch-up check immediately on startup.
-  runDueSync().catch((err) =>
-    connectorLogger.error({ err }, "Startup sync check failed"),
-  );
+  runDueSync().catch((err) => connectorLogger.error({ err }, "Startup sync check failed"));
 
   // Periodic check — fires every 15 min regardless of sync interval.
   const timer = setInterval(() => {
-    runDueSync().catch((err) =>
-      connectorLogger.error({ err }, "Scheduled sync check failed"),
-    );
+    runDueSync().catch((err) => connectorLogger.error({ err }, "Scheduled sync check failed"));
   }, CHECK_INTERVAL_MS);
 
   // Don't keep the process alive just for the scheduler.
@@ -84,7 +84,7 @@ async function runDueSync(): Promise<void> {
   await maybeSync({
     name: "Gmail",
     settingKey: GMAIL_LAST_SYNC_KEY,
-    isConnected: () => getOAuthTokensByProvider("gmail").length > 0,
+    isConnected: async () => (await legacyDb()).getOAuthTokensByProvider("gmail").length > 0,
     sync: async () => {
       // Dynamic import keeps the heavy googleapis SDK out of the cold-start path.
       const { syncNewsletters } = await import("./connectors/gmail");
@@ -97,7 +97,7 @@ async function runDueSync(): Promise<void> {
   await maybeSync({
     name: "Slack",
     settingKey: SLACK_LAST_SYNC_KEY,
-    isConnected: () => getOAuthTokensByProvider("slack").length > 0,
+    isConnected: async () => (await legacyDb()).getOAuthTokensByProvider("slack").length > 0,
     sync: async () => {
       const { syncSlackMessages } = await import("./connectors/slack");
       return syncSlackMessages();
@@ -118,13 +118,11 @@ async function runDueSync(): Promise<void> {
       return statuses.some((s) => s.state === "connected");
     },
     sync: async () => {
-      const { syncAllPublishers } = await import(
-        "./connectors/publishers/worker"
-      );
+      const { syncAllPublishers } = await import("./connectors/publishers/worker");
       const results = await syncAllPublishers();
       const count = Object.values(results).reduce(
         (sum, r) => sum + ("fetched" in r ? r.fetched : 0),
-        0,
+        0
       );
       return { count };
     },
@@ -145,7 +143,8 @@ interface SyncTask {
 async function maybeSync(task: SyncTask): Promise<void> {
   if (!(await task.isConnected())) return;
 
-  const raw = getUserSetting(task.settingKey);
+  const db = await legacyDb();
+  const raw = db.getUserSetting(task.settingKey);
   const lastSync = raw ? parseInt(raw, 10) : 0;
   const elapsed = task.now - lastSync;
 
@@ -155,28 +154,22 @@ async function maybeSync(task: SyncTask): Promise<void> {
         source: task.name,
         nextSyncIn: Math.round((task.intervalMs - elapsed) / 60_000),
       },
-      "Skipping sync — not due yet",
+      "Skipping sync — not due yet"
     );
     return;
   }
 
   connectorLogger.info(
     { source: task.name, lastSync: lastSync ? new Date(lastSync).toISOString() : "never" },
-    "Auto-sync starting",
+    "Auto-sync starting"
   );
 
   try {
     const result = await task.sync();
     // Only update the timestamp on success so failures are retried next cycle.
-    setUserSetting(task.settingKey, String(task.now));
-    connectorLogger.info(
-      { source: task.name, count: result.count },
-      "Auto-sync completed",
-    );
+    db.setUserSetting(task.settingKey, String(task.now));
+    connectorLogger.info({ source: task.name, count: result.count }, "Auto-sync completed");
   } catch (err) {
-    connectorLogger.error(
-      { source: task.name, err },
-      "Auto-sync failed — will retry next cycle",
-    );
+    connectorLogger.error({ source: task.name, err }, "Auto-sync failed — will retry next cycle");
   }
 }
