@@ -18,7 +18,10 @@ database branch, auth configuration, cookie secret, or alias for this rehearsal.
 2. Enable branch-scoped Managed Better Auth. Record only non-secret project, branch, and auth
    identifiers. Configure one exact HTTPS deployment origin, magic-link-only behavior, and the
    provider's shared development email service. Password, social, organization, anonymous access,
-   wildcard domains, and localhost remain disabled.
+   wildcard domains, and localhost remain disabled. Since the password-login change (2026-09-11)
+   the email/password provider must be enabled in the Neon Auth project for password sign-in and
+   password reset to work; self sign-up stays blocked because the application proxy only exposes
+   sign-in, reset and change routes and never `sign-up/email`.
 3. Create an unpromoted Vercel Preview deployment bound to that branch. Set the variables below only
    for its Git branch/deployment scope. A build with hosted auth enabled must pass
    `npm run audit:phase3-activation`; the report names checks but never returns values.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-10",
+  "updatedAt": "2026-09-11",
   "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
   "status": "wave-3-integration-in-progress",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
@@ -793,6 +793,17 @@
       "notes": "Provider session exchange redirects unmapped or inactive identities to access denied."
     },
     {
+      "path": "/api/auth/sign-in/password",
+      "source": "src/app/api/auth/sign-in/password/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "exact-origin-plus-active-account-email-plus-provider-password",
+      "requiredPrincipal": "anonymous-with-known-active-email",
+      "scope": "public",
+      "resources": ["users", "rate_limit_windows"],
+      "testProfile": "public",
+      "notes": "Unknown and inactive emails receive the same generic 401 without provider dispatch; per-IP and per-account rate limits run before the provider password check; success forwards the provider session cookies."
+    },
+    {
       "path": "/api/auth/sign-in/request-link",
       "source": "src/app/api/auth/sign-in/request-link/route.ts",
       "methods": ["POST"],
@@ -802,6 +813,39 @@
       "resources": ["users", "rate_limit_windows"],
       "testProfile": "public",
       "notes": "Unknown, inactive, and rate-limited emails receive the same accepted response without provider dispatch."
+    },
+    {
+      "path": "/api/auth/password/change",
+      "source": "src/app/api/auth/password/change/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "active_internal_account_plus_origin",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["users", "auth_identities"],
+      "testProfile": "owner",
+      "notes": "The mapped active session selects the provider account; the provider verifies the current password and revokes other sessions."
+    },
+    {
+      "path": "/api/auth/password/request-reset",
+      "source": "src/app/api/auth/password/request-reset/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "exact-origin-plus-active-account-email",
+      "requiredPrincipal": "anonymous-with-known-active-email",
+      "scope": "public",
+      "resources": ["users", "rate_limit_windows"],
+      "testProfile": "public",
+      "notes": "Unknown, inactive, and rate-limited emails receive the same accepted response without provider dispatch; the provider emails a reset link bound to the fixed /reset-password path."
+    },
+    {
+      "path": "/api/auth/password/reset",
+      "source": "src/app/api/auth/password/reset/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "exact-origin-plus-provider-reset-token",
+      "requiredPrincipal": "anonymous-with-valid-reset-token",
+      "scope": "public",
+      "resources": [],
+      "testProfile": "public",
+      "notes": "The one-time provider token authenticates the request; invalid or expired tokens receive one generic 400."
     },
     {
       "path": "/api/auth/reauthenticate",
@@ -1648,7 +1692,7 @@
       "source": "src/app/invite/page.tsx",
       "currentAuth": "public-invitation-entry",
       "requiredPrincipal": "anonymous",
-      "dataPath": "/api/auth/invitations/request-link when a fragment token is present; otherwise /api/auth/sign-in/request-link",
+      "dataPath": "/api/auth/invitations/request-link when a fragment token is present; otherwise /api/auth/sign-in/password or /api/auth/sign-in/request-link",
       "testProfile": "public"
     },
     {
@@ -1674,6 +1718,14 @@
       "requiredPrincipal": "user_session",
       "dataPath": "/api/ai/research/:id and stream",
       "testProfile": "owner"
+    },
+    {
+      "path": "/reset-password",
+      "source": "src/app/reset-password/page.tsx",
+      "currentAuth": "public-password-recovery",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "/api/auth/password/request-reset without a token; /api/auth/password/reset with the provider token from the query string",
+      "testProfile": "public"
     },
     {
       "path": "/save",
@@ -1721,7 +1773,7 @@
       "source": "src/app/account/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "dataPath": "account, session, capture-token, usage, export and deletion APIs",
+      "dataPath": "account, session, capture-token, usage, export and deletion APIs, password change and password setup link",
       "testProfile": "owner"
     },
     {
@@ -2442,8 +2494,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 88,
-    "expectedPageFileCount": 20,
+    "expectedApiRouteFileCount": 92,
+    "expectedPageFileCount": 21,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

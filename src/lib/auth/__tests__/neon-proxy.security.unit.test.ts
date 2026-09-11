@@ -70,6 +70,7 @@ describe("composed Neon proxy authorization", () => {
     expect(isPublicNeonPath("/api/auth/invitations/issue")).toBe(true);
     expect(isPublicNeonPath("/api/v1/feed")).toBe(false);
     expect(isPublicNeonPath("/invite")).toBe(true);
+    expect(isPublicNeonPath("/reset-password")).toBe(true);
     expect(isPublicNeonPath("/api/health")).toBe(true);
     expect(isPublicNeonPath("/api/v1/captures/123")).toBe(true);
     expect(isPublicNeonPath("/api/auth/devices/123")).toBe(false);

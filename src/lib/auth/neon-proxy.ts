@@ -11,6 +11,7 @@ import {
 const PUBLIC_PATHS = new Set([
   "/invite",
   "/access-denied",
+  "/reset-password",
   "/api/health",
   "/api/queue/capture-requests",
 ]);
