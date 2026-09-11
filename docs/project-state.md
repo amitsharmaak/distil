@@ -21,15 +21,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `69b0e04` (squash merge of PR
-  [#4](https://github.com/amitsharmaak/distil/pull/4)); one worktree at
-  `/Users/amitsharma/Projects/distil`; no task branches remain. Production still serves release
-  `5f45bba`; the merged change does not require a release because the scheduler is disabled in
-  hosted deployments.
-- **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
-  short entry point that points at `AGENTS.md` and this file; this handoff section added. The
-  documentation reconciliation below is also complete on the same branch. No deployment or cloud
-  resource changed.
+- **Branch / worktree:** `main` at `780538b`. Task branch `claude/password-login` in worktree
+  `/Users/amitsharma/Projects/distil-password-login` (created from `origin/main`) holds the
+  password-login implementation described in the checkpoint below; it is committed locally, not
+  pushed, no PR. A second branch `claude/bug-content-search` exists in the main worktree with an
+  uncommitted edit to `src/components/phase2/search-experience.tsx` that this session did not
+  touch. Production still serves release `5f45bba`.
+- **Progress at this checkpoint:** Email/password sign-in implemented on `claude/password-login`
+  as an addition to magic links (implementation complete and locally verified; not deployed; no
+  cloud resource changed). See "Password login — 2026-09-11" below for scope and evidence.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -49,7 +49,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
-- **Exact next steps:**
+- **Exact next steps:** 0. Password login release (needs Amit's decisions): (a) review and push `claude/password-login`,
+  open the PR and let the quality gate run; (b) enable the email/password provider in the Neon
+  Auth project for the Production branch (cloud mutation, not done by the agent); (c) after
+  the exact-SHA release, smoke on `distilai.app`: request a password link from
+  `/reset-password`, follow the emailed link, set a password, sign in with it on `/invite`,
+  change it from `/account`, and confirm the magic-link path still works. Record the result
+  here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
+  refuses an account created by magic link, that is the first thing to adjust.
   1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
@@ -57,6 +64,44 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Password login — 2026-09-11
+
+Branch `claude/password-login` (worktree `/Users/amitsharma/Projects/distil-password-login`, from
+`origin/main` at `780538b`). Integrated by Claude Code from three parallel subagent tasks with
+non-overlapping file ownership (server routes, UI, inventory/docs), then reviewed and gated by the
+main session. Requested by Amit: a password login option alongside magic links, no 2FA yet.
+
+**Design.** The hosted Neon Auth credential provider is used through Distil-gated routes; Distil
+stores no password material and issues no second session type, so the proxy, tenancy and device
+revocation paths are unchanged. `src/lib/auth/password-login.ts` holds the dependency-injected
+handlers and `neonPasswordProvider`, which calls the SDK handler internally for `sign-in/email`,
+`request-password-reset`, `reset-password` and `change-password` and forwards only `response.ok`
+and Set-Cookie headers. New routes: `POST /api/auth/sign-in/password` (active mapped email
+required before provider dispatch; generic 401 otherwise; per-IP and per-account limits 10 per
+15 min), `POST /api/auth/password/request-reset` (always 202; per-IP limit 5 per 15 min; provider
+redirect fixed to `/reset-password`), `POST /api/auth/password/reset` (one-time provider token),
+`POST /api/auth/password/change` (owner scope, origin check in the route file, revokes other
+sessions). Minimum password length 12 in schemas and forms. A first password is set through the
+emailed reset link because Better Auth's set-password is server-only. UI: `/invite` now shows
+email + password sign-in with "magic link instead" and a link to the new public `/reset-password`
+page; the account center gained a password change form and a "password setup link" button.
+`/reset-password` was added to the proxy's public paths; the reviewed CSRF boundary digest was
+regenerated. `docs/adr/0004-password-login.md` records the decision; `AGENTS.md`, `README.md`,
+the activation runbook and `docs/authorization-matrix.json` (92 route files, 21 pages, 54 owner
+mutations) were updated with the new surfaces. The legacy `/login` page and the `[...path]`
+catch-all allow-list are unchanged; `sign-up/email` is still never reachable.
+
+**Locally verified on 2026-09-11 in the worktree:** `npx tsc --noEmit` clean; `npm test` 198
+suites / 1427 tests passed (includes 31 new handler security tests, 9 route tests, 14 component
+tests, and the authorization inventory and CSRF boundary harness); `npm run lint` 0 errors and the
+10 baseline warnings, all in untouched files; Prettier clean on every changed file. Not run:
+PostgreSQL integration, E2E, `npm run build`, any request against the hosted provider.
+
+**Not verified and must be checked at release:** the hosted provider's behavior for accounts that
+exist without a credential (reset creating the credential account) and the exact reset-link URL
+shape (`/reset-password?token=...` is assumed; `?error=` is handled). The Neon Auth project must
+have email/password enabled before the routes work; that is a cloud change for Amit.
 
 ### Documentation reconciliation — 2026-09-11
 

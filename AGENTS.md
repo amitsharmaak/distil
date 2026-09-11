@@ -60,11 +60,13 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   local data. Do not add new SQLite code paths.
 - **Edge entry point:** `src/proxy.ts` (Next.js `proxy`, not `middleware.ts`). It applies the
   connector kill-switch, CORS, auth, rate limiting, trace ids and private-cache headers.
-- **Auth:** hosted Neon Auth (magic links, invitation-gated sign-up, no passwords or social
-  providers) when `FEATURE_NEON_AUTH="true"`; otherwise the legacy single-user session bridge
-  (`src/lib/auth/legacy-bridge.ts`). Production uses hosted auth. Invitations:
-  `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`. Capture clients use
-  separate hashed, revocable capture tokens (`src/lib/auth/capture-tokens.ts`).
+- **Auth:** hosted Neon Auth (magic links plus email/password sign-in for invited accounts,
+  invitation-gated sign-up, no social providers) when `FEATURE_NEON_AUTH="true"`; otherwise the
+  legacy single-user session bridge (`src/lib/auth/legacy-bridge.ts`). Production uses hosted
+  auth. Invitations: `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`.
+  Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
+  `/reset-password` page, and the account-center password section. Capture clients use separate
+  hashed, revocable capture tokens (`src/lib/auth/capture-tokens.ts`).
 - **Tenancy:** `src/lib/contracts/tenant-context.ts` defines `AuthContext` (`userId`,
   `actorKind`, `actorId`, `sessionId?`, `requestId`) and `SystemContext`. Every repository call,
   queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`), search, AI context assembly and
