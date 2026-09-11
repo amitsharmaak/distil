@@ -74,6 +74,29 @@ describe("TodayExperience", () => {
     );
   });
 
+  it("renders Markdown summaries as plain text", async () => {
+    jest.mocked(global.fetch).mockImplementation((url) =>
+      Promise.resolve(
+        response(
+          String(url).includes("sort=priority")
+            ? [
+                item({
+                  aiSummary:
+                    "## Why it matters\n\n**Durable** capture beats [connectors](https://example.test).",
+                }),
+              ]
+            : []
+        )
+      )
+    );
+
+    render(<TodayExperience />);
+
+    expect(
+      await screen.findByText("Why it matters Durable capture beats connectors.")
+    ).toBeInTheDocument();
+  });
+
   it("surfaces an API failure instead of silently showing fixtures", async () => {
     jest.mocked(global.fetch).mockResolvedValue({
       ok: false,

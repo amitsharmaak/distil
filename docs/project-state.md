@@ -54,10 +54,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
   2. Next engineering candidates, in suggested order, each as its own short-lived branch with a
-     state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
-     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) delete or
-     port the dead `notifications.ts` module; (c) small mobile-web fixes `BUG-PWA-001/002` and
-     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+     state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
+     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
+     mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
 
 ### Documentation reconciliation — 2026-09-11
 
@@ -87,6 +86,23 @@ failure not blocking Slack), mocking the legacy SQLite module so better-sqlite3 
 file coverage is 88.9% lines; TypeScript, ESLint and Prettier pass. The re-run
 [34583940690](https://github.com/amitsharmaak/distil/actions/runs/34583940690) passed all eight
 jobs, and Amit squash-merged the PR as `69b0e04` on 2026-09-11. Not deployed; no release needed.
+
+### Reading-loop bug fixes — 2026-09-11
+
+Branch `claude/bug-content-search`, two subagents with disjoint file ownership, integrated by
+Claude Code. `BUG-CONTENT-001`: Today passed the stored Markdown summary straight to a text node
+(`src/components/phase2/today-experience.tsx`), and search excerpts came verbatim from chunk content,
+which is Readability HTML (`src/lib/knowledge/retrieval.ts`). A pure `toPlainText()` helper in
+`src/lib/format.ts` now strips tags, decodes entities and removes Markdown syntax; it is applied to
+the search excerpt and the Today summary. Stored data is unchanged. `BUG-SEARCH-001`:
+`src/components/phase2/search-experience.tsx` gains a `role="status"` line under the form
+(Searching / N results / error), a collapsible Filters panel that starts collapsed under 640px,
+and scroll-plus-focus to the results heading on completion, respecting reduced motion.
+
+Locally verified: TypeScript, ESLint and Prettier on all changed files; focused Jest 4 suites /
+27 tests; the content agent's full deterministic run passed 170 suites / 1,199 tests; changed-file
+coverage is above the 80% gate. Not run: E2E, PostgreSQL integration, build; CI supplies those.
+Not deployed. Both bugs move from the deferred backlog to fixed once the PR merges.
 
 ## Current cross-phase status
 
@@ -2009,9 +2025,9 @@ wave, then run only focused regression checks against the affected surfaces.
 - [ ] **BUG-IOS-002 — touch highlighting:** make iOS text selection open the anchored-highlight save
       panel; verify save and reload on a physical device. This is accepted as non-blocking and no
       longer holds the Phase 2 gate open.
-- [ ] **BUG-CONTENT-001 — raw markup:** prevent Markdown headings in Today summaries and HTML tags in
+- [x] **BUG-CONTENT-001 — raw markup (fixed 2026-09-11, see checkpoint above):** prevent Markdown headings in Today summaries and HTML tags in
       search snippets from leaking into visible text.
-- [ ] **BUG-SEARCH-001 — completion visibility:** after Search, move or scroll results into view or
+- [x] **BUG-SEARCH-001 — completion visibility (fixed 2026-09-11, see checkpoint above):** after Search, move or scroll results into view or
       provide clear result/loading feedback above the large Filters panel.
 - [ ] **BUG-READER-001 — reading position:** reader progress did not restore on the physical iPhone.
       The user explicitly waived this behavior for the current release; retain it as low priority.

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { config } from "@/lib/config";
+import { toPlainText } from "@/lib/format";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { TodayPrototype } from "./today-prototype";
 import type { KnowledgeItem } from "./types";
@@ -17,7 +18,7 @@ function toKnowledgeItem(item: FeedItem): KnowledgeItem {
   return {
     id: item.id,
     title: item.title || "Untitled",
-    summary: item.aiSummary || item.summary || "No summary is available yet.",
+    summary: toPlainText(item.aiSummary || item.summary) || "No summary is available yet.",
     source: sourceName(item),
     href: `/feed/${item.id}`,
     isRead: item.isRead,

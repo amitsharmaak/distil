@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, ExternalLink, Search as SearchIcon, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ExternalLink,
+  Search as SearchIcon,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -122,6 +128,16 @@ export function SearchExperience() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const resultsHeadingRef = useRef<HTMLHeadingElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      setFiltersOpen(false);
+    }
+    // Only checked once on mount so a manual toggle is never overridden later.
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
@@ -240,6 +256,35 @@ export function SearchExperience() {
     return `${response.results.length} result${response.results.length === 1 ? "" : "s"}`;
   }, [response]);
 
+  const statusMessage = useMemo(() => {
+    if (loading) return "Searching…";
+    if (error) return error;
+    if (response) {
+      const count = response.results.length;
+      return count
+        ? `${count} result${count === 1 ? "" : "s"} for “${response.query}”`
+        : `No results for “${response.query}”`;
+    }
+    return "";
+  }, [error, loading, response]);
+
+  useEffect(() => {
+    if (loading || error || !response) return;
+    const heading = resultsHeadingRef.current;
+    if (!heading) return;
+    const prefersReducedMotion =
+      typeof window !== "undefined" && typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        : false;
+    if (typeof heading.scrollIntoView === "function") {
+      heading.scrollIntoView({
+        block: "start",
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+      });
+    }
+    heading.focus();
+  }, [error, loading, response]);
+
   return (
     <main className="mx-auto max-w-4xl space-y-6" aria-labelledby="search-heading">
       <header>
@@ -269,6 +314,12 @@ export function SearchExperience() {
         </Button>
       </form>
 
+      {statusMessage && (
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+          {statusMessage}
+        </p>
+      )}
+
       <section className="rounded-xl border bg-card p-4" aria-labelledby="search-filters-heading">
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-primary" />
@@ -278,8 +329,21 @@ export function SearchExperience() {
           {activeFacetCount > 0 && (
             <span className="text-xs text-muted-foreground">{activeFacetCount} active</span>
           )}
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            aria-controls="search-filters-panel"
+            onClick={() => setFiltersOpen((current) => !current)}
+            className="ml-auto flex min-h-10 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent"
+          >
+            {filtersOpen ? "Hide filters" : "Show filters"}
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
         </div>
-        <div className="mt-3 space-y-3">
+        <div id="search-filters-panel" hidden={!filtersOpen} className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2" aria-label="Source filters">
             {sources.map((value) => (
               <FilterToggle
@@ -393,11 +457,6 @@ export function SearchExperience() {
         </div>
       </section>
 
-      {loading && (
-        <p role="status" className="py-8 text-center text-muted-foreground">
-          Searching…
-        </p>
-      )}
       {!loading && unavailable && (
         <section
           role="alert"
@@ -421,7 +480,12 @@ export function SearchExperience() {
       {!loading && !error && response && (
         <section aria-labelledby="search-results-heading">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="search-results-heading" className="font-serif text-2xl font-semibold">
+            <h2
+              id="search-results-heading"
+              ref={resultsHeadingRef}
+              tabIndex={-1}
+              className="font-serif text-2xl font-semibold outline-none"
+            >
               Results
             </h2>
             <span className="text-sm text-muted-foreground">{resultCountLabel}</span>

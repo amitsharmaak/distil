@@ -139,6 +139,27 @@ describe("retrieval contracts", () => {
     expect(fake.queries.join("\n")).toContain("i.archived_at IS NULL");
   });
 
+  it("renders snippets as plain text so stored reader HTML never reaches the UI", async () => {
+    const htmlExcerpt =
+      '<h2>Durable queues</h2><p>Work is <strong>never</strong> lost &amp; retried.</p><div class="foot';
+    const fake = sqlDouble([
+      [{ ...row, excerpt: htmlExcerpt }],
+      [{ ...row, excerpt: htmlExcerpt }],
+    ]);
+    const store = new PostgresPassageSearchStore(fake.sql, context);
+    const expected = "Durable queues Work is never lost & retried.";
+    await expect(store.searchKeyword({ query: "durable" })).resolves.toEqual([
+      expect.objectContaining({
+        excerpt: expected,
+        excerptStart: 0,
+        excerptEnd: expected.length,
+      }),
+    ]);
+    await expect(store.listRecent({})).resolves.toEqual([
+      expect.objectContaining({ excerpt: expected, excerptEnd: expected.length }),
+    ]);
+  });
+
   it("fails before answer generation when a cross-tenant canary reaches the row mapper", async () => {
     const fake = sqlDouble([[{ ...row, user_id: foreignUserId }]]);
     const store = new PostgresPassageSearchStore(fake.sql, context);
