@@ -146,4 +146,35 @@ describe("SearchExperience", () => {
     render(<SearchExperience />);
     expect(await screen.findByText("No saved passages matched this search.")).toBeInTheDocument();
   });
+
+  it("shows a status line that goes from Searching to the result count", async () => {
+    search = "q=durable+queues";
+    render(<SearchExperience />);
+    expect(screen.getByRole("status")).toHaveTextContent("Searching");
+    expect(
+      await screen.findByText(`1 result for “${payload.query}”`, { selector: '[role="status"]' })
+    ).toBeInTheDocument();
+  });
+
+  it("moves focus to the results heading once results render", async () => {
+    search = "q=durable+queues";
+    render(<SearchExperience />);
+    const heading = await screen.findByRole("heading", { name: "Results" });
+    expect(heading).toHaveFocus();
+  });
+
+  it("toggles the filters panel open and closed", () => {
+    render(<SearchExperience />);
+    const toggle = screen.getByRole("button", { name: /hide filters/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Source filters")).toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /show filters/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Source filters")).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: /show filters/i }));
+    expect(screen.getByLabelText("Source filters")).toBeVisible();
+  });
 });

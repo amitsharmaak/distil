@@ -1,6 +1,7 @@
 import type { Sql } from "postgres";
 
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
+import { toPlainText } from "@/lib/format";
 import type { Priority } from "@/lib/types";
 
 export type RetrievalMode = "keyword" | "semantic" | "hybrid" | "recent_fallback";
@@ -108,7 +109,8 @@ function mapPassage(row: Row, mode: RetrievalMode, expectedUserId: string): Pass
   if (String(row.user_id) !== expectedUserId) {
     throw new Error("Tenant passage invariant failed");
   }
-  const excerpt = String(row.excerpt);
+  // Chunks store reader HTML verbatim; snippets are text-only surfaces.
+  const excerpt = toPlainText(String(row.excerpt));
   const chunkMatch = Boolean(row.chunk_match);
   const metadataMatch = Boolean(row.metadata_match);
   const reasons =
