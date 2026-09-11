@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-10 (Asia/Kolkata)
+Last updated: 2026-09-11 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -8,6 +8,63 @@ decisions, resources, evidence, blockers, and exact next steps below it. Read th
 resuming work, and update it whenever material progress or a roadmap decision is made. It
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
+
+## Current handoff — 2026-09-11
+
+This section is the only forward-looking instruction block in this file. Everything from
+"Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
+reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
+
+- **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
+  ordinary capture and reading, adding items one at a time and checking capture, readable
+  extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
+  files only. Nominate the integration owner per task in this section when both agents are active;
+  default is the agent that opens the PR.
+- **Branch / worktree:** `main` at `4a300f7` is the release baseline; one worktree at
+  `/Users/amitsharma/Projects/distil`; no local or remote task branches remain. This bootstrap was
+  done on `claude/agent-guidance-bootstrap` (docs only).
+- **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
+  short entry point that points at `AGENTS.md` and this file; this handoff section added. No code,
+  test, configuration, deployment or cloud resource changed.
+- **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
+  Claude-specific notes; progress is recorded only in this file. Task branches are named
+  `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
+  written ownership split in this section.
+- **Blockers / open documentation conflicts (not yet fixed, all non-blocking):**
+  - `README.md`, `CONTRIBUTING.md`, `scripts/setup.sh` and `npm run setup` still describe SQLite
+    as the database, reference a `.env.example` that does not exist, and list obsolete Slack bot-
+    token and generic-host deployment steps. Decide whether README stays a public-facing pitch or
+    becomes accurate; then rewrite or trim.
+  - `docs/ARCHITECTURE.md` describes the legacy `/api/items` fire-and-forget pipeline; the hosted
+    path is `/api/v1/captures` plus Vercel Queue. Mark it legacy or update it.
+  - `package.json` keeps `db:generate` / `db:check` (drizzle-kit) although no `drizzle.config.ts`
+    exists; either add the config or remove the scripts.
+  - `.github/workflows/ci.yml` is still named "Phase 1 quality gate"; cosmetic.
+  - `src/lib/notifications.ts` and `src/lib/sync-scheduler.ts` still import the SQLite module
+    directly; harmless while connectors are disabled, but it is the last runtime SQLite dependency.
+  - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
+    `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
+- **Verification at this checkpoint (locally verified on 2026-09-11):** clean tree on `main` equal
+  to `origin/main`; `npx tsc --noEmit` passed; Prettier passes on the changed Markdown files.
+  Not re-run: Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
+  so a local `npm run dev` here runs the legacy SQLite path and is not representative of
+  Production; Postgres integration tests need Docker or `DISTIL_TEST_POSTGRES_URL`.
+- **Previously recorded external state (not re-checked today):** Production deployment
+  `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
+  `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
+  token; Neon production branch `br-damp-wildflower-b3kw15cu`.
+- **Exact next steps:**
+  1. Amit: review and merge the bootstrap PR (docs only, no runtime change; the Production release
+     pin does not need to move).
+  2. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+     confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
+     the iPhone Shortcut API base to the apex before its next capture.
+  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+     state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
+     `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) resolve the
+     documentation conflicts above; (c) small mobile-web fixes `BUG-PWA-001/002` and the Shortcut
+     URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
 
 ## Current cross-phase status
 
