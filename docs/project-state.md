@@ -79,6 +79,14 @@ TypeScript, ESLint on the changed file, `src/lib/__tests__` (6 suites / 63 tests
 changed files. Not run: full Jest, PostgreSQL integration, E2E, production build; CI must supply
 those before merge.
 
+PR [#4](https://github.com/amitsharmaak/distil/pull/4) first CI run
+[34570240172](https://github.com/amitsharmaak/distil/actions/runs/34570240172) passed seven jobs
+and failed only the coverage gate: the 12 changed scheduler lines had 0% coverage against the 80%
+changed-code threshold. `src/lib/__tests__/sync-scheduler.unit.test.ts` was added (6 tests: no
+tokens, stale and recent last-sync for Gmail and Slack, disabled interval, double start, Gmail
+failure not blocking Slack), mocking the legacy SQLite module so better-sqlite3 never loads. Local
+file coverage is 88.9% lines; TypeScript, ESLint and Prettier pass. Awaiting the re-run.
+
 ## Current cross-phase status
 
 This file on `main` is the authoritative cross-phase state. The dedicated Phase 1, Phase 2, and
