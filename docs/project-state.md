@@ -21,9 +21,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `4a300f7` is the release baseline; one worktree at
-  `/Users/amitsharma/Projects/distil`; no local or remote task branches remain. This bootstrap was
-  done on `claude/agent-guidance-bootstrap` (docs only).
+- **Branch / worktree:** `main` at `69b0e04` (squash merge of PR
+  [#4](https://github.com/amitsharmaak/distil/pull/4)); one worktree at
+  `/Users/amitsharma/Projects/distil`; no task branches remain. Production still serves release
+  `5f45bba`; the merged change does not require a release because the scheduler is disabled in
+  hosted deployments.
 - **Progress at this checkpoint:** `AGENTS.md` created as shared guidance; `CLAUDE.md` reduced to a
   short entry point that points at `AGENTS.md` and this file; this handoff section added. The
   documentation reconciliation below is also complete on the same branch. No deployment or cloud
@@ -48,13 +50,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
 - **Exact next steps:**
-  1. Amit: review and merge the bootstrap PR. It is documentation plus one lazy-import change in
-     `src/lib/sync-scheduler.ts`; CI must pass on it, but no Production release is required
-     because the scheduler is disabled in hosted deployments.
-  2. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+  1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
-  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+  2. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) fix `BUG-CONTENT-001` raw markup in Today/search snippets and
      `BUG-SEARCH-001` result visibility, since they touch the daily reading loop; (b) delete or
      port the dead `notifications.ts` module; (c) small mobile-web fixes `BUG-PWA-001/002` and
@@ -85,7 +84,9 @@ and failed only the coverage gate: the 12 changed scheduler lines had 0% coverag
 changed-code threshold. `src/lib/__tests__/sync-scheduler.unit.test.ts` was added (6 tests: no
 tokens, stale and recent last-sync for Gmail and Slack, disabled interval, double start, Gmail
 failure not blocking Slack), mocking the legacy SQLite module so better-sqlite3 never loads. Local
-file coverage is 88.9% lines; TypeScript, ESLint and Prettier pass. Awaiting the re-run.
+file coverage is 88.9% lines; TypeScript, ESLint and Prettier pass. The re-run
+[34583940690](https://github.com/amitsharmaak/distil/actions/runs/34583940690) passed all eight
+jobs, and Amit squash-merged the PR as `69b0e04` on 2026-09-11. Not deployed; no release needed.
 
 ## Current cross-phase status
 
