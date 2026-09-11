@@ -21,12 +21,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `780538b`. Task branch `claude/password-login` in worktree
-  `/Users/amitsharma/Projects/distil-password-login` (created from `origin/main`) holds the
-  password-login implementation described in the checkpoint below; it is committed locally, not
-  pushed, no PR. A second branch `claude/bug-content-search` exists in the main worktree with an
-  uncommitted edit to `src/components/phase2/search-experience.tsx` that this session did not
-  touch. Production still serves release `5f45bba`.
+- **Branch / worktree:** `main` at `d67182e` (squash merge of PR
+  [#6](https://github.com/amitsharmaak/distil/pull/6), the reading-loop fixes). Task branch
+  `claude/password-login` in worktree `/Users/amitsharma/Projects/distil-password-login`, rebased
+  onto that `main`, holds the password-login implementation described in the checkpoint below.
+  Amit authorized merging it to `main` on 2026-09-11; Claude Code is the integration owner for
+  that PR. Production still serves release `5f45bba`.
 - **Progress at this checkpoint:** Email/password sign-in implemented on `claude/password-login`
   as an addition to magic links (implementation complete and locally verified; not deployed; no
   cloud resource changed). See "Password login — 2026-09-11" below for scope and evidence.
@@ -49,14 +49,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
-- **Exact next steps:** 0. Password login release (needs Amit's decisions): (a) review and push `claude/password-login`,
-  open the PR and let the quality gate run; (b) enable the email/password provider in the Neon
-  Auth project for the Production branch (cloud mutation, not done by the agent); (c) after
-  the exact-SHA release, smoke on `distilai.app`: request a password link from
-  `/reset-password`, follow the emailed link, set a password, sign in with it on `/invite`,
-  change it from `/account`, and confirm the magic-link path still works. Record the result
-  here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
-  refuses an account created by magic link, that is the first thing to adjust.
+- **Password login release (needs Amit's decisions):** after the PR merges, (a) release the
+  exact `main` SHA to Production; (b) enable the email/password provider in the Neon Auth project
+  for the Production branch (cloud mutation, not done by the agent); (c) smoke on `distilai.app`:
+  request a password link from `/reset-password`, follow the emailed link, set a password, sign
+  in with it on `/invite`, change it from `/account`, and confirm the magic-link path still works.
+  Record the result here. If the provider's reset link does not land on
+  `/reset-password?token=...`, or reset refuses an account created by magic link, that is the
+  first thing to adjust.
+- **Exact next steps:**
   1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
