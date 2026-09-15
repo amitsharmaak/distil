@@ -12,6 +12,7 @@ interface AccountProfile {
   userId: string;
   status: "active" | "suspended" | "deletion_pending" | "deleted" | "migration_pending";
   displayName?: string;
+  email?: string;
   timezone: string;
   onboardingCompleted: boolean;
   privacy: { allowPersonalization: boolean; allowAiProcessing: boolean };
@@ -81,6 +82,10 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [freshAuthAction, setFreshAuthAction] = useState<FreshAuthAction>();
+  const [passwordError, setPasswordError] = useState<string>();
+  const [passwordNotice, setPasswordNotice] = useState<string>();
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordFormKey, setPasswordFormKey] = useState(0);
 
   async function handleLifecycleFailure(
     response: Response,
@@ -304,6 +309,46 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not reload your account.");
     }
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const newPassword = String(form.get("newPassword") ?? "");
+    const confirmPassword = String(form.get("confirmPassword") ?? "");
+    setPasswordError(undefined);
+    setPasswordNotice(undefined);
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const response = await fetch("/api/auth/password/change", {
+        method: "POST",
+        headers: { "content-type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ currentPassword: form.get("currentPassword"), newPassword }),
+      });
+      if (!response.ok) {
+        setPasswordError(await messageFor(response, "Could not change your password."));
+        return;
+      }
+      setPasswordNotice("Password changed. Other sessions were signed out.");
+      setPasswordFormKey((key) => key + 1);
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function requestPasswordSetupLink() {
+    setPasswordError(undefined);
+    setPasswordNotice(undefined);
+    await fetch("/api/auth/password/request-reset", {
+      method: "POST",
+      headers: { "content-type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email: account?.email }),
+    });
+    setPasswordNotice("If this email belongs to a Distil account, a password link is on its way.");
   }
 
   const deletionCanBeCancelled =
@@ -666,6 +711,74 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                 )}
               </div>
             )}
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-5">
+            <h2 className="text-base font-semibold">Password</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Accounts created with a magic link have no password until one is set via the emailed
+              link.
+            </p>
+            <form
+              className="mt-4 flex flex-col gap-3"
+              key={passwordFormKey}
+              onSubmit={changePassword}
+            >
+              <label className="text-sm font-medium" htmlFor="currentPassword">
+                Current password
+              </label>
+              <Input
+                autoComplete="current-password"
+                id="currentPassword"
+                name="currentPassword"
+                required
+                type="password"
+              />
+              <label className="text-sm font-medium" htmlFor="newPassword">
+                New password
+              </label>
+              <Input
+                autoComplete="new-password"
+                id="newPassword"
+                minLength={12}
+                name="newPassword"
+                required
+                type="password"
+              />
+              <p className="text-xs text-muted-foreground">At least 12 characters</p>
+              <label className="text-sm font-medium" htmlFor="confirmPassword">
+                Confirm password
+              </label>
+              <Input
+                autoComplete="new-password"
+                id="confirmPassword"
+                minLength={12}
+                name="confirmPassword"
+                required
+                type="password"
+              />
+              <Button disabled={changingPassword} size="sm" type="submit">
+                {changingPassword ? "Changing…" : "Change password"}
+              </Button>
+            </form>
+            <Button
+              className="mt-4"
+              onClick={() => void requestPasswordSetupLink()}
+              size="sm"
+              variant="outline"
+            >
+              Email me a password setup link
+            </Button>
+            {passwordNotice ? (
+              <p aria-live="polite" className="mt-3 text-sm text-primary">
+                {passwordNotice}
+              </p>
+            ) : null}
+            {passwordError ? (
+              <p aria-live="polite" className="mt-3 text-sm text-destructive" role="alert">
+                {passwordError}
+              </p>
+            ) : null}
           </section>
 
           <section className="rounded-xl border border-border bg-card p-5">

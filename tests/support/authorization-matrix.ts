@@ -209,6 +209,9 @@ const publicRouteSurfaces = new Set([
   "POST /api/auth/:path+",
   "POST /api/auth/invitations/request-link",
   "POST /api/auth/sign-in/request-link",
+  "POST /api/auth/sign-in/password",
+  "POST /api/auth/password/request-reset",
+  "POST /api/auth/password/reset",
 ]);
 
 const systemRouteSurfaces = new Set(["GET /api/cron/digests"]);

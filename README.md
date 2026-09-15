@@ -15,7 +15,7 @@ summaries, a good reading experience, and traceable answers.
 - **Tailwind CSS v4** + **shadcn/ui**
 - **PostgreSQL on Neon** — system of record, with row-level security for tenant isolation
 - **Vercel** (hosting) + **Vercel Queue** — capture ingestion and background processing
-- **Neon Auth** — magic-link, invitation-gated sign-up (no passwords or social login)
+- **Neon Auth** — magic-link or email/password sign-in, invitation-gated sign-up (no social login)
 - **Google Gemini / OpenAI / Anthropic** — routed per task through a shared AI router
 - **Chrome Extension** (Manifest V3) in `browser-extension/`
 

@@ -28,6 +28,7 @@ const account = {
   userId: "11111111-1111-4111-8111-111111111111",
   status: "active",
   displayName: "Amit",
+  email: "amit@example.com",
   timezone: "Asia/Kolkata",
   onboardingCompleted: true,
   privacy: { allowPersonalization: true, allowAiProcessing: true },
@@ -621,5 +622,85 @@ describe("AccountCenter lifecycle recovery", () => {
     expect(screen.queryByRole("button", { name: "Confirm deletion" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request deletion" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("changes the password and shows the sign-out notice", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    await screen.findByText("Profile and privacy");
+
+    fireEvent.change(screen.getByLabelText("Current password"), {
+      target: { value: "old-password-value" },
+    });
+    fireEvent.change(screen.getByLabelText("New password"), {
+      target: { value: "new-password-value" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "new-password-value" },
+    });
+    fetchMock.mockResolvedValueOnce(response({ changed: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/password/change",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            currentPassword: "old-password-value",
+            newPassword: "new-password-value",
+          }),
+        })
+      )
+    );
+    expect(
+      await screen.findByText("Password changed. Other sessions were signed out.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the server error when a password change fails", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    await screen.findByText("Profile and privacy");
+
+    fireEvent.change(screen.getByLabelText("Current password"), {
+      target: { value: "wrong-password-value" },
+    });
+    fireEvent.change(screen.getByLabelText("New password"), {
+      target: { value: "new-password-value" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "new-password-value" },
+    });
+    fetchMock.mockResolvedValueOnce(
+      response({ error: { message: "Current password is incorrect." } }, 400)
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByText("Current password is incorrect.")).toBeInTheDocument();
+  });
+
+  it("sends a password setup link to the account email", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    await screen.findByText("Profile and privacy");
+
+    fetchMock.mockResolvedValueOnce(response({ accepted: true }, 202));
+    fireEvent.click(screen.getByRole("button", { name: "Email me a password setup link" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/auth/password/request-reset",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: account.email }),
+        })
+      )
+    );
+    expect(
+      await screen.findByText(
+        "If this email belongs to a Distil account, a password link is on its way."
+      )
+    ).toBeInTheDocument();
   });
 });
