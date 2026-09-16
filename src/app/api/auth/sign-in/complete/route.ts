@@ -16,7 +16,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const auth = getNeonAuthServer();
     const exchangeResponse = await exchangeMagicLinkSession(
       request,
-      auth.middleware({ loginUrl: "/invite" })
+      auth.middleware({ loginUrl: "/sign-in" })
     );
     if (exchangeResponse) return exchangeResponse;
     return createReturningMagicLinkCompletionHandler({

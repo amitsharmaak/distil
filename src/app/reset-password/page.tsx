@@ -88,7 +88,7 @@ function SetPasswordForm({ token }: { token: string }) {
         setError(payload.error?.message ?? "Unable to reset your password. Please try again.");
         return;
       }
-      router.replace("/invite?reset=1");
+      router.replace("/sign-in?reset=1");
     } finally {
       setSubmitting(false);
     }

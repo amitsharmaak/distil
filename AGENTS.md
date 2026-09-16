@@ -63,7 +63,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
 - **Auth:** hosted Neon Auth (magic links plus email/password sign-in for invited accounts,
   invitation-gated sign-up, no social providers) when `FEATURE_NEON_AUTH="true"`; otherwise the
   legacy single-user session bridge (`src/lib/auth/legacy-bridge.ts`). Production uses hosted
-  auth. Invitations: `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`.
+  auth. Invitations: `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`
+  (invitation acceptance only; returning users sign in at `/sign-in`).
   Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
   `/reset-password` page, and the account-center password section. Capture clients use separate
   hashed, revocable capture tokens (`src/lib/auth/capture-tokens.ts`).

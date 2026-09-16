@@ -70,6 +70,7 @@ describe("composed Neon proxy authorization", () => {
     expect(isPublicNeonPath("/api/auth/invitations/issue")).toBe(true);
     expect(isPublicNeonPath("/api/v1/feed")).toBe(false);
     expect(isPublicNeonPath("/invite")).toBe(true);
+    expect(isPublicNeonPath("/sign-in")).toBe(true);
     expect(isPublicNeonPath("/reset-password")).toBe(true);
     expect(isPublicNeonPath("/api/health")).toBe(true);
     expect(isPublicNeonPath("/api/v1/captures/123")).toBe(true);
@@ -136,7 +137,7 @@ describe("composed Neon proxy authorization", () => {
       ...provider(),
       middleware: jest.fn(
         () => async (verificationRequest: NextRequest) =>
-          NextResponse.redirect(new URL("/invite", verificationRequest.url))
+          NextResponse.redirect(new URL("/sign-in", verificationRequest.url))
       ),
     };
 
@@ -150,7 +151,7 @@ describe("composed Neon proxy authorization", () => {
       }
     );
 
-    expect(result.response?.headers.get("location")).toBe("https://distil.example/invite");
+    expect(result.response?.headers.get("location")).toBe("https://distil.example/sign-in");
   });
 
   it("returns public requests without invoking provider middleware", async () => {
@@ -168,7 +169,7 @@ describe("composed Neon proxy authorization", () => {
   });
 
   it("returns the provider redirect before resolving an internal account", async () => {
-    const redirect = NextResponse.redirect(new URL("/invite", "https://distil.example"));
+    const redirect = NextResponse.redirect(new URL("/sign-in", "https://distil.example"));
     const redirectingProvider = provider();
     redirectingProvider.middleware.mockReturnValue(async () => redirect);
     const authRepositories = repositories();

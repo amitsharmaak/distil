@@ -1,10 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-
-import { Button } from "@/components/ui/button";
-import { navigateFullPage } from "@/lib/browser-navigation";
-import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
 
 function readInvitationToken(): string {
   return new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
@@ -37,9 +34,9 @@ function InvitationAcceptanceCard() {
   return (
     <>
       <div>
-        <h1 className="text-2xl font-semibold">Sign in to Distil</h1>
+        <h1 className="text-2xl font-semibold">Accept your invitation</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Enter the email address linked to your Distil account or invitation.
+          Enter the email address your invitation was sent to.
         </p>
       </div>
       <form className="flex flex-col gap-3" onSubmit={submit}>
@@ -70,129 +67,28 @@ function InvitationAcceptanceCard() {
   );
 }
 
-function ReturningUserSignInCard() {
-  const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
-  const [showResetNotice, setShowResetNotice] = useState(false);
-
-  useEffect(() => {
-    void Promise.resolve().then(() =>
-      setShowResetNotice(new URLSearchParams(window.location.search).get("reset") === "1")
-    );
-  }, []);
-
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    setSubmitting(true);
-    setError(undefined);
-    setNotice(undefined);
-    try {
-      const response = await fetch("/api/auth/sign-in/password", {
-        method: "POST",
-        headers: { "content-type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: { message?: string };
-        };
-        setError(
-          response.status === 401
-            ? (payload.error?.message ?? "Invalid email or password")
-            : "Unable to continue. Please try again."
-        );
-        return;
-      }
-      // Full navigation: see navigateFullPage for why a client-side replace()
-      // would resolve from the stale prefetch cache and stay on this page.
-      navigateFullPage("/", window.location);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function sendMagicLink(event: React.MouseEvent<HTMLButtonElement>) {
-    const form = event.currentTarget.closest("form");
-    const email = (form?.elements.namedItem("email") as HTMLInputElement | null)?.value ?? "";
-    setError(undefined);
-    setNotice(undefined);
-    const response = await fetch("/api/auth/sign-in/request-link", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setNotice(
-      response.ok
-        ? "If this email is eligible, a one-time sign-in link is on its way."
-        : "Unable to continue. Please try again."
-    );
-  }
-
-  return (
-    <>
-      <div>
-        <h1 className="text-2xl font-semibold">Sign in to Distil</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Enter your email and password, or request a magic link instead.
-        </p>
-      </div>
-      {showResetNotice ? (
-        <p aria-live="polite" className="text-sm text-primary">
-          Password updated. Sign in with your new password.
-        </p>
-      ) : null}
-      <form className="flex flex-col gap-3" onSubmit={signIn}>
-        <label className="text-sm font-medium" htmlFor="email">
-          Email
-        </label>
-        <Input autoComplete="email" id="email" name="email" required type="email" />
-        <label className="text-sm font-medium" htmlFor="password">
-          Password
-        </label>
-        <Input
-          autoComplete="current-password"
-          id="password"
-          name="password"
-          required
-          type="password"
-        />
-        <Button disabled={submitting} type="submit">
-          {submitting ? "Signing in…" : "Sign in"}
-        </Button>
-        <Button onClick={sendMagicLink} type="button" variant="outline">
-          Email me a magic link instead
-        </Button>
-      </form>
-      <a className="text-sm underline" href="/reset-password">
-        Forgot your password or never set one?
-      </a>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      {notice ? (
-        <p aria-live="polite" className="text-sm">
-          {notice}
-        </p>
-      ) : null}
-    </>
-  );
-}
-
 export default function InvitePage() {
-  const [acceptingInvitation, setAcceptingInvitation] = useState(false);
+  const router = useRouter();
+  const [hasToken, setHasToken] = useState<boolean>();
 
   useEffect(() => {
-    void Promise.resolve().then(() => setAcceptingInvitation(Boolean(readInvitationToken())));
+    void Promise.resolve().then(() => setHasToken(Boolean(readInvitationToken())));
   }, []);
+
+  useEffect(() => {
+    if (hasToken === false) {
+      router.replace("/sign-in");
+    }
+  }, [hasToken, router]);
+
+  if (!hasToken) {
+    return null;
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
       <meta content="no-referrer" name="referrer" />
-      {acceptingInvitation ? <InvitationAcceptanceCard /> : <ReturningUserSignInCard />}
+      <InvitationAcceptanceCard />
     </main>
   );
 }

@@ -10,6 +10,7 @@ import {
 
 const PUBLIC_PATHS = new Set([
   "/invite",
+  "/sign-in",
   "/access-denied",
   "/reset-password",
   "/api/health",
@@ -96,7 +97,7 @@ export async function authorizeNeonProxy(
     method: "GET",
     headers: request.headers,
   });
-  const providerResponse = await dependencies.provider.middleware({ loginUrl: "/invite" })(
+  const providerResponse = await dependencies.provider.middleware({ loginUrl: "/sign-in" })(
     verificationRequest
   );
   if (providerResponse.headers.get("x-middleware-next") !== "1") {

@@ -8,8 +8,8 @@ export default function AccessDeniedPage() {
         This signed-in identity does not have access to an active Distil account. Ask the operator
         who invited you to issue a new invitation, then use the same verified email address.
       </p>
-      <Link className="text-sm underline" href="/invite">
-        Return to invitation sign-in
+      <Link className="text-sm underline" href="/sign-in">
+        Go to sign-in
       </Link>
     </main>
   );
