@@ -121,6 +121,18 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit
      decision.
 
+### iPhone Home Screen reinstall notes — 2026-09-16
+
+Docs-only change on branch `claude/pwa-reinstall-notes`. Amit's installed Distil web app on iOS
+stopped working after the origin moved to `distilai.app`: an iOS home-screen web app is pinned
+to the origin it was added from, keeps its own cookie jar, and the old Vercel origin is no longer
+trusted by Neon Auth for sign-in. `docs/iphone-shortcut.md` now tells the reader to install from
+Safari at `https://distilai.app/save` after signing in, to expect a second sign-in inside the
+installed app, and how to remove and reinstall an icon added from an older origin. Locally
+verified 2026-09-16: `https://distilai.app/manifest.webmanifest` serves `start_url: /save` with
+`display: standalone`; anonymous `/save` returns 307 to `/sign-in`, which returns 200. No code,
+tests or deployments changed.
+
 ### Tiering and UI simplification released; pin unpinned — 2026-09-16
 
 Authorized by Amit in chat on 2026-09-16 ("go ahead and do all that") after the integration
