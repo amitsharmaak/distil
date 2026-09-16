@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-11 (Asia/Kolkata)
+Last updated: 2026-09-16 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -55,6 +55,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     on 2026-09-16 not to change the password or run the remaining smoke now; landing on Today
     after password sign-in, the change-password form and the magic-link fallback on the final
     release are therefore unverified by a person and remain an optional check, not a blocker.
+- **In flight (2026-09-16):** branch `claude/test-tiering` re-tiers verification (Tier 0
+  `check:quick`, Tier 1 `check` as the only required CI check, Tier 2 nightly "Full gate") and
+  lets the release pin accept `unpinned`; see the checkpoint "Tiered testing strategy" below. Not
+  merged or deployed at the time of writing; the Production pin is unchanged.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -86,13 +90,59 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+  1. After the `claude/test-tiering` PR merges and has been deployed once under the current exact
+     pin, Amit sets `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on Vercel Production (optionally
+     `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview). From then on merges to `main`
+     auto-deploy; record the change as a dated checkpoint here.
+  2. After that merge, trigger the "Full gate" workflow once via `workflow_dispatch` and confirm
+     it passes end to end before relying on the 02:30 UTC cron.
+  3. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
-  2. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+  4. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Tiered testing strategy — 2026-09-16
+
+Branch `claude/test-tiering` (Claude Code; PR pending, CI results in the PR). Audit, measured
+locally on a 16-core Mac: `npm run typecheck` 5 s; `npm test` with `--runInBand` 16 s for 201
+suites / 1440 tests; the same Jest run with parallel workers 3.6 s, all passing; the eight-job CI
+`quality-gate` roughly 8–12 min wall per push; every Production deploy needed a manual edit of the
+`DISTIL_PHASE3_PRODUCTION_SHA` pin. Decision (Amit, 2026-09-16): the project is in an iteration
+phase with one user and at most one friend, so verification is re-tiered by when it runs; no tests
+are deleted.
+
+- Tier 0 `npm run check:quick` = `tsc --noEmit && jest --onlyChanged` (seconds, while editing).
+- Tier 1 `npm run check` = lint + typecheck + `npm test` (about a minute locally). CI "Quick gate"
+  (`.github/workflows/ci.yml`, single job `quality-gate`) runs it on every PR and push to `main`
+  and remains the only required status check besides Vercel.
+- Tier 2 `npm run check:full` = check + `test:integration` + `test:e2e` + `test:extension` +
+  `build` (needs Docker); `test:ci` now aliases it. CI "Full gate"
+  (`.github/workflows/full-gate.yml`) runs jobs `deterministic`, `postgres-integration`,
+  `browser-e2e`, `extension-e2e`, `production-build` and a non-blocking `coverage` report nightly
+  at 02:30 UTC on `main`, on `workflow_dispatch`, and on PRs carrying the `full-ci` label; a failed
+  scheduled run opens or updates the GitHub issue "Nightly full gate failed".
+
+Files changed: `package.json` (new `check`, `check:quick`, `check:full`; `--runInBand` dropped
+from every deterministic Jest script and kept only for `test:live` and inside
+`scripts/run-postgres-integration.mjs`), `.github/workflows/ci.yml` (slimmed to the Quick gate),
+new `.github/workflows/full-gate.yml`, `src/lib/operations/phase3-auth-activation.ts` plus its
+unit test (the literal `unpinned` for `DISTIL_PHASE3_PRODUCTION_SHA`, and
+`DISTIL_PHASE3_REHEARSAL_SHA` on Preview, skips the `sha-binding` finding; all other findings
+still apply; an exact SHA re-tightens), `AGENTS.md` §3–5 and §9, `CONTRIBUTING.md`,
+`tests/README.md`, `docs/vercel-deployment.md` ("Release pin"),
+`docs/runbooks/phase3-auth-activation.md` and this file.
+
+Locally verified: the audit measurements above (parallel Jest 201 suites / 1440 tests in 3.6 s,
+typecheck 5 s). Verification of the final branch (Quick gate run time, preflight behaviour with
+`unpinned`, workflow validation) is recorded in the PR, not here. Implementation complete; not
+deployed; the Production pin is unchanged. Outstanding manual step for Amit: once this change has
+been deployed once under the current exact pin, set `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on
+Vercel Production (optionally `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview); every merge to
+`main` then auto-deploys. Re-tighten at any time by setting the variable back to an exact SHA.
+After the merge, run the Full gate once via `workflow_dispatch` before relying on the cron.
 
 ### /sign-in page released — 2026-09-16
 

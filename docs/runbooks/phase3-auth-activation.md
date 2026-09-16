@@ -8,8 +8,10 @@ not authorize linking a real identity, issuing a real-user invitation, changing 
 alias, applying migrations to Production, or changing Production variables.
 
 Use the accepted `codex/phase-3-tenancy` branch and require a green exact-SHA quality gate before
-starting. Keep the existing legacy Preview available as the rollback target. Do not reuse its
-database branch, auth configuration, cookie secret, or alias for this rehearsal.
+starting. (During the later iteration phase the pin may hold the literal `unpinned`, which skips
+only the `sha-binding` check; see the iteration-phase note in the Production section below.) Keep
+the existing legacy Preview available as the rollback target. Do not reuse its database branch,
+auth configuration, cookie secret, or alias for this rehearsal.
 
 ## Release gates
 
@@ -111,7 +113,14 @@ migration chain, leave `DISTIL_LEGACY_USER_ID` absent, and bind
 `DISTIL_PHASE3_PRODUCTION_ORIGIN` plus `DISTIL_PHASE3_PRODUCTION_SHA` to the exact Production origin
 and deployed Git SHA. The reviewed Phase 2 product flags may be enabled in this mode.
 
-Require the normal exact-SHA CI gate, then deploy directly and perform a short smoke covering the
+Iteration-phase note: `DISTIL_PHASE3_PRODUCTION_SHA` (and `DISTIL_PHASE3_REHEARSAL_SHA` on
+Preview) may be set to the literal `unpinned`. The preflight then skips the `sha-binding` finding
+so pushes to `main` auto-deploy via Vercel; origin binding, cookie secret, role separation and
+allowed-origin findings still apply. Re-tighten by setting the variable back to an exact SHA (see
+`docs/vercel-deployment.md`, "Release pin").
+
+Require the normal CI gate (exact-SHA while pinned; while `unpinned`, the Quick gate on `main`
+followed by Vercel's automatic deploy), then deploy directly and perform a short smoke covering the
 first invitation and sign-in, one capture, feed/reader visibility, one search, one grounded answer,
 and sign-out/sign-in. The earlier hosted-auth and isolation rehearsal remains the acceptance evidence;
 do not repeat its full failure matrix unless the smoke test finds a regression.

@@ -50,9 +50,21 @@ function neonAuthOrigin(value: string | undefined): string | undefined {
 }
 
 /**
+ * Literal value for the approved release-SHA variable that relaxes the exact-SHA
+ * binding. The variable stays required, so opting out is an explicit, auditable
+ * choice rather than an omission.
+ */
+export const UNPINNED_RELEASE_SHA = "unpinned";
+
+/**
  * Validates Phase 3 hosted-auth activation without ever returning configuration
  * values. Preview retains the isolated rehearsal contract; Production permits
  * the reviewed product flags after an explicit release-SHA binding.
+ *
+ * The exact-SHA binding can be relaxed during iteration by setting the approved
+ * SHA variable (DISTIL_PHASE3_PRODUCTION_SHA in Production,
+ * DISTIL_PHASE3_REHEARSAL_SHA in Preview) to the literal `unpinned`; every other
+ * finding still applies. Re-tighten by setting the variable back to a SHA.
  */
 export function phase3AuthActivationFindings(
   environment: Readonly<Record<string, string | undefined>>
@@ -132,10 +144,11 @@ export function phase3AuthActivationFindings(
   const approvedShaName = rehearsal
     ? "DISTIL_PHASE3_REHEARSAL_SHA"
     : "DISTIL_PHASE3_PRODUCTION_SHA";
-  const approvedSha = environment[approvedShaName];
-  if (!approvedSha?.trim()) {
+  const approvedSha = environment[approvedShaName]?.trim();
+  if (!approvedSha) {
     add("missing-variable", `${approvedShaName} is required`);
   } else if (
+    approvedSha !== UNPINNED_RELEASE_SHA &&
     environment.VERCEL_GIT_COMMIT_SHA &&
     approvedSha !== environment.VERCEL_GIT_COMMIT_SHA
   ) {
