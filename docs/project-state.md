@@ -106,7 +106,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 
 ### Tiered testing strategy — 2026-09-16
 
-Branch `claude/test-tiering` (Claude Code; PR pending, CI results in the PR). Audit, measured
+Branch `claude/test-tiering`, PR [#15](https://github.com/amitsharmaak/distil/pull/15) (Claude
+Code; not merged or deployed at this checkpoint). On the PR the Quick gate passed in 1 min 52 s
+(Actions run 35067582448) and the Full gate correctly skipped without the `full-ci` label; the
+required checks on `main` are `quality-gate` and Vercel. Audit, measured
 locally on a 16-core Mac: `npm run typecheck` 5 s; `npm test` with `--runInBand` 16 s for 201
 suites / 1440 tests; the same Jest run with parallel workers 3.6 s, all passing; the eight-job CI
 `quality-gate` about 3.5 min wall and roughly 15 runner-minutes per push (measured on Actions run
