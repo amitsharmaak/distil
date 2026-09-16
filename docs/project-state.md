@@ -21,15 +21,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `1bdda18` (docs merge of PR
-  [#13](https://github.com/amitsharmaak/distil/pull/13) on top of `847a068`, PR
-  [#12](https://github.com/amitsharmaak/distil/pull/12)). No task branches or extra worktrees
+- **Branch / worktree:** `main` at `509fccc` (squash merge of PR
+  [#16](https://github.com/amitsharmaak/distil/pull/16), which integrated the tiering and
+  UI-simplification branches) plus this release record. No task branches or extra worktrees
   remain for this work. The worktree `/Users/amitsharma/Projects/distil-ui-simplification`
   (branch `claude/ui-simplification`, clean, now merged) can be removed by Amit with
   `git worktree remove /Users/amitsharma/Projects/distil-ui-simplification`.
-  Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on both
+  Production serves release `509fccc` as deployment `dpl_DMRkvC5CgYvMW9apSP6yfn93P3SH` on both
   `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
-  `DISTIL_PHASE3_PRODUCTION_SHA` = `847a068c7a06ac11177d1e173a28c0a326a20f31`.
+  `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase): every push to
+  `main` now auto-deploys to Production through Vercel's Git integration. The legacy alias
+  `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
+  deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
+distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -64,8 +68,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `claude/ui-simplification` (PR [#8](https://github.com/amitsharmaak/distil/pull/8), simplified
   navigation, reader chrome, top bar, settings and feed toolbar). The only conflict was this
   file; the UI branch's own record is kept as the checkpoint "UI simplification — 2026-09-11"
-  below. Merged to `main` through the integration PR; not deployed, the Production pin is
-  unchanged, so `distilai.app` still serves `847a068` without the simplified shell.
+  below. Merged to `main` through the integration PR and released to Production the same day
+  (see the checkpoint "Tiering and UI simplification released; pin unpinned" below).
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -104,22 +108,46 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. The tiering and UI-simplification work is on `main` but not released. When Amit authorizes
-     a release, deploy the new `main` head under the current exact pin (this is the first release
-     carrying the simplified shell; check Today, Feed, the reader and Settings at 375px and
-     desktop on the deployment before re-aliasing). After that deployment, Amit sets `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on Vercel Production (optionally
-     `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview). From then on merges to `main`
-     auto-deploy; record the change as a dated checkpoint here.
-  2. After that merge, trigger the "Full gate" workflow once via `workflow_dispatch` and confirm
-     it passes end to end before relying on the 02:30 UTC cron.
-  3. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
-     confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
-     the iPhone Shortcut API base to the apex before its next capture.
-  4. Next engineering candidates, in suggested order, each as its own short-lived branch with a
-     state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
-     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module and the
-     now-unlinked `/topics`, `/sources`, `/research` routes; (c) small
-     mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+  1. Amit: sign in on `https://distilai.app`, look at Today, Feed, the reader and Settings at
+     phone width and desktop (first release of the simplified shell; not yet seen by a person on
+     Production), make one deliberate browser-extension capture, then confirm extraction, summary
+     and search. Record the result as a dated checkpoint here. Update the iPhone Shortcut API
+     base to the apex before its next capture.
+  2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
+     treat it as the first task of the next session.
+  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+     state update: (a) delete or port the dead `notifications.ts` module and the now-unlinked
+     `/topics`, `/sources`, `/research` routes; (b) small mobile-web fixes `BUG-PWA-001/002` and
+     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit
+     decision.
+
+### Tiering and UI simplification released; pin unpinned — 2026-09-16
+
+Authorized by Amit in chat on 2026-09-16 ("go ahead and do all that") after the integration
+checkpoint above. Steps, in order, all performed by Claude Code:
+
+- Release pin `DISTIL_PHASE3_PRODUCTION_SHA` set to `509fccc584717f276acf2763615bc7a0ab1eec88`
+  (the `main` head after PR [#16](https://github.com/amitsharmaak/distil/pull/16)); the Git
+  auto-deployment of the merge, `project-evgf1-d4e826kv3`, had correctly failed the preflight on
+  the old pin minutes earlier. `npx vercel deploy --prod` from a clean `main` checkout produced
+  `dpl_DMRkvC5CgYvMW9apSP6yfn93P3SH` (`project-evgf1-1m1k4jpdz-pv-1850.vercel.app`, preflight
+  passed, Ready, build 2 min). `distilai.app` and `www.distilai.app` received the alias
+  automatically; `distil-pv-1850.vercel.app` was re-aliased explicitly.
+- Locally verified on both origins: `/api/health` 200 with `cache-control: no-store` and the
+  expected body; `/sign-in`, `/invite`, `/reset-password` 200; anonymous `/feed` and `/settings`
+  307 to `/sign-in`; `POST /api/auth/sign-in/password` 403 without an allowed Origin. No sign-in,
+  capture or provider call was made, so the simplified authenticated shell has not been seen by
+  a person on Production.
+- Pin then changed to the literal `unpinned` on Production (the variable was removed and re-added;
+  it remains present and required). No `DISTIL_PHASE3_REHEARSAL_SHA` exists on Preview, so
+  nothing was changed there. From this point every push to `main` auto-deploys.
+- Full gate run [35069719357](https://github.com/amitsharmaak/distil/actions/runs/35069719357)
+  triggered via `workflow_dispatch` on `main` at `509fccc`: static and deterministic tests,
+  PostgreSQL integration, web and mobile E2E, extension E2E, production build and the
+  non-blocking coverage report all succeeded; the failure-reporting job was skipped as designed.
+- Cleanup: PRs #8 and #15 closed as superseded; remote branches `claude/test-tiering` and
+  `claude/ui-simplification` deleted; the local `distil-ui-simplification` worktree is left for
+  Amit to remove.
 
 ### Tiered testing strategy — 2026-09-16
 
