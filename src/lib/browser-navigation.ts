@@ -8,6 +8,9 @@
  * client-side replace() can resolve from that stale cache and never reach
  * the server.
  */
-export function navigateFullPage(path: string): void {
-  window.location.assign(path);
+export function navigateFullPage(
+  path: string,
+  location: Pick<Location, "assign"> = window.location
+): void {
+  location.assign(path);
 }
