@@ -21,15 +21,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `ec9758a` (squash merge of PR
-  [#11](https://github.com/amitsharmaak/distil/pull/11), the sign-in redirect fix). Task branch
-  `claude/sign-in-page` (this checkpoint) adds the dedicated `/sign-in` page. Production serves
-  release `ec9758a` as deployment `dpl_GYe6JtxFxX1NpydW6K7MmX2wrT6G` on both `distilai.app` and
-  `distil-pv-1850.vercel.app` (verified 2026-09-16).
-- **Progress at this checkpoint:** Password login merged, released, provider-enabled, and the
-  sign-in redirect fix released as `ec9758a`. Amit's smoke: password accepted; end-to-end
-  landing on Today not yet confirmed in this file. `claude/sign-in-page` introduces `/sign-in`
-  as the sign-in URL (Amit: "/invite is misleading") and is awaiting merge and release.
+- **Branch / worktree:** `main` at `847a068` (squash merge of PR
+  [#12](https://github.com/amitsharmaak/distil/pull/12), the `/sign-in` page). No task branches
+  remain. Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on
+  both `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16).
+- **Progress at this checkpoint:** Password login is complete and released: provider enabled,
+  sign-in redirect fixed, and `https://distilai.app/sign-in` is the sign-in URL (`/invite` is
+  invitation acceptance only). Amit confirmed the password was accepted on the first smoke; the
+  full smoke on the final release (sign in, land on Today, change password, magic link) is still
+  to be recorded here.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -62,6 +62,17 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### /sign-in page released — 2026-09-16
+
+PR [#12](https://github.com/amitsharmaak/distil/pull/12) squash-merged as `847a068`; exact-head
+`main` gate passed. Release pin `DISTIL_PHASE3_PRODUCTION_SHA` updated to
+`847a068c7a06ac11177d1e173a28c0a326a20f31` and `vercel deploy --prod` produced
+`dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` (preflight passed, Ready); `distil-pv-1850.vercel.app`
+re-aliased. Verified on both origins: health 200; `/sign-in`, `/invite`, `/reset-password` 200;
+an anonymous `/feed` request now redirects to `/sign-in`. Operational note: Amit added local
+(gitignored) Claude Code permission rules so merges, release-pin updates, deploys and aliasing no
+longer need a manual step; the exact-SHA gate itself is unchanged.
 
 ### Sign-in redirect fix released; dedicated /sign-in page — 2026-09-16
 
