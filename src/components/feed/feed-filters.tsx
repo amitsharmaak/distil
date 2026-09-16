@@ -66,12 +66,13 @@ function FilterPill({
 }) {
   return (
     <button
+      type="button"
       onClick={onToggle}
       className={cn(
-        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+        "min-h-9 rounded-full border px-3 text-xs font-medium transition-colors",
         selected
           ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:border-border hover:bg-accent"
+          : "border-border bg-card text-muted-foreground hover:bg-accent"
       )}
     >
       {label}
@@ -99,20 +100,28 @@ function FilterGroup<T extends string>({
   };
 
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[11px] font-medium text-muted-foreground">{label}:</span>
-      {options.map((opt) => (
-        <FilterPill
-          key={opt.value}
-          label={opt.label}
-          selected={selected.includes(opt.value)}
-          onToggle={() => toggle(opt.value)}
-        />
-      ))}
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {options.map((opt) => (
+          <FilterPill
+            key={opt.value}
+            label={opt.label}
+            selected={selected.includes(opt.value)}
+            onToggle={() => toggle(opt.value)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
+const fieldClass = "mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground";
+
+/**
+ * Feed toolbar: sort and the unread toggle stay inline on every breakpoint;
+ * everything else lives in a bottom sheet so the list, not the controls, leads.
+ */
 export function FeedFilters({
   viewMode,
   onViewModeChange,
@@ -141,227 +150,163 @@ export function FeedFilters({
 }: FeedFiltersProps) {
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
+  // Sort and read state are visible inline, so only the hidden controls count.
   const activeCount =
     selectedSources.length +
     selectedTypes.length +
     selectedPriorities.length +
     selectedTopics.length +
     selectedCollections.length +
-    (showRead ? 0 : 1) +
     (archive !== "exclude" ? 1 : 0) +
-    (sort !== "for_you" ? 1 : 0) +
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0);
 
-  const viewToggle = (
-    <div className="flex items-center rounded-lg border border-border">
-      <Button
-        variant={viewMode === "card" ? "secondary" : "ghost"}
-        size="icon"
-        className="h-7 w-7 rounded-r-none"
-        onClick={() => onViewModeChange("card")}
-      >
-        <LayoutGrid className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        variant={viewMode === "compact" ? "secondary" : "ghost"}
-        size="icon"
-        className="h-7 w-7 rounded-l-none"
-        onClick={() => onViewModeChange("compact")}
-      >
-        <List className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  );
-
-  const readToggle = (
-    <button
-      onClick={() => onShowReadChange(!showRead)}
-      className={cn(
-        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-        !showRead
-          ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:bg-accent"
-      )}
-    >
-      {showRead ? "Showing all" : "Unread only"}
-    </button>
-  );
-
-  const advancedControls = (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <label className="text-[11px] font-medium text-muted-foreground">
-        Sort
-        <select
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as FeedSort)}
-          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
-        >
-          <option value="for_you">For you</option>
-          <option value="recent">Most recent</option>
-          <option value="priority">Priority</option>
-        </select>
-      </label>
-      <label className="text-[11px] font-medium text-muted-foreground">
-        Archive
-        <select
-          value={archive}
-          onChange={(event) => onArchiveChange(event.target.value as FeedArchiveFilter)}
-          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
-        >
-          <option value="exclude">Active only</option>
-          <option value="include">Include archived</option>
-          <option value="only">Archived only</option>
-        </select>
-      </label>
-      <label className="text-[11px] font-medium text-muted-foreground">
-        From date
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(event) => onDateFromChange(event.target.value)}
-          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
-        />
-      </label>
-      <label className="text-[11px] font-medium text-muted-foreground">
-        To date
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(event) => onDateToChange(event.target.value)}
-          className="mt-1 min-h-10 w-full rounded-md border bg-card px-2 text-sm text-foreground"
-        />
-      </label>
-    </div>
-  );
-
   return (
-    <div className="space-y-2.5">
-      {/* Mobile: sheet trigger */}
-      <div className="md:hidden flex items-center gap-2">
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <SlidersHorizontal className="h-4 w-4" />
-              Filters
-              {activeCount > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs">
-                  {activeCount}
-                </Badge>
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent
-            side="bottom"
-            className="max-h-[80dvh] overflow-y-auto rounded-t-xl pb-safe"
-          >
-            <SheetHeader>
-              <SheetTitle>Filters</SheetTitle>
-            </SheetHeader>
-            <div className="mt-4 flex flex-col gap-4 px-4 pb-4">
-              <FilterGroup
-                label="Priority"
-                options={priorityOptions}
-                selected={selectedPriorities}
-                onChange={onPrioritiesChange}
-              />
-              <FilterGroup
-                label="Source"
-                options={sourceOptions}
-                selected={selectedSources}
-                onChange={onSourcesChange}
-              />
-              <FilterGroup
-                label="Type"
-                options={contentTypeOptions}
-                selected={selectedTypes}
-                onChange={onTypesChange}
-              />
-              {topicOptions.length > 0 && (
-                <FilterGroup
-                  label="Topic"
-                  options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
-                  selected={selectedTopics}
-                  onChange={onTopicsChange}
-                />
-              )}
-              {collectionOptions.length > 0 && (
-                <FilterGroup
-                  label="Collection"
-                  options={collectionOptions.map((collection) => ({
-                    value: collection.id,
-                    label: collection.name,
-                  }))}
-                  selected={selectedCollections}
-                  onChange={onCollectionsChange}
-                />
-              )}
-              {advancedControls}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">Read:</span>
-                  {readToggle}
-                </div>
-                {viewToggle}
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
-        {/* Show view toggle inline on mobile too */}
-        {viewToggle}
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="sr-only" htmlFor="feed-sort">
+        Sort
+      </label>
+      <select
+        id="feed-sort"
+        value={sort}
+        onChange={(event) => onSortChange(event.target.value as FeedSort)}
+        className="min-h-9 rounded-md border bg-card px-2 text-sm text-foreground"
+      >
+        <option value="for_you">For you</option>
+        <option value="recent">Most recent</option>
+        <option value="priority">Priority</option>
+      </select>
 
-      {/* Desktop: existing pill row, unchanged */}
-      <div className="hidden md:block space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => onShowReadChange(!showRead)}
+        aria-pressed={!showRead}
+        className={cn(
+          "min-h-9 rounded-full border px-3 text-xs font-medium transition-colors",
+          !showRead
+            ? "border-primary/30 bg-primary/10 text-primary"
+            : "border-border bg-card text-muted-foreground hover:bg-accent"
+        )}
+      >
+        {showRead ? "Showing all" : "Unread only"}
+      </button>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="sm" className="ml-auto min-h-9 gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            Filters
+            {activeCount > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full px-1 text-xs">
+                {activeCount}
+              </Badge>
+            )}
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="max-h-[80dvh] overflow-y-auto rounded-t-xl pb-safe">
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 flex flex-col gap-5 px-4 pb-4">
             <FilterGroup
               label="Priority"
               options={priorityOptions}
               selected={selectedPriorities}
               onChange={onPrioritiesChange}
             />
-          </div>
-          <div className="flex items-center gap-2">
-            {readToggle}
-            {viewToggle}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <FilterGroup
-            label="Source"
-            options={sourceOptions}
-            selected={selectedSources}
-            onChange={onSourcesChange}
-          />
-          <FilterGroup
-            label="Type"
-            options={contentTypeOptions}
-            selected={selectedTypes}
-            onChange={onTypesChange}
-          />
-          {topicOptions.length > 0 && (
             <FilterGroup
-              label="Topic"
-              options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
-              selected={selectedTopics}
-              onChange={onTopicsChange}
+              label="Source"
+              options={sourceOptions}
+              selected={selectedSources}
+              onChange={onSourcesChange}
             />
-          )}
-          {collectionOptions.length > 0 && (
             <FilterGroup
-              label="Collection"
-              options={collectionOptions.map((collection) => ({
-                value: collection.id,
-                label: collection.name,
-              }))}
-              selected={selectedCollections}
-              onChange={onCollectionsChange}
+              label="Type"
+              options={contentTypeOptions}
+              selected={selectedTypes}
+              onChange={onTypesChange}
             />
-          )}
-        </div>
-        <div className="pt-1">{advancedControls}</div>
-      </div>
+            {topicOptions.length > 0 && (
+              <FilterGroup
+                label="Topic"
+                options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
+                selected={selectedTopics}
+                onChange={onTopicsChange}
+              />
+            )}
+            {collectionOptions.length > 0 && (
+              <FilterGroup
+                label="Collection"
+                options={collectionOptions.map((collection) => ({
+                  value: collection.id,
+                  label: collection.name,
+                }))}
+                selected={selectedCollections}
+                onChange={onCollectionsChange}
+              />
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-xs font-medium text-muted-foreground">
+                Archive
+                <select
+                  value={archive}
+                  onChange={(event) => onArchiveChange(event.target.value as FeedArchiveFilter)}
+                  className={fieldClass}
+                >
+                  <option value="exclude">Active only</option>
+                  <option value="include">Include archived</option>
+                  <option value="only">Archived only</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-muted-foreground">
+                From date
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => onDateFromChange(event.target.value)}
+                  className={fieldClass}
+                />
+              </label>
+              <label className="text-xs font-medium text-muted-foreground">
+                To date
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => onDateToChange(event.target.value)}
+                  className={fieldClass}
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Layout</span>
+              <div className="flex items-center rounded-lg border border-border">
+                <Button
+                  variant={viewMode === "card" ? "secondary" : "ghost"}
+                  size="icon"
+                  className="h-9 w-9 rounded-r-none"
+                  aria-label="Card layout"
+                  aria-pressed={viewMode === "card"}
+                  onClick={() => onViewModeChange("card")}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "compact" ? "secondary" : "ghost"}
+                  size="icon"
+                  className="h-9 w-9 rounded-l-none"
+                  aria-label="Compact layout"
+                  aria-pressed={viewMode === "compact"}
+                  onClick={() => onViewModeChange("compact")}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

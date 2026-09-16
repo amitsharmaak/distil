@@ -260,6 +260,53 @@ exist without a credential (reset creating the credential account) and the exact
 shape (`/reset-password?token=...` is assumed; `?error=` is handled). The Neon Auth project must
 have email/password enabled before the routes work; that is a cloud change for Amit.
 
+### UI simplification — 2026-09-11 (integrated 2026-09-16)
+
+Branch `claude/ui-simplification` (`414a700`, PR
+[#8](https://github.com/amitsharmaak/distil/pull/8)), authored on 2026-09-11 from `main` at
+`780538b` and integrated into `main` on 2026-09-16 together with the tiered testing work (see the
+"Integration of tiering and UI simplification" checkpoint above). The text below is the branch's
+own record, kept as evidence.
+
+- **What changed and why:** the design critique found the shell contradicted the "calm reading"
+  intent: 8 mobile tabs at 10px, four fixed chrome layers on the reader, three search entry
+  points, two Ask surfaces, six Settings tabs, ~10 feed controls.
+  - Mobile tab bar: Today, Feed, Save, Settings (12px labels). Desktop sidebar: Today, Feed,
+    Search, Ask, Save, Settings (Search/Ask still flag-gated).
+  - Top bar: date, a search icon linking to `/search`, icon-only theme toggle (mobile gains a
+    theme control). Removed: search-on-type input, the agent Sheet, the notification bell and its
+    30s polling. `ThemeToggle` takes an optional `className`.
+  - Reader (`/feed/[id]`): `AppShell.isReaderPath` drops the mobile tab bar and the nav padding,
+    passes `backHref="/feed"` to `Topbar`; the page's own sticky Back strip is gone and
+    `DetailActionBar` sits at `bottom-0` on every breakpoint.
+  - Settings: two tabs, Capture (`TokenSettings`) and Account (links to `/account`, `/digests`,
+    `/collections`, `/archive`). Agent, Topics, Notifications, Email Intelligence tabs removed
+    from the page; their APIs are untouched.
+  - Feed toolbar: sort select + Unread/All inline on every breakpoint; priority/source/type/topic/
+    collection, archive, dates and card/compact layout live in the Filters bottom sheet. Props of
+    `FeedFilters` unchanged.
+  - Feed page: an API error or a payload without `items` now renders a "Feed is unavailable" card
+    instead of crashing on `items.some` (the crash reproduced locally on an unauthenticated
+    session).
+  - Tests rewritten for mobile-nav, sidebar, topbar, app-shell (reader-route cases added), feed
+    page (error and empty-payload cases; network failure now expects the error card, not the
+    empty state); `tests/e2e/phase2.spec.ts` no longer expects Digests in navigation.
+- **Decision:** Amit chose "unlink only": `/topics`, `/sources`, `/research`, `/digests`,
+  `/collections`, `/archive` and the removed Settings tabs stay routable and their code stays in
+  the tree; `/topics`, `/sources` and `/research` now have no inbound links and are deletion
+  candidates.
+- **Verification on the branch (locally verified on 2026-09-11, before integration):**
+  `npx tsc --noEmit` passed; `npm run lint` passed (0 errors, pre-existing warnings only); full
+  `npm test` passed (195 suites / 1377 tests); visual check of Today, Feed, Settings at 375px and
+  Feed at desktop on a worktree dev server with all Phase 2 UI flags on. `npm run test:e2e`
+  (flags off, as in CI) passed 27 / 3 skipped across desktop-chromium, mobile-chromium and
+  mobile-webkit. The flags-on variant of `tests/e2e/phase2.spec.ts` (never run in CI) passes its
+  navigation assertions but fails at its final `/feed/phase2-fixture` step with a server-side
+  `AccessDeniedError`; the same step fails identically on unmodified `main` at `780538b`, so it is
+  a pre-existing gap in that spec, not a regression. Not run on the branch: PostgreSQL
+  integration, build. Verification after integration with current `main` is recorded in the
+  integration checkpoint above.
+
 ### Documentation reconciliation — 2026-09-11
 
 Branch `claude/agent-guidance-bootstrap`, integrated by Claude Code from four bounded subagent
