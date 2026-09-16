@@ -99,8 +99,10 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`.
 - **Deployment:** `docs/vercel-deployment.md` (topology and variable mapping) and
   `docs/runbooks/` (auth activation, backup/restore, account export/deletion, tenant-isolation
-  incidents). Production builds are SHA-bound: `npm run build` runs the Phase 3 activation
-  preflight, which requires `DISTIL_PHASE3_PRODUCTION_SHA` to equal the deployed commit.
+  incidents). `npm run build` runs the Phase 3 activation preflight, which requires
+  `DISTIL_PHASE3_PRODUCTION_SHA` to equal the deployed commit or the literal `unpinned`. During
+  the iteration phase the pin may be `unpinned`, in which case every push to `main` auto-deploys
+  through Vercel; set it back to an exact SHA to re-tighten. All other preflight findings apply.
 
 ## 4. Commands (verified against `package.json`)
 
@@ -109,7 +111,10 @@ npm run dev                  # Next.js dev server
 npm run typecheck            # tsc --noEmit
 npm run lint                 # eslint + prettier check of files changed vs origin/main
 npm run format               # prettier --write .
-npm test                     # all deterministic Jest suites
+npm run check:quick          # Tier 0: tsc --noEmit + jest --onlyChanged (seconds, while editing)
+npm run check                # Tier 1: lint + typecheck + npm test (~1 min locally; the PR gate)
+npm run check:full           # Tier 2: check + integration + e2e + extension + build (needs Docker)
+npm test                     # all deterministic Jest suites, run in parallel
 npm run test:unit | test:component | test:contract | test:security
 npm run test:phase3-isolation      # tenancy / authorization-matrix / migration invariants
 npm run test:integration     # PostgreSQL suites via Testcontainers (needs Docker) or DISTIL_TEST_POSTGRES_URL
@@ -135,11 +140,23 @@ and fakes live in `tests/support/`; the Phase 3 two-tenant harness in `tests/har
 specs in `tests/security/`; Playwright suites in `tests/e2e/` and `tests/extension/`. See
 `tests/README.md` and `docs/phase-3-isolation-testing.md`.
 
-Proportionate verification: run the suites that cover the surfaces you touched, plus
-`npm run typecheck` and `npm run lint`. Run the full gate before a release candidate or when a
-change crosses auth, capture, queue, migration or tenant boundaries. Do not repeat accepted checks
-without a new risk. CI (`.github/workflows/ci.yml`) runs eight jobs aggregated by `quality-gate`;
-`main` requires that check, the Vercel check, a PR with resolved conversations and linear history.
+Verification runs in three tiers; tests are tiered, never deleted:
+
+- **Tier 0, while editing:** `npm run check:quick` (typecheck plus Jest for files related to your
+  changes; seconds).
+- **Tier 1, before opening a PR:** `npm run check` (lint, typecheck, every deterministic Jest suite
+  in parallel; about a minute locally). CI "Quick gate" (`.github/workflows/ci.yml`) runs the same
+  command on every PR and push to `main`; its single `quality-gate` job and the Vercel check are
+  the only required status checks, alongside resolved conversations and linear history.
+- **Tier 2, nightly / `full-ci` label / before a deliberate release checkpoint:**
+  `npm run check:full` locally (needs Docker) or CI "Full gate" (`.github/workflows/full-gate.yml`):
+  deterministic suites, PostgreSQL integration, web/mobile and extension Playwright, production
+  build and a non-blocking coverage report. It runs at 02:30 UTC on `main`, on
+  `workflow_dispatch`, and on PRs carrying the `full-ci` label; add the label when a change
+  crosses auth, capture, queue, migration or tenant boundaries. A failed scheduled run opens or
+  updates the GitHub issue "Nightly full gate failed".
+
+Do not repeat accepted checks without a new risk.
 
 ## 6. Code conventions
 
@@ -195,9 +212,10 @@ _deployed_ (which deployment, which origin).
   people, data deletion and changes to the browser extension's production URL need task-specific
   authorization from Amit. Historical approvals recorded in the state file are evidence, not
   standing permission.
-- Cloud, Preview and Production work follow the exact-SHA gate: a `main` commit passes CI, the
-  release pin is updated, that commit is deployed, and both `distilai.app` and the legacy Vercel
-  alias resolve to it.
+- Cloud, Preview and Production work follow the release gate: a `main` commit passes the Quick
+  gate, that commit is deployed, and both `distilai.app` and the legacy Vercel alias resolve to
+  it. While the release pin is `unpinned` (iteration phase) Vercel deploys each `main` push
+  automatically; when it holds an exact SHA, update the pin before deploying that commit.
 - Reversible local work (code, tests, docs, local branches) proceeds without asking. Ask only for
   material missing decisions; state assumptions otherwise.
 - Do not start a new roadmap phase or expand connector scope without an explicit decision recorded

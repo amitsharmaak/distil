@@ -23,10 +23,13 @@ See [README.md](README.md) for details.
 
 - Branch from current `main`, named `<agent>/<task>` (e.g. `claude/...`, `codex/...`) for coding
   agents, or `feat/your-feature` / `fix/your-bug` for humans.
-- `main` is protected: PRs require the `quality-gate` CI check to pass, resolved conversations,
-  and linear history.
-- Run the suites that cover what you touched, plus `npm run typecheck` and `npm run lint`, before
-  opening a PR.
+- `main` is protected: PRs require the `quality-gate` job of the "Quick gate" workflow to pass,
+  resolved conversations, and linear history.
+- Run `npm run check:quick` while working (typecheck plus Jest on files related to your changes)
+  and `npm run check` (lint, typecheck and all deterministic Jest suites) before opening a PR.
+  Add the `full-ci` label to the PR to run the "Full gate" (PostgreSQL integration, Playwright
+  E2E, production build) when a change crosses auth, capture, queue, migration or tenant
+  boundaries; it also runs nightly on `main`.
 
 ## Test naming conventions
 
