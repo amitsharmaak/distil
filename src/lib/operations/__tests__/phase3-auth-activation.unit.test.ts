@@ -1,4 +1,4 @@
-import { phase3AuthActivationFindings } from "../phase3-auth-activation";
+import { UNPINNED_RELEASE_SHA, phase3AuthActivationFindings } from "../phase3-auth-activation";
 
 const validEnvironment = {
   FEATURE_NEON_AUTH: "true",
@@ -43,6 +43,63 @@ describe("Phase 3 auth activation preflight", () => {
         DISTIL_ALLOWED_ORIGINS: "https://distil.example.test",
       })
     ).toEqual([]);
+  });
+
+  it("relaxes the Production release pin when the approved SHA is unpinned", () => {
+    expect(
+      phase3AuthActivationFindings({
+        ...validEnvironment,
+        VERCEL_ENV: "production",
+        DISTIL_PHASE3_REHEARSAL_ORIGIN: undefined,
+        DISTIL_PHASE3_REHEARSAL_SHA: undefined,
+        DISTIL_PHASE3_PRODUCTION_ORIGIN: "https://distil.example.test",
+        DISTIL_PHASE3_PRODUCTION_SHA: UNPINNED_RELEASE_SHA,
+        NEXT_PUBLIC_API_BASE_URL: "https://distil.example.test",
+        DISTIL_ALLOWED_ORIGINS: "https://distil.example.test",
+        VERCEL_GIT_COMMIT_SHA: "deployed-elsewhere",
+      })
+    ).toEqual([]);
+  });
+
+  it("relaxes the Preview rehearsal pin when the approved SHA is unpinned", () => {
+    expect(
+      phase3AuthActivationFindings({
+        ...validEnvironment,
+        DISTIL_PHASE3_REHEARSAL_SHA: ` ${UNPINNED_RELEASE_SHA} `,
+        VERCEL_GIT_COMMIT_SHA: "deployed-elsewhere",
+      })
+    ).toEqual([]);
+  });
+
+  it("still requires the approved SHA variable when relaxing the pin", () => {
+    const findings = phase3AuthActivationFindings({
+      ...validEnvironment,
+      DISTIL_PHASE3_REHEARSAL_SHA: "   ",
+    });
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        id: "missing-variable",
+        detail: "DISTIL_PHASE3_REHEARSAL_SHA is required",
+      }),
+    ]);
+  });
+
+  it("keeps the pin when the approved SHA is a real, mismatching SHA", () => {
+    const findings = phase3AuthActivationFindings({
+      ...validEnvironment,
+      VERCEL_ENV: "production",
+      DISTIL_PHASE3_REHEARSAL_ORIGIN: undefined,
+      DISTIL_PHASE3_REHEARSAL_SHA: undefined,
+      DISTIL_PHASE3_PRODUCTION_ORIGIN: "https://distil.example.test",
+      DISTIL_PHASE3_PRODUCTION_SHA: "cafebabe",
+      NEXT_PUBLIC_API_BASE_URL: "https://distil.example.test",
+      DISTIL_ALLOWED_ORIGINS: "https://distil.example.test",
+      VERCEL_GIT_COMMIT_SHA: "deadbeef",
+    });
+
+    expect(findings).toEqual([expect.objectContaining({ id: "sha-binding" })]);
+    expect(JSON.stringify(findings)).not.toContain("cafebabe");
   });
 
   it("fails closed when activation is not isolated", () => {

@@ -1,0 +1,248 @@
+name: Full gate
+
+# Tier 2: everything the quick gate runs plus PostgreSQL integration, browser
+# and extension E2E, the production build, and the (non-blocking) coverage
+# report. Runs nightly on main, on demand, or on a PR labelled `full-ci`.
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: full-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  NODE_ENV: test
+  DISTIL_TEST_MODE: "1"
+
+jobs:
+  deterministic:
+    name: Lint, typecheck, and deterministic tests
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  postgres-integration:
+    name: PostgreSQL integration tests
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    env:
+      DISTIL_TEST_POSTGRES_URL: postgresql://distil:distil_test_password@127.0.0.1:5432/distil_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: distil_test
+          POSTGRES_USER: distil
+          POSTGRES_PASSWORD: distil_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U distil -d distil_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  browser-e2e:
+    name: Web and mobile E2E
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://distil:distil_test_password@127.0.0.1:5432/distil_test
+      DISTIL_E2E_PRODUCTION: "1"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: distil_test
+          POSTGRES_USER: distil
+          POSTGRES_PASSWORD: distil_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U distil -d distil_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3100
+      - run: npm run db:migrate
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  extension-e2e:
+    name: Extension E2E
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run --auto-servernum npm run test:extension
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-e2e-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  production-build:
+    name: Production build
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --include=dev
+      - run: npm run build
+
+  coverage:
+    name: Coverage report (non-blocking)
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+        # Coverage informs; it never blocks. Thresholds live in
+        # scripts/check-changed-coverage.mjs.
+        continue-on-error: true
+        env:
+          # Push deltas depend on batching and make the same branch pass or fail
+          # based on its previous push. Compare branches to the stable main base.
+          COVERAGE_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+          if-no-files-found: error
+
+  report:
+    name: Report nightly failure
+    needs:
+      - deterministic
+      - postgres-integration
+      - browser-e2e
+      - extension-e2e
+      - production-build
+      - coverage
+    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const title = "Nightly full gate failed";
+            const label = "nightly-failure";
+            const runUrl = process.env.RUN_URL;
+            const needs = JSON.parse(process.env.NEEDS_JSON);
+            const failed = Object.entries(needs)
+              .filter(([, job]) => job.result === "failure")
+              .map(([name]) => name);
+            const failedList = failed.map((name) => `- \`${name}\``).join("\n");
+            const body = [
+              `Nightly full gate run failed: ${runUrl}`,
+              "",
+              `Commit: ${context.sha}`,
+              "",
+              "Failed jobs:",
+              failedList,
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = open.find(
+              (issue) =>
+                !issue.pull_request &&
+                (issue.title === title ||
+                  (issue.labels || []).some((l) => (typeof l === "string" ? l : l.name) === label)),
+            );
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body,
+              });
+              core.info(`Commented on existing issue #${existing.number}`);
+              return;
+            }
+
+            try {
+              const created = await github.rest.issues.create({ owner, repo, title, body, labels: [label] });
+              core.info(`Created issue #${created.data.number}`);
+            } catch (error) {
+              core.warning(`Creating labelled issue failed (${error.message}); retrying without labels.`);
+              const created = await github.rest.issues.create({ owner, repo, title, body });
+              core.info(`Created issue #${created.data.number} without labels`);
+            }

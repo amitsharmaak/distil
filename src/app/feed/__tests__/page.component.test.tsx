@@ -142,7 +142,15 @@ function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
 }
 
 function itemsResponse(items: ContentItem[]): Response {
-  return { json: jest.fn().mockResolvedValue({ items }) } as unknown as Response;
+  return { ok: true, json: jest.fn().mockResolvedValue({ items }) } as unknown as Response;
+}
+
+function errorResponse(message: string): Response {
+  return {
+    ok: false,
+    status: 401,
+    json: jest.fn().mockResolvedValue({ error: { message } }),
+  } as unknown as Response;
 }
 
 async function settleInitialFetch() {
@@ -254,17 +262,20 @@ describe("FeedPage", () => {
     expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-filter", "all");
   });
 
-  it.each([
-    { search: "", message: "No items match your filters." },
-    { search: "q=missing", message: 'No results found for "missing"' },
-  ])("settles a failed $search request into its empty state", async ({ search, message }) => {
-    mockSearch = search;
-    fetchMock.mockRejectedValue(new Error("offline"));
+  it.each([{ search: "" }, { search: "q=missing" }])(
+    "settles a failed $search request into an error card rather than a misleading empty state",
+    async ({ search }) => {
+      mockSearch = search;
+      fetchMock.mockRejectedValue(new Error("offline"));
 
-    render(<FeedPage />);
+      render(<FeedPage />);
 
-    expect(await screen.findByText(message)).toBeInTheDocument();
-  });
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Feed is unavailable");
+      expect(alert).toHaveTextContent("offline");
+      expect(screen.queryByText("No items match your filters.")).not.toBeInTheDocument();
+    }
+  );
 
   it("polls while an item is processing and stops its timer on unmount", async () => {
     jest.useFakeTimers();
@@ -286,5 +297,29 @@ describe("FeedPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(initialCalls + 1);
     unmount();
     expect(clearIntervalSpy).toHaveBeenCalled();
+  });
+
+  it("shows an error card instead of crashing when the API rejects the request", async () => {
+    fetchMock.mockResolvedValue(errorResponse("Sign in to load your feed."));
+
+    render(<FeedPage />);
+    await settleInitialFetch();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Feed is unavailable");
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign in to load your feed.");
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("falls back to an empty list when a successful response carries no items", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({}),
+    } as unknown as Response);
+
+    render(<FeedPage />);
+    await settleInitialFetch();
+
+    expect(screen.getByText("No items match your filters.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

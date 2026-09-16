@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeepResearch } from "@/components/feed/deep-research";
 import { config } from "@/lib/config";
 
@@ -46,9 +42,7 @@ export function DetailActionBar({
   const router = useRouter();
   const suffix = filter ? `?filter=${filter}` : "";
 
-  const [rating, setRating] = useState<number | null>(
-    initialFeedback?.rating ?? null,
-  );
+  const [rating, setRating] = useState<number | null>(initialFeedback?.rating ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [read, setRead] = useState(isRead);
   const [markingRead, setMarkingRead] = useState(false);
@@ -113,7 +107,7 @@ export function DetailActionBar({
     "h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-colors";
 
   return (
-    <div className="distil-action-bar fixed bottom-16 left-0 right-0 z-50 border-t border-border/40 bg-background/80 backdrop-blur-xl md:bottom-0 md:left-16 lg:left-64 transition-[left] duration-300 pb-safe">
+    <div className="distil-action-bar fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background/80 backdrop-blur-xl md:left-16 lg:left-64 transition-[left] duration-300 pb-safe">
       <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-2">
         {/* ── Navigation ── */}
         <div className="flex items-center gap-1 sm:gap-2">
@@ -166,12 +160,7 @@ export function DetailActionBar({
           </Tooltip>
 
           <DeepResearch itemId={itemId} defaultQuery={title}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={iconBtn}
-              title="Deep research"
-            >
+            <Button variant="ghost" size="icon" className={iconBtn} title="Deep research">
               <Search className="h-4 w-4" />
             </Button>
           </DeepResearch>
@@ -191,14 +180,10 @@ export function DetailActionBar({
                 onClick={() => handleRate(1)}
                 disabled={submitting}
               >
-                <ThumbsUp
-                  className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`}
-                />
+                <ThumbsUp className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              {rating === 1 ? "Liked" : "Like"}
-            </TooltipContent>
+            <TooltipContent side="top">{rating === 1 ? "Liked" : "Like"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -214,14 +199,10 @@ export function DetailActionBar({
                 onClick={() => handleRate(-1)}
                 disabled={submitting}
               >
-                <ThumbsDown
-                  className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`}
-                />
+                <ThumbsDown className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              {rating === -1 ? "Disliked" : "Dislike"}
-            </TooltipContent>
+            <TooltipContent side="top">{rating === -1 ? "Disliked" : "Dislike"}</TooltipContent>
           </Tooltip>
 
           <Separator orientation="vertical" className="mx-1.5 h-4" />
@@ -232,21 +213,15 @@ export function DetailActionBar({
                 variant="ghost"
                 size="icon"
                 className={`h-11 w-11 md:h-9 md:w-9 transition-colors ${
-                  read
-                    ? "text-green-500"
-                    : "text-muted-foreground hover:text-foreground"
+                  read ? "text-green-500" : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={handleMarkRead}
                 disabled={read || markingRead}
               >
-                <Check
-                  className={`h-4 w-4 ${read ? "stroke-[2.5]" : ""}`}
-                />
+                <Check className={`h-4 w-4 ${read ? "stroke-[2.5]" : ""}`} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              {read ? "Read" : "Mark as read (R)"}
-            </TooltipContent>
+            <TooltipContent side="top">{read ? "Read" : "Mark as read (R)"}</TooltipContent>
           </Tooltip>
         </div>
       </div>

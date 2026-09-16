@@ -2,15 +2,27 @@
 
 import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useTheme } from "./theme-provider";
 
-export function ThemeToggle({ collapsed }: { collapsed?: boolean }) {
+export function ThemeToggle({
+  collapsed,
+  className,
+}: {
+  collapsed?: boolean;
+  /** Overrides the sidebar-oriented default layout (full width, sidebar colours). */
+  className?: string;
+}) {
   const { theme, toggle } = useTheme();
   return (
     <Button
       variant="ghost"
       size="sm"
-      className="w-full justify-center gap-2 text-sidebar-foreground/65 hover:text-sidebar-foreground/85 hover:bg-sidebar-accent/50"
+      className={cn(
+        "justify-center gap-2",
+        className ??
+          "w-full text-sidebar-foreground/65 hover:text-sidebar-foreground/85 hover:bg-sidebar-accent/50"
+      )}
       onClick={toggle}
       aria-label="Toggle theme"
     >

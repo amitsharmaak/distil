@@ -1,178 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Mail,
-  Hash,
-  MessageCircle,
-  Globe,
-  Link as LinkIcon,
-  Shield,
-  Bot,
-  Bell,
-  KeyRound,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { config } from "@/lib/config";
-import type { ContentItem } from "@/lib/types";
-import { TokenSettings } from "@/components/capture/token-settings";
 import Link from "next/link";
+import { Archive, Folder, KeyRound, Sparkles, UserRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TokenSettings } from "@/components/capture/token-settings";
 
-const sourceIcons: Record<string, React.ElementType> = {
-  Mail,
-  Hash,
-  MessageCircle,
-  Globe,
-  Link: LinkIcon,
-};
-
-interface DerivedSource {
-  type: string;
-  name: string;
-  icon: string;
-  itemCount: number;
-}
-
-interface DerivedTopic {
-  name: string;
-  itemCount: number;
-  color: string;
-}
-
-const EMAIL_CATEGORIES: { id: string; label: string; description: string }[] = [
-  {
-    id: "newsletter",
-    label: "Newsletter",
-    description: "Subscriptions and curated content from publishers",
-  },
-  {
-    id: "digest",
-    label: "Digest",
-    description: "Periodic summaries (e.g. daily or weekly digests)",
-  },
-  {
-    id: "announcement",
-    label: "Announcement",
-    description: "Product updates and company announcements",
-  },
-  {
-    id: "notification",
-    label: "Notification",
-    description: "Alerts, confirmations, and system messages",
-  },
-  { id: "personal", label: "Personal", description: "Direct messages from people" },
-  {
-    id: "transactional",
-    label: "Transactional",
-    description: "Receipts, shipping updates, and account notifications",
-  },
-  { id: "promotional", label: "Promotional", description: "Marketing and sales emails" },
-  { id: "automated", label: "Automated", description: "System-generated reports and alerts" },
-];
-
-const SOURCE_META: Record<string, { name: string; icon: string }> = {
-  gmail: { name: "Gmail", icon: "Mail" },
-  slack: { name: "Slack", icon: "Hash" },
-  "browser-extension": { name: "Browser Extension", icon: "Globe" },
-  manual: { name: "Manual Links", icon: "Link" },
-};
-
-const TOPIC_COLORS = [
-  "#4F46E5",
-  "#0891B2",
-  "#D97706",
-  "#059669",
-  "#DC2626",
-  "#2563EB",
-  "#65A30D",
-  "#DB2777",
-  "#7C3AED",
-  "#EA580C",
-];
-
+/**
+ * Settings keeps only what the hosted product uses: capture tokens and a
+ * pointer to the account centre. Legacy connector, agent, topic and email
+ * preference tabs were removed from this page in the 2026-09 UI simplification
+ * (their routes and APIs still exist, unlinked).
+ */
 export default function SettingsPage() {
-  const [summaryLength, setSummaryLength] = useState<"brief" | "detailed">("detailed");
-  const [pollingFrequency, setPollingFrequency] = useState("15");
-  const [highPriorityEnabled, setHighPriorityEnabled] = useState(true);
-  const [sources, setSources] = useState<DerivedSource[]>([]);
-  const [topics, setTopics] = useState<DerivedTopic[]>([]);
-
-  const [allowedEmailCategories, setAllowedEmailCategories] = useState<string[]>([
-    "newsletter",
-    "digest",
-    "announcement",
-  ]);
-
-  useEffect(() => {
-    fetch(`${config.apiBaseUrl}/api/notifications/preferences`)
-      .then((res) => res.json())
-      .then((data) => setHighPriorityEnabled(data.highPriorityItems))
-      .catch(() => {});
-
-    fetch(`${config.apiBaseUrl}/api/settings/email-intelligence`)
-      .then((res) => res.json())
-      .then((data) => setAllowedEmailCategories(data.allowedCategories ?? []))
-      .catch(() => {});
-
-    fetch(`${config.apiBaseUrl}/api/items`)
-      .then((res) => res.json())
-      .then((data: { items: ContentItem[] }) => {
-        const srcMap = new Map<string, number>();
-        const topicMap = new Map<string, number>();
-        for (const item of data.items) {
-          srcMap.set(item.sourceType, (srcMap.get(item.sourceType) || 0) + 1);
-          for (const t of item.topics) {
-            topicMap.set(t, (topicMap.get(t) || 0) + 1);
-          }
-        }
-        setSources(
-          Array.from(srcMap.entries()).map(([type, count]) => ({
-            type,
-            name: SOURCE_META[type]?.name ?? type,
-            icon: SOURCE_META[type]?.icon ?? "Globe",
-            itemCount: count,
-          }))
-        );
-        setTopics(
-          Array.from(topicMap.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([name, count], i) => ({
-              name,
-              itemCount: count,
-              color: TOPIC_COLORS[i % TOPIC_COLORS.length],
-            }))
-        );
-      })
-      .catch(() => {});
-  }, []);
-
-  async function toggleHighPriority() {
-    const newVal = !highPriorityEnabled;
-    setHighPriorityEnabled(newVal);
-    await fetch(`${config.apiBaseUrl}/api/notifications/preferences`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ highPriorityItems: newVal }),
-    });
-  }
-
-  async function toggleEmailCategory(categoryId: string) {
-    const isEnabled = allowedEmailCategories.includes(categoryId);
-    const newCategories = isEnabled
-      ? allowedEmailCategories.filter((c) => c !== categoryId)
-      : [...allowedEmailCategories, categoryId];
-    setAllowedEmailCategories(newCategories);
-    await fetch(`${config.apiBaseUrl}/api/settings/email-intelligence`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ allowedCategories: newCategories }),
-    });
-  }
-
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -180,289 +20,54 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Configure your Distil preferences</p>
       </div>
 
-      <Tabs defaultValue="accounts">
-        <div className="overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="accounts" className="gap-1.5">
-              <Shield className="h-3.5 w-3.5" /> Accounts
-            </TabsTrigger>
-            <TabsTrigger value="capture" className="gap-1.5">
-              <KeyRound className="h-3.5 w-3.5" /> Capture
-            </TabsTrigger>
-            <TabsTrigger value="agent" className="gap-1.5">
-              <Bot className="h-3.5 w-3.5" /> Agent
-            </TabsTrigger>
-            <TabsTrigger value="topics" className="gap-1.5">
-              <Hash className="h-3.5 w-3.5" /> Topics
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-1.5">
-              <Bell className="h-3.5 w-3.5" /> Notifications
-            </TabsTrigger>
-            <TabsTrigger value="email-intelligence" className="gap-1.5">
-              <Mail className="h-3.5 w-3.5" /> Email Intelligence
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        {/* Accounts Tab */}
-        <TabsContent value="accounts" className="mt-4 space-y-4">
-          <div className="rounded-xl border border-border bg-card p-5">
-            <h3 className="mb-4 text-sm font-semibold">Connected Accounts</h3>
-            <div className="space-y-3">
-              {sources.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">
-                  No connected accounts yet. Add sources from the Sources page.
-                </p>
-              ) : (
-                sources.map((source) => {
-                  const IconComponent = sourceIcons[source.icon];
-                  return (
-                    <div
-                      key={source.type}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <IconComponent className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{source.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {source.itemCount} items synced
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </TabsContent>
+      <Tabs defaultValue="capture">
+        <TabsList>
+          <TabsTrigger value="capture" className="gap-1.5">
+            <KeyRound className="h-3.5 w-3.5" /> Capture
+          </TabsTrigger>
+          <TabsTrigger value="account" className="gap-1.5">
+            <UserRound className="h-3.5 w-3.5" /> Account
+          </TabsTrigger>
+        </TabsList>
 
         <TabsContent value="capture" className="mt-4 space-y-4">
           <TokenSettings />
         </TabsContent>
 
-        {/* Agent Tab */}
-        <TabsContent value="agent" className="mt-4 space-y-4">
-          <div className="rounded-xl border border-border bg-card p-5 space-y-6">
-            <h3 className="text-sm font-semibold">Agent Preferences</h3>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Summary Length</label>
-              <div className="flex gap-2">
-                <Button
-                  variant={summaryLength === "brief" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSummaryLength("brief")}
-                >
-                  Brief
-                </Button>
-                <Button
-                  variant={summaryLength === "detailed" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSummaryLength("detailed")}
-                >
-                  Detailed
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Controls how long the AI-generated summaries will be
-              </p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Polling Frequency (minutes)</label>
-              <Input
-                type="number"
-                value={pollingFrequency}
-                onChange={(e) => setPollingFrequency(e.target.value)}
-                className="h-9 w-full sm:w-32"
-                min="5"
-                max="120"
-              />
-              <p className="text-xs text-muted-foreground">
-                How often the agent checks sources for new content (5-120 min)
-              </p>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Priority Weights</label>
-              <div className="space-y-3">
-                {[
-                  {
-                    label: "Recency",
-                    desc: "Newer content ranks higher",
-                    value: 70,
-                  },
-                  {
-                    label: "Topic Relevance",
-                    desc: "Content matching your topics ranks higher",
-                    value: 90,
-                  },
-                  {
-                    label: "Source Reliability",
-                    desc: "Trusted sources rank higher",
-                    value: 60,
-                  },
-                ].map((weight) => (
-                  <div key={weight.label} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm">{weight.label}</p>
-                      <p className="text-xs text-muted-foreground">{weight.desc}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 rounded-full bg-secondary">
-                        <div
-                          className="h-1.5 rounded-full bg-primary"
-                          style={{ width: `${weight.value}%` }}
-                        />
-                      </div>
-                      <span className="w-8 text-xs text-muted-foreground">{weight.value}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Topics Tab */}
-        <TabsContent value="topics" className="mt-4 space-y-4">
-          <div className="rounded-xl border border-border bg-card p-5">
-            <h3 className="mb-4 text-sm font-semibold">Managed Topics</h3>
-            <div className="space-y-2">
-              {topics.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">
-                  No topics yet. Topics appear automatically as you add content.
-                </p>
-              ) : (
-                topics.map((topic) => (
-                  <div
-                    key={topic.name}
-                    className="flex items-center justify-between rounded-lg border border-border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: topic.color }}
-                      />
-                      <div>
-                        <p className="text-sm font-medium">{topic.name}</p>
-                        <p className="text-xs text-muted-foreground">{topic.itemCount} items</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications" className="mt-4 space-y-4">
-          <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold">Notification Preferences</h3>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
-              <div>
-                <p className="text-sm font-medium">In-app digests</p>
-                <p className="text-xs text-muted-foreground">
-                  Opt in to a calm, explainable reading brief in your local timezone.
-                </p>
-              </div>
-              <Button asChild variant="outline" className="min-h-11">
-                <Link href="/digests">Manage digests</Link>
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">High priority items</p>
-                <p className="text-xs text-muted-foreground">
-                  Get notified when high-priority content arrives
-                </p>
-              </div>
-              <Button
-                variant={highPriorityEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={toggleHighPriority}
-              >
-                {highPriorityEnabled ? "On" : "Off"}
-              </Button>
-            </div>
-
-            {[
-              {
-                label: "Daily digest",
-                desc: "Receive a summary of the day's content each morning",
-              },
-              {
-                label: "New source content",
-                desc: "Notify when a new source starts syncing",
-              },
-              {
-                label: "Trend alerts",
-                desc: "Alert when a topic is trending across sources",
-              },
-            ].map((pref) => (
-              <div key={pref.label} className="flex items-center justify-between opacity-50">
-                <div>
-                  <p className="text-sm font-medium">{pref.label}</p>
-                  <p className="text-xs text-muted-foreground">{pref.desc}</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">
-                  Coming soon
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* Email Intelligence Tab */}
-        <TabsContent value="email-intelligence" className="mt-4 space-y-4">
+        <TabsContent value="account" className="mt-4 space-y-4">
           <div className="rounded-xl border border-border bg-card p-5 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold">Email Intelligence</h3>
+              <h3 className="text-sm font-semibold">Account</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Control which types of emails are ingested into your feed. The AI will classify
-                incoming emails and only process the selected categories.
+                Profile, privacy, devices and data export or deletion live in the account centre.
               </p>
             </div>
+            <Button asChild variant="outline" className="min-h-11">
+              <Link href="/account">Open account centre</Link>
+            </Button>
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              {EMAIL_CATEGORIES.map((cat) => {
-                const isEnabled = allowedEmailCategories.includes(cat.id);
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => toggleEmailCategory(cat.id)}
-                    className={`flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
-                      isEnabled
-                        ? "border-primary bg-primary/5"
-                        : "border-border bg-muted/30 hover:bg-muted/50"
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{cat.label}</p>
-                      <p className="text-xs text-muted-foreground">{cat.description}</p>
-                    </div>
-                    <Button
-                      variant={isEnabled ? "default" : "outline"}
-                      size="sm"
-                      tabIndex={-1}
-                      aria-hidden="true"
-                      className="shrink-0 pointer-events-none"
-                    >
-                      {isEnabled ? "On" : "Off"}
-                    </Button>
-                  </button>
-                );
-              })}
+          <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+            <h3 className="text-sm font-semibold">Library</h3>
+            <p className="text-xs text-muted-foreground">
+              Quieter surfaces that are not in the main navigation.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+                <Link href="/digests">
+                  <Sparkles className="h-3.5 w-3.5" /> Digests
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+                <Link href="/collections">
+                  <Folder className="h-3.5 w-3.5" /> Collections
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+                <Link href="/archive">
+                  <Archive className="h-3.5 w-3.5" /> Archive
+                </Link>
+              </Button>
             </div>
           </div>
         </TabsContent>

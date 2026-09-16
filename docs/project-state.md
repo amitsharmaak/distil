@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-11 (Asia/Kolkata)
+Last updated: 2026-09-16 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -24,7 +24,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Branch / worktree:** `main` at `1bdda18` (docs merge of PR
   [#13](https://github.com/amitsharmaak/distil/pull/13) on top of `847a068`, PR
   [#12](https://github.com/amitsharmaak/distil/pull/12)). No task branches or extra worktrees
-  remain for this work; `claude/ui-simplification` is a separate worktree not touched here.
+  remain for this work. The worktree `/Users/amitsharma/Projects/distil-ui-simplification`
+  (branch `claude/ui-simplification`, clean, now merged) can be removed by Amit with
+  `git worktree remove /Users/amitsharma/Projects/distil-ui-simplification`.
   Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on both
   `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
   `DISTIL_PHASE3_PRODUCTION_SHA` = `847a068c7a06ac11177d1e173a28c0a326a20f31`.
@@ -55,6 +57,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     on 2026-09-16 not to change the password or run the remaining smoke now; landing on Today
     after password sign-in, the change-password form and the magic-link fallback on the final
     release are therefore unverified by a person and remain an optional check, not a blocker.
+- **Integration (2026-09-16):** branch `claude/integrate-tiering-ui` combines the two open task
+  branches on top of `main`: `claude/test-tiering` (PR
+  [#15](https://github.com/amitsharmaak/distil/pull/15), Tier 0 `check:quick`, Tier 1 `check` as
+  the only required CI check, Tier 2 nightly "Full gate", release pin may be `unpinned`) and
+  `claude/ui-simplification` (PR [#8](https://github.com/amitsharmaak/distil/pull/8), simplified
+  navigation, reader chrome, top bar, settings and feed toolbar). The only conflict was this
+  file; the UI branch's own record is kept as the checkpoint "UI simplification — 2026-09-11"
+  below. Merged to `main` through the integration PR; not deployed, the Production pin is
+  unchanged, so `distilai.app` still serves `847a068` without the simplified shell.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -64,7 +75,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-- **Verification at this checkpoint (locally verified 2026-09-16 unless noted):** every PR
+- **Verification of the integration branch (locally verified 2026-09-16, full gate on the
+  combined tree at `54e8263`):** `npm run lint` 0 errors / 10 baseline warnings, Prettier clean;
+  `tsc --noEmit` clean; `npm test` 201 suites / 1446 tests passed; `npm run test:integration`
+  (Docker PostgreSQL) 12 suites / 44 tests passed; `npm run test:e2e` 27 passed / 3 skipped
+  across desktop-chromium, mobile-chromium and mobile-webkit; `npm run test:extension` 11
+  passed; `npm run build` succeeded. Codex/Claude sessions are not shared, so this is the only
+  record of that run.
+- **Verification of the preceding releases (locally verified 2026-09-16 unless noted):** every PR
   (#7, #9, #10, #11, #12, #13) passed the full quality gate (static, unit/component/contract,
   security, PostgreSQL integration, coverage, web/mobile and extension E2E, production build) and
   the exact-head `main` run after each merge. Local: `npm test` 201 suites / 1440 tests,
@@ -86,13 +104,66 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
+  1. The tiering and UI-simplification work is on `main` but not released. When Amit authorizes
+     a release, deploy the new `main` head under the current exact pin (this is the first release
+     carrying the simplified shell; check Today, Feed, the reader and Settings at 375px and
+     desktop on the deployment before re-aliasing). After that deployment, Amit sets `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on Vercel Production (optionally
+     `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview). From then on merges to `main`
+     auto-deploy; record the change as a dated checkpoint here.
+  2. After that merge, trigger the "Full gate" workflow once via `workflow_dispatch` and confirm
+     it passes end to end before relying on the 02:30 UTC cron.
+  3. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
      the iPhone Shortcut API base to the apex before its next capture.
-  2. Next engineering candidates, in suggested order, each as its own short-lived branch with a
+  4. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
-     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
+     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module and the
+     now-unlinked `/topics`, `/sources`, `/research` routes; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Tiered testing strategy — 2026-09-16
+
+Branch `claude/test-tiering`, PR [#15](https://github.com/amitsharmaak/distil/pull/15) (Claude
+Code; not merged or deployed at this checkpoint). On the PR the Quick gate passed in 1 min 52 s
+(Actions run 35067582448) and the Full gate correctly skipped without the `full-ci` label; the
+required checks on `main` are `quality-gate` and Vercel. Audit, measured
+locally on a 16-core Mac: `npm run typecheck` 5 s; `npm test` with `--runInBand` 16 s for 201
+suites / 1440 tests; the same Jest run with parallel workers 3.6 s, all passing; the eight-job CI
+`quality-gate` about 3.5 min wall and roughly 15 runner-minutes per push (measured on Actions run
+35066944173); every Production deploy needed a manual edit of the `DISTIL_PHASE3_PRODUCTION_SHA`
+pin. Decision (Amit, 2026-09-16): the project is in an iteration
+phase with one user and at most one friend, so verification is re-tiered by when it runs; no tests
+are deleted.
+
+- Tier 0 `npm run check:quick` = `tsc --noEmit && jest --onlyChanged` (seconds, while editing).
+- Tier 1 `npm run check` = lint + typecheck + `npm test` (about a minute locally). CI "Quick gate"
+  (`.github/workflows/ci.yml`, single job `quality-gate`) runs it on every PR and push to `main`
+  and remains the only required status check besides Vercel.
+- Tier 2 `npm run check:full` = check + `test:integration` + `test:e2e` + `test:extension` +
+  `build` (needs Docker); `test:ci` now aliases it. CI "Full gate"
+  (`.github/workflows/full-gate.yml`) runs jobs `deterministic`, `postgres-integration`,
+  `browser-e2e`, `extension-e2e`, `production-build` and a non-blocking `coverage` report nightly
+  at 02:30 UTC on `main`, on `workflow_dispatch`, and on PRs carrying the `full-ci` label; a failed
+  scheduled run opens or updates the GitHub issue "Nightly full gate failed".
+
+Files changed: `package.json` (new `check`, `check:quick`, `check:full`; `--runInBand` dropped
+from every deterministic Jest script and kept only for `test:live` and inside
+`scripts/run-postgres-integration.mjs`), `.github/workflows/ci.yml` (slimmed to the Quick gate),
+new `.github/workflows/full-gate.yml`, `src/lib/operations/phase3-auth-activation.ts` plus its
+unit test (the literal `unpinned` for `DISTIL_PHASE3_PRODUCTION_SHA`, and
+`DISTIL_PHASE3_REHEARSAL_SHA` on Preview, skips the `sha-binding` finding; all other findings
+still apply; an exact SHA re-tightens), `AGENTS.md` §3–5 and §9, `CONTRIBUTING.md`,
+`tests/README.md`, `docs/vercel-deployment.md` ("Release pin"),
+`docs/runbooks/phase3-auth-activation.md` and this file.
+
+Locally verified: the audit measurements above (parallel Jest 201 suites / 1440 tests in 3.6 s,
+typecheck 5 s). Verification of the final branch (Quick gate run time, preflight behaviour with
+`unpinned`, workflow validation) is recorded in the PR, not here. Implementation complete; not
+deployed; the Production pin is unchanged. Outstanding manual step for Amit: once this change has
+been deployed once under the current exact pin, set `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on
+Vercel Production (optionally `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview); every merge to
+`main` then auto-deploys. Re-tighten at any time by setting the variable back to an exact SHA.
+After the merge, run the Full gate once via `workflow_dispatch` before relying on the cron.
 
 ### /sign-in page released — 2026-09-16
 
@@ -205,6 +276,53 @@ PostgreSQL integration, E2E, `npm run build`, any request against the hosted pro
 exist without a credential (reset creating the credential account) and the exact reset-link URL
 shape (`/reset-password?token=...` is assumed; `?error=` is handled). The Neon Auth project must
 have email/password enabled before the routes work; that is a cloud change for Amit.
+
+### UI simplification — 2026-09-11 (integrated 2026-09-16)
+
+Branch `claude/ui-simplification` (`414a700`, PR
+[#8](https://github.com/amitsharmaak/distil/pull/8)), authored on 2026-09-11 from `main` at
+`780538b` and integrated into `main` on 2026-09-16 together with the tiered testing work (see the
+"Integration of tiering and UI simplification" checkpoint above). The text below is the branch's
+own record, kept as evidence.
+
+- **What changed and why:** the design critique found the shell contradicted the "calm reading"
+  intent: 8 mobile tabs at 10px, four fixed chrome layers on the reader, three search entry
+  points, two Ask surfaces, six Settings tabs, ~10 feed controls.
+  - Mobile tab bar: Today, Feed, Save, Settings (12px labels). Desktop sidebar: Today, Feed,
+    Search, Ask, Save, Settings (Search/Ask still flag-gated).
+  - Top bar: date, a search icon linking to `/search`, icon-only theme toggle (mobile gains a
+    theme control). Removed: search-on-type input, the agent Sheet, the notification bell and its
+    30s polling. `ThemeToggle` takes an optional `className`.
+  - Reader (`/feed/[id]`): `AppShell.isReaderPath` drops the mobile tab bar and the nav padding,
+    passes `backHref="/feed"` to `Topbar`; the page's own sticky Back strip is gone and
+    `DetailActionBar` sits at `bottom-0` on every breakpoint.
+  - Settings: two tabs, Capture (`TokenSettings`) and Account (links to `/account`, `/digests`,
+    `/collections`, `/archive`). Agent, Topics, Notifications, Email Intelligence tabs removed
+    from the page; their APIs are untouched.
+  - Feed toolbar: sort select + Unread/All inline on every breakpoint; priority/source/type/topic/
+    collection, archive, dates and card/compact layout live in the Filters bottom sheet. Props of
+    `FeedFilters` unchanged.
+  - Feed page: an API error or a payload without `items` now renders a "Feed is unavailable" card
+    instead of crashing on `items.some` (the crash reproduced locally on an unauthenticated
+    session).
+  - Tests rewritten for mobile-nav, sidebar, topbar, app-shell (reader-route cases added), feed
+    page (error and empty-payload cases; network failure now expects the error card, not the
+    empty state); `tests/e2e/phase2.spec.ts` no longer expects Digests in navigation.
+- **Decision:** Amit chose "unlink only": `/topics`, `/sources`, `/research`, `/digests`,
+  `/collections`, `/archive` and the removed Settings tabs stay routable and their code stays in
+  the tree; `/topics`, `/sources` and `/research` now have no inbound links and are deletion
+  candidates.
+- **Verification on the branch (locally verified on 2026-09-11, before integration):**
+  `npx tsc --noEmit` passed; `npm run lint` passed (0 errors, pre-existing warnings only); full
+  `npm test` passed (195 suites / 1377 tests); visual check of Today, Feed, Settings at 375px and
+  Feed at desktop on a worktree dev server with all Phase 2 UI flags on. `npm run test:e2e`
+  (flags off, as in CI) passed 27 / 3 skipped across desktop-chromium, mobile-chromium and
+  mobile-webkit. The flags-on variant of `tests/e2e/phase2.spec.ts` (never run in CI) passes its
+  navigation assertions but fails at its final `/feed/phase2-fixture` step with a server-side
+  `AccessDeniedError`; the same step fails identically on unmodified `main` at `780538b`, so it is
+  a pre-existing gap in that spec, not a regression. Not run on the branch: PostgreSQL
+  integration, build. Verification after integration with current `main` is recorded in the
+  integration checkpoint above.
 
 ### Documentation reconciliation — 2026-09-11
 

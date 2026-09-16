@@ -41,23 +41,22 @@ describe("Sidebar", () => {
       "/logo.png"
     );
     expect(screen.getByText("distil")).toBeInTheDocument();
-    expect(screen.getAllByRole("link")).toHaveLength(12);
+    expect(screen.getAllByRole("link")).toHaveLength(6);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
-    expect(screen.getByRole("link", { name: "Digests" })).toHaveAttribute("href", "/digests");
     expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
     expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
-    expect(screen.getByRole("link", { name: "Collections" })).toHaveAttribute(
-      "href",
-      "/collections"
-    );
-    expect(screen.getByRole("link", { name: "Archive" })).toHaveAttribute("href", "/archive");
     expect(screen.getByRole("link", { name: "Save" })).toHaveAttribute("href", "/save");
-    expect(screen.getByRole("link", { name: "Topics" })).toHaveAttribute("href", "/topics");
-    expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/sources");
-    expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("href", "/research");
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "false");
+  });
+
+  it("keeps legacy and library surfaces out of primary navigation", () => {
+    render(<Sidebar />);
+
+    for (const name of ["Digests", "Collections", "Archive", "Topics", "Sources", "Research"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
   });
 
   it("marks only the exact home route active", () => {
@@ -77,15 +76,11 @@ describe("Sidebar", () => {
   });
 
   it("removes disabled Phase 2 destinations from navigation", () => {
-    render(
-      <Sidebar showAnswers={false} showDigests={false} showKnowledgeUi={false} showSearch={false} />
-    );
+    render(<Sidebar showAnswers={false} showSearch={false} />);
 
     expect(screen.queryByRole("link", { name: "Ask" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Digests" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Archive" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link")).toHaveLength(4);
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
   });
 

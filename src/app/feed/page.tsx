@@ -54,6 +54,8 @@ function FeedPageContent() {
   const [items, setItems] = useState<ContentItem[]>([]);
   /** Search query represented by the current items; null until the first fetch settles. */
   const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  /** Message from the last failed fetch; null when the last fetch succeeded. */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   /** Card layout vs compact list layout toggle. */
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
@@ -128,15 +130,28 @@ function FeedPageContent() {
         if (cursor) url.searchParams.set("cursor", cursor);
       }
       return fetch(url.toString())
-        .then((res) => res.json())
-        .then((data: { items: ContentItem[]; nextCursor?: string }) => {
-          setItems((current) => (append ? [...current, ...data.items] : data.items));
+        .then(async (res) => {
+          const data = (await res.json().catch(() => ({}))) as {
+            items?: ContentItem[];
+            nextCursor?: string;
+            error?: { message?: string };
+          };
+          if (!res.ok) {
+            throw new Error(data.error?.message || "Unable to load your feed.");
+          }
+          const nextItems = data.items ?? [];
+          setItems((current) => (append ? [...current, ...nextItems] : nextItems));
           setNextCursor(data.nextCursor);
+          setLoadError(null);
           setLoadedQuery(searchQuery);
-          return data.items;
+          return nextItems;
         })
-        .catch(() => {
-          if (!append) setLoadedQuery(searchQuery);
+        .catch((cause: unknown) => {
+          setLoadError(cause instanceof Error ? cause.message : "Unable to load your feed.");
+          if (!append) {
+            setItems([]);
+            setLoadedQuery(searchQuery);
+          }
           return [] as ContentItem[];
         });
     },
@@ -313,6 +328,14 @@ function FeedPageContent() {
         {loading ? (
           // Loading state shown while the first API fetch is in flight.
           <div className="py-12 text-center text-muted-foreground">Loading…</div>
+        ) : loadError && filteredItems.length === 0 ? (
+          <div
+            className="mx-auto max-w-3xl rounded-xl border border-destructive/40 p-5 text-sm"
+            role="alert"
+          >
+            <p className="font-medium">Feed is unavailable</p>
+            <p className="mt-1 text-muted-foreground">{loadError}</p>
+          </div>
         ) : filteredItems.length === 0 ? (
           // Empty state when filters match nothing (or search returns nothing).
           <div className="py-12 text-center text-muted-foreground">
