@@ -18,6 +18,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Performance overhaul (planned 2026-09-16, not started):** the checkpoint "Performance analysis
+  and phased plan — 2026-09-16" below records a verified analysis and eight PR-sized phases P0–P7.
+  Amit picks one phase per task, in order, each on its own `claude/<task>` branch with a dated
+  checkpoint; P0 (measurement baseline) comes first so every later phase records before/after
+  numbers. No code changed for the plan itself (branch `claude/perf-plan`, docs only).
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -74,11 +79,34 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
   written ownership split in this section.
+- **Performance decisions (Amit, in chat, 2026-09-16):** (1) authentication keeps exactly one
+  uncached provider check per request, so a revoked session is still rejected on the next request;
+  the variant that trusts the signed session cookie for GETs is not pursued. (2) Delete the
+  unlinked `/sources`, `/topics`, `/research` routes, the never-called AI modules
+  (`src/lib/ai/tagger.ts`, `src/lib/agent/workflows/triage.ts`, `src/lib/agent/insight-detection.ts`,
+  `runAgent` in `src/lib/agent/orchestrator.ts`, `src/lib/ai/client.ts`,
+  `src/lib/ai/circuit-breaker.ts`), `src/lib/notifications.ts` and the unmounted
+  `src/components/agent/agent-status-panel.tsx`. (3) Generate one budget-admitted flash-lite brief
+  summary per capture in the queue worker, cached under a content hash; on-demand regeneration in
+  the reader stays; nightly digests were not selected. (4) Execute all phases P0 → P7 in order, one
+  phase per task. Defaults applied unless Amit says otherwise: no cross-tenant article cache; add
+  `babel-plugin-react-compiler` at the end of P4; running the P7 index migration in Production is a
+  separate approval.
 - **Blockers / open items (all non-blocking):**
   - `src/lib/notifications.ts` still imports the SQLite module statically but has no importers
     anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
+  - Known functional gap found during the performance analysis: the tenant job types
+    `regenerate_intelligence_summary`, `digest_run` and `knowledge_backfill` are enqueued but no
+    handler is registered (`src/lib/jobs/tenant-runtime.ts` completes them as "No tenant handler
+    registered"), so the nightly digest cron in `vercel.json` is write-only. Amit chose not to add
+    digest work now; either register handlers or stop enqueuing in a later task.
+  - Concurrent docs branch: `claude/pwa-reinstall-notes` (`f763aad`, iPhone Home Screen reinstall
+    notes) was checked out in the primary working directory while this plan was written, so
+    `claude/perf-plan` lives in the worktree `/Users/amitsharma/Projects/distil-perf-plan`. Both
+    branches insert a checkpoint at the same place in this file; whoever integrates second keeps
+    both checkpoints.
 - **Verification of the integration branch (locally verified 2026-09-16, full gate on the
   combined tree at `54e8263`):** `npm run lint` 0 errors / 10 baseline warnings, Prettier clean;
   `tsc --noEmit` clean; `npm test` 201 suites / 1446 tests passed; `npm run test:integration`
@@ -115,11 +143,386 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Next engineering candidates, in suggested order, each as its own short-lived branch with a
-     state update: (a) delete or port the dead `notifications.ts` module and the now-unlinked
-     `/topics`, `/sources`, `/research` routes; (b) small mobile-web fixes `BUG-PWA-001/002` and
-     the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit
-     decision.
+  3. Performance overhaul: pick the next unstarted phase from the checkpoint "Performance analysis
+     and phased plan — 2026-09-16" in order P0 → P7. Each phase is a separate task on its own
+     branch (`claude/perf-baseline`, `claude/perf-auth-handoff`, `claude/perf-db-roundtrips`,
+     `claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
+     `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
+     against current `main` before editing, passes `npm run check` (plus `npm run test:integration`
+     and the `full-ci` label for P1, P2, P6, P7), and appends a dated checkpoint with the
+     before/after numbers described in that plan's "Verification" part. Merges and deployments wait
+     for Amit.
+  4. Other engineering candidates, each as its own short-lived branch with a state update: the
+     dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
+     now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
+     the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
+     explicit decision.
+
+### Performance analysis and phased plan — 2026-09-16
+
+Docs-only checkpoint on branch `claude/perf-plan` (worktree `/Users/amitsharma/Projects/distil-perf-plan`,
+based on `main` at `abe43d3`). Amit asked for a deep performance analysis with the goal of an
+"extremely lightweight and responsive" app: faster loads, fewer LLM calls, more caching and reuse.
+Three read-only exploration passes (request path and database, AI/LLM usage, client bundle) were run
+by Claude Code and every claim below that drives a phase was re-verified against the code at
+`abe43d3`. Bundle numbers come from the local Turbopack build of 2026-09-16
+(`.next/diagnostics/route-bundle-stats.json`). No code, test, dependency, environment variable,
+deployment or Production data changed in this task. Production is single-user with an intentionally
+near-empty library, so **per-request latency, cold-start weight, client waterfalls and bundle size
+dominate; indexes and N+1 fixes are cheap hygiene, not the headline.**
+
+Each phase below is written as a standalone brief: goal, files, approach, tests to update, how to
+verify, and what to record. Before starting a phase, re-check the quoted file:line references against
+current `main`; they were accurate at `abe43d3`.
+
+#### Verified findings
+
+**A. Every request authenticates three times (the dominant cost).** The `src/proxy.ts` matcher
+(`/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/).*)`, line 112) runs the full
+auth pipeline on every page navigation, RSC prefetch and API call. Line 72 eagerly awaits
+`getAuthRepositoryPort()`, which dynamic-imports the 2058-line `src/lib/postgres/repositories.ts` and
+opens a pool, before `authorizeNeonProxy` (`src/lib/auth/neon-proxy.ts:84-89`) short-circuits public
+paths. For an authenticated request the proxy makes two uncached Neon Auth HTTP calls: the SDK
+middleware with `disableCookieCache=true` (`neon-proxy.ts:94-102`) and then
+`getSession({ query: { disableCookieCache: "true" } })` inside `readProviderIdentity`
+(`src/lib/auth/request-context.ts:49`), followed by one database lookup `findAccountByIdentity`
+(`src/lib/postgres/auth-repository.ts:182`). The proxy then writes `x-distil-user-id`,
+`x-distil-actor-id`, `x-distil-actor-kind` and `x-distil-fresh-auth` (`neon-proxy.ts:126-129`) but
+nothing reads them: all ~63 route handlers and the reader page call `resolveRequestAuthContext`
+(`src/lib/auth/account-service.ts:29-45`), which repeats a provider call and the database lookup. Net
+cost is three provider round trips and two auth queries per API request, two plus one per page render.
+There is no React `cache()`, `unstable_cache` or `"use cache"` anywhere in `src/`. The rate limiter
+(`src/lib/middleware/rate-limit.ts`) is a per-instance in-memory `Map`, prunes the whole map on every
+request and runs after the expensive auth work. The `sessionDataTtl: 300` in
+`src/lib/auth/neon-server.ts` is defeated by design because provider-side revocation must be observed
+on the next request (commit "fix(auth): enforce immediate session revocation"); Amit confirmed on
+2026-09-16 that this invariant stays.
+
+**B. Database: about five round trips per repository call, wide rows everywhere.** In
+`src/lib/postgres/tenant-repositories.ts:58-99` every repository method opens its own transaction:
+`BEGIN`, one `SELECT set_config(...)` for six settings, a second `SELECT` that re-reads
+`current_setting` to verify them, the actual query, `COMMIT`. That verification query is pinned by
+`src/lib/postgres/__tests__/tenant-repositories.unit.test.ts:52` and mirrored by the fakes in
+`tests/security/phase3-boundaries.integration.test.ts:36`. `bindRepositorySet` (lines 115-151) rebuilds
+all 30 repository objects inside every call. `src/lib/database.ts` creates five separate pools (lines
+33, 54, 68, 88, 89; `max: 4` each) per warm instance; the auth pool exists only for
+`findAccountByIdentity`. `SELECT i.*` in `src/lib/postgres/repositories.ts:92` (`list()` defaults to
+`LIMIT 1000000`, line 61) and `src/lib/feed/feed-query.ts:387` pulls `full_content`, `extracted_links`,
+`detected_media`, `content_classification` and the `search_vector` into every item; `mapItem`
+(`src/lib/postgres/mappers.ts:14`) copies them into `ContentItem` and the list APIs return them
+verbatim. `src/app/feed/[id]/page.tsx:183-192` loads the entire library with full content just to
+compute prev/next links, and lines 153-156 re-resolve auth the proxy already did. Independent reads run
+in series in `src/lib/knowledge/service.ts:268-279` (five transactions) and
+`src/lib/phase2/reader-service.ts` (lines 164, 214-237, 264, 297-298, 416-433).
+`src/lib/digests/postgres-store.ts:88-106` takes an advisory lock to read preferences, on every
+`/api/v1/feed` request (`src/app/api/v1/feed/route.ts:82`). The affinity subquery in
+`feed-query.ts:322-350` is interpolated into SELECT, ORDER BY and the cursor WHERE, so it is evaluated
+per row before LIMIT. N+1 patterns: `postgres-store.ts:143`, `repositories.ts:452`,
+`repositories.ts:1434-1440`, `repositories.ts:1495-1499`; `items.insert`/`update` do find, write, find
+as three transactions. Present and good: GIN indexes on the stored `search_vector` columns and the
+`(user_id, id)` unique set. Missing for the real query shapes: `items(user_id, created_at DESC)`
+partial on ready/unarchived rows, `item_events(user_id, event_type, occurred_at DESC)`, a GIN index on
+`items.topics`.
+
+**C. Pages ship empty shells and then fetch through the proxy again.** Only `/feed/[id]` is a real
+server component. `/` (`src/app/page.tsx:10`, `force-dynamic`) renders the client
+`src/components/phase2/today-experience.tsx`, which fetches `/api/v1/feed` twice, once with
+`limit=100` and then filters to three items (lines 54-70). `/feed` (`src/app/feed/page.tsx`,
+`"use client"`) requests `limit=100` (lines 112-119), refetches the whole list every three seconds
+while any item is processing (lines 203-207) and re-applies filters client-side on top of the server
+filters (lines 209-220). `/search`, `/ask`, `/archive`, `/collections`, `/digests`, `/settings` and
+`/account` all render nothing until a second round trip; `src/components/account/account-center.tsx`
+has a two-deep waterfall of about seven requests (lines 107, 128, 134-138). About 30 client fetch
+sites build absolute URLs from `config.apiBaseUrl` (`src/lib/config.ts:46`, default
+`http://localhost:3000`), which drags `src/lib/config.ts` into the client bundle from 22 files for one
+field; `account-center.tsx` already uses relative URLs. There is no client cache; `staleTimes.dynamic`
+is 0 so every back-navigation refetches; `router.refresh()` in
+`src/components/feed/mark-read-button.tsx:42`, `lazy-article-extract.tsx:51` and
+`account-center.tsx:185,228` re-renders the whole reader payload to flip one flag. `thumbnailUrl` is
+populated by `src/lib/og.ts`, shipped in every payload and never rendered. `loading.tsx` exists only
+for `/`, `/feed`, `/settings` and `/topics`.
+
+**D. Bundle.** Shared first-load JavaScript is about 553 KB raw (roughly 169 KB gzip) across 23
+routes; `/feed/[id]` is 969 KB raw (roughly 296 KB gzip); the render-blocking stylesheet is 89.6 KB
+raw; four preloaded woff2 files total about 178 KB per page; a 112 KB legacy polyfill chunk ships
+because `tsconfig.json` targets `ES2017`. `sanitize-html` (228 KB raw, 81 KB gzip) is in the client
+bundle because `src/components/feed/ai-summary.tsx:11` and `src/components/feed/reader-view.tsx:7`
+import `sanitizeArticleHtml` as a value, although content is sanitized on ingest
+(`src/lib/content-extractor.ts:15`) and the reader page is a server component that passes
+`item.fullContent` as a prop. `react-markdown` plus `remark-gfm` (141 KB raw) load eagerly on the
+reader for static text. `Geist_Mono` is loaded in `src/app/layout.tsx:22-25` with zero `font-mono`
+usages and without `display: "swap"`. The theme is applied in a `useEffect`
+(`src/components/layout/theme-provider.tsx:39-41`) with a server snapshot of `"light"`, so dark-mode
+users always see a light flash. `next.config.ts` lacks `experimental.optimizePackageImports` for the
+`radix-ui` meta-package, `experimental.inlineCss` and `experimental.staleTimes`, and still carries the
+SQLite-era `experimental.cpus: 1`. `public/icons/icon-512.png` is 259 KB, `icon-192.png` 50 KB,
+`apple-touch-icon.png` 45 KB and `public/logo.png` 60 KB for a 28-pixel render; the CRA template SVGs
+in `public/` are unused. Nothing uses `next/dynamic` or virtualization. Already good: server-only
+packages (`googleapis`, `jsdom`, `openai`, `playwright`, `better-sqlite3`, `@slack/web-api`, `pino`)
+never reach the client, `lucide-react` icons are imported individually, list cards use `stripMarkdown`
+rather than `react-markdown`, and no remote images are rendered.
+
+**E. AI and LLM usage.** The durable capture path makes zero LLM calls: `src/lib/knowledge/capture-index.ts`
+writes a deterministic extractive `brief_summary` artifact, and the LLM brief is generated only when
+the reader button calls `POST /api/ai/summarize`, whose `src/lib/ai/summarize.ts:143` checks the
+`ai_summaries` cache first. Router and provider clients are `globalThis` singletons, daily and 30-day
+budgets exist, and summary attempts have 15-second timeouts with a same-provider fallback. Waste:
+`src/lib/ai/search.ts:51` and `src/lib/agent/rag.ts:169` call `generateEmbedding` for every hybrid
+search or chat message although nothing writes `item_embeddings` (the only writer,
+`src/lib/ai/embeddings.ts:130`, is reachable only from the uncalled `agent/workflows/triage.ts`), so
+each search pays for an embedding and scores an empty set. Each tenant LLM call in
+`src/lib/ai/router.ts:356-410` performs a budget check plus an advisory-locked `consumeUsage`
+(`src/lib/postgres/lifecycle-repositories.ts:350-369`), an audit insert and a second `consumeUsage`,
+all awaited in the hot path (about six database round trips) and serialized per user by the lock.
+`summarize.ts:179-183` runs map-reduce chunks sequentially. There is no provider prompt caching. The
+`ai_summaries` key `(user_id, item_id, prompt_type)` has no content hash. Gemini `generateText` has no
+timeout or `maxOutputTokens` (`src/lib/ai/providers.ts:53,57`). `rag.ts:211-217` sends greetings to
+Claude Sonnet. Research is six to ten calls, four of them Sonnet. Dead AI code with no callers:
+`src/lib/ai/tagger.ts`, `src/lib/agent/workflows/triage.ts`, `src/lib/agent/insight-detection.ts`,
+`runAgent` in `src/lib/agent/orchestrator.ts`, `src/lib/ai/client.ts`, `src/lib/ai/circuit-breaker.ts`;
+also `src/lib/notifications.ts` and the unmounted `src/components/agent/agent-status-panel.tsx`.
+Functional gap, not a cost: the tenant job types `regenerate_intelligence_summary`, `digest_run` and
+`knowledge_backfill` are enqueued but never handled (see the open item in the handoff).
+
+#### Constraints every phase must respect
+
+`tests/fixtures/phase3/neon-csrf-boundary.json` pins a SHA-256 of `src/lib/auth/neon-proxy.ts`, and
+`tests/support/phase3-authorization-inventory.ts:329-337` regex-pins three literals in
+`src/proxy.ts` (`import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";`,
+`await authorizeNeonProxy(request, traceId, {`, `allowedOrigins: readAuthEnvironment().allowedOrigins`);
+any edit to those files refreshes the digest and keeps the literals. `docs/authorization-matrix.json`
+carries `expectedApiRouteFileCount: 92` and `expectedPageFileCount: 22`, which change with every route
+added or removed, and every new route needs a matrix entry plus adversarial tests. Deterministic tests
+never touch the network. Migrations and any Production change need Amit's task-specific approval.
+Every phase branch includes its own update of this file.
+
+#### P0 — Measurement baseline (`claude/perf-baseline`, no behavior change)
+
+Goal: repeatable before/after numbers without touching Production configuration. Add
+`src/lib/observability/request-metrics.ts` (an `AsyncLocalStorage` store counting provider calls,
+database queries and transactions through the postgres.js `debug` hook in `createPostgresClient`, and
+named phases; a `serverTimingHeader()` helper). `src/proxy.ts` emits
+`Server-Timing: proxy-auth-provider;dur=…, proxy-auth-db;dur=…, proxy;dur=…` (no secrets; visible in
+browser DevTools on Production after any later deploy). A small `withRequestMetrics(handler)` wrapper
+on the five hot routes (`/api/v1/feed`, `/api/items`, `/api/v1/collections`,
+`/api/v1/items/[id]/state`, `/api/ai/summarize`) appends `auth;dur=…, db;dur=…;desc="q=N tx=M"`. Add
+`tests/perf/round-trips.unit.test.ts`: a fake provider plus the `sqlDouble` pattern from
+`src/lib/postgres/__tests__/tenant-repositories.unit.test.ts` drives `proxy()` and then
+`GET /api/v1/feed`, asserting today's counts (proxy: two provider calls, one database query; route: one
+provider call, one auth query, two transactions). Later phases lower those assertions; this test is
+the regression fence. Add `scripts/perf/measure-web-vitals.mjs` (Playwright against `next start`
+through the existing production mode of `tests/support/browser/server.ts` with a legacy session cookie
+and Docker PostgreSQL; TTFB, FCP, LCP, request count and transferred bytes for `/`, `/feed`,
+`/feed/[id]`, `/settings`, five runs each, written to a gitignored `.perf/` directory) and
+`scripts/perf/bundle-diff.mjs` (diffs `.next/diagnostics/route-bundle-stats.json` against a committed
+`docs/perf/route-bundle-stats.baseline.json`). Add `perf:vitals` and `perf:bundle` scripts and the
+`.perf/` gitignore entry. Verify: `npm run check`; `npm run build && npm run perf:bundle` prints zero
+delta. Record: the baseline table (provider calls, queries, transactions per request; gzip per route;
+vitals medians) in the checkpoint.
+
+#### P1 — One auth verification per request and a trusted handoff (`claude/perf-auth-handoff`)
+
+Goal: an API request goes from three provider calls plus two auth queries to one plus one, both in
+the proxy; a page render from two plus one to one plus one; public paths never load the repositories
+module. Steps: (1) Add `verifySession(request)` to `NeonProxyProvider`, implemented in
+`src/lib/auth/neon-server.ts` on the SDK's public route handler: build a synthetic
+`GET /api/auth/get-session?disableCookieCache=true` request carrying the inbound cookies and call
+`auth.handler().GET(request, { params: Promise.resolve({ path: ["get-session"] }) })`, the same code
+path `src/app/api/auth/[...path]/route.ts` exposes. Its JSON body is the session and its `Set-Cookie`
+headers are the refreshed `session_data` cookie. (Verified 2026-09-16: the internal
+`handleAuthProxyRequest` and `processAuthMiddleware` helpers are not exported from
+`@neondatabase/auth/next/server`; the SDK middleware performs the same upstream `get-session` fetch
+and discards the body, which is why two calls happen today.) `authorizeNeonProxy` drops the
+`provider.middleware(...)` call and feeds the session JSON into the unchanged
+`resolveNeonAuthRequest` through a one-shot `{ getSession }` adapter; unauthenticated `/api/*` gets a
+401 JSON body and pages get a 307 to `/sign-in`. Fallback if the handler is awkward in the Edge
+runtime: one `getSession({ query: { disableCookieCache: "true" } })` call without proxy-side cookie
+refresh. (2) `authorizeNeonProxy` takes `repositories: () => Promise<AuthRepositoryPort>` so
+`getAuthRepositoryPort` is only awaited after the public-path check, and
+`src/lib/auth/repository-runtime.ts` constructs `new PostgresAuthRepository(sharedSql)` instead of the
+30-repository set. (3) Replace the four `x-distil-*` headers with one `x-distil-identity` HS256 token
+from a new `src/lib/auth/identity-token.ts` (extract `signature` and `signaturesEqual` from
+`src/lib/auth/session.ts`); claims `{ sub, kind, sid?, fresh, jti: traceId, iat, exp: iat + 120 }`;
+key derived from `NEON_AUTH_COOKIE_SECRET` (else `DISTIL_SESSION_SECRET`) through
+`readAuthEnvironment()`; signing keeps correctness independent of the matcher. (4) Strip inbound
+`x-distil-*` and `x-trace-id` at the top of `proxy()` before any branch; public and specialized
+branches return the sanitized headers. (5) `resolveRequestAuthContext`: a valid token whose `jti`
+equals `x-trace-id` yields `createAuthContext` from the claims with zero I/O; an absent token falls
+back to today's full resolution (queue routes, `POST /api/items`, capture tokens keep working); an
+invalid token is treated as absent and logged as `auth_handoff_rejected`. Wrap the function in React
+`cache()` so layout and page share one resolution. (6) The rate limiter runs before auth for `/api/*`
+and prunes only when the map exceeds 512 entries. (7) The matcher additionally excludes
+`robots.txt`, `sitemap.xml`, `logo.png`, `*.svg` and `sw.js`; RSC prefetches stay covered because
+they carry tenant data. Tests: rewrite `src/lib/auth/__tests__/neon-proxy.security.unit.test.ts`
+around `verifySession` keeping every existing guarantee and adding "exactly one provider call",
+"inbound identity header stripped on public and specialized paths" and "provider Set-Cookie
+forwarded"; move the `disableCookieCache` assertion in
+`src/lib/auth/__tests__/request-context.security.unit.test.ts` to the adapter; extend the
+`account-service` tests with accepted, tampered, expired, `jti` mismatch and missing-token cases; add
+`identity-token.security.unit.test.ts`; refresh the CSRF fixture digest; lower
+`tests/perf/round-trips.unit.test.ts` to proxy one plus one and route zero plus zero. Verify:
+`npm run check`, `npm run test:security`, `npm run test:integration`, the `full-ci` label, and
+`Server-Timing` on `/api/v1/feed` showing `auth` under one millisecond. Rollback: revert the PR;
+consumers fall back to full resolution automatically, so a proxy-only revert is also safe.
+
+#### P2 — Database round-trip diet (`claude/perf-db-roundtrips`)
+
+Goal: one shared pool, one transaction per request, no verification round trip, no full-content list
+scans. Add `getSharedPostgresClient(url)` in `src/lib/postgres/client.ts`, memoized on `globalThis`
+per URL, and make every `DATABASE_URL` composition root in `src/lib/database.ts` share it (the
+control-plane URL stays separate). In `src/lib/postgres/tenant-repositories.ts` fold the verification
+into the same round trip (`WITH applied AS (SELECT set_config(...)) SELECT current_setting(...) FROM
+applied`), keeping the invariant with one query, and add `withTenantRepositories(context, fn)` that
+opens one transaction and binds the repository set once (nested `begin` calls already become
+savepoints). Adopt it in `src/app/api/v1/feed/route.ts`, `src/app/feed/[id]/page.tsx`,
+`src/lib/knowledge/service.ts` (`Promise.all` the independent reads in `getItemIntelligence`) and
+`src/lib/phase2/reader-service.ts`. Add `ContentItemSummary` to `src/lib/types.ts` (`ContentItem`
+without `fullContent`, `extractedLinks`, `detectedMedia`, `contentClassification`, `thumbnailUrl`),
+`mapItemSummary` in `src/lib/postgres/mappers.ts`, an explicit column list in
+`PostgresFeedQuery.list` and a new `items.listSummaries`; `FeedItem` becomes
+`ContentItemSummary & { rank }`; `list()` defaults to 200 rows. Replace the reader's
+`repositories.items.list()` with `items.findNeighbours(itemId, { unreadOnly })` (two `LIMIT 1` keyset
+queries on `(created_at, id)`). Make `getPreferences` a plain `SELECT` (lock only in writers). Drop
+`content` and `search_vector` from the chunk-metadata query at `repositories.ts:1117` and batch the
+claims-to-evidence lookup with `WHERE claim_id = ANY($1)`. Tests:
+`tenant-repositories.unit.test.ts` (`queries[0]` now contains both `set_config` and
+`current_setting`; one `begin` for three reads through `withTenantRepositories`), the fakes in
+`tests/security/phase3-boundaries.integration.test.ts` answering the combined query, feed-query unit
+tests asserting no `full_content`, the reader page component test using `findNeighbours`,
+`tests/security/phase3-rls.integration.test.ts` unchanged as the real RLS proof, and the round-trip
+test asserting one transaction for the feed route. Verify: `npm run check`,
+`npm run test:integration` (Docker). Rollback: per-file revert; the projection is additive while
+`list()` remains.
+
+#### P3 — Client payload and network (`claude/perf-client-network`)
+
+Goal: smaller responses and fewer requests without changing what the pages show. Add
+`src/lib/public-config.ts` exporting only `apiBaseUrl` and switch every client fetch to relative
+`/api/...` URLs so `src/lib/config.ts` leaves the client graph (`config.apiBaseUrl` stays for the
+extension and tests). List APIs return `ContentItemSummary` from P2; `/api/items` gets a default
+`limit=100`. Add `GET /api/v1/items/status?ids=` (at most 50 ids, `requireTenantRoute`, returns
+`{ id, processingStatus }` pairs; `applyPrivateApiCacheControl` already covers `/api/v1`); `/feed`
+polls it every three seconds while items are processing and patches single items, and drops the
+client-side re-filtering (server filters are authoritative; keep only the `rejected` guard).
+`today-experience.tsx` makes one request (`/api/v1/feed?sort=priority&limit=6` plus a server-side
+`resurface=stale` filter implementing the 14-day rule) instead of the `limit=100` call. Set
+`experimental.staleTimes: { dynamic: 30, static: 300 }` in `next.config.ts`. Make mark-read, extract
+and account updates optimistic with `router.refresh()` only on failure. Delete the unmounted
+`agent-status-panel.tsx` and stop shipping `thumbnailUrl`. Tests: feed and today component tests,
+a new `src/app/api/v1/items/status/__tests__/route.security.unit.test.ts` (owner, anonymous 401,
+foreign ids omitted, malformed input), the matrix entry for the new route with
+`expectedApiRouteFileCount` moving to 93, and the `/api/v1/feed` mocks in `tests/e2e/phase2.spec.ts`.
+Verify: `npm run check`, `npm run test:e2e`; a feed with a processing item issues only status polls.
+
+#### P4 — Bundle and rendering (`claude/perf-bundle`)
+
+Goal: shared first-load under 120 KB gzip and `/feed/[id]` under 170 KB gzip, measured with
+`npm run perf:bundle`. Sanitize server-side: `src/app/feed/[id]/page.tsx` passes
+`sanitizeArticleHtml(item.fullContent)` and `ai-summary.tsx` and `reader-view.tsx` drop the import
+(escape plain text instead), removing the 228 KB `sanitize-html` chunk. Load the `ReactMarkdown`
+blocks in `ai-summary.tsx` and `src/components/agent/chat-panel.tsx` and the `ReaderView` overlay
+through `next/dynamic`. In `src/app/layout.tsx` remove `Geist_Mono` and its CSS token and add a
+blocking inline script in `<head>` that applies `.dark` from `localStorage.theme` before first paint
+(the CSP already allows inline scripts); `theme-provider.tsx` reads the class on the client. In
+`next.config.ts` add `experimental.optimizePackageImports: ["radix-ui"]` and
+`experimental.inlineCss: true` and remove `experimental.cpus`; set the `tsconfig.json` target to
+`ES2022`. Re-encode `public/icons/*.png` (target under 40 KB for the 512-pixel icon), replace
+`logo.png` with a small SVG or WebP and delete the unused CRA SVGs. Delete `/sources`, `/topics` and
+`/research` (pages, and the `/api/ai/research/**` and `/api/agent/**` routes once nothing else
+imports them), the dead AI modules, `src/lib/notifications.ts` and `agent-status-panel.tsx`, then
+update `expectedApiRouteFileCount`, `expectedPageFileCount`, the matrix entries, the CSRF fixture's
+`centrallyProtectedSurfaces` and the sidebar and topbar links. Last, add `babel-plugin-react-compiler`
+as a devDependency with `reactCompiler: true`, keeping it only if `npm run build` time and the e2e
+suite stay green. Verify: `npm run build && npm run perf:bundle`, `npm run test:e2e`; a dark-mode
+reload shows no light flash. Rollback: each config flag reverts independently; server-side sanitizing
+is a strict tightening.
+
+#### P5 — Server-render `/` and `/feed` (`claude/perf-server-render`, after P1–P3)
+
+Goal: the first HTML already contains the data. `src/app/feed/page.tsx` becomes an async server
+component: a shared zod schema in `src/lib/feed/feed-params.ts` (also used by the API route), one
+`withTenantRepositories` transaction for `feed.list()` and `collections.list()`, and a
+`<FeedList initialPage filters>` client island rendered inside `<Suspense>` with the existing
+`loading.tsx`. Filter changes use `router.replace` with `scroll: false`; load-more and the status
+poll stay client-side against `/api/v1/feed?cursor=` and `/api/v1/items/status`. `src/app/page.tsx`
+drops `force-dynamic`; a server `TodaySections` component queries directly and
+`today-experience.tsx` becomes presentational. Then run a spike on `cacheComponents: true` with
+`"use cache: private"` around the per-user page data (guide:
+`node_modules/next/dist/docs/01-app/02-guides/authentication-with-cache-components.md`) and adopt it
+only if it lands without moving every `headers()` call behind Suspense at unacceptable churn. Tests: a
+server-component render test with fake repositories, the matrix `pageLoaders` entries for `/feed`
+and `/` pointing at direct tenant repositories, updated e2e mocks. Keep the old client page behind a
+flag for one release. Verify: `npm run check`, `npm run test:e2e`, `perf:vitals` TTFB and LCP deltas.
+
+#### P6 — AI cost and latency (`claude/perf-ai`)
+
+Goal: fewer and cheaper model calls, no accounting on the critical path, and Amit's per-capture
+brief. In `src/lib/ai/search.ts:51` and `src/lib/agent/rag.ts:169` skip `generateEmbedding` unless
+`embeddings.count() > 0` (add the count) and bound `listRecent` to 500 rows. In
+`src/lib/ai/router.ts:356-410` keep one admission check, move the audit insert and the second
+`consumeUsage` off the critical path with Next `after()`
+(`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md`), turn `consumeUsage`
+into a lock-free `INSERT … ON CONFLICT DO UPDATE … RETURNING`, and use provider-returned token
+usage. In `src/lib/ai/summarize.ts` run the chunk calls under `p-limit(3)` with `Promise.all`, add a
+60-second per-item cooldown on `force`, and include the content hash in the cache key once P7 adds
+the column. In `src/lib/ai/providers.ts` give Gemini `generateText` a `timeoutMs` and
+`maxOutputTokens`, and set Anthropic `cache_control: ephemeral` on the Sonnet system preambles (load
+the `claude-api` skill first). In `rag.ts` answer conversational intent without a model call, and
+cache `/api/v1/answers` by `(userId, normalized question, passage-id hash)` for 24 hours. Per-capture
+brief (Amit's decision 3): in `src/app/api/queue/capture-requests/route.ts` the `enqueueEnrichment`
+hook calls the existing `generateSummary(context, repositories, itemId, { length: "brief" })` after
+`indexCapturedItem` succeeds (tenant router, budget-admitted, flash-lite with the existing quota
+fallback and 15-second per-attempt timeout; fits `maxDuration = 60`). The receipt is already `ready`
+before the summary runs; any failure is caught and logged as `capture_summary_skipped`, leaving the
+extractive `brief_summary` artifact; the URL-dedupe path in `src/lib/capture/worker.ts:196` never
+re-summarizes; `summaries.find(itemId, "brief")` short-circuits replays. Kill switch:
+`FEATURE_CAPTURE_SUMMARY` in `src/lib/phase2/feature-flags.ts`, read as `!== "false"` so it is on
+by default and needs no Production variable. Tests: router unit (accounting recorded once, off the
+critical path), summarize unit (parallel chunks, cooldown), search unit (no embedding when empty),
+queue route unit (summary runs after ready, failure does not fail the capture, dedupe skips it, flag
+off skips it); `evals/` fixtures unchanged; the `capture-requests` matrix entry's data path gains
+"brief summary generation". Verify: `npm run check`, `npm run test:integration`, the `full-ci`
+label.
+
+#### P7 — Indexes (`claude/perf-indexes`; the Production run needs Amit)
+
+Add `src/lib/postgres/tenant-migrations/0010_perf_indexes.sql` with
+`items(user_id, created_at DESC, id DESC) WHERE archived_at IS NULL AND processing_status = 'ready'`,
+`item_events(user_id, event_type, occurred_at DESC)`, `items USING gin(topics jsonb_path_ops)` and
+the `ai_summaries.content_hash` column used by P6. `CREATE INDEX CONCURRENTLY` cannot run inside the
+ledger transaction, so either run this migration non-transactionally in `scripts/migrate-tenant.ts`
+or accept brief locks on a tiny library. Extend `tests/harness/migration-invariants.unit.test.ts`
+and `tests/security/phase3-wave4-query-plans.integration.test.ts` with `EXPLAIN` assertions.
+Afterwards turn the affinity subquery in `feed-query.ts:322-350` into a `LEFT JOIN LATERAL`
+computed once per row. Verify locally with `npm run test:integration`; the Production run is a
+separate approval, recorded with the migration ledger row and the Neon branch id by non-secret
+identifier. Rollback: `DROP INDEX`.
+
+#### Order, ownership and recording
+
+Order: P0, then P1, P2, P3, P4, P5, P6, P7, one PR each, opened only after `npm run check` passes
+and this file is updated on the branch; merging and any deployment wait for Amit. If Codex works in
+parallel, Claude is the integration owner and the split is: Claude owns `src/proxy.ts`,
+`src/lib/auth/**`, `src/lib/postgres/**`, `src/lib/database.ts`, `src/lib/feed/feed-query.ts`,
+`src/lib/knowledge/service.ts`, `src/lib/phase2/reader-service.ts`, `src/app/feed/[id]/page.tsx`,
+`src/app/page.tsx`, `src/app/feed/page.tsx` (P5), `tests/perf/**`, `scripts/perf/**` (phases P0, P1,
+P2, P5, P7); Codex owns `src/components/**`, `src/app/api/v1/items/status/**`, `src/app/layout.tsx`,
+`next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/public-config.ts`, `src/lib/ai/**`,
+`consumeUsage` in `lifecycle-repositories.ts` and the legacy route deletions (phases P3, P4, P6).
+Shared files are only this file and `docs/authorization-matrix.json`. Each phase checkpoint records
+the commit and PR, the before/after numbers from `tests/perf/round-trips.unit.test.ts` (provider
+calls and queries per request), `npm run perf:bundle` gzip deltas per route, `perf:vitals` medians
+for `/`, `/feed`, `/feed/[id]` and `/settings`, the tests run locally versus previously recorded
+external state, and any deployment or migration identifier.
+
+Risks: P1 is the most security-sensitive change and is mitigated by the signed token with trace
+binding and 120-second expiry, the automatic fallback to full resolution, the refreshed CSRF digest
+and the full gate. P2 changes transaction scoping for multi-call services (nested writes still
+savepoint; the integration suite is the gate). P3 changes list payload shapes (no consumer reads
+`fullContent` from lists except the `/sources` page deleted in P4). P4 items are config-only
+reverts. P5 is the largest UI change and stays behind a one-release flag. P6 moves accounting off
+the critical path, so `after()` is required to avoid losing rows on function freeze. P7 index
+creation can lock briefly and is revertible.
 
 ### iPhone Home Screen reinstall notes — 2026-09-16
 
