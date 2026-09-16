@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-11
+## Current handoff — 2026-09-16
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -21,15 +21,40 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `847a068` (squash merge of PR
-  [#12](https://github.com/amitsharmaak/distil/pull/12), the `/sign-in` page). No task branches
-  remain. Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on
-  both `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16).
-- **Progress at this checkpoint:** Password login is complete and released: provider enabled,
-  sign-in redirect fixed, and `https://distilai.app/sign-in` is the sign-in URL (`/invite` is
-  invitation acceptance only). Amit confirmed the password was accepted on the first smoke; the
-  full smoke on the final release (sign in, land on Today, change password, magic link) is still
-  to be recorded here.
+- **Branch / worktree:** `main` at `1bdda18` (docs merge of PR
+  [#13](https://github.com/amitsharmaak/distil/pull/13) on top of `847a068`, PR
+  [#12](https://github.com/amitsharmaak/distil/pull/12)). No task branches or extra worktrees
+  remain for this work; `claude/ui-simplification` is a separate worktree not touched here.
+  Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on both
+  `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
+  `DISTIL_PHASE3_PRODUCTION_SHA` = `847a068c7a06ac11177d1e173a28c0a326a20f31`.
+- **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
+  deployed):**
+  - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
+    Auth credential provider behind Distil-gated routes `POST /api/auth/sign-in/password`,
+    `/api/auth/password/request-reset`, `/api/auth/password/reset`, `/api/auth/password/change`;
+    no local password storage; 12-character minimum; per-IP and per-account rate limits;
+    anti-enumeration preserved; first password set through the provider's emailed reset link;
+    account center can change the password (revokes other sessions) or request a setup link.
+    ADR 0004.
+  - Neon Auth "Sign-in with Email" enabled for the Production branch
+    (`br-damp-wildflower-b3kw15cu`) via the console on 2026-09-16; other provider settings left
+    as found.
+  - Sign-in redirect bug fixed (PR #11, `ec9758a`): a successful password sign-in now performs a
+    full navigation (`src/lib/browser-navigation.ts`) because the app shell's prefetches had
+    cached the anonymous redirect to the sign-in page.
+  - Dedicated `https://distilai.app/sign-in` page (PR #12, `847a068`); `/invite` is invitation
+    acceptance only and forwards to `/sign-in` without a token; every login redirect targets
+    `/sign-in`; anonymous pages render without the authenticated shell.
+  - Releases: `7278326` (`dpl_37haDb3zFz1moUGpw7LS7JECyyBH`), `ec9758a`
+    (`dpl_GYe6JtxFxX1NpydW6K7MmX2wrT6G`), `847a068` (`dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB`), each
+    through the exact-SHA gate with both origins re-aliased.
+  - Smoke evidence: Amit set a password through the emailed link and the sign-in route returned
+    200 for his credentials (Vercel runtime logs, 2026-09-16) before the redirect fix; after the
+    fix, both origins serve the release and route anonymous requests to `/sign-in`. Amit decided
+    on 2026-09-16 not to change the password or run the remaining smoke now; landing on Today
+    after password sign-in, the change-password form and the magic-link fallback on the final
+    release are therefore unverified by a person and remain an optional check, not a blocker.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -39,21 +64,27 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-- **Verification at this checkpoint (locally verified on 2026-09-11):** `main` equal to
-  `origin/main` before branching; `npx tsc --noEmit` passed after the scheduler change; ESLint on
-  the changed source file passed; `src/lib/__tests__` passed 6 suites / 63 tests; Prettier passes
-  on every changed file. Not re-run: full Jest, PostgreSQL integration, E2E, build. The local `.env.local` has no `DATABASE_URL`,
-  so a local `npm run dev` here runs the legacy SQLite path and is not representative of
-  Production; Postgres integration tests need Docker or `DISTIL_TEST_POSTGRES_URL`.
-- **Previously recorded external state (not re-checked today):** Production deployment
-  `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
-  `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
-  token; Neon production branch `br-damp-wildflower-b3kw15cu`.
-- **Password login smoke (needs Amit, uses his inbox):** on `distilai.app`, request a password
-  link from `/reset-password`, follow the emailed link, set a password, sign in with it on
-  `/invite`, change it from `/account`, and confirm the magic-link path still works. Record the
-  result here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
-  refuses an account created by magic link, that is the first thing to adjust.
+- **Verification at this checkpoint (locally verified 2026-09-16 unless noted):** every PR
+  (#7, #9, #10, #11, #12, #13) passed the full quality gate (static, unit/component/contract,
+  security, PostgreSQL integration, coverage, web/mobile and extension E2E, production build) and
+  the exact-head `main` run after each merge. Local: `npm test` 201 suites / 1440 tests,
+  `tsc --noEmit`, lint (0 errors, 10 baseline warnings), Prettier. Production: health 200 with
+  `cache-control: no-store` on both origins; `/sign-in`, `/invite`, `/reset-password` 200; the
+  password routes answer 403 without an allowed Origin; anonymous `/feed` redirects to
+  `/sign-in`. The local `.env.local` has no `DATABASE_URL`, so a local `npm run dev` runs the
+  legacy SQLite path and is not representative of Production; Postgres integration tests need
+  Docker or `DISTIL_TEST_POSTGRES_URL`.
+- **Previously recorded external state (not re-checked today):** Production library
+  intentionally empty; one user and one capture token; Neon Auth project `distil-preview-db`
+  with the single existing user.
+- **Optional password-login check (deferred by Amit on 2026-09-16):** sign in at
+  `https://distilai.app/sign-in`, confirm the Today page loads, change the password once from
+  `/account`, and confirm "Email me a magic link instead" still works. If the emailed reset link
+  ever lands somewhere other than `/reset-password?token=...`, adjust the page first.
+- **Operational note:** Amit added local, gitignored Claude Code permission rules on 2026-09-16 so
+  Claude Code can merge green PRs, update the release pin, deploy and re-alias without a manual
+  step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
+  unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
   1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
