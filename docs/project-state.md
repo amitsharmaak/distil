@@ -26,10 +26,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   branch and its worktree are deleted. Production serves release `7278326` as deployment
   `dpl_37haDb3zFz1moUGpw7LS7JECyyBH` on both `distilai.app` and `distil-pv-1850.vercel.app`
   (verified 2026-09-16, see the release note below).
-- **Progress at this checkpoint:** Email/password sign-in merged and released to Production
-  (implementation complete, locally and CI verified, deployed). The Neon Auth email/password
-  provider has NOT been confirmed enabled; until it is, password sign-in and reset return generic
-  failures while magic links keep working.
+- **Progress at this checkpoint:** Email/password sign-in merged, released to Production and
+  activated at the provider: on 2026-09-16 Claude Code, driving Amit's signed-in Chrome, enabled
+  "Sign-in with Email" for the Production branch's Neon Auth (console change authorized by Amit
+  in chat). The end-to-end password smoke has not been run yet.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -49,12 +49,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
-- **Password login activation (needs Amit):** (a) enable the email/password provider in the
-  Neon Auth project for the Production branch (console change; the agent had no Neon tooling or
-  connected browser); (b) smoke on `distilai.app`: request a password link from
-  `/reset-password`, follow the emailed link, set a password, sign in with it on `/invite`,
-  change it from `/account`, and confirm the magic-link path still works. Record the result
-  here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
+- **Password login smoke (needs Amit, uses his inbox):** on `distilai.app`, request a password
+  link from `/reset-password`, follow the emailed link, set a password, sign in with it on
+  `/invite`, change it from `/account`, and confirm the magic-link path still works. Record the
+  result here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
   refuses an account created by magic link, that is the first thing to adjust.
 - **Exact next steps:**
   1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
@@ -64,6 +62,18 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Neon Auth password provider enabled — 2026-09-16
+
+With Amit's authorization in chat, Claude Code used the connected Chrome session to open the Neon
+console for project `distil-preview-db`, branch `distil-production` (`br-damp-wildflower-b3kw15cu`),
+Auth, Configuration, and switched on "Sign-in with Email" (email + password). The console reported
+"Authentication settings updated successfully" and the setting persisted after reload. Observed and
+left unchanged: "Sign-up with Email" on, "Verify at Sign-up" off, no OAuth providers, trusted domain
+`https://distilai.app` only, localhost off, shared email provider. "Sign-up with Email" stays
+harmless for Distil because the application never forwards `sign-up/email` and unmapped provider
+identities are denied by the proxy; it can be revisited if Neon's restricted-signup control ships.
+No users, credentials or data were changed; the single existing user was not touched.
 
 ### Password login release — 2026-09-16
 
