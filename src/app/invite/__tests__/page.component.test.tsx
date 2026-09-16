@@ -2,11 +2,9 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const mockReplace = jest.fn();
-const mockRefresh = jest.fn();
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mockReplace, refresh: mockRefresh }),
-}));
+jest.mock("@/lib/browser-navigation", () => ({ navigateFullPage: jest.fn() }));
+
+import { navigateFullPage } from "@/lib/browser-navigation";
 
 import InvitePage from "../page";
 
@@ -22,8 +20,7 @@ function submitSignIn(email: string, password: string): void {
 
 beforeEach(() => {
   fetchMock.mockReset();
-  mockReplace.mockReset();
-  mockRefresh.mockReset();
+  jest.mocked(navigateFullPage).mockReset();
   window.history.replaceState({}, "", "/invite");
 });
 
@@ -45,8 +42,8 @@ it("signs in with a password and redirects home", async () => {
       })
     )
   );
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
-  expect(mockRefresh).toHaveBeenCalledTimes(1);
+  // Full navigation, not a client-side replace: see the comment in the page.
+  await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/", window.location));
 });
 
 it("shows the server message on an invalid password", async () => {
@@ -58,7 +55,7 @@ it("shows the server message on an invalid password", async () => {
   submitSignIn("amit@example.com", "wrong-password");
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email or password");
-  expect(mockReplace).not.toHaveBeenCalled();
+  expect(navigateFullPage).not.toHaveBeenCalled();
 });
 
 it("shows a generic message for other sign-in failures", async () => {
