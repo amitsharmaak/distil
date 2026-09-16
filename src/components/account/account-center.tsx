@@ -224,7 +224,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       setError(await messageFor(response, "Could not sign out. Please try again."));
       return;
     }
-    router.replace("/invite");
+    router.replace("/sign-in");
     router.refresh();
   }
 

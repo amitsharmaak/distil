@@ -22,7 +22,13 @@ export function AppShell({
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  if (pathname === "/login") {
+  if (
+    pathname === "/login" ||
+    pathname === "/sign-in" ||
+    pathname === "/invite" ||
+    pathname === "/reset-password" ||
+    pathname === "/access-denied"
+  ) {
     return <main className="min-h-screen">{children}</main>;
   }
 

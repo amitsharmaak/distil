@@ -54,7 +54,7 @@ it("shows an invalid-link message and the request form when the query has an err
   expect(screen.getByRole("button", { name: "Email me a password link" })).toBeInTheDocument();
 });
 
-it("sets a new password with a token and redirects to /invite?reset=1", async () => {
+it("sets a new password with a token and redirects to /sign-in?reset=1", async () => {
   window.history.replaceState({}, "", "/reset-password?token=abc123");
   fetchMock.mockResolvedValue(response(200, { reset: true }));
   render(<ResetPasswordPage />);
@@ -76,7 +76,7 @@ it("sets a new password with a token and redirects to /invite?reset=1", async ()
       })
     )
   );
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/invite?reset=1"));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/sign-in?reset=1"));
 });
 
 it("blocks submission and shows an alert when passwords do not match", async () => {

@@ -21,15 +21,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `7278326` (squash merge of PR
-  [#7](https://github.com/amitsharmaak/distil/pull/7), password login). The `claude/password-login`
-  branch and its worktree are deleted. Production serves release `7278326` as deployment
-  `dpl_37haDb3zFz1moUGpw7LS7JECyyBH` on both `distilai.app` and `distil-pv-1850.vercel.app`
-  (verified 2026-09-16, see the release note below).
-- **Progress at this checkpoint:** Email/password sign-in merged, released and provider-enabled.
-  Amit's first smoke on 2026-09-16 found that a successful password sign-in appeared to do
-  nothing; root cause and fix are in the "Password sign-in redirect fix" note below. That fix is
-  on `claude/password-login-redirect`, to be merged and released as `main`'s next exact SHA.
+- **Branch / worktree:** `main` at `ec9758a` (squash merge of PR
+  [#11](https://github.com/amitsharmaak/distil/pull/11), the sign-in redirect fix). Task branch
+  `claude/sign-in-page` (this checkpoint) adds the dedicated `/sign-in` page. Production serves
+  release `ec9758a` as deployment `dpl_GYe6JtxFxX1NpydW6K7MmX2wrT6G` on both `distilai.app` and
+  `distil-pv-1850.vercel.app` (verified 2026-09-16).
+- **Progress at this checkpoint:** Password login merged, released, provider-enabled, and the
+  sign-in redirect fix released as `ec9758a`. Amit's smoke: password accepted; end-to-end
+  landing on Today not yet confirmed in this file. `claude/sign-in-page` introduces `/sign-in`
+  as the sign-in URL (Amit: "/invite is misleading") and is awaiting merge and release.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -62,6 +62,24 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Sign-in redirect fix released; dedicated /sign-in page — 2026-09-16
+
+Release: Amit updated `DISTIL_PHASE3_PRODUCTION_SHA` to `ec9758a9d15157026fd52f05ab2fbc07f6800176`
+after the exact-head `main` gate passed; Claude Code deployed with `vercel deploy --prod`
+(`dpl_GYe6JtxFxX1NpydW6K7MmX2wrT6G`, preflight passed, Ready), re-aliased
+`distil-pv-1850.vercel.app`, and verified health 200 plus the sign-in route on both origins.
+
+Branch `claude/sign-in-page` (subagent implementation, reviewed and gated by Claude Code): new
+public `/sign-in` page rendering the shared `src/components/auth/sign-in-card.tsx`; `/invite` is
+invitation acceptance only and client-redirects to `/sign-in` when no fragment token is present;
+every login destination (`loginUrl` in the proxy and the two completion routes, sign-out, reset
+completion, access-denied link) now points at `/sign-in`; `/sign-in` added to the proxy public
+paths with the CSRF boundary digest regenerated; the app shell renders no sidebar, topbar or
+mobile nav on `/login`, `/sign-in`, `/invite`, `/reset-password` and `/access-denied` (this also
+removes the prefetch source behind the earlier redirect bug); authorization matrix gains the
+`/sign-in` page loader (22 pages). Locally verified: 201 suites / 1440 tests, `tsc`, lint (0
+errors, 10 baseline warnings), Prettier.
 
 ### Password sign-in redirect fix — 2026-09-16
 

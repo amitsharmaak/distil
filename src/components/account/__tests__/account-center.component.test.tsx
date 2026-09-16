@@ -344,7 +344,7 @@ describe("AccountCenter lifecycle recovery", () => {
     expect(screen.getByText("Other browser")).toBeInTheDocument();
   });
 
-  it("signs out through the hosted-auth route and returns to the invite page", async () => {
+  it("signs out through the hosted-auth route and returns to the sign-in page", async () => {
     mockActiveHydration({ sessions: [currentSession] });
     render(<AccountCenter />);
     expect(await screen.findByText("This device")).toBeInTheDocument();
@@ -359,7 +359,7 @@ describe("AccountCenter lifecycle recovery", () => {
         body: "{}",
       })
     );
-    expect(mockReplace).toHaveBeenCalledWith("/invite");
+    expect(mockReplace).toHaveBeenCalledWith("/sign-in");
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
