@@ -26,10 +26,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   branch and its worktree are deleted. Production serves release `7278326` as deployment
   `dpl_37haDb3zFz1moUGpw7LS7JECyyBH` on both `distilai.app` and `distil-pv-1850.vercel.app`
   (verified 2026-09-16, see the release note below).
-- **Progress at this checkpoint:** Email/password sign-in merged, released to Production and
-  activated at the provider: on 2026-09-16 Claude Code, driving Amit's signed-in Chrome, enabled
-  "Sign-in with Email" for the Production branch's Neon Auth (console change authorized by Amit
-  in chat). The end-to-end password smoke has not been run yet.
+- **Progress at this checkpoint:** Email/password sign-in merged, released and provider-enabled.
+  Amit's first smoke on 2026-09-16 found that a successful password sign-in appeared to do
+  nothing; root cause and fix are in the "Password sign-in redirect fix" note below. That fix is
+  on `claude/password-login-redirect`, to be merged and released as `main`'s next exact SHA.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -62,6 +62,20 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Password sign-in redirect fix — 2026-09-16
+
+Smoke finding: on `distilai.app/invite`, a correct password produced no visible change. Vercel
+runtime logs showed `POST /api/auth/sign-in/password` returning 200, so the provider accepted the
+credentials and cookies were issued; the follow-up was `GET /invite`, never `GET /`. Cause: the
+app shell renders the sidebar on `/invite`, whose links prefetch protected routes; the proxy
+answers each anonymous prefetch with a redirect to `/invite`, which Next keeps in the client
+router cache, so `router.replace("/")` resolved from that cache and stayed on the page. Fix:
+after a successful password sign-in the page performs a full navigation through the new helper
+`src/lib/browser-navigation.ts` (`navigateFullPage`), which re-evaluates `/` on the server with
+the new session cookies. Tests updated (6 invite component tests); ESLint, Prettier and
+TypeScript clean. Follow-up worth considering: exclude `/invite` and `/reset-password` from the
+app shell so anonymous pages do not render or prefetch the authenticated navigation.
 
 ### Neon Auth password provider enabled — 2026-09-16
 
