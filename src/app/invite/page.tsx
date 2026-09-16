@@ -107,7 +107,7 @@ function ReturningUserSignInCard() {
       }
       // Full navigation: see navigateFullPage for why a client-side replace()
       // would resolve from the stale prefetch cache and stay on this page.
-      navigateFullPage("/");
+      navigateFullPage("/", window.location);
     } finally {
       setSubmitting(false);
     }

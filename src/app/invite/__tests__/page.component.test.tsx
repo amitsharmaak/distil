@@ -43,7 +43,7 @@ it("signs in with a password and redirects home", async () => {
     )
   );
   // Full navigation, not a client-side replace: see the comment in the page.
-  await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/"));
+  await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/", window.location));
 });
 
 it("shows the server message on an invalid password", async () => {
