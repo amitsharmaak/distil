@@ -45,11 +45,29 @@ The Shortcut should not open Distil on success. A successful response means the 
 
 ## Add Distil to the Home Screen
 
-1. Open Distil's `/save` page in Safari.
-2. Tap **Share**, then **Add to Home Screen**.
-3. Confirm the name **Distil** and tap **Add**.
+Use Safari; Chrome on iOS cannot install a standalone web app.
+
+1. Open `https://distilai.app/sign-in` in Safari and sign in.
+2. Go to `https://distilai.app/save`. The manifest's `start_url` is `/save`, so installing from
+   there gives the cleanest result.
+3. Tap **Share**, then **Add to Home Screen**.
+4. Confirm the name **Distil** and tap **Add**.
+5. Open the new icon. If it shows the sign-in page, sign in once more inside the installed app.
+   This is expected: the installed app keeps its own cookie jar and does not share Safari's
+   session.
 
 The installed app opens directly to the save screen and respects the iPhone safe areas. Distil does not register a service worker, so private feed responses are never cached for offline access.
+
+### Reinstall after an origin change
+
+An installed web app is pinned to the exact origin it was added from. An icon added from an
+older Vercel origin keeps opening that origin, and Neon Auth trusts only `distilai.app` for
+sign-in, so the old icon cannot be repaired in place:
+
+1. Long-press the old Distil icon, tap **Remove App**, then **Delete App**.
+2. Repeat the steps above from `https://distilai.app`.
+3. If the new icon still opens the old site, clear Safari's data for `distilai.app` under
+   **Settings → Safari → Advanced → Website Data**, then repeat from step 1 of the section above.
 
 ## Real-device acceptance checklist
 
