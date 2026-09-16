@@ -21,15 +21,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `d67182e` (squash merge of PR
-  [#6](https://github.com/amitsharmaak/distil/pull/6), the reading-loop fixes). Task branch
-  `claude/password-login` in worktree `/Users/amitsharma/Projects/distil-password-login`, rebased
-  onto that `main`, holds the password-login implementation described in the checkpoint below.
-  Amit authorized merging it to `main` on 2026-09-11; Claude Code is the integration owner for
-  that PR. Production still serves release `5f45bba`.
-- **Progress at this checkpoint:** Email/password sign-in implemented on `claude/password-login`
-  as an addition to magic links (implementation complete and locally verified; not deployed; no
-  cloud resource changed). See "Password login — 2026-09-11" below for scope and evidence.
+- **Branch / worktree:** `main` at `7278326` (squash merge of PR
+  [#7](https://github.com/amitsharmaak/distil/pull/7), password login). The `claude/password-login`
+  branch and its worktree are deleted. Production serves release `7278326` as deployment
+  `dpl_37haDb3zFz1moUGpw7LS7JECyyBH` on both `distilai.app` and `distil-pv-1850.vercel.app`
+  (verified 2026-09-16, see the release note below).
+- **Progress at this checkpoint:** Email/password sign-in merged and released to Production
+  (implementation complete, locally and CI verified, deployed). The Neon Auth email/password
+  provider has NOT been confirmed enabled; until it is, password sign-in and reset return generic
+  failures while magic links keep working.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -49,14 +49,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `dpl_74mhi6F5kw8Dcx2Au57UEjg9X7P1` from release `5f45bba` serving `distilai.app` and
   `distil-pv-1850.vercel.app`; Production library intentionally empty; one user and one capture
   token; Neon production branch `br-damp-wildflower-b3kw15cu`.
-- **Password login release (needs Amit's decisions):** after the PR merges, (a) release the
-  exact `main` SHA to Production; (b) enable the email/password provider in the Neon Auth project
-  for the Production branch (cloud mutation, not done by the agent); (c) smoke on `distilai.app`:
-  request a password link from `/reset-password`, follow the emailed link, set a password, sign
-  in with it on `/invite`, change it from `/account`, and confirm the magic-link path still works.
-  Record the result here. If the provider's reset link does not land on
-  `/reset-password?token=...`, or reset refuses an account created by magic link, that is the
-  first thing to adjust.
+- **Password login activation (needs Amit):** (a) enable the email/password provider in the
+  Neon Auth project for the Production branch (console change; the agent had no Neon tooling or
+  connected browser); (b) smoke on `distilai.app`: request a password link from
+  `/reset-password`, follow the emailed link, set a password, sign in with it on `/invite`,
+  change it from `/account`, and confirm the magic-link path still works. Record the result
+  here. If the provider's reset link does not land on `/reset-password?token=...`, or reset
+  refuses an account created by magic link, that is the first thing to adjust.
 - **Exact next steps:**
   1. Amit: sign in on `https://distilai.app`, make one deliberate browser-extension capture, then
      confirm extraction, summary and search. Record the result as a dated checkpoint here. Update
@@ -65,6 +64,25 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
      `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
+
+### Password login release — 2026-09-16
+
+PR [#7](https://github.com/amitsharmaak/distil/pull/7) squash-merged to `main` as `7278326` on
+2026-09-15 after every PR check passed; the exact-head `main` quality gate run
+[34956048163](https://github.com/amitsharmaak/distil/actions/runs/34956048163) also passed. The
+automatic Production deployment `dpl_EoyyjqQMmPmuNkYnkPzPKFwtxb9m` correctly failed the activation
+preflight on the old release pin. Amit updated `DISTIL_PHASE3_PRODUCTION_SHA` to
+`72783268f3df5a6461f009d8f0cfc2a029af81ec`; Claude Code then deployed with `vercel deploy --prod`,
+producing `dpl_37haDb3zFz1moUGpw7LS7JECyyBH` (preflight passed, build 56 s, Ready). `distilai.app`
+received the production alias automatically; `distil-pv-1850.vercel.app` was re-aliased explicitly.
+
+Locally verified on 2026-09-16 against both origins: `/api/health` 200 with `cache-control:
+no-store`, `/reset-password` 200, and `POST /api/auth/sign-in/password` and
+`POST /api/auth/password/reset` return 403 without an allowed Origin (route present, origin check
+active). No sign-in, reset, capture or provider call was made; the library was not touched. The
+Neon Auth email/password provider setting was not changed or inspected. Local `git` and the two
+worktrees were reconciled: `main` checkout at `7278326`; `claude/ui-simplification` worktree left
+untouched.
 
 ### Password login — 2026-09-11
 
