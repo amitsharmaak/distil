@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { navigateFullPage } from "@/lib/browser-navigation";
 import { Input } from "@/components/ui/input";
 
 function readInvitationToken(): string {
@@ -71,7 +71,6 @@ function InvitationAcceptanceCard() {
 }
 
 function ReturningUserSignInCard() {
-  const router = useRouter();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -106,8 +105,9 @@ function ReturningUserSignInCard() {
         );
         return;
       }
-      router.replace("/");
-      router.refresh();
+      // Full navigation: see navigateFullPage for why a client-side replace()
+      // would resolve from the stale prefetch cache and stay on this page.
+      navigateFullPage("/");
     } finally {
       setSubmitting(false);
     }
