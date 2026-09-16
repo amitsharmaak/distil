@@ -24,7 +24,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Branch / worktree:** `main` at `1bdda18` (docs merge of PR
   [#13](https://github.com/amitsharmaak/distil/pull/13) on top of `847a068`, PR
   [#12](https://github.com/amitsharmaak/distil/pull/12)). No task branches or extra worktrees
-  remain for this work; `claude/ui-simplification` is a separate worktree not touched here.
+  remain for this work. The worktree `/Users/amitsharma/Projects/distil-ui-simplification`
+  (branch `claude/ui-simplification`, clean, now merged) can be removed by Amit with
+  `git worktree remove /Users/amitsharma/Projects/distil-ui-simplification`.
   Production serves release `847a068` as deployment `dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB` on both
   `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
   `DISTIL_PHASE3_PRODUCTION_SHA` = `847a068c7a06ac11177d1e173a28c0a326a20f31`.
@@ -55,10 +57,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     on 2026-09-16 not to change the password or run the remaining smoke now; landing on Today
     after password sign-in, the change-password form and the magic-link fallback on the final
     release are therefore unverified by a person and remain an optional check, not a blocker.
-- **In flight (2026-09-16):** branch `claude/test-tiering` re-tiers verification (Tier 0
-  `check:quick`, Tier 1 `check` as the only required CI check, Tier 2 nightly "Full gate") and
-  lets the release pin accept `unpinned`; see the checkpoint "Tiered testing strategy" below. Not
-  merged or deployed at the time of writing; the Production pin is unchanged.
+- **Integration (2026-09-16):** branch `claude/integrate-tiering-ui` combines the two open task
+  branches on top of `main`: `claude/test-tiering` (PR
+  [#15](https://github.com/amitsharmaak/distil/pull/15), Tier 0 `check:quick`, Tier 1 `check` as
+  the only required CI check, Tier 2 nightly "Full gate", release pin may be `unpinned`) and
+  `claude/ui-simplification` (PR [#8](https://github.com/amitsharmaak/distil/pull/8), simplified
+  navigation, reader chrome, top bar, settings and feed toolbar). The only conflict was this
+  file; the UI branch's own record is kept as the checkpoint "UI simplification — 2026-09-11"
+  below. Merged to `main` through the integration PR; not deployed, the Production pin is
+  unchanged, so `distilai.app` still serves `847a068` without the simplified shell.
 - **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
   Claude-specific notes; progress is recorded only in this file. Task branches are named
   `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
@@ -68,7 +75,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-- **Verification at this checkpoint (locally verified 2026-09-16 unless noted):** every PR
+- **Verification of the integration branch (locally verified 2026-09-16, full gate on the
+  combined tree at `54e8263`):** `npm run lint` 0 errors / 10 baseline warnings, Prettier clean;
+  `tsc --noEmit` clean; `npm test` 201 suites / 1446 tests passed; `npm run test:integration`
+  (Docker PostgreSQL) 12 suites / 44 tests passed; `npm run test:e2e` 27 passed / 3 skipped
+  across desktop-chromium, mobile-chromium and mobile-webkit; `npm run test:extension` 11
+  passed; `npm run build` succeeded. Codex/Claude sessions are not shared, so this is the only
+  record of that run.
+- **Verification of the preceding releases (locally verified 2026-09-16 unless noted):** every PR
   (#7, #9, #10, #11, #12, #13) passed the full quality gate (static, unit/component/contract,
   security, PostgreSQL integration, coverage, web/mobile and extension E2E, production build) and
   the exact-head `main` run after each merge. Local: `npm test` 201 suites / 1440 tests,
@@ -90,8 +104,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. After the `claude/test-tiering` PR merges and has been deployed once under the current exact
-     pin, Amit sets `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on Vercel Production (optionally
+  1. The tiering and UI-simplification work is on `main` but not released. When Amit authorizes
+     a release, deploy the new `main` head under the current exact pin (this is the first release
+     carrying the simplified shell; check Today, Feed, the reader and Settings at 375px and
+     desktop on the deployment before re-aliasing). After that deployment, Amit sets `DISTIL_PHASE3_PRODUCTION_SHA=unpinned` on Vercel Production (optionally
      `DISTIL_PHASE3_REHEARSAL_SHA=unpinned` on Preview). From then on merges to `main`
      auto-deploy; record the change as a dated checkpoint here.
   2. After that merge, trigger the "Full gate" workflow once via `workflow_dispatch` and confirm
@@ -101,7 +117,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
      the iPhone Shortcut API base to the apex before its next capture.
   4. Next engineering candidates, in suggested order, each as its own short-lived branch with a
      state update: (a) merge and, on the next release, deploy the `BUG-CONTENT-001` /
-     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module; (c) small
+     `BUG-SEARCH-001` fixes; (b) delete or port the dead `notifications.ts` module and the
+     now-unlinked `/topics`, `/sources`, `/research` routes; (c) small
      mobile-web fixes `BUG-PWA-001/002` and the Shortcut URL extraction `BUG-IOS-001`. Phase 4 mobile work starts only on an explicit decision.
 
 ### Tiered testing strategy — 2026-09-16
