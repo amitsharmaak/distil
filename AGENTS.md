@@ -190,6 +190,35 @@ Do not repeat accepted checks without a new risk.
 - Never `git stash`, reset, checkout over, or delete another party's uncommitted changes or
   worktrees. If a worktree is dirty and not yours, leave it and report it.
 
+### 7.1 Parallel-session routine (adopted 2026-09-16)
+
+The branch friction of early September (repeated rebases after squash merges, one branch touched
+from two sessions, stale worktrees) came from three habits. The routine below removes them.
+
+- **One task, one worktree, one session, one branch.** A branch is committed to by exactly one
+  session; never open it in a second session. Claude Code sessions started with the desktop
+  app's worktree option or `claude --worktree <task>` live under `.claude/worktrees/<task>/` on
+  branch `worktree-<task>`; that name is accepted alongside `claude/<task>`. Codex keeps
+  `codex/<task>`. The main checkout (`/Users/amitsharma/Projects/distil`) stays on `main`.
+- **Always branch from `origin/main`, never from another task branch.** `main` is squash-merged,
+  so a branch stacked on an unmerged branch cannot rebase cleanly afterwards. If task B needs
+  task A, merge A first and branch B from the new `main`. `.claude/settings.json` sets
+  `worktree.baseRef` to `fresh` so Claude-created worktrees do this automatically.
+- **Sync with `git merge origin/main`, not `git rebase`.** The branch is squashed on merge, so
+  its local history is disposable; a merge gives one conflict pass instead of one per commit.
+  `git config rerere.enabled true` (set locally on 2026-09-16) replays repeated resolutions.
+- **Never reuse a merged branch.** After the squash merge, remove the worktree and delete the
+  local branch; the remote branch is auto-deleted.
+- **Keep the state file conflict-free.** Each task appends its own dated checkpoint directly
+  below the Current handoff section and edits handoff bullets only for its own objective,
+  decisions, blockers and next steps. Do not rewrite other tasks' bullets; whichever branch
+  merges second keeps both checkpoints in date order.
+- **Skills.** `/start-task <name>` and `/finish-task` in `.claude/skills/` script the start and
+  end of this routine for Claude Code (worktree, branch, `npm ci`, state checkpoint,
+  `npm run check`, PR, squash merge on request, cleanup). Codex follows the same steps by hand.
+- `.worktreeinclude` copies `.env.local` into every Claude-created worktree; run `npm ci` there
+  before the dev server or tests.
+
 ## 8. What to record in `docs/project-state.md`
 
 Keep the roadmap and principles stable near the top. Maintain the **Current handoff** section

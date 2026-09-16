@@ -41,8 +41,11 @@ data/publisher-sessions/
 *.pem
 *.pptx
 
-# Claude / AI agent config (developer-specific)
-.claude/
+# Claude / AI agent config. Shared settings and skills are tracked; everything else in
+# .claude/ (settings.local.json, launch.json, worktrees/) is developer-specific.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 
 # Eval results (generated)
 evals/results/*.json
