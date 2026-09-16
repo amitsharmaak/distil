@@ -109,8 +109,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 Branch `claude/test-tiering` (Claude Code; PR pending, CI results in the PR). Audit, measured
 locally on a 16-core Mac: `npm run typecheck` 5 s; `npm test` with `--runInBand` 16 s for 201
 suites / 1440 tests; the same Jest run with parallel workers 3.6 s, all passing; the eight-job CI
-`quality-gate` roughly 8–12 min wall per push; every Production deploy needed a manual edit of the
-`DISTIL_PHASE3_PRODUCTION_SHA` pin. Decision (Amit, 2026-09-16): the project is in an iteration
+`quality-gate` about 3.5 min wall and roughly 15 runner-minutes per push (measured on Actions run
+35066944173); every Production deploy needed a manual edit of the `DISTIL_PHASE3_PRODUCTION_SHA`
+pin. Decision (Amit, 2026-09-16): the project is in an iteration
 phase with one user and at most one friend, so verification is re-tiered by when it runs; no tests
 are deleted.
 
