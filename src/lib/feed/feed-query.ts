@@ -322,9 +322,12 @@ export class PostgresFeedQuery {
         ? this.sql`CASE i.priority WHEN 'high' THEN 90 WHEN 'medium' THEN 50 ELSE 20 END`
         : this
             .sql`COALESCE(i.ai_priority_score, CASE i.priority WHEN 'high' THEN 90 WHEN 'medium' THEN 50 ELSE 20 END)`;
-    const affinity =
-      query.personalizationEnabled && sort === "for_you"
-        ? this.sql`COALESCE((
+    // Explicit-signal affinity is computed once per candidate row by a LATERAL
+    // subquery so the SELECT list, the keyset cursor predicate and ORDER BY all
+    // read the same value instead of re-running a correlated subquery each time.
+    const personalized = Boolean(query.personalizationEnabled && sort === "for_you");
+    const affinityJoin = personalized
+      ? this.sql`LEFT JOIN LATERAL (
             SELECT SUM(
               (CASE e.event_type
                 WHEN 'feedback_recorded' THEN CASE
@@ -337,7 +340,7 @@ export class PostgresFeedQuery {
                 WHEN 'archived' THEN -2
                 ELSE 0
               END) * exp(-ln(2) * GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - e.occurred_at)) / 86400) / ${PERSONALIZATION_HALF_LIFE_DAYS})
-            )
+            ) AS score
             FROM item_events e
             JOIN items signal ON signal.user_id=e.user_id AND signal.id=e.item_id
             WHERE e.user_id=${this.context.userId}::uuid
@@ -352,8 +355,9 @@ export class PostgresFeedQuery {
                   WHERE signal.topics ? target.topic
                 )
               )
-          ), 0)`
-        : this.sql`0`;
+          ) affinity_signal ON TRUE`
+      : this.sql``;
+    const affinity = personalized ? this.sql`COALESCE(affinity_signal.score, 0)` : this.sql`0`;
     const unroundedScore = this.sql`CASE
       WHEN i.manual_priority='high' THEN 300 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='medium' THEN 200 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
@@ -393,6 +397,7 @@ export class PostgresFeedQuery {
       FROM items i
       LEFT JOIN ai_summaries s ON s.user_id=${this.context.userId}::uuid
         AND s.item_id=i.id AND s.prompt_type='brief'
+      ${affinityJoin}
       ${where}
       ${order}
       LIMIT ${limit + 1}`;

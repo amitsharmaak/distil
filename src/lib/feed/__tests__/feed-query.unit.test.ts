@@ -270,6 +270,39 @@ describe("feed ranking contracts", () => {
     });
   });
 
+  it("computes explicit-signal affinity once per row through a LATERAL join", async () => {
+    const personalized = fakeFeedSql([feedRow("lateral")]);
+    await new PostgresFeedQuery(personalized as never, context).list({
+      sort: "for_you",
+      personalizationEnabled: true,
+      cursor: encodeFeedCursor({
+        v: 1,
+        sort: "for_you",
+        score: 61.234567,
+        createdAt: base.createdAt,
+        id: "item-2",
+      }),
+      now,
+    });
+    const statement = personalized.statements[0];
+    expect(statement.match(/LEFT JOIN LATERAL/g)).toHaveLength(1);
+    expect(statement.match(/FROM item_events e/g)).toHaveLength(1);
+    // SELECT list, cursor predicate (three comparisons) and ORDER BY all read the joined value.
+    expect(
+      (statement.match(/COALESCE\(affinity_signal\.score, 0\)/g) ?? []).length
+    ).toBeGreaterThanOrEqual(5);
+    expect(statement.indexOf("LEFT JOIN LATERAL")).toBeLessThan(statement.indexOf("WHERE "));
+
+    const chronological = fakeFeedSql([feedRow("plain")]);
+    await new PostgresFeedQuery(chronological as never, context).list({
+      sort: "recent",
+      personalizationEnabled: true,
+      now,
+    });
+    expect(chronological.statements[0]).not.toContain("LATERAL");
+    expect(chronological.statements[0]).not.toContain("item_events");
+  });
+
   it("selects the summary projection so feed rows never carry article bodies", async () => {
     const sql = fakeFeedSql([
       { ...feedRow("summary-only"), full_content: "<p>the whole body</p>" },

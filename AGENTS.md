@@ -50,8 +50,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
-  `src/lib/postgres/tenant-migrations/0005–0009` (Phase 3 expand/backfill/contract/lifecycle/
-  returning-auth) run through `npm run db:tenant:migrate` and are checked by
+  `src/lib/postgres/tenant-migrations/0005–0010` (Phase 3 expand/backfill/contract/lifecycle/
+  returning-auth, then the P7 perf-indexes stage) run through `npm run db:tenant:migrate` and are
+  checked by
   `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
   the restricted runtime role in `DATABASE_URL`. Row-level security is forced.
 - **Legacy SQLite:** `src/lib/db.ts` (better-sqlite3) is a compatibility island. `database.ts`

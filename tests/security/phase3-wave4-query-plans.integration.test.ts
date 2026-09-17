@@ -95,12 +95,14 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
       migrationsDirectory: tenantMigrations,
       baseline,
     });
-    await applyTenantMigrationStage({
-      sql: owner.sql,
-      stage: "lifecycle",
-      ownerId: fixture.alpha.user.id,
-      migrationsDirectory: tenantMigrations,
-    });
+    for (const stage of ["lifecycle", "returning-auth", "perf-indexes"] as const) {
+      await applyTenantMigrationStage({
+        sql: owner.sql,
+        stage,
+        ownerId: fixture.alpha.user.id,
+        migrationsDirectory: tenantMigrations,
+      });
+    }
     await owner.sql`
       INSERT INTO users (id, status)
       VALUES (${fixture.alpha.user.id}::uuid, 'active'), (${fixture.beta.user.id}::uuid, 'active')
@@ -118,7 +120,7 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
     ] as const) {
       await owner.sql`
         INSERT INTO items
-          (id,title,source_type,url,normalized_url,created_at,user_id)
+          (id,title,source_type,url,normalized_url,created_at,user_id,topics)
         SELECT
           ${prefix} || '-' || sequence::text,
           CASE WHEN sequence % 25 = 0 THEN 'wave4-needle' ELSE 'ordinary item' END,
@@ -126,7 +128,20 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
           'https://example.test/' || ${prefix} || '/' || sequence::text,
           'https://example.test/' || ${prefix} || '/' || sequence::text,
           timestamptz '2026-01-01T00:00:00Z' + sequence * interval '1 second',
-          ${userId}::uuid
+          ${userId}::uuid,
+          CASE WHEN sequence % 40 = 0 THEN '["systems","wave4-topic"]'::jsonb ELSE '["ordinary"]'::jsonb END
+        FROM generate_series(1, 2000) AS sequence
+      `;
+      await owner.sql`
+        INSERT INTO item_events (id,user_id,event_key,item_id,event_type,metadata,occurred_at)
+        SELECT
+          md5(${prefix} || '-event-' || sequence::text)::uuid,
+          ${userId}::uuid,
+          ${prefix} || '-event-' || sequence::text,
+          ${prefix} || '-' || sequence::text,
+          CASE sequence % 4 WHEN 0 THEN 'completed' WHEN 1 THEN 'opened' WHEN 2 THEN 'archived' ELSE 'marked_read' END,
+          '{}'::jsonb,
+          timestamptz '2026-01-02T00:00:00Z' + sequence * interval '1 second'
         FROM generate_series(1, 2000) AS sequence
       `;
       await owner.sql`
@@ -156,7 +171,7 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
       FROM generate_series(1, 18) AS tenant
       CROSS JOIN generate_series(1, 2000) AS sequence
     `;
-    await owner.sql.unsafe("ANALYZE items; ANALYZE account_deletions");
+    await owner.sql.unsafe("ANALYZE items; ANALYZE item_events; ANALYZE account_deletions");
     applicationSql = applicationClient(owner.connectionUri);
     await applicationSql`SELECT 1`;
   });
@@ -206,6 +221,52 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
         throw new Error(`${label} scanned a tenant-bearing base table globally:\n${plan}`);
       }
     }
+  });
+
+  it("P7-IDX-001: tenant-leading btree predicates cross the RLS barrier; ordered and GIN paths do not", async () => {
+    const explain = (query: string) =>
+      withTenantTransaction(
+        applicationSql,
+        parseAuthContext(fixture.alpha.auth.session),
+        async (transaction) => {
+          const rows = await transaction.unsafe<Array<{ "QUERY PLAN": string }>>(
+            `EXPLAIN (FORMAT TEXT, COSTS FALSE) ${query}`
+          );
+          const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
+          if (process.env.DISTIL_WAVE4_PRINT_PLANS === "1") process.stderr.write(`\n${plan}\n`);
+          return plan.toLowerCase();
+        }
+      );
+
+    // The affinity LATERAL's driving scan: user_id and event_type are leakproof equality
+    // predicates, so they are pushed inside the security-barrier subquery and the P7 index (or
+    // the narrower tenant index the planner prefers at this size) answers them as index
+    // conditions; item_events is never scanned globally.
+    const signals = await explain(`
+      SELECT e.item_id FROM item_events e
+      WHERE e.user_id = '${fixture.alpha.user.id}'::uuid
+        AND e.event_type IN ('feedback_recorded','collection_added','completed','archived')`);
+    expect(signals).toMatch(
+      /index (?:scan|only scan) using item_events_user_(?:type_occurred_)?idx/
+    );
+    expect(signals).toContain("index cond: (user_id =");
+    expect(signals).not.toContain("seq scan on item_events");
+
+    // Documented limitation, asserted so a future change is noticed: the feed's ORDER BY ...
+    // LIMIT is applied above the RLS barrier, so a top-N Sort always remains even though the
+    // tenant index is used underneath. A future ordered items index cannot remove it.
+    const feed = await explain(REVIEWED_QUERIES.feed);
+    expect(feed).toContain("subquery scan on i");
+    expect(feed).toMatch(/->\s+sort/);
+    expect(feed).toContain("index cond: (user_id =");
+
+    // Same limitation for the topic facet: `?|` is not leakproof, so it filters above the
+    // barrier and a GIN index on topics would never be consulted for the runtime role.
+    const topics = await explain(`
+      SELECT i.id FROM items i
+      WHERE i.user_id = '${fixture.alpha.user.id}'::uuid AND i.topics ?| ARRAY['wave4-topic']
+      LIMIT 30`);
+    expect(topics).toMatch(/subquery scan on i\n\s+filter: \(i\.topics \?\|/);
   });
 
   it("returns only each tenant's rows for the same reviewed queries", async () => {
