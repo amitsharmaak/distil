@@ -11,7 +11,7 @@ import { headers } from "next/headers";
 import { Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getTenantRepositories } from "@/lib/database";
+import { withTenantRepositories } from "@/lib/database";
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
@@ -153,11 +153,20 @@ export default async function ItemDetailPage({
   const auth = await resolveRequestAuthContext(
     new Request("http://distil.local/feed/reader", { headers: requestHeaders })
   );
-  const repositories = await getTenantRepositories(auth);
+  // One tenant transaction for the whole read: the item, its summaries and
+  // feedback, and the keyset neighbours the prev/next controls need.
+  const loaded = await withTenantRepositories(auth, async (repositories) => {
+    const item = await repositories.items.findById(id);
+    if (!item) return null;
+    const [aiSummaries, existingFeedback, neighbours] = await Promise.all([
+      repositories.summaries.findAll(item.id),
+      repositories.feedback.findForItem(item.id),
+      repositories.items.findNeighbours(item.id, { unreadOnly: filter !== "all" }),
+    ]);
+    return { item, aiSummaries, existingFeedback, neighbours };
+  });
 
-  const item = await repositories.items.findById(id);
-
-  if (!item) {
+  if (!loaded) {
     return (
       <div className="py-16 text-center">
         <h2 className="font-serif text-lg font-semibold">Item not found</h2>
@@ -168,6 +177,7 @@ export default async function ItemDetailPage({
     );
   }
 
+  const { item, aiSummaries, existingFeedback, neighbours } = loaded;
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
@@ -179,18 +189,6 @@ export default async function ItemDetailPage({
         detail: { ...baseStrategy.detail, showTweetRenderer: false, showAISummary: true },
       }
     : baseStrategy;
-  const [aiSummaries, existingFeedback, allItems] = await Promise.all([
-    repositories.summaries.findAll(item.id),
-    repositories.feedback.findForItem(item.id),
-    repositories.items.list(),
-  ]);
-
-  const navItems =
-    filter === "all" ? allItems : allItems.filter((i) => !i.isRead || i.id === item.id);
-  const currentIndex = navItems.findIndex((i) => i.id === item.id);
-  const prevItem = currentIndex > 0 ? navItems[currentIndex - 1] : null;
-  const nextItem = currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
-
   const displayTitle = getDisplayTitle(item.title, item.summary);
   const formattedDate = new Date(item.createdAt).toLocaleDateString("en-US", {
     month: "short",
@@ -204,8 +202,8 @@ export default async function ItemDetailPage({
 
       {/* Keyboard prev / next (invisible) */}
       <ArticleNavigation
-        prevId={prevItem?.id ?? null}
-        nextId={nextItem?.id ?? null}
+        prevId={neighbours.previousId}
+        nextId={neighbours.nextId}
         filter={filter}
       />
 
@@ -356,8 +354,8 @@ export default async function ItemDetailPage({
         url={item.url}
         title={item.title}
         isRead={item.isRead}
-        prevId={prevItem?.id ?? null}
-        nextId={nextItem?.id ?? null}
+        prevId={neighbours.previousId}
+        nextId={neighbours.nextId}
         filter={filter}
         initialFeedback={
           existingFeedback

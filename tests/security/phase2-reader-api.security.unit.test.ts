@@ -22,10 +22,18 @@ jest.mock("@/lib/auth/route-helpers", () => ({
   requireSessionMutation: jest.fn(),
 }));
 jest.mock("@/lib/auth/origin", () => ({ requireAllowedOrigin: jest.fn() }));
-jest.mock("@/lib/database", () => ({
-  getRepositorySet: jest.fn(),
-  getTenantRepositories: jest.fn(),
-}));
+jest.mock("@/lib/database", () => {
+  const getTenantRepositories = jest.fn();
+  return {
+    getRepositorySet: jest.fn(),
+    getTenantRepositories,
+    // Routes that fold their reads into one tenant transaction resolve the
+    // same mocked repository set, so the guarantees below apply unchanged.
+    withTenantRepositories: jest.fn(async (auth, operation) =>
+      operation(await getTenantRepositories(auth))
+    ),
+  };
+});
 jest.mock("@/lib/postgres/client", () => ({ createPostgresClient: jest.fn() }));
 jest.mock("@/lib/feed/feed-query", () => {
   class FeedQueryError extends Error {

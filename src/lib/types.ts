@@ -53,6 +53,16 @@ export interface ContentItem {
   informationDensity?: number;
 }
 
+/**
+ * The list-surface projection of a content item. Feed, library and other list
+ * queries return it; it never carries article bodies (`fullContent`) or the
+ * other bulky per-item payloads, so list pages stay small on the wire.
+ */
+export type ContentItemSummary = Omit<
+  ContentItem,
+  "fullContent" | "extractedLinks" | "detectedMedia" | "contentClassification" | "thumbnailUrl"
+>;
+
 export interface Topic {
   id: string;
   name: string;

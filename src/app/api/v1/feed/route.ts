@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { FeedQueryError } from "@/lib/feed/feed-query";
-import { getTenantRepositories } from "@/lib/database";
+import { withTenantRepositories } from "@/lib/database";
 import { apiLogger } from "@/lib/logger";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
@@ -77,25 +77,30 @@ export const GET = withRequestMetrics(async (request: Request): Promise<Response
       );
     }
 
-    const repositories = await getTenantRepositories(context);
     const flags = readPhase2FeatureFlags();
-    const preferences = flags.personalization
-      ? await repositories.digestExperience.getPreferences()
-      : undefined;
-    const page = await repositories.feed.list({
-      read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
-      archive: parsed.data.archive,
-      topics: parsed.data.topic,
-      sources: parsed.data.source,
-      contentTypes: parsed.data.contentType,
-      priorities: parsed.data.priority,
-      collectionIds: parsed.data.collection,
-      dateFrom: parsed.data.dateFrom,
-      dateTo: parsed.data.dateTo,
-      sort: parsed.data.sort,
-      limit: parsed.data.limit,
-      cursor: parsed.data.cursor,
-      personalizationEnabled: Boolean(flags.personalization && preferences?.personalizationEnabled),
+    // One tenant transaction for the whole read: the preferences lookup (when
+    // personalization is on) and the feed page share the verified context.
+    const page = await withTenantRepositories(context, async (repositories) => {
+      const preferences = flags.personalization
+        ? await repositories.digestExperience.getPreferences()
+        : undefined;
+      return repositories.feed.list({
+        read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
+        archive: parsed.data.archive,
+        topics: parsed.data.topic,
+        sources: parsed.data.source,
+        contentTypes: parsed.data.contentType,
+        priorities: parsed.data.priority,
+        collectionIds: parsed.data.collection,
+        dateFrom: parsed.data.dateFrom,
+        dateTo: parsed.data.dateTo,
+        sort: parsed.data.sort,
+        limit: parsed.data.limit,
+        cursor: parsed.data.cursor,
+        personalizationEnabled: Boolean(
+          flags.personalization && preferences?.personalizationEnabled
+        ),
+      });
     });
     return Response.json(page);
   } catch (error) {

@@ -68,20 +68,26 @@ async function withTenantTransactionOptions<T>(
   const trusted = parseAuthContext(context);
   let result!: T;
   const run = async (transaction: TransactionSql) => {
-    await transaction`SELECT
-      set_config('app.user_id', ${trusted.userId}, true),
-      set_config('app.actor_id', ${trusted.actorId}, true),
-      set_config('app.actor_kind', ${trusted.actorKind}, true),
-      set_config('app.request_id', ${trusted.requestId}, true),
-      set_config('app.environment', ${RUNTIME_ENVIRONMENT}, true),
-      set_config('search_path', ${TENANT_SEARCH_PATH}, true)`;
+    // One round trip: the CTE applies the transaction-local settings (set_config
+    // is volatile, so it is materialised before the outer SELECT runs) and the
+    // outer SELECT reads them back through current_setting. Reading the session
+    // state, never the echoed parameters, is what proves the context is bound.
     const [setting] = await transaction<TenantSettingRow[]>`
+      WITH applied AS (
+        SELECT set_config('app.user_id', ${trusted.userId}, true) AS user_id,
+               set_config('app.actor_id', ${trusted.actorId}, true) AS actor_id,
+               set_config('app.actor_kind', ${trusted.actorKind}, true) AS actor_kind,
+               set_config('app.request_id', ${trusted.requestId}, true) AS request_id,
+               set_config('app.environment', ${RUNTIME_ENVIRONMENT}, true) AS environment,
+               set_config('search_path', ${TENANT_SEARCH_PATH}, true) AS search_path
+      )
       SELECT nullif(current_setting('app.user_id', true), '') AS user_id,
              nullif(current_setting('app.actor_id', true), '') AS actor_id,
              nullif(current_setting('app.actor_kind', true), '') AS actor_kind,
              nullif(current_setting('app.request_id', true), '') AS request_id,
              nullif(current_setting('app.environment', true), '') AS environment,
              current_setting('search_path', true) AS search_path
+      FROM applied
     `;
     if (
       setting?.user_id !== trusted.userId ||
@@ -120,9 +126,40 @@ async function withSystemTransaction<T>(
   return result;
 }
 
+/**
+ * Binds a repository set to one already-open tenant transaction, so every
+ * repository call inside `operation` shares that transaction and nested
+ * `begin` calls (tenant locks, upserts) become savepoints of it.
+ */
+export async function withTenantRepositories<T>(
+  sql: Sql,
+  context: AuthContext,
+  operation: (repositories: RepositorySet) => Promise<T>
+): Promise<T> {
+  const trusted = parseAuthContext(context);
+  return withTenantTransactionOptions(sql, trusted, (transaction) =>
+    operation(createPostgresRepositories(transaction, trusted))
+  );
+}
+
+const unboundRepositorySets = new WeakMap<Sql, RepositorySet>();
+
+/**
+ * The unbound set is only consulted for its shape (keys and method names);
+ * every real call runs on a per-transaction set. Build it once per client.
+ */
+function unboundRepositorySet(sql: Sql): RepositorySet {
+  let unbound = unboundRepositorySets.get(sql);
+  if (!unbound) {
+    unbound = createPostgresRepositories(sql);
+    unboundRepositorySets.set(sql, unbound);
+  }
+  return unbound;
+}
+
 function bindRepositorySet(sql: Sql, context: AuthContext): RepositorySet {
   const trusted = parseAuthContext(context);
-  const unbound = createPostgresRepositories(sql);
+  const unbound = unboundRepositorySet(sql);
   const bound: Partial<RepositorySet> = {};
   for (const key of Object.keys(unbound) as Array<keyof RepositorySet>) {
     const repository = unbound[key] as unknown as Record<string, RepositoryMethod>;
@@ -202,6 +239,10 @@ class PostgresControlPlaneAccounts implements ControlPlaneAccountRepository {
 
 export interface PostgresRepositoryAccess {
   getTenantRepositories(context: AuthContext): RepositorySet;
+  withTenantRepositories<T>(
+    context: AuthContext,
+    operation: (repositories: RepositorySet) => Promise<T>
+  ): Promise<T>;
   getControlPlaneRepositories(context: SystemContext): ControlPlaneRepositorySet;
 }
 
@@ -217,6 +258,9 @@ export function createPostgresRepositoryAccess(
   return {
     getTenantRepositories(context) {
       return bindRepositorySet(runtimeSql, context);
+    },
+    withTenantRepositories(context, operation) {
+      return withTenantRepositories(runtimeSql, context, operation);
     },
     getControlPlaneRepositories(context) {
       const trusted = parseSystemContext(context);

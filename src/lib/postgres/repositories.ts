@@ -47,15 +47,17 @@ import type {
 import { sha256 } from "@/lib/knowledge/content-identity";
 import type { IntelligenceArtifact } from "@/lib/knowledge/artifacts";
 import type {
+  ContentChunkMetadata,
   ContentChunkRecord,
   GroundedClaim,
   ItemContentVersion,
   KnowledgeBackfillCheckpoint,
 } from "@/lib/knowledge/types";
-import type { ContentItem, Notification, Priority } from "@/lib/types";
+import type { ContentItem, ContentItemSummary, Notification, Priority } from "@/lib/types";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { normalizeUrl } from "@/lib/utils";
-import { mapCapture, mapCaptureToken, mapItem } from "./mappers";
+import { mapCapture, mapCaptureToken, mapItem, mapItemSummary } from "./mappers";
+import { itemColumnsSql, itemSummaryColumnsSql } from "./item-columns";
 import { PostgresAuthRepository } from "./auth-repository";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
@@ -67,6 +69,8 @@ import { PostgresConnectorOAuthStateRepository } from "@/lib/connectors/oauth-st
 
 type Row = Record<string, unknown>;
 const first = <T>(rows: T[]): T | undefined => rows[0];
+/** `list()` without an explicit limit is a list surface, not a full export. */
+const DEFAULT_LIST_LIMIT = 200;
 const iso = (value: unknown): string =>
   value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 const nullableString = (value: unknown): string | null =>
@@ -85,15 +89,26 @@ const mapJobQueueRecord = (row: Row): JobQueueRecord => ({
   status: String(row.status),
 });
 
+/** Static column projections; never built from caller input. */
+const SUMMARY_COLUMNS = itemSummaryColumnsSql("i");
+const FULL_COLUMNS = itemColumnsSql("i");
+
 class PostgresItems implements ItemRepository {
   constructor(private readonly sql: Sql) {}
   private async select(extra = this.sql``): Promise<ContentItem[]> {
     const rows = await this.sql<Row[]>`
-      SELECT i.*, s.summary AS ai_summary_text FROM items i
+      SELECT ${this.sql.unsafe(FULL_COLUMNS)}, s.summary AS ai_summary_text FROM items i
       LEFT JOIN ai_summaries s ON s.item_id=i.id AND s.prompt_type='brief' ${extra}`;
     return rows.map(mapItem);
   }
-  async list(f: ItemFilters = {}): Promise<ContentItem[]> {
+  private async selectSummaries(extra = this.sql``): Promise<ContentItemSummary[]> {
+    const rows = await this.sql<Row[]>`
+      SELECT ${this.sql.unsafe(SUMMARY_COLUMNS)}, s.summary AS ai_summary_text FROM items i
+      LEFT JOIN ai_summaries s ON s.item_id=i.id AND s.prompt_type='brief' ${extra}`;
+    return rows.map(mapItemSummary);
+  }
+  /** Shared WHERE/ORDER/LIMIT tail for `list` and `listSummaries`. */
+  private listClause(f: ItemFilters) {
     const conditions = [];
     if (f.sourceType) conditions.push(this.sql`i.source_type=${f.sourceType}`);
     if (f.contentType) conditions.push(this.sql`i.content_type=${f.contentType}`);
@@ -116,9 +131,38 @@ class PostgresItems implements ItemRepository {
         : f.sort === "ai_priority"
           ? this.sql`ORDER BY COALESCE(i.ai_priority_score,0) DESC, i.created_at DESC`
           : this.sql`ORDER BY i.created_at DESC`;
-    return this.select(
-      this.sql`${where} ${order} LIMIT ${f.limit ?? 1000000} OFFSET ${f.offset ?? 0}`
-    );
+    return this
+      .sql`${where} ${order} LIMIT ${f.limit ?? DEFAULT_LIST_LIMIT} OFFSET ${f.offset ?? 0}`;
+  }
+  async list(f: ItemFilters = {}): Promise<ContentItem[]> {
+    return this.select(this.listClause(f));
+  }
+  async listSummaries(f: ItemFilters = {}): Promise<ContentItemSummary[]> {
+    return this.selectSummaries(this.listClause(f));
+  }
+  /**
+   * Keyset neighbours in the default `list()` order (ready items, newest
+   * first, id as the tie-break): "previous" is the next-newer item and "next"
+   * the next-older one. Two single-row statements; a missing item yields nulls.
+   */
+  async findNeighbours(
+    itemId: string,
+    options: { unreadOnly?: boolean } = {}
+  ): Promise<{ previousId: string | null; nextId: string | null }> {
+    const unread = options.unreadOnly ? this.sql`AND i.is_read=false` : this.sql``;
+    const [previous, next] = await Promise.all([
+      this.sql<{ id: string }[]>`
+        SELECT i.id FROM items i
+        WHERE i.processing_status='ready' ${unread}
+          AND (i.created_at, i.id) > (SELECT created_at, id FROM items WHERE id=${itemId})
+        ORDER BY i.created_at ASC, i.id ASC LIMIT 1`,
+      this.sql<{ id: string }[]>`
+        SELECT i.id FROM items i
+        WHERE i.processing_status='ready' ${unread}
+          AND (i.created_at, i.id) < (SELECT created_at, id FROM items WHERE id=${itemId})
+        ORDER BY i.created_at DESC, i.id DESC LIMIT 1`,
+    ]);
+    return { previousId: first(previous)?.id ?? null, nextId: first(next)?.id ?? null };
   }
   async findById(id: string) {
     return first(await this.select(this.sql`WHERE i.id=${id}`));
@@ -1102,20 +1146,44 @@ const mapContentChunk = (row: Row): ContentChunkRecord => ({
   createdAt: iso(row.created_at),
 });
 
+const mapContentChunkMetadata = (row: Row): ContentChunkMetadata => {
+  const metadata: Partial<Pick<ContentChunkRecord, "content">> & ContentChunkMetadata =
+    mapContentChunk({ ...row, content: "" });
+  delete metadata.content;
+  return metadata;
+};
+
+/** Chunk bookkeeping columns; `content` is added only where chunk text is read. */
+const CHUNK_METADATA_COLUMNS =
+  "id,content_version_id,item_id,ordinal,content_hash,start_offset,end_offset,token_count,embedding_model,embedding_dimensions,embedding_status,embedding_error,embedding_updated_at,embedded_at,created_at";
+/** Every content_chunks column except the generated `search_vector`. */
+const CHUNK_COLUMNS = `${CHUNK_METADATA_COLUMNS},content`;
+
 class PostgresContentChunks implements ContentChunkRepository {
   constructor(private readonly sql: Sql) {}
 
   async findById(id: string) {
-    const row = first(await this.sql<Row[]>`SELECT * FROM content_chunks WHERE id=${id}`);
+    const row = first(
+      await this.sql<Row[]>`
+        SELECT ${this.sql.unsafe(CHUNK_COLUMNS)} FROM content_chunks WHERE id=${id}`
+    );
     return row ? mapContentChunk(row) : undefined;
   }
 
   async listForContentVersion(contentVersionId: string) {
     return (
-      await this.sql<
-        Row[]
-      >`SELECT * FROM content_chunks WHERE content_version_id=${contentVersionId} ORDER BY ordinal ASC`
+      await this.sql<Row[]>`
+        SELECT ${this.sql.unsafe(CHUNK_COLUMNS)} FROM content_chunks
+        WHERE content_version_id=${contentVersionId} ORDER BY ordinal ASC`
     ).map(mapContentChunk);
+  }
+
+  async listMetadataForContentVersion(contentVersionId: string) {
+    return (
+      await this.sql<Row[]>`
+        SELECT ${this.sql.unsafe(CHUNK_METADATA_COLUMNS)} FROM content_chunks
+        WHERE content_version_id=${contentVersionId} ORDER BY ordinal ASC`
+    ).map(mapContentChunkMetadata);
   }
 
   async insertMany(records: ContentChunkRecord[]) {
@@ -1430,31 +1498,38 @@ class PostgresClaims implements ClaimRepository {
     const claimRows = await this.sql<
       Row[]
     >`SELECT * FROM intelligence_claims WHERE artifact_id=${artifactId} ORDER BY ordinal ASC`;
-    const claims: GroundedClaim[] = [];
-    for (const row of claimRows) {
-      const evidenceRows = await this.sql<Row[]>`
-        SELECT * FROM claim_evidence
-        WHERE claim_id=${String(row.id)}
-        ORDER BY chunk_id ASC,start_offset ASC,end_offset ASC
-      `;
-      claims.push({
-        id: String(row.id),
-        artifactId: String(row.artifact_id),
-        ordinal: Number(row.ordinal),
-        claim: String(row.claim),
-        claimHash: String(row.claim_hash),
-        confidence: row.confidence == null ? undefined : Number(row.confidence),
-        evidence: evidenceRows.map((evidence) => ({
-          claimId: String(evidence.claim_id),
-          chunkId: String(evidence.chunk_id),
-          startOffset: Number(evidence.start_offset),
-          endOffset: Number(evidence.end_offset),
-          exactExcerpt: String(evidence.exact_excerpt),
-          evidenceHash: String(evidence.evidence_hash),
-        })),
+    if (claimRows.length === 0) return [];
+    // One evidence statement for the whole artifact; grouped in memory so the
+    // per-claim order (chunk_id, start_offset, end_offset) is preserved.
+    const claimIds = claimRows.map((row) => String(row.id));
+    const evidenceRows = await this.sql<Row[]>`
+      SELECT * FROM claim_evidence
+      WHERE claim_id = ANY(${this.sql.array(claimIds)})
+      ORDER BY claim_id ASC,chunk_id ASC,start_offset ASC,end_offset ASC
+    `;
+    const evidenceByClaim = new Map<string, GroundedClaim["evidence"]>();
+    for (const evidence of evidenceRows) {
+      const claimId = String(evidence.claim_id);
+      const bucket = evidenceByClaim.get(claimId) ?? [];
+      bucket.push({
+        claimId,
+        chunkId: String(evidence.chunk_id),
+        startOffset: Number(evidence.start_offset),
+        endOffset: Number(evidence.end_offset),
+        exactExcerpt: String(evidence.exact_excerpt),
+        evidenceHash: String(evidence.evidence_hash),
       });
+      evidenceByClaim.set(claimId, bucket);
     }
-    return claims;
+    return claimRows.map((row) => ({
+      id: String(row.id),
+      artifactId: String(row.artifact_id),
+      ordinal: Number(row.ordinal),
+      claim: String(row.claim),
+      claimHash: String(row.claim_hash),
+      confidence: row.confidence == null ? undefined : Number(row.confidence),
+      evidence: evidenceByClaim.get(String(row.id)) ?? [],
+    }));
   }
 
   async insertWithEvidence(claims: Parameters<ClaimRepository["insertWithEvidence"]>[0]) {
