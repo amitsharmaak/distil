@@ -403,7 +403,11 @@ export interface EmbeddingRepository {
     itemId: string
   ): Promise<{ itemId: string; embedding: number[]; model: string; createdAt: string } | undefined>;
   upsert(itemId: string, embedding: number[], model: string): Promise<void>;
-  listRecent(daysBack?: number): Promise<Array<{ itemId: string; embedding: number[] }>>;
+  count(): Promise<number>;
+  listRecent(
+    daysBack?: number,
+    limit?: number
+  ): Promise<Array<{ itemId: string; embedding: number[] }>>;
 }
 
 export interface RawContentRepository {

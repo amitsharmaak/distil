@@ -25,9 +25,10 @@ describe("deterministic failure fakes", () => {
       .enqueueJSON(VALID_AI_SUMMARY)
       .enqueueText(createAITimeoutError(), createAIRateLimitError());
 
-    await expect(provider.generateJSON("summarize", "fixture-model")).resolves.toEqual(
-      VALID_AI_SUMMARY
-    );
+    await expect(provider.generateJSON("summarize", "fixture-model")).resolves.toEqual({
+      value: VALID_AI_SUMMARY,
+      usage: { inputTokens: 3, outputTokens: 57 },
+    });
     await expect(provider.generateText("first", "fixture-model")).rejects.toMatchObject({
       code: "AI_TIMEOUT",
       retryable: true,

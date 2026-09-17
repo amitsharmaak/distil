@@ -1005,10 +1005,17 @@ class PostgresEmbeddings implements EmbeddingRepository {
       `;
     });
   }
-  async listRecent(days = 30) {
+  async count() {
+    return Number(
+      first(
+        await this.sql<Array<{ count: number }>>`SELECT count(*)::int count FROM item_embeddings`
+      )?.count ?? 0
+    );
+  }
+  async listRecent(days = 30, limit = 500) {
     const r = await this.sql<
       Row[]
-    >`SELECT item_id,embedding FROM item_embeddings WHERE created_at > now()-(${days}*interval '1 day') ORDER BY created_at DESC`;
+    >`SELECT item_id,embedding FROM item_embeddings WHERE created_at > now()-(${days}*interval '1 day') ORDER BY created_at DESC LIMIT ${limit}`;
     return r.map((x) => ({ itemId: String(x.item_id), embedding: x.embedding as number[] }));
   }
 }

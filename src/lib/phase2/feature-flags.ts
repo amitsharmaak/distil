@@ -3,6 +3,7 @@
  * enabled, which lets an additive migration safely precede the experience.
  */
 export interface Phase2FeatureFlags {
+  captureSummary: boolean;
   knowledgeUi: boolean;
   search: boolean;
   answers: boolean;
@@ -16,6 +17,7 @@ export function readPhase2FeatureFlags(
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): Phase2FeatureFlags {
   return Object.freeze({
+    captureSummary: environment.FEATURE_CAPTURE_SUMMARY?.trim().toLowerCase() !== "false",
     knowledgeUi: enabled(environment.FEATURE_KNOWLEDGE_UI),
     search: enabled(environment.FEATURE_SEARCH),
     answers: enabled(environment.FEATURE_ANSWERS),

@@ -123,6 +123,52 @@ const generatedAnswerSchema = z
 const GENERAL_QUERY =
   /\b(brief|digest|overview|summari[sz]e|catch me up|what(?:'s| is) new|recent|unread|recommend|highlights?|my library)\b/i;
 const MIN_SPECIFIC_SCORE = 0.01;
+const ANSWER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const ANSWER_CACHE_MAX_ENTRIES = 512;
+interface CachedAnswer {
+  expiresAt: number;
+  response: GroundedAnswerResponse;
+}
+const globalForAnswerCache = globalThis as typeof globalThis & {
+  __distilAnswerCache?: Map<string, CachedAnswer>;
+};
+const answerCache = (globalForAnswerCache.__distilAnswerCache ??= new Map());
+
+function normalizedQuestion(question: string): string {
+  return question.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function answerCacheKey(userId: string, question: string, passages: PassageSearchResult[]): string {
+  const passageIdHash = sha256(
+    passages.map(({ itemId, chunkId }) => `${itemId}:${chunkId}`).join("\n")
+  );
+  return `${userId}:${normalizedQuestion(question)}:${passageIdHash}`;
+}
+
+function readCachedAnswer(key: string, now = Date.now()): GroundedAnswerResponse | undefined {
+  const cached = answerCache.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= now) {
+    answerCache.delete(key);
+    return undefined;
+  }
+  return structuredClone(cached.response);
+}
+
+function writeCachedAnswer(key: string, response: GroundedAnswerResponse, now = Date.now()): void {
+  if (answerCache.size >= ANSWER_CACHE_MAX_ENTRIES) {
+    const oldest = answerCache.keys().next().value;
+    if (oldest) answerCache.delete(oldest);
+  }
+  answerCache.set(key, {
+    expiresAt: now + ANSWER_CACHE_TTL_MS,
+    response: structuredClone(response),
+  });
+}
+
+export function clearAnswerCacheForTests(): void {
+  answerCache.clear();
+}
 
 export function classifyAnswerIntent(query: string): AnswerIntent {
   return GENERAL_QUERY.test(query) ? "general" : "specific";
@@ -192,7 +238,7 @@ export async function answerFromKnowledge(input: {
   store: PassageSearchStore;
   generator?: AnswerGenerator;
 }): Promise<GroundedAnswerResponse> {
-  parseAuthContext(input.context);
+  const tenant = parseAuthContext(input.context);
   const query = input.request.query.trim();
   const intent = input.request.intent ?? classifyAnswerIntent(query);
   const filters = input.request.filters ?? {};
@@ -233,6 +279,10 @@ export async function answerFromKnowledge(input: {
   const degradation = [UNPINNED_SEMANTIC_DEGRADATION, generationUnavailable];
   if (!input.generator) return fallbackAnswer(query, intent, passages, degradation);
 
+  const cacheKey = answerCacheKey(tenant.userId, query, passages);
+  const cached = readCachedAnswer(cacheKey);
+  if (cached) return cached;
+
   try {
     const parsed = generatedAnswerSchema.safeParse(
       await input.generator({
@@ -245,7 +295,7 @@ export async function answerFromKnowledge(input: {
     if (!parsed.success) return fallbackAnswer(query, intent, passages, degradation);
     const citations = validateGeneratedCitations(parsed.data, passages);
     if (citations.length === 0) return fallbackAnswer(query, intent, passages, degradation);
-    return {
+    const response: GroundedAnswerResponse = {
       status: "ready",
       intent,
       answer: parsed.data.answer,
@@ -254,6 +304,8 @@ export async function answerFromKnowledge(input: {
       retrievalMode: passages[0].retrievalMode,
       degradation: [UNPINNED_SEMANTIC_DEGRADATION],
     };
+    writeCachedAnswer(cacheKey, response);
+    return response;
   } catch {
     return fallbackAnswer(query, intent, passages, degradation);
   }

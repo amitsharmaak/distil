@@ -1,4 +1,7 @@
 jest.mock("../providers", () => ({ createProviders: jest.fn() }));
+jest.mock("../after-response", () => ({
+  scheduleAIAfterResponse: (task: () => Promise<void>) => void task(),
+}));
 import { createProviders } from "../providers";
 import { getRouter } from "../router";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
@@ -10,6 +13,10 @@ const context = createAuthContext({
   requestId: "30000000-0000-4000-8000-000000000001",
 });
 const generateJSON = jest.fn();
+const generated = (value: unknown, inputTokens = 11, outputTokens = 7) => ({
+  value,
+  usage: { inputTokens, outputTokens },
+});
 const repos = {
   lifecycle: { consumeUsage: jest.fn() },
   agent: { insertAuditLog: jest.fn() },
@@ -29,7 +36,7 @@ beforeEach(() => {
 it("falls back on summary quota, checks tenant admission again, and audits the successful model", async () => {
   generateJSON
     .mockRejectedValueOnce(Object.assign(new Error("private provider payload"), { status: 429 }))
-    .mockResolvedValueOnce({ overview: "ok", keyPoints: ["one"] });
+    .mockResolvedValueOnce(generated({ overview: "ok", keyPoints: ["one"] }));
   const result = await getRouter().generateTenantJSONWithMetadata(
     context,
     repos,
@@ -83,7 +90,7 @@ it("returns the normalized fallback failure without a third attempt", async () =
 it.each([503, 504])("falls back for a temporary model failure (%s)", async (status) => {
   generateJSON
     .mockRejectedValueOnce(Object.assign(new Error("temporary"), { status }))
-    .mockResolvedValueOnce({ overview: "ok", keyPoints: ["one"] });
+    .mockResolvedValueOnce(generated({ overview: "ok", keyPoints: ["one"] }));
   expect(
     (await getRouter().generateTenantJSONWithMetadata(context, repos, "synthetic", "summarize"))
       .model
@@ -94,12 +101,9 @@ it("accounts for fallback tokens at the accepted model rates", async () => {
   const output = { overview: "ok", keyPoints: ["one"] };
   generateJSON
     .mockRejectedValueOnce(Object.assign(new Error("quota"), { status: 429 }))
-    .mockResolvedValueOnce(output);
+    .mockResolvedValueOnce(generated(output, 11, 7));
   await getRouter().generateTenantJSON(context, repos, "synthetic", "summarize");
-  const cost =
-    (Math.ceil("synthetic".length / 4) * 0.25 +
-      Math.ceil(JSON.stringify(output).length / 4) * 1.5) /
-    1_000_000;
+  const cost = (11 * 0.25 + 7 * 1.5) / 1_000_000;
   expect(repos.agent.insertAuditLog).toHaveBeenCalledWith(
     expect.objectContaining({ cost: expect.closeTo(cost, 12) })
   );

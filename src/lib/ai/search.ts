@@ -48,8 +48,9 @@ async function semanticSearch(
   filters: Omit<ItemFilters, "query">
 ): Promise<ContentItem[]> {
   try {
+    if ((await repositories.embeddings.count()) === 0) return [];
     const queryEmbedding = await generateEmbedding(query);
-    const recentEmbeddings = await repositories.embeddings.listRecent(90); // 90 days for search
+    const recentEmbeddings = await repositories.embeddings.listRecent(90, 500); // 90 days for search
 
     // Compute similarities
     const similarities: Array<{ itemId: string; similarity: number }> = [];

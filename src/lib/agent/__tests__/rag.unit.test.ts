@@ -97,6 +97,7 @@ describe("ragQuery — conversational intent", () => {
     expect(result.citations).toEqual([]);
     expect(mockHybridSearch).not.toHaveBeenCalled();
     expect(mockListItems).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
   });
 
   it("returns a fallback when generateText fails for a greeting", async () => {
