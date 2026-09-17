@@ -1,5 +1,7 @@
 import type { Sql, TransactionSql } from "postgres";
 
+import { measurePhase } from "@/lib/observability/request-metrics";
+
 import {
   parseAuthContext,
   parseSystemContext,
@@ -27,6 +29,8 @@ interface TenantSettingRow {
 }
 
 const RUNTIME_ENVIRONMENT = "runtime";
+/** Server-Timing phase that accumulates every tenant or system transaction. */
+const DATABASE_PHASE = "db";
 const TENANT_SEARCH_PATH = "tenant_api, pg_catalog";
 
 type RepositoryMethod = (...args: unknown[]) => unknown;
@@ -91,8 +95,10 @@ async function withTenantTransactionOptions<T>(
     }
     result = await operation(repositorySql(transaction));
   };
-  if (options) await sql.begin(options, run);
-  else await sql.begin(run);
+  await measurePhase(DATABASE_PHASE, async () => {
+    if (options) await sql.begin(options, run);
+    else await sql.begin(run);
+  });
   return result;
 }
 
@@ -103,12 +109,14 @@ async function withSystemTransaction<T>(
 ): Promise<T> {
   const trusted = parseSystemContext(context);
   let result!: T;
-  await sql.begin(async (transaction) => {
-    await transaction`SELECT
+  await measurePhase(DATABASE_PHASE, () =>
+    sql.begin(async (transaction) => {
+      await transaction`SELECT
       set_config('app.actor_id', ${trusted.actorId}, true),
       set_config('app.request_id', ${trusted.requestId}, true)`;
-    result = await operation(repositorySql(transaction));
-  });
+      result = await operation(repositorySql(transaction));
+    })
+  );
   return result;
 }
 

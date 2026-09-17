@@ -4,24 +4,27 @@ import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { getTenantRepositories } from "@/lib/database";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
 import { parseBody, stateSchema, updateItemState } from "@/lib/phase2/reader-service";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
-  try {
-    requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
-    const auth = await resolveRequestAuthContext(request);
-    const { id } = await context.params;
-    if (!id) throw new Error("missing item id");
-    const input = parseBody(await readJson(request), stateSchema);
-    const item = await updateItemState(await getTenantRepositories(auth), id, input);
-    return Response.json({ item });
-  } catch (error) {
-    return readerErrorResponse(error);
+export const PATCH = withRequestMetrics(
+  async (request: Request, context: RouteContext): Promise<Response> => {
+    try {
+      requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
+      const auth = await resolveRequestAuthContext(request);
+      const { id } = await context.params;
+      if (!id) throw new Error("missing item id");
+      const input = parseBody(await readJson(request), stateSchema);
+      const item = await updateItemState(await getTenantRepositories(auth), id, input);
+      return Response.json({ item });
+    } catch (error) {
+      return readerErrorResponse(error);
+    }
   }
-}
+);
 
-export async function GET(request: Request, context: RouteContext): Promise<Response> {
+export const GET = withRequestMetrics(async (request: Request, context: RouteContext) => {
   try {
     const auth = await resolveRequestAuthContext(request);
     const { id } = await context.params;
@@ -44,4 +47,4 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   } catch (error) {
     return readerErrorResponse(error);
   }
-}
+});

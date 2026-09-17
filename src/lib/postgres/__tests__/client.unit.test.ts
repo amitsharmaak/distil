@@ -27,6 +27,7 @@ it("creates a transaction-pooler-safe client with defaults", () => {
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,
+    debug: expect.any(Function),
   });
 });
 

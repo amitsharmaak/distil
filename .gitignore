@@ -36,6 +36,9 @@ data/publisher-sessions/
 # production
 /build
 
+# performance measurements (npm run perf:vitals)
+/.perf/
+
 # misc
 .DS_Store
 *.pem

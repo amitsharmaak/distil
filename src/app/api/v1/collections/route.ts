@@ -2,6 +2,7 @@ import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { getTenantRepositories } from "@/lib/database";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 import { readJson, readerErrorResponse } from "@/lib/phase2/reader-http";
 import {
   collectionCreateSchema,
@@ -10,7 +11,7 @@ import {
   parseBody,
 } from "@/lib/phase2/reader-service";
 
-export async function GET(request: Request): Promise<Response> {
+export const GET = withRequestMetrics(async (request: Request): Promise<Response> => {
   try {
     const context = await resolveRequestAuthContext(request);
     return Response.json({
@@ -19,9 +20,9 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     return readerErrorResponse(error);
   }
-}
+});
 
-export async function POST(request: Request): Promise<Response> {
+export const POST = withRequestMetrics(async (request: Request): Promise<Response> => {
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
     const context = await resolveRequestAuthContext(request);
@@ -31,4 +32,4 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     return readerErrorResponse(error);
   }
-}
+});
