@@ -67,8 +67,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 - **Performance P6 branch / worktree (Codex, implementation complete and locally verified):**
   `codex/perf-ai` in `/Users/amitsharma/Projects/distil-codex-perf-ai`, started from `origin/main`
   `c85f336` and merged current `origin/main` `eb557a7` (never rebased); implementation commit
-  `2979d1a`. The PR is not merged or deployed. No migration, environment-variable change,
-  release-pin change or cloud mutation was performed.
+  `2979d1a`. PR [#30](https://github.com/amitsharmaak/distil/pull/30) is open with the `full-ci`
+  label; it is not merged or deployed. No migration, environment-variable change, release-pin
+  change or cloud mutation was performed.
 - **Local iteration loop (merged 2026-09-17, PR
   [#27](https://github.com/amitsharmaak/distil/pull/27), `0d5e689`):** Amit captures articles
   into a laptop-only PostgreSQL (Docker, in-process capture worker, legacy password login) and
@@ -202,8 +203,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 Codex implemented P6 on branch `codex/perf-ai` in worktree
 `/Users/amitsharma/Projects/distil-codex-perf-ai`, started from `origin/main` `c85f336` and synced
 with `origin/main` `eb557a7` by merge, never rebase. Implementation commit: `2979d1a`. The PR is not
-merged or deployed; Production, Neon, Vercel, environment variables, release pin and migrations
-were not touched.
+merged or deployed. PR [#30](https://github.com/amitsharmaak/distil/pull/30) is open with the
+`full-ci` label. Production, Neon, Vercel, environment variables, release pin and migrations were
+not touched.
 
 - **Capture summary:** the shared `consumeCaptureMessage` enrichment hook now indexes first and
   then requests one tenant-budget-admitted `brief` summary. This is identical for Vercel Queue and
@@ -246,8 +248,8 @@ Before/after numbers (deterministic local evidence, not hosted-provider timing):
   passed against Docker PostgreSQL 29.7.2: 12 suites / 45 tests. Focused P6 run: 12 suites / 162
   tests before the full gate. No live provider, hosted latency, deployment or Production smoke was
   run, so implementation is complete and locally verified but not deployed.
-- **Unfinished / restart:** push `codex/perf-ai`, open the PR against `main`, add `full-ci`, record
-  the PR link here, and wait for CI. Do not merge or release without Amit's instruction.
+- **Unfinished / restart:** wait for the Quick gate, Vercel and every `full-ci` job on PR #30.
+  Review, merge and release wait for Amit's instruction.
 
 ### Performance P2 released — 2026-09-17
 
