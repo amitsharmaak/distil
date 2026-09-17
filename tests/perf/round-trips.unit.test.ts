@@ -1,15 +1,22 @@
 /**
- * Performance regression fence (phase P0): the number of provider round trips,
- * authentication lookups and database transactions one request costs today.
- * Later phases lower these assertions on purpose; an accidental increase fails.
+ * Performance regression fence: the number of provider round trips,
+ * authentication lookups and database transactions one request costs.
+ *
+ * P0 pinned the baseline (proxy: two provider calls + one auth query; route:
+ * one provider call + one auth query + two transactions). P1 lowers it to
+ * proxy: one + one and route: zero + zero through the signed identity
+ * handoff. Later phases lower the remaining assertions on purpose; an
+ * accidental increase fails.
  */
 import type { LinkedAccount } from "@/lib/auth/account";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import type { VerifiedProviderSession } from "@/lib/auth/neon-proxy";
+import { createIdentityToken, IDENTITY_HEADER } from "@/lib/auth/identity-token";
 import { createAuthContext, userIdSchema, type AuthContext } from "@/lib/contracts";
 import { PROXY_TIMING_HEADER, recordDatabaseStatement } from "@/lib/observability/request-metrics";
 import { createPostgresRepositoryAccess } from "@/lib/postgres/tenant-repositories";
 import type { Sql } from "postgres";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 const userId = userIdSchema.parse("20000000-0000-4000-8000-000000000002");
 const traceId = "30000000-0000-4000-8000-000000000003";
@@ -31,23 +38,32 @@ const environment = {
 
 const fakes = {
   provider: {
-    middleware: jest.fn(() => async () => NextResponse.next()),
-    getSession: jest.fn(async () => ({
-      data: {
-        user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
-        session: { id: "provider-session", createdAt: new Date() },
-      },
-      error: null,
-    })),
+    verifySession: jest.fn(
+      async (): Promise<VerifiedProviderSession> => ({
+        session: {
+          data: {
+            user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
+            session: { id: "provider-session", createdAt: new Date() },
+          },
+          error: null,
+        },
+        headers: new Headers(),
+      })
+    ),
   },
   authRepositories: {} as AuthRepositoryPort,
   tenantSql: undefined as unknown as Sql,
   transactions: 0,
   statements: [] as string[],
+  /** The request id the tenant transaction's verification SELECT reports back. */
+  requestId: traceId,
 };
 
 jest.mock("@/lib/auth/neon-server", () => ({
-  getNeonAuthServer: () => fakes.provider,
+  getNeonProxyProvider: () => fakes.provider,
+  getNeonAuthServer: () => {
+    throw new Error("the route must not construct the provider");
+  },
 }));
 jest.mock("@/lib/auth/repository-runtime", () => ({
   getAuthRepositoryPort: async () => fakes.authRepositories,
@@ -91,7 +107,7 @@ function sqlDouble() {
           user_id: context.userId,
           actor_id: context.actorId,
           actor_kind: context.actorKind,
-          request_id: context.requestId,
+          request_id: fakes.requestId,
           environment: "runtime",
           search_path: "tenant_api, pg_catalog",
         },
@@ -128,27 +144,25 @@ const originalEnvironment = { ...process.env };
 
 beforeEach(() => {
   Object.assign(process.env, environment);
-  fakes.provider.middleware.mockClear();
-  fakes.provider.getSession.mockClear();
+  fakes.provider.verifySession.mockClear();
   fakes.authRepositories = authRepositories({ userId, status: "active" });
   fakes.tenantSql = sqlDouble();
   fakes.transactions = 0;
   fakes.statements = [];
+  fakes.requestId = traceId;
 });
 
 afterAll(() => {
   process.env = originalEnvironment;
 });
 
-function middlewareInvocations(): number {
-  return fakes.provider.middleware.mock.results.reduce((count, result) => {
-    const handler = result.value as jest.Mock | ((request: NextRequest) => Promise<Response>);
-    return count + (jest.isMockFunction(handler) ? handler.mock.calls.length : 1);
-  }, 0);
+/** Headers Next.js will hand to the route, as exposed on the pass-through response. */
+function forwarded(response: Response, name: string): string {
+  return response.headers.get(`x-middleware-request-${name}`) ?? "";
 }
 
-describe("request cost baseline (P0)", () => {
-  it("proxy: one authenticated GET costs two provider calls and one auth query", async () => {
+describe("request cost fence (P1: one provider call and one auth query per request)", () => {
+  it("proxy: one authenticated GET costs one provider call and one auth query", async () => {
     const { proxy } = await import("@/proxy");
     const response = await proxy(
       new NextRequest("https://distil.example/api/v1/feed", { method: "GET" })
@@ -156,19 +170,16 @@ describe("request cost baseline (P0)", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
-    expect(fakes.provider.middleware).toHaveBeenCalledTimes(1);
-    expect(middlewareInvocations()).toBe(1);
-    expect(fakes.provider.getSession).toHaveBeenCalledTimes(1);
+    expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
     expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
 
-    // Baseline: 2 provider round trips + 1 database query before the route runs.
     // API pass-throughs carry the timing as a forwarded request header (see
     // PROXY_TIMING_HEADER); Next.js exposes forwarded headers under this prefix.
     expect(response.headers.get("server-timing")).toBeNull();
-    const proxyTiming = response.headers.get(`x-middleware-request-${PROXY_TIMING_HEADER}`) ?? "";
-    expect(proxyTiming).toMatch(/^proxy-auth-provider;dur=\d+\.\d;desc="calls=2"/);
+    const proxyTiming = forwarded(response, PROXY_TIMING_HEADER);
+    expect(proxyTiming).toMatch(/^proxy-auth-provider;dur=\d+\.\d;desc="calls=1"/);
     expect(proxyTiming).toMatch(/, proxy-auth-db;dur=\d+\.\d;desc="q=1"/);
-    expect(proxyTiming).toMatch(/, proxy;dur=\d+\.\d;desc="calls=2 q=1"$/);
+    expect(proxyTiming).toMatch(/, proxy;dur=\d+\.\d;desc="calls=1 q=1"$/);
   });
 
   it("proxy: pages receive the proxy timing directly and forged values are dropped", async () => {
@@ -180,29 +191,41 @@ describe("request cost baseline (P0)", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("server-timing")).toMatch(
-      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=2", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=2 q=1"$/
+      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=1"$/
     );
-    expect(response.headers.get(`x-middleware-request-${PROXY_TIMING_HEADER}`)).toBeNull();
+    expect(forwarded(response, PROXY_TIMING_HEADER)).toBe("");
   });
 
-  it("GET /api/v1/feed: one provider call, one auth query and two transactions", async () => {
+  it("proxy: public paths cost nothing", async () => {
+    const { proxy } = await import("@/proxy");
+    const response = await proxy(new NextRequest("https://distil.example/api/health"));
+    expect(response.status).toBe(200);
+    expect(fakes.provider.verifySession).not.toHaveBeenCalled();
+    expect(fakes.authRepositories.findAccountByIdentity).not.toHaveBeenCalled();
+    expect(forwarded(response, PROXY_TIMING_HEADER)).toMatch(/^proxy;dur=\d+\.\d$/);
+  });
+
+  it("GET /api/v1/feed with the proxy's token: zero provider calls, zero auth queries, two transactions", async () => {
     const { GET } = await import("@/app/api/v1/feed/route");
+    const token = await createIdentityToken(
+      { userId, actorKind: "user", fresh: true, traceId },
+      environment.NEON_AUTH_COOKIE_SECRET
+    );
     const response = await GET(
       new Request("https://distil.example/api/v1/feed", {
         headers: {
           "x-trace-id": traceId,
-          "x-distil-user-id": userId,
-          [PROXY_TIMING_HEADER]: 'proxy-auth-provider;dur=1.0;desc="calls=2", proxy;dur=2.0',
+          [IDENTITY_HEADER]: token,
+          [PROXY_TIMING_HEADER]: 'proxy-auth-provider;dur=1.0;desc="calls=1", proxy;dur=2.0',
         },
       })
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ items: [] });
-    // The route ignores the proxy's headers and re-resolves the identity.
-    expect(fakes.provider.middleware).not.toHaveBeenCalled();
-    expect(fakes.provider.getSession).toHaveBeenCalledTimes(1);
-    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
+    // The route trusts only the signed handoff and performs no auth I/O.
+    expect(fakes.provider.verifySession).not.toHaveBeenCalled();
+    expect(fakes.authRepositories.findAccountByIdentity).not.toHaveBeenCalled();
     // Preferences (advisory-locked) and the feed page each open a transaction.
     expect(fakes.transactions).toBe(2);
     expect((fakes.tenantSql.begin as jest.Mock).mock.calls).toHaveLength(2);
@@ -212,10 +235,34 @@ describe("request cost baseline (P0)", () => {
 
     const serverTiming = response.headers.get("server-timing") ?? "";
     expect(serverTiming).toMatch(
-      /^proxy-auth-provider;dur=1\.0;desc="calls=2", proxy;dur=2\.0, auth;dur=\d+\.\d;desc="calls=1 q=1"/
+      /^proxy-auth-provider;dur=1\.0;desc="calls=1", proxy;dur=2\.0, auth;dur=\d+\.\d, db;dur=\d+\.\d;desc="q=\d+ tx=2"/
     );
-    expect(serverTiming).toMatch(/, db;dur=\d+\.\d;desc="q=\d+ tx=2"/);
-    expect(serverTiming).toMatch(/, total;dur=\d+\.\d;desc="calls=1 q=\d+ tx=2"$/);
+    expect(serverTiming).toMatch(/, total;dur=\d+\.\d;desc="q=\d+ tx=2"$/);
+  });
+
+  it("end to end: the proxy's forwarded headers let the route skip authentication entirely", async () => {
+    const { proxy } = await import("@/proxy");
+    const { GET } = await import("@/app/api/v1/feed/route");
+    const proxied = await proxy(new NextRequest("https://distil.example/api/v1/feed"));
+    expect(proxied.status).toBe(200);
+    fakes.requestId = forwarded(proxied, "x-trace-id");
+
+    const response = await GET(
+      new Request("https://distil.example/api/v1/feed", {
+        headers: {
+          "x-trace-id": forwarded(proxied, "x-trace-id"),
+          [IDENTITY_HEADER]: forwarded(proxied, IDENTITY_HEADER),
+          [PROXY_TIMING_HEADER]: forwarded(proxied, PROXY_TIMING_HEADER),
+        },
+      })
+    );
+    expect(response.status).toBe(200);
+    // Whole request: exactly one provider call and one auth query, both in the proxy.
+    expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("server-timing")).toMatch(
+      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=1", auth;dur=\d+\.\d, db;dur=/
+    );
   });
 
   it("leaves responses untouched when nothing throws and errors propagate", async () => {

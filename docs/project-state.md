@@ -18,14 +18,21 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0 implemented and locally verified 2026-09-17; P1–P7 not started):**
-  the checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified
-  analysis and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its
-  own `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) is complete on
-  branch `claude/perf-baseline-627eff` (worktree `.claude/worktrees/perf-baseline-627eff`) and
-  awaits Amit's review and merge as PR [#21](https://github.com/amitsharmaak/distil/pull/21);
-  see the checkpoint "Performance baseline (P0) — 2026-09-17" below for the baseline numbers
-  every later phase compares against. Not deployed.
+- **Performance overhaul (P0 merged 2026-09-17 as `f1cb2ac`; P1 implemented and locally
+  verified 2026-09-17, PR open; P2–P7 not started):** the checkpoint "Performance analysis and
+  phased plan — 2026-09-16" below records a verified analysis and eight PR-sized phases P0–P7.
+  Amit picks one phase per task, in order, each on its own `claude/<task>` branch with a dated
+  checkpoint. P0 (measurement baseline) merged as PR
+  [#21](https://github.com/amitsharmaak/distil/pull/21). P1 (one auth verification per request
+  and a signed identity handoff) is complete on branch `claude/perf-auth-handoff` (worktree
+  `.claude/worktrees/perf-auth-handoff-b58c37`) and awaits Amit's review and merge as PR
+  [#22](https://github.com/amitsharmaak/distil/pull/22) (label `full-ci`); see the
+  checkpoint "Performance P1: one auth verification per request — 2026-09-17" below for the
+  before/after numbers. Codex runs P4 in parallel on its own branch (owns `src/components/**`,
+  `src/app/layout.tsx`, `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the
+  legacy route deletions and the route counts in `docs/authorization-matrix.json`); Claude is the
+  integration owner for the pair and syncs with `git merge origin/main` and a CSRF-digest refresh
+  if P4 merges first. Nothing from P1 is deployed.
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -147,24 +154,173 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: merge the P0 PR
-     ([#21](https://github.com/amitsharmaak/distil/pull/21), branch
-     `claude/perf-baseline-627eff`) after review,
-     then pick the next unstarted phase (P1, `claude/perf-auth-handoff`) from the checkpoint
-     "Performance analysis and phased plan — 2026-09-16" in order P0 → P7. Each phase is a
-     separate task on its own
-     branch (`claude/perf-baseline`, `claude/perf-auth-handoff`, `claude/perf-db-roundtrips`,
+  3. Performance overhaul: review and merge the P1 PR (branch `claude/perf-auth-handoff`), then
+     pick the next unstarted phase (P2, `claude/perf-db-roundtrips`; P4 is Codex's in parallel)
+     from the checkpoint "Performance analysis and phased plan — 2026-09-16" in order P0 → P7.
+     Each phase is a separate task on its own branch (`claude/perf-db-roundtrips`,
      `claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
-     against current `main` before editing, passes `npm run check` (plus `npm run test:integration`
-     and the `full-ci` label for P1, P2, P6, P7), and appends a dated checkpoint with the
-     before/after numbers described in that plan's "Verification" part. Merges and deployments wait
-     for Amit.
+     against current `main` before editing, passes `npm run check` (plus `npm run
+test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated checkpoint
+     with the before/after numbers described in that plan's "Verification" part. Merges and
+     deployments wait for Amit. After the P1 release, confirm in browser DevTools on Production
+     that `/api/v1/feed` shows `proxy-auth-provider;desc="calls=1"` and `auth;dur=` under 1 ms.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P1: one auth verification per request — 2026-09-17
+
+Phase P1 of the performance plan, branch `claude/perf-auth-handoff` (Claude Code worktree
+`.claude/worktrees/perf-auth-handoff-b58c37`, based on `origin/main` at `f1cb2ac`, the P0 merge).
+Implementation commit `f7f330b`; the state-file update follows on the same branch; PR
+[#22](https://github.com/amitsharmaak/distil/pull/22). The `full-ci` label did not exist in the
+repository yet (the tiering checkpoint assumed it); it was created on 2026-09-17 and applied. Every file:line reference in the P1 brief was re-checked
+against `f1cb2ac` before editing: P0 had moved the proxy matcher to `src/proxy.ts:136` and the
+eager repository await to line 88; everything else was where the brief said. Amit's decision
+stands: exactly one uncached provider check per request, so a revoked session is rejected on the
+next request; the signed session cookie is never trusted on its own. Nothing was deployed; no
+environment variable, migration or Production resource changed.
+
+**What changed**
+
+- `src/lib/auth/neon-server.ts`: `verifyNeonSession(auth, request)` builds a synthetic
+  `GET /api/auth/get-session?disableCookieCache=true` request carrying the inbound cookies (body
+  headers stripped) and runs it through the SDK's public route handler, the same code path
+  `src/app/api/auth/[...path]/route.ts` exposes (verified in the installed SDK:
+  `handleAuthProxyRequest` skips its cookie cache for that parameter and mints the refreshed
+  `session_data` cookie). The JSON body becomes the provider session; the `Set-Cookie` headers are
+  returned for forwarding. No session-token cookie means no provider call at all.
+  `getNeonProxyProvider()` exposes only `verifySession` to the proxy.
+- `src/lib/auth/neon-proxy.ts`: `authorizeNeonProxy` no longer calls the SDK middleware. It checks
+  the Origin allowlist first (unsafe methods), makes the single `verifySession` call, denies an
+  empty session before any repository is loaded, feeds the session into the unchanged
+  `resolveNeonAuthRequest` through a one-shot `{ getSession }` adapter, and replaces the four
+  plain-text `x-distil-*` headers with one `x-distil-identity` token. Unauthenticated `/api/*`
+  gets 401 JSON; unauthenticated pages get a 307 to `/sign-in` (previously the SDK's redirect);
+  unmapped or inactive accounts keep 403 / `/access-denied`. Provider or database failures now
+  propagate to the proxy's 503 instead of becoming a false 403. Repositories are a lazy
+  `() => Promise<AuthRepositoryPort>`.
+- `src/lib/auth/identity-token.ts` (new) and `src/lib/auth/hmac.ts` (new; the HMAC, base64url
+  and constant-time helpers extracted from `session.ts`): HS256 claims
+  `{ iss, sub, kind, sid?, fresh, jti: traceId, iat, exp: iat + 120 }`, key derived by SHA-256
+  from a label plus `NEON_AUTH_COOKIE_SECRET` (else `DISTIL_SESSION_SECRET`) via the new
+  `readAuthEnvironment().identityTokenSecret`, five seconds of clock skew, every rejection reported
+  by category. The legacy session token is rejected even under the same secret.
+- `src/proxy.ts`: strips every inbound `x-distil-*` and `x-trace-id` header before any branch by
+  rebuilding the request with sanitized headers (public and specialized branches therefore return
+  sanitized headers too); rate limiting runs before authentication for `/api/*`; the Neon branch
+  passes `getAuthRepositoryPort` lazily so public paths never open the database; the matcher
+  additionally excludes `robots.txt`, `sitemap.xml`, `logo.png`, `sw.js` and `*.svg` (compiled
+  regexp checked in `.next/server/functions-config-manifest.json`; runtime stays `nodejs`). The
+  three pinned literals are unchanged. Server-Timing keeps `proxy-auth-provider` (now the single
+  `verifySession`) and `proxy-auth-db`.
+- `src/lib/auth/account-service.ts`: `resolveRequestAuthContext` is wrapped in React `cache()`;
+  a token whose `jti` equals the request's `x-trace-id` yields `createAuthContext` from the
+  claims with zero I/O (user actors only); a missing token falls back silently to full resolution
+  (queue routes, `POST /api/items`, capture tokens, direct invocation keep working); an invalid
+  token is treated as absent and logged as `auth_handoff_rejected` with the rejection category and
+  trace id, never the token. `resolveCurrentAccount` (lifecycle routes needing the account record
+  and freshness) is unchanged and still resolves in full.
+- `src/lib/auth/repository-runtime.ts` constructs only `new PostgresAuthRepository(sql)` on the
+  shared client instead of the 30-repository set, memoized, with failures not cached.
+  `src/lib/database.ts` gains `getPostgresClient()`: one memoized runtime-role client shared by
+  every composition root (the control plane keeps its own second client), so the auth adapter no
+  longer opens a separate pool.
+- `src/lib/middleware/rate-limit.ts` prunes stale buckets only once the map exceeds 512 entries.
+- `src/lib/auth/auth-metrics.ts` instruments `verifySession` and the lazy repository loader.
+- Tests: `neon-proxy.security.unit.test.ts` rewritten around `verifySession` keeping every prior
+  guarantee (public paths, unmapped and inactive accounts, lifecycle recovery, the 17 centrally
+  protected mutations, dormant connector route, safe/specialized paths) and adding "exactly one
+  provider call", "provider Set-Cookie forwarded" (also on denials) and trace binding; new
+  `identity-token.security.unit.test.ts` (accepted, tampered payload and signature, wrong secret,
+  expired at exactly 120 s, not-yet-valid, jti mismatch, missing, malformed, bad claims, legacy
+  token, short secret); new `neon-session-verification.security.unit.test.ts` (the adapter sends
+  `disableCookieCache=true` and the inbound cookies, forwards `Set-Cookie`, treats failures and
+  empty bodies as unauthenticated); new `proxy-handoff.security.unit.test.ts` (inbound identity
+  and trace headers stripped on public, specialized and page paths, forwarded token verifies with
+  the forwarded trace id, 401/307 denials, 503 fail-closed, rate limit before auth);
+  `account-service.unit.test.ts` adds accepted, missing, tampered, expired, jti-mismatch,
+  malformed, unverifiable-secret and non-user cases with the log assertion; the
+  `disableCookieCache` assertion stays in `request-context.security.unit.test.ts` for the route
+  fallback path and is repeated for the adapter; `runtime-adapters.unit.test.ts` covers the
+  shared-client adapter; `tests/fixtures/phase3/neon-csrf-boundary.json` sha256 refreshed
+  (surfaces untouched); `tests/perf/round-trips.unit.test.ts` lowered.
+- Not changed: `docs/authorization-matrix.json` (no route added or removed), every route file,
+  `src/lib/auth/request-context.ts`, the legacy session bridge (it issues no token; its routes
+  still verify the signed cookie, which is I/O-free).
+
+**Before → after: request cost (`tests/perf/round-trips.unit.test.ts`, Neon Auth path)**
+
+| Request                                       | Provider calls | Auth queries | Transactions | Statements |
+| --------------------------------------------- | -------------- | ------------ | ------------ | ---------- |
+| Proxy, authenticated GET (any path)           | 2 → **1**      | 1 → **1**    | 0            | 1          |
+| `GET /api/v1/feed` route (personalization on) | 1 → **0**      | 1 → **0**    | 2            | 7          |
+| Total per `/api/v1/feed` request              | 3 → **1**      | 2 → **1**    | 2            | 8          |
+| Proxy, public path (`/api/health`)            | 0              | 0            | 0            | 0          |
+
+A page render (`/feed/[id]`) goes from two provider calls plus one query to one plus one the same
+way. Route-side `auth` on the Neon path is now one HMAC verification: `verifyIdentityToken`
+measured with tsx on this Mac, 200 iterations, median 0.044 ms, p95 0.085 ms, max 0.96 ms, so the
+route's `auth;dur=` entry is under one millisecond and carries no `calls=`/`q=` description.
+
+**Server-Timing on `/api/v1/feed` under `next start` (perf:vitals, legacy session bridge and local
+PostgreSQL, so `auth` is cookie verification on both sides and the Neon-path saving is not on this
+measurement path):** P0 `proxy;dur=0.8, auth;dur=0.3, db;dur=21.9;desc="q=7 tx=2",
+total;dur=22.4` → P1 `proxy;dur=2.2, auth;dur=0.6, db;dur=20.3;desc="q=7 tx=2", total;dur=21.0`
+(second sample from `/feed`: `proxy;dur=0.6, auth;dur=0.9, db;dur=23.7, total;dur=24.8`). The
+differences are run-to-run noise; `db` (P2's target) dominates and is unchanged. The Production
+before/after for the Neon path (`proxy-auth-provider;desc="calls=1"` instead of `calls=2`, route
+`auth` without `calls=1 q=1`) can only be read in DevTools after Amit releases this phase.
+
+**Client JavaScript (`npm run perf:bundle`, Turbopack production build of `f7f330b`)**: zero gzip
+delta on every route against `docs/perf/route-bundle-stats.baseline.json`, as expected for
+server-only changes.
+
+**Page-load medians (`npm run perf:vitals`, 5 runs, 12 seeded items, Chromium 1440×900, build
+with `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100`, Docker `postgres:16-alpine`, legacy bridge;
+P0 → P1)**
+
+| Page         | TTFB     | FCP        | LCP          | Requests | Transferred  |
+| ------------ | -------- | ---------- | ------------ | -------- | ------------ |
+| `/`          | 7 → 8 ms | 28 → 28 ms | 100 → 100 ms | 43 → 43  | 509 → 510 kB |
+| `/feed`      | 3 → 4 ms | 24 → 24 ms | 96 → 100 ms  | 47 → 47  | 477 → 478 kB |
+| `/feed/[id]` | 8 → 8 ms | 32 → 32 ms | 32 → 32 ms   | 40 → 40  | 568 → 569 kB |
+| `/settings`  | 3 → 3 ms | 28 → 28 ms | 28 → 28 ms   | 29 → 29  | 425 → 426 kB |
+
+Unchanged within noise, as expected: the vitals harness runs the legacy bridge, whose auth cost
+was already sub-millisecond. The P1 gain is the removal of two hosted-provider round trips and one
+Neon query per request in Production, which this local harness cannot show.
+
+**Verification (all locally verified 2026-09-17 on `f7f330b` unless noted)**
+
+- `npm run check`: ESLint 0 errors / 10 baseline warnings, Prettier clean, `tsc --noEmit` clean,
+  Jest 205 suites / 1486 tests passed (P0: 202 / 1450).
+- `npm run test:security`: 42 suites / 409 tests passed.
+- `npm run test:integration` (Docker PostgreSQL via Testcontainers): 12 suites / 44 tests passed.
+- `npm run build` (default env) succeeded; `npm run perf:bundle` zero delta. Second build with
+  `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100` succeeded; `npm run perf:vitals` completed, all
+  four pages 200 without redirecting.
+- Not run locally: E2E and extension Playwright (CI "Full gate" runs them on the `full-ci`
+  label the PR carries). Not exercised locally: the hosted Neon Auth provider itself (no
+  deterministic test contacts it); the SDK handler path was verified by reading the installed
+  SDK source and by the adapter test with a fake handler.
+- Previously recorded external state, not re-checked: Production serving `509fccc`, the release
+  pin `unpinned`, Neon branches, the nightly Full gate.
+
+**Risks and rollback**: revert the PR; every consumer falls back to full resolution automatically,
+so a proxy-only revert is also safe. If a Production request ever logs `auth_handoff_rejected`
+with `code: "trace_mismatch"` or `"expired"` at volume, a header or clock issue between the proxy
+and the route runtime is the first suspect; the request still succeeds, only slower.
+
+**Restart steps**: `git fetch origin && git switch claude/perf-auth-handoff` in its worktree;
+`npm ci`; `npm run check`; for numbers `npm run build && npm run perf:bundle` and
+`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run perf:vitals` (Docker,
+free port 3100). If Codex's P4 merges first: `git merge origin/main`, then refresh the sha256 in
+`tests/fixtures/phase3/neon-csrf-boundary.json` only if `src/lib/auth/neon-proxy.ts` changed in
+the merge (`shasum -a 256 src/lib/auth/neon-proxy.ts`), and rerun `npm run check`.
 
 ### Performance baseline (P0) — 2026-09-17
 

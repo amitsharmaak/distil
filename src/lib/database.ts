@@ -8,6 +8,7 @@ import type { ControlPlaneRepositorySet } from "@/lib/repositories/ports";
 
 type LegacyModule = typeof import("@/lib/db");
 
+let clientPromise: Promise<import("postgres").Sql> | undefined;
 let repositoriesPromise: Promise<RepositorySet> | undefined;
 let legacyPromise: Promise<LegacyModule> | undefined;
 let tenantAccessPromise:
@@ -24,14 +25,25 @@ function usesPostgres(): boolean {
   return Boolean(config.databaseUrl);
 }
 
+/**
+ * The one runtime-role client (`DATABASE_URL`) every composition root shares;
+ * the control plane keeps its own client below. Created on first use so the
+ * driver is never loaded by requests that do not touch the database.
+ */
+export async function getPostgresClient(): Promise<import("postgres").Sql> {
+  if (!usesPostgres()) throw new Error("DATABASE_URL is required for PostgreSQL storage");
+  clientPromise ??= import("@/lib/postgres/client").then((client) =>
+    client.createPostgresClient({ url: config.databaseUrl })
+  );
+  return clientPromise;
+}
+
 async function repositories(): Promise<RepositorySet> {
   if (!repositoriesPromise) {
     repositoriesPromise = Promise.all([
-      import("@/lib/postgres/client"),
+      getPostgresClient(),
       import("@/lib/postgres/repositories"),
-    ]).then(([client, adapters]) =>
-      adapters.createPostgresRepositories(client.createPostgresClient({ url: config.databaseUrl }))
-    );
+    ]).then(([sql, adapters]) => adapters.createPostgresRepositories(sql));
   }
   return repositoriesPromise;
 }
@@ -48,11 +60,9 @@ export async function getRepositorySet(): Promise<RepositorySet> {
 export async function getTenantRepositories(context: AuthContext): Promise<RepositorySet> {
   if (!usesPostgres()) throw new Error("DATABASE_URL is required for tenant repositories");
   tenantAccessPromise ??= Promise.all([
-    import("@/lib/postgres/client"),
+    getPostgresClient(),
     import("@/lib/postgres/tenant-repositories"),
-  ]).then(([client, access]) =>
-    access.createPostgresRepositoryAccess(client.createPostgresClient({ url: config.databaseUrl }))
-  );
+  ]).then(([sql, access]) => access.createPostgresRepositoryAccess(sql));
   return (await tenantAccessPromise).getTenantRepositories(context);
 }
 
@@ -60,14 +70,9 @@ export async function getTenantRepositories(context: AuthContext): Promise<Repos
 export async function getCaptureTokenIdentityResolver() {
   if (!usesPostgres()) throw new Error("DATABASE_URL is required for capture token authentication");
   captureTokenIdentityResolverPromise ??= Promise.all([
-    import("@/lib/postgres/client"),
+    getPostgresClient(),
     import("@/lib/auth/capture-token-identity"),
-  ]).then(
-    ([client, identity]) =>
-      new identity.PostgresCaptureTokenIdentityResolver(
-        client.createPostgresClient({ url: config.databaseUrl })
-      )
-  );
+  ]).then(([sql, identity]) => new identity.PostgresCaptureTokenIdentityResolver(sql));
   return captureTokenIdentityResolverPromise;
 }
 
@@ -81,11 +86,12 @@ export async function getControlPlaneRepositories(
     );
   }
   controlPlaneAccessPromise ??= Promise.all([
+    getPostgresClient(),
     import("@/lib/postgres/client"),
     import("@/lib/postgres/tenant-repositories"),
-  ]).then(([client, access]) =>
+  ]).then(([sql, client, access]) =>
     access.createPostgresRepositoryAccess(
-      client.createPostgresClient({ url: config.databaseUrl }),
+      sql,
       client.createPostgresClient({ url: config.databaseControlPlaneUrl })
     )
   );

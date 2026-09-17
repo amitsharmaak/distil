@@ -35,8 +35,13 @@ const ENDPOINT_CONFIGS: Record<string, BucketConfig> = {
 
 const buckets = new Map<string, Bucket>();
 
+// Prune only once the map has grown; a full scan on every request is wasted
+// work for a small set of clients.
+const PRUNE_THRESHOLD = 512;
+
 // Clean up stale buckets inline during rate-limit checks (Edge-compatible).
 function pruneStale() {
+  if (buckets.size <= PRUNE_THRESHOLD) return;
   const cutoff = Date.now() - 5 * 60 * 1000;
   for (const [key, bucket] of buckets) {
     if (bucket.lastRefill < cutoff) {
@@ -71,9 +76,7 @@ function getBucketKey(ip: string, pathname: string): string {
  */
 export function checkRateLimit(request: NextRequest): NextResponse | null {
   pruneStale();
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "127.0.0.1";
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "127.0.0.1";
   const pathname = new URL(request.url).pathname;
   const config = getConfig(pathname);
   const key = getBucketKey(ip, pathname);
@@ -88,10 +91,7 @@ export function checkRateLimit(request: NextRequest): NextResponse | null {
 
   // Refill tokens based on elapsed time
   const elapsed = (now - bucket.lastRefill) / 1000;
-  bucket.tokens = Math.min(
-    config.maxTokens,
-    bucket.tokens + elapsed * config.refillRate,
-  );
+  bucket.tokens = Math.min(config.maxTokens, bucket.tokens + elapsed * config.refillRate);
   bucket.lastRefill = now;
 
   if (bucket.tokens < 1) {
@@ -101,7 +101,7 @@ export function checkRateLimit(request: NextRequest): NextResponse | null {
       {
         status: 429,
         headers: { "Retry-After": String(retryAfter) },
-      },
+      }
     );
   }
 

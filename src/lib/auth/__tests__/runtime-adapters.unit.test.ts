@@ -1,5 +1,6 @@
 import { createNeonAuth } from "@neondatabase/auth/next/server";
-import { getRepositorySet } from "@/lib/database";
+import { getPostgresClient } from "@/lib/database";
+import { PostgresAuthRepository } from "@/lib/postgres/auth-repository";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { authFailureResponse } from "@/lib/auth/http";
 import { legacyAuthDisabledResponse } from "@/lib/auth/legacy-bridge";
@@ -11,10 +12,10 @@ import {
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 
 jest.mock("@neondatabase/auth/next/server", () => ({ createNeonAuth: jest.fn() }));
-jest.mock("@/lib/database", () => ({ getRepositorySet: jest.fn() }));
+jest.mock("@/lib/database", () => ({ getPostgresClient: jest.fn() }));
 
 const mockedCreateNeonAuth = jest.mocked(createNeonAuth);
-const mockedRepositorySet = jest.mocked(getRepositorySet);
+const mockedPostgresClient = jest.mocked(getPostgresClient);
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -37,15 +38,26 @@ describe("auth runtime adapters", () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
-  it("fails closed when the auth repository adapter is absent", async () => {
-    mockedRepositorySet.mockResolvedValue({} as Awaited<ReturnType<typeof getRepositorySet>>);
-    await expect(getAuthRepositoryPort()).rejects.toBeInstanceOf(AuthRepositoryUnavailableError);
+  it("fails closed, without caching the failure, when PostgreSQL is not configured", async () => {
+    mockedPostgresClient.mockRejectedValueOnce(new Error("DATABASE_URL is required"));
+    const failure = await getAuthRepositoryPort().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AuthRepositoryUnavailableError);
+    expect(String(failure)).not.toContain("DATABASE_URL");
+
+    // The next call retries instead of replaying the rejection.
+    const sql = { tag: "shared-sql" };
+    mockedPostgresClient.mockResolvedValue(sql as never);
+    await expect(getAuthRepositoryPort()).resolves.toBeInstanceOf(PostgresAuthRepository);
+    expect(mockedPostgresClient).toHaveBeenCalledTimes(2);
   });
 
-  it("returns the installed auth repository adapter", async () => {
-    const auth = {} as AuthRepositoryPort;
-    mockedRepositorySet.mockResolvedValue({ auth } as never);
-    await expect(getAuthRepositoryPort()).resolves.toBe(auth);
+  it("constructs only the auth adapter on the shared client, once", async () => {
+    const first = await getAuthRepositoryPort();
+    const second = await getAuthRepositoryPort();
+    expect(second).toBe(first);
+    expect((first as unknown as { sql: unknown }).sql).toEqual({ tag: "shared-sql" });
+    const port: AuthRepositoryPort = first;
+    expect(typeof port.findAccountByIdentity).toBe("function");
   });
 
   it("reports configuration names without exposing auth secret values", () => {
