@@ -18,21 +18,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0 merged 2026-09-17 as `f1cb2ac`; P1 implemented and locally
-  verified 2026-09-17, PR open; P2–P7 not started):** the checkpoint "Performance analysis and
-  phased plan — 2026-09-16" below records a verified analysis and eight PR-sized phases P0–P7.
-  Amit picks one phase per task, in order, each on its own `claude/<task>` branch with a dated
-  checkpoint. P0 (measurement baseline) merged as PR
-  [#21](https://github.com/amitsharmaak/distil/pull/21). P1 (one auth verification per request
-  and a signed identity handoff) is complete on branch `claude/perf-auth-handoff` (worktree
-  `.claude/worktrees/perf-auth-handoff-b58c37`) and awaits Amit's review and merge as PR
-  [#22](https://github.com/amitsharmaak/distil/pull/22) (label `full-ci`); see the
-  checkpoint "Performance P1: one auth verification per request — 2026-09-17" below for the
-  before/after numbers. Codex runs P4 in parallel on its own branch (owns `src/components/**`,
-  `src/app/layout.tsx`, `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the
-  legacy route deletions and the route counts in `docs/authorization-matrix.json`); Claude is the
-  integration owner for the pair and syncs with `git merge origin/main` and a CSRF-digest refresh
-  if P4 merges first. Nothing from P1 is deployed.
+- **Performance overhaul (P0 and P1 merged and released 2026-09-17; P2–P7 not started):** the
+  checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
+  and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
+  `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
+  [#21](https://github.com/amitsharmaak/distil/pull/21) (`f1cb2ac`). P1 (one auth verification
+  per request and a signed identity handoff) merged as PR
+  [#22](https://github.com/amitsharmaak/distil/pull/22) (`f2e4155`) and is live on Production;
+  see the checkpoints "Performance P1 released — 2026-09-17" (live numbers) and "Performance P1:
+  one auth verification per request — 2026-09-17" (design and local before/after) below. Codex
+  runs P4 in parallel on its own branch (owns `src/components/**`, `src/app/layout.tsx`,
+  `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
+  the route counts in `docs/authorization-matrix.json`); it must branch from or merge `main` at
+  `f2e4155` or later. Next Claude phase: P2 (`claude/perf-db-roundtrips`).
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -42,8 +40,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   are gone; only the main checkout on `main` remains. Task branches now follow the
   parallel-session routine in `AGENTS.md` §7.1 (one session per branch, branch from
   `origin/main`, merge not rebase, `/start-task` and `/finish-task`).
-  Production serves release `509fccc` as deployment `dpl_DMRkvC5CgYvMW9apSP6yfn93P3SH` on both
-  `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
+  Production serves release `f2e4155` (P1) as deployment `dpl_HMjgEvzutvgy3xZNxyBBHeAn65tJ` on
+  both `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-17; the P0 merge
+  `f1cb2ac` auto-deployed earlier the same day and was superseded). Release pin
   `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase): every push to
   `main` now auto-deploys to Production through Vercel's Git integration. The legacy alias
   `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
@@ -154,22 +153,61 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: review and merge the P1 PR (branch `claude/perf-auth-handoff`), then
-     pick the next unstarted phase (P2, `claude/perf-db-roundtrips`; P4 is Codex's in parallel)
-     from the checkpoint "Performance analysis and phased plan — 2026-09-16" in order P0 → P7.
-     Each phase is a separate task on its own branch (`claude/perf-db-roundtrips`,
-     `claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
+  3. Performance overhaul: P1 is released. Pick the next unstarted Claude phase, P2
+     (`claude/perf-db-roundtrips`), from the checkpoint "Performance analysis and phased plan —
+     2026-09-16" (P4 is Codex's, in parallel). Each phase is a separate task on its own branch
+     (`claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
      against current `main` before editing, passes `npm run check` (plus `npm run
 test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated checkpoint
      with the before/after numbers described in that plan's "Verification" part. Merges and
-     deployments wait for Amit. After the P1 release, confirm in browser DevTools on Production
-     that `/api/v1/feed` shows `proxy-auth-provider;desc="calls=1"` and `auth;dur=` under 1 ms.
+     deployments wait for Amit. The live P1 numbers show `proxy-auth-db` at about 130 ms per
+     request on Neon, so P2 (query diet) and P7 (indexes) should look at the
+     `distil_resolve_auth_identity` lookup as well as the tenant transactions.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P1 released — 2026-09-17
+
+Amit approved "merge and release" in chat on 2026-09-17. PR
+[#22](https://github.com/amitsharmaak/distil/pull/22) was squash-merged as `f2e4155` after every
+check passed (Quick gate, Full gate: PostgreSQL integration, web/mobile E2E, extension E2E,
+production build, coverage; Vercel preview). The Quick gate on `main` at `f2e4155` passed. With
+the release pin `unpinned`, Vercel deployed the merge automatically as
+`dpl_HMjgEvzutvgy3xZNxyBBHeAn65tJ` (GitHub deployment `6497949628` for `f2e4155`), aliased to
+`distilai.app` by Vercel; Claude re-aliased `distil-pv-1850.vercel.app` to the same deployment
+with `npx vercel alias set`. Both origins answer `GET /api/health` 200 with `cache-control:
+no-store`. No environment variable, migration or Neon resource changed. The docs-only merge that
+records this release auto-deploys again with identical application code; the legacy alias is
+left on `dpl_HMjgEvzutvgy3xZNxyBBHeAn65tJ`.
+
+**Live verification (Production, hosted Neon Auth, signed-in browser session, 2026-09-17,
+`Server-Timing` read through same-origin `fetch`)**
+
+| Request                   | Proxy provider      | Proxy auth query | Proxy total             | Route `auth` | Route `db`          |
+| ------------------------- | ------------------- | ---------------- | ----------------------- | ------------ | ------------------- |
+| `GET /api/v1/feed`        | 214.8 ms, `calls=1` | 132.5 ms, `q=1`  | 348.9 ms, `calls=1 q=1` | **0.6 ms**   | 45.9 ms, `q=7 tx=2` |
+| `GET /api/v1/collections` | 112.1 ms, `calls=1` | 131.9 ms, `q=1`  | 245.4 ms, `calls=1 q=1` | **0.6 ms**   | 18.0 ms, `q=3 tx=1` |
+| `GET /feed` (page)        | 99.7 ms, `calls=1`  | 133.0 ms, `q=1`  | 234.3 ms, `calls=1 q=1` | n/a          | n/a                 |
+
+Before P1 the same requests showed `proxy-auth-provider;desc="calls=2"` and the route's own
+`auth;desc="calls=1 q=1"` (P0 checkpoint), so each API request now makes one provider round trip
+instead of three and one auth query instead of two, and the route's auth phase is the HMAC check
+only. Observed and recorded, not acted on: the single remaining auth query
+(`distil_resolve_auth_identity`) costs about 130 ms on Neon from `sin1`, more than the provider
+call on two of three samples; the P2 (round-trip diet) and P7 (indexes) briefs should include it.
+The `/api/health` route is public and carries no `Server-Timing` (unwrapped, as designed).
+
+**Not verified by a person on this release**: signing in fresh, capture through the extension,
+and the reader page. The signed-in session in the in-app browser continued to work across the
+release without re-authentication, which is the expected behaviour of the unchanged provider
+cookies.
+
+**Rollback**: revert `f2e4155` on `main` (auto-deploys) or promote the previous deployment
+`dpl_ECuAxAwWdqU1si3RcvVJP3RZSC8Q` (`f1cb2ac`) in Vercel; consumers fall back to full resolution, so either is safe.
 
 ### Performance P1: one auth verification per request — 2026-09-17
 
