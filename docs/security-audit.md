@@ -33,8 +33,12 @@ Reviewed direct changes:
 - Upgraded `next` and `eslint-config-next` together from `16.1.6` to `16.3.4`.
 - Upgraded `@slack/web-api` from `7.14.1` to `7.19.0`, retaining the current major version while
   allowing patched Axios and multipart dependencies.
-- Upgraded `jsdom` from `22.1.0` to `30.0.1`, removing its vulnerable legacy multipart path. The
-  repository requires Node 22, which satisfies JSDOM 30's runtime requirement.
+- `jsdom` is pinned to `22.1.0` (re-pinned 2026-09-17). The 2026-09-07 upgrade to `30.0.1` broke
+  article capture on Vercel: its functions run Node with `--no-experimental-require-module`, so
+  jsdom's ESM-only dependencies (`parse5@8`, `@exodus/bytes`) throw `ERR_REQUIRE_ESM` from
+  CommonJS. jsdom 22's `form-data` path resolves to `4.0.6` (patched), so no advisory remains;
+  `tests/harness/vercel-runtime-externals.unit.test.ts` loads every runtime external under the
+  same flags.
 - Refreshed only compatible transitive lockfile versions with non-forcing `npm audit fix
 --omit=dev`. `npm audit fix --force` was not used.
 
