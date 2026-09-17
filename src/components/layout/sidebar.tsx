@@ -14,7 +14,6 @@ import {
   Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
@@ -57,7 +56,7 @@ export function Sidebar({
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
         <Image
-          src="/logo.png"
+          src="/logo.svg"
           alt="Distil logo"
           width={28}
           height={28}
@@ -106,15 +105,14 @@ export function Sidebar({
 
       {/* Collapse toggle */}
       <div className="border-t border-sidebar-border p-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-center text-sidebar-foreground/30 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/50"
+        <button
+          type="button"
+          className="inline-flex h-8 w-full items-center justify-center rounded-md text-sidebar-foreground/30 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </Button>
+        </button>
       </div>
     </aside>
   );

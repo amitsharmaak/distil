@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Newsreader, Outfit, Geist_Mono } from "next/font/google";
+import { Newsreader, Outfit } from "next/font/google";
 import "./globals.css";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell } from "@/components/layout/lazy-app-shell";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 const newsreader = Newsreader({
@@ -17,11 +16,6 @@ const outfit = Outfit({
   variable: "--font-outfit",
   subsets: ["latin"],
   display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
 });
 
 export const viewport: Viewport = {
@@ -54,15 +48,19 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${newsreader.variable} ${outfit.variable} ${geistMono.variable} font-sans antialiased`}
-      >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark")}catch{}',
+          }}
+        />
+      </head>
+      <body className={`${newsreader.variable} ${outfit.variable} font-sans antialiased`}>
         <ThemeProvider>
-          <TooltipProvider>
-            <AppShell showAnswers={flags.answers} showSearch={flags.search}>
-              {children}
-            </AppShell>
-          </TooltipProvider>
+          <AppShell showAnswers={flags.answers} showSearch={flags.search}>
+            {children}
+          </AppShell>
         </ThemeProvider>
       </body>
     </html>

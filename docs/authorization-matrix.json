@@ -537,36 +537,6 @@
       "testProfile": "platformAdmin"
     },
     {
-      "path": "/api/agent/approvals",
-      "source": "src/app/api/agent/approvals/route.ts",
-      "methods": ["GET", "POST"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["approval_queue", "workflow_runs"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/agent/chat",
-      "source": "src/app/api/agent/chat/route.ts",
-      "methods": ["GET", "POST"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["chat_conversations", "chat_messages", "items", "item_embeddings"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/agent/status",
-      "source": "src/app/api/agent/status/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["job_queue", "approval_queue", "audit_log"],
-      "testProfile": "owner"
-    },
-    {
       "path": "/api/ai/feedback/:itemId",
       "source": "src/app/api/ai/feedback/[itemId]/route.ts",
       "methods": ["GET"],
@@ -604,88 +574,6 @@
       "requiredPrincipal": "user_session",
       "scope": "owner",
       "resources": ["items", "feedback", "user_settings"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research/:id",
-      "source": "src/app/api/ai/research/[id]/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_reports"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research/:id/stream",
-      "source": "src/app/api/ai/research/[id]/stream/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_reports"],
-      "testProfile": "owner",
-      "notes": "Every poll must retain the original TenantContext and stop on session revocation."
-    },
-    {
-      "path": "/api/ai/research/list",
-      "source": "src/app/api/ai/research/list/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_reports"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research/proactive",
-      "source": "src/app/api/ai/research/proactive/route.ts",
-      "methods": ["POST"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["items", "research_reports", "research_suggestions", "notifications"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research",
-      "source": "src/app/api/ai/research/route.ts",
-      "methods": ["POST"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_reports", "items"],
-      "testProfile": "owner",
-      "notes": "Replace process-local fire-and-forget research with a tenant-scoped durable job."
-    },
-    {
-      "path": "/api/ai/research/suggestions/:id",
-      "source": "src/app/api/ai/research/suggestions/[id]/route.ts",
-      "methods": ["DELETE"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_suggestions"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research/suggestions/:id/start",
-      "source": "src/app/api/ai/research/suggestions/[id]/start/route.ts",
-      "methods": ["POST"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_suggestions", "research_reports", "items"],
-      "testProfile": "owner"
-    },
-    {
-      "path": "/api/ai/research/suggestions",
-      "source": "src/app/api/ai/research/suggestions/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["research_suggestions"],
       "testProfile": "owner"
     },
     {
@@ -1712,22 +1600,6 @@
       "testProfile": "public"
     },
     {
-      "path": "/research",
-      "source": "src/app/research/page.tsx",
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "dataPath": "/api/ai/research and suggestions routes",
-      "testProfile": "owner"
-    },
-    {
-      "path": "/research/:id",
-      "source": "src/app/research/[id]/page.tsx",
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "dataPath": "/api/ai/research/:id and stream",
-      "testProfile": "owner"
-    },
-    {
       "path": "/reset-password",
       "source": "src/app/reset-password/page.tsx",
       "currentAuth": "public-password-recovery",
@@ -1758,22 +1630,6 @@
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
       "dataPath": "notification/settings/items and capture-token APIs",
-      "testProfile": "owner"
-    },
-    {
-      "path": "/sources",
-      "source": "src/app/sources/page.tsx",
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "dataPath": "publisher, OAuth, connector sync and items APIs",
-      "testProfile": "owner"
-    },
-    {
-      "path": "/topics",
-      "source": "src/app/topics/page.tsx",
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "dataPath": "/api/items aggregate",
       "testProfile": "owner"
     },
     {
@@ -2103,13 +1959,6 @@
       "requiredScope": "tenant-scoped retrieval and preferences; no foreign canary in prompt/output"
     },
     {
-      "id": "agent-orchestrator",
-      "source": "src/lib/agent/orchestrator.ts",
-      "entryPoints": ["runAgent"],
-      "currentScope": "global tool registry and conversation-independent execution",
-      "requiredScope": "TenantContext fixed for full turn and every tool call"
-    },
-    {
       "id": "agent-tools",
       "source": "src/lib/agent/register-tools.ts",
       "entryPoints": [
@@ -2186,20 +2035,6 @@
       "requiredScope": "one user per scan; suggestion source IDs and notification same-owner"
     },
     {
-      "id": "cross-source-insights",
-      "source": "src/lib/agent/insight-detection.ts",
-      "entryPoints": ["detectInsights"],
-      "currentScope": "global similarity candidates",
-      "requiredScope": "owned source item and same-user candidates only"
-    },
-    {
-      "id": "triage-workflow",
-      "source": "src/lib/agent/workflows/triage.ts",
-      "entryPoints": ["runTriageWorkflow"],
-      "currentScope": "item ID without tenant",
-      "requiredScope": "owned item, actions and artifact writes under job tenant"
-    },
-    {
       "id": "intelligence-pipeline",
       "source": "src/lib/intelligence/pipeline.ts",
       "entryPoints": ["processContent", "buildRawContent"],
@@ -2245,23 +2080,9 @@
       "requiredScope": "no tenant state in singleton adapter; requests carry bounded audit context but not credentials"
     },
     {
-      "id": "legacy-ai-client",
-      "source": "src/lib/ai/client.ts",
-      "entryPoints": ["generateText", "generateTextWithSearch"],
-      "currentScope": "shared provider client",
-      "requiredScope": "remove or require the same tenant-aware router contract"
-    },
-    {
-      "id": "ai-tagger",
-      "source": "src/lib/ai/tagger.ts",
-      "entryPoints": ["autoTagItem"],
-      "currentScope": "item ID and database writes without tenant",
-      "requiredScope": "owned item read/write under caller or job TenantContext"
-    },
-    {
       "id": "ai-runtime-controls",
-      "source": "src/lib/ai/ai-config.ts, src/lib/ai/circuit-breaker.ts and src/lib/ai/retry.ts",
-      "entryPoints": ["model assignment", "provider circuit breaker", "transient retry"],
+      "source": "src/lib/ai/ai-config.ts and src/lib/ai/retry.ts",
+      "entryPoints": ["model assignment", "transient retry"],
       "currentScope": "process-global provider controls with no personal data store",
       "requiredScope": "provider health may remain global; retries retain tenant audit context and user quotas stay separate"
     },
@@ -2502,8 +2323,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 92,
-    "expectedPageFileCount": 22,
+    "expectedApiRouteFileCount": 81,
+    "expectedPageFileCount": 18,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

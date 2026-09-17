@@ -20,17 +20,11 @@ const allowedOrigins = new Set(["https://distil.example"]);
 const identityTokenSecret = "neon-cookie-secret-that-is-at-least-thirty-two-bytes";
 const refreshedCookie = "__Secure-neon-auth.local.session_data=refreshed; Path=/; HttpOnly";
 const centrallyProtectedMutations = [
-  "DELETE /api/ai/research/suggestions/:id",
   "DELETE /api/items/:id",
   "PATCH /api/items/:id",
   "PATCH /api/notifications/:id",
-  "POST /api/agent/approvals",
-  "POST /api/agent/chat",
   "POST /api/ai/feedback",
   "POST /api/ai/prioritize",
-  "POST /api/ai/research",
-  "POST /api/ai/research/proactive",
-  "POST /api/ai/research/suggestions/:id/start",
   "POST /api/ai/summarize",
   "POST /api/items/:id/extract",
   "POST /api/notifications",

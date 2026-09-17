@@ -38,7 +38,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("img", { name: "Distil logo" })).toHaveAttribute(
       "data-src",
-      "/logo.png"
+      "/logo.svg"
     );
     expect(screen.getByText("distil")).toBeInTheDocument();
     expect(screen.getAllByRole("link")).toHaveLength(6);
