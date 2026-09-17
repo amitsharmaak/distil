@@ -1,7 +1,6 @@
 "use client";
 
 import { Sun, Moon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "./theme-provider";
 
@@ -15,11 +14,10 @@ export function ThemeToggle({
 }) {
   const { theme, toggle } = useTheme();
   return (
-    <Button
-      variant="ghost"
-      size="sm"
+    <button
+      type="button"
       className={cn(
-        "justify-center gap-2",
+        "inline-flex h-8 items-center justify-center gap-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         className ??
           "w-full text-sidebar-foreground/65 hover:text-sidebar-foreground/85 hover:bg-sidebar-accent/50"
       )}
@@ -36,6 +34,6 @@ export function ThemeToggle({
           {theme === "dark" ? "Light mode" : "Dark mode"}
         </span>
       )}
-    </Button>
+    </button>
   );
 }

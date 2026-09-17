@@ -16,14 +16,15 @@ import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { detectStrategy } from "@/lib/content-strategies";
 import type { SourceType } from "@/lib/types";
 import { priorityColors } from "@/lib/constants";
-import { AISummary } from "@/components/feed/ai-summary";
 import { VideoEmbed } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
 import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
+import { AISummary } from "@/components/feed/ai-summary";
 import { DetailActionBar } from "@/components/feed/detail-action-bar";
 import { ReaderKnowledgeControls } from "@/components/phase2/reader-knowledge-controls";
 import { ReaderAnnotations } from "@/components/phase2/reader-annotations";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
 
 /* ── Constants ── */
 
@@ -192,6 +193,9 @@ export default async function ItemDetailPage({
   const nextItem = currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
 
   const displayTitle = getDisplayTitle(item.title, item.summary);
+  const fullContentIsHtml =
+    !!item.fullContent && /<[a-z][\s\S]*>/i.test(item.fullContent.slice(0, 500));
+  const sanitizedFullContent = item.fullContent ? sanitizeArticleHtml(item.fullContent) : undefined;
   const formattedDate = new Date(item.createdAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -328,7 +332,8 @@ export default async function ItemDetailPage({
               <AISummary
                 itemId={item.id}
                 ogSummary={item.summary}
-                fullContent={item.fullContent}
+                fullContent={sanitizedFullContent}
+                fullContentIsHtml={fullContentIsHtml}
                 initialBriefSummary={aiSummaries.brief ?? null}
                 initialDetailedSummary={aiSummaries.detailed ?? null}
               />

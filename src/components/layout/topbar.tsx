@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ArrowLeft, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 function formatDate() {
@@ -36,16 +35,13 @@ export function Topbar({
 
       <div className="ml-auto flex items-center gap-1">
         {showSearch && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground"
-            asChild
+          <Link
+            href="/search"
+            aria-label="Search"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:h-9 md:w-9"
           >
-            <Link href="/search" aria-label="Search">
-              <Search className="h-[18px] w-[18px]" />
-            </Link>
-          </Button>
+            <Search className="h-[18px] w-[18px]" />
+          </Link>
         )}
         <ThemeToggle collapsed className="h-11 w-11 md:h-9 md:w-9" />
       </div>
