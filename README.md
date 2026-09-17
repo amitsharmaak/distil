@@ -21,28 +21,20 @@ summaries, a good reading experience, and traceable answers.
 
 ## Running locally
 
-You need a local or test PostgreSQL instance.
+The fast path is a Docker PostgreSQL plus in-process capture, documented in
+`docs/runbooks/local-development.md`:
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Set environment variables (create .env.local — see scripts/setup.sh for the template)
-#    DATABASE_URL             — runtime connection string (restricted role)
-#    DATABASE_MIGRATION_URL   — migration connection string (owner role)
-#    DISTIL_SESSION_SECRET
-#    DISTIL_ALLOWED_ORIGINS
-#    NEXT_PUBLIC_API_BASE_URL
-#    GEMINI_API_KEY (or another AI provider key)
-
-# 3. Run migrations
-npm run db:migrate
-npm run db:tenant:migrate
-
-# 4. Start the dev server
-npm run dev
-# → http://localhost:3000
+cp .env.local.example .env.local
+npm run local:secrets -- <local-password>   # paste the three lines into .env.local
+npm run db:local:reset                      # provision (or wipe) the local database
+npm run dev:local                           # http://localhost:3000
 ```
+
+Add one AI provider key to `.env.local`. To point at another PostgreSQL instead, set
+`DATABASE_URL` (restricted role) and `DATABASE_MIGRATION_URL` (owner role) and run
+`npm run db:migrate` and `npm run db:tenant:migrate` yourself.
 
 If `DATABASE_URL` is unset, the app falls back to a legacy SQLite database (`src/lib/db.ts`).
 This path is **compatibility-only** — it exists to support old local data and is not how the

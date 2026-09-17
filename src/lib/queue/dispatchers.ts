@@ -35,6 +35,29 @@ export class LocalCaptureDispatcher extends FakeCaptureDispatcher {
   }
 }
 
+/**
+ * Local-development dispatcher. Runs the capture worker in the same process
+ * right after the capture request is accepted, so `next dev` needs no Vercel
+ * Queue credentials. Processing is detached from the request so the receipt
+ * returns `queued` first, exactly as it does behind the hosted queue.
+ */
+export class InlineCaptureDispatcher implements CaptureDispatcher {
+  constructor(
+    private readonly consume: (message: CaptureQueueMessageV2) => Promise<void>,
+    private readonly onError: (error: unknown) => void = () => undefined
+  ) {}
+
+  async dispatch(
+    message: CaptureQueueMessageV2,
+    _options: { idempotencyKey: string }
+  ): Promise<void> {
+    const copy = structuredClone(message);
+    setTimeout(() => {
+      this.consume(copy).catch(this.onError);
+    }, 0);
+  }
+}
+
 export interface VercelQueueSender {
   <T>(
     topic: string,
