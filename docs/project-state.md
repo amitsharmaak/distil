@@ -18,10 +18,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0, P1 and P4 merged and released 2026-09-17; P2 implemented and
-  verified on `claude/perf-db-roundtrips`, PR
-  [#26](https://github.com/amitsharmaak/distil/pull/26), reconciled with `main` after P4;
-  P3 and P5–P7 not started):** the
+- **Performance overhaul (P0, P1, P4 and P2 merged and released 2026-09-17, in that order;
+  P3 and P5–P7 not started; Amit's next pick is P6 on Codex):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -33,37 +31,44 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   completed P4 on `codex/perf-bundle` (owns `src/components/**`, `src/app/layout.tsx`,
   `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
   the route counts in `docs/authorization-matrix.json`), based on `53edd84`; its checkpoint below
-  records the target exception and release verification. P2 (`claude/perf-db-roundtrips`,
-  commit `43f0cb4`, then merged with `main` at `9f0caf6`): one shared pool, one tenant
+  records the target exception and release verification. P2 (one shared pool, one tenant
   transaction per request with the verification folded into one statement, summary projections
-  and keyset neighbours; see the checkpoint "Performance P2: database round-trip diet —
-  2026-09-17" below. Next Claude phase after P2 merges: P3 (`claude/perf-client-network`).
-- **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
-  files only. Claude is the integration owner for the concurrent P2/P4 pair; Amit merged the P4
-  PR after its Quick and Full gates passed.
-- **Branch / worktree:** `main` at `22cd7aa` (squash merge of PR
-  [#19](https://github.com/amitsharmaak/distil/pull/19), the performance plan) on
-  2026-09-16. The `distil-ui-simplification` and `distil-perf-plan` worktrees and their branches
-  are gone; only the main checkout on `main` remains. Task branches now follow the
-  parallel-session routine in `AGENTS.md` §7.1 (one session per branch, branch from
-  `origin/main`, merge not rebase, `/start-task` and `/finish-task`).
-  Production serves release `f2e4155` (P1) as deployment `dpl_HMjgEvzutvgy3xZNxyBBHeAn65tJ` on
-  both `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-17; the P0 merge
-  `f1cb2ac` auto-deployed earlier the same day and was superseded). Release pin
-- **Local iteration loop (landing 2026-09-17, branch `claude/distil-urls-config-4d6132`):**
-  Amit now captures articles into a laptop-only PostgreSQL (Docker, in-process capture worker,
-  legacy password login) and ships fixes to Production in batches. Runbook
-  `docs/runbooks/local-development.md`; checkpoint "Local development loop — 2026-09-17" below.
-  Local data is independent of Production and is wiped with `npm run db:local:reset`.
-  `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase): every push to
-  `main` now auto-deploys to Production through Vercel's Git integration. The legacy alias
-  `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
+  and keyset neighbours) merged as PR [#26](https://github.com/amitsharmaak/distil/pull/26)
+  (`a06d0d7`) and is live on Production; see the checkpoints "Performance P2: database
+  round-trip diet — 2026-09-17" (design and local before/after) and "PR review, merges and
+  cleanup — 2026-09-17" (integration, gates, release) below. The Production `Server-Timing`
+  before/after for P2 has not been read yet. Next phase by Amit's decision (chat, 2026-09-17):
+  P6 (`codex/perf-ai`) on Codex; P3, P5 and P7 remain unstarted for later tasks.
+- **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
+  The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
+  merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
+  force; the next task (P6, Codex) starts alone from `origin/main`.
+- **Branch / worktree:** `main` at `a06d0d7` (squash merge of PR
+  [#26](https://github.com/amitsharmaak/distil/pull/26), P2) on 2026-09-17, after `0d5e689`
+  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). No PR is open.
+  Every merged task branch and worktree is deleted; the main checkout
+  (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
+  the one that wrote this checkpoint is `.claude/worktrees/jabra-evolve-mic-test-7167d1`
+  (branch `claude/jabra-evolve-mic-test-7167d1`, clean, no commits beyond `22cd7aa`, unrelated
+  to Distil work; left for Amit to remove). Task branches follow the parallel-session routine in
+  `AGENTS.md` §7.1 (one session per branch, branch from `origin/main`, merge not rebase,
+  `/start-task` and `/finish-task`).
+  Production serves release `a06d0d7` (P2) as GitHub deployment `6499150136` on `distilai.app`
+  (status `success`, `/api/health` 200 with `cache-control: no-store`, checked 2026-09-17).
+  Release pin `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase):
+  every push to `main` auto-deploys to Production through Vercel's Git integration; the P4
+  (`6498811802`), local-loop (`6499086682`) and P2 deployments all arrived that way. The legacy
+  alias `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
   deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
-distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
-  P4 PR [#24](https://github.com/amitsharmaak/distil/pull/24) was squash-merged by Amit as
-  `f295124` and automatically deployed to Production as GitHub deployment `6498811802`; the apex
-  health endpoint returned 200. No manual deploy, migration or environment change was made. The
-  legacy Vercel alias was not re-aliased or re-checked.
+distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still points at the P1
+  release `f2e4155` and was not re-aliased today. No manual deploy, migration or
+  environment-variable change was made today.
+- **Local iteration loop (merged 2026-09-17, PR
+  [#27](https://github.com/amitsharmaak/distil/pull/27), `0d5e689`):** Amit captures articles
+  into a laptop-only PostgreSQL (Docker, in-process capture worker, legacy password login) and
+  ships fixes to Production in batches. Runbook `docs/runbooks/local-development.md`; checkpoint
+  "Local development loop — 2026-09-17" below. Local data is independent of Production and is
+  wiped with `npm run db:local:reset`.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -171,25 +176,86 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: P1 and P4 are released; P2 is implemented and verified on
-     `claude/perf-db-roundtrips` (PR #26) and waits for the merge (then Vercel auto-deploys and
-     the Production `Server-Timing` before/after for the feed, collections and state routes
-     should be read and recorded). Next unstarted Claude phase: P3
-     (`claude/perf-client-network`), from the checkpoint "Performance analysis and phased plan —
-     2026-09-16". Each phase is a separate task on its own branch
-     (`claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
-     `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
-     against current `main` before editing, passes `npm run check` (plus `npm run
-test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated checkpoint
-     with the before/after numbers described in that plan's "Verification" part. Merges and
-     deployments wait for Amit. The live P1 numbers show `proxy-auth-db` at about 130 ms per
-     request on Neon, so P2 (query diet) and P7 (indexes) should look at the
+  3. Performance overhaul, next task: **P6 — AI cost and latency on Codex**, branch
+     `codex/perf-ai` from `origin/main` at `a06d0d7` or later, brief "#### P6" in the checkpoint
+     "Performance analysis and phased plan — 2026-09-16". Pointer drift since that brief was
+     written, re-verified on `a06d0d7`: the per-capture brief hook is no longer in
+     `src/app/api/queue/capture-requests/route.ts`; it is the `enqueueEnrichment` callback in
+     `consumeCaptureMessage` (`src/lib/queue/capture-consumer.ts:33`, after
+     `indexCapturedItem`), shared by the Vercel queue route and the local inline dispatcher (see
+     the "Local development loop" checkpoint). `src/lib/ai/search.ts:51` still calls
+     `generateEmbedding`; `rag.ts` reaches it through `hybridSearch` (`rag.ts:169`), and the
+     30-day `listRecent` is `src/lib/ai/embeddings.ts:93` / `src/lib/postgres/repositories.ts:964`.
+     `src/lib/ai/router.ts` audit inserts and `consumeUsage` calls are at lines 267/278 and
+     397/408 (admission `checkBudget` at 179). P4 deleted `src/lib/ai/client.ts`,
+     `circuit-breaker.ts` and `tagger.ts`; do not recreate them. P2 changed `items.list()` to a
+     200-row default and added `withTenantRepositories`; the queue consumer still uses
+     `getTenantRepositories`. Gate: `npm run check`, `npm run test:integration`, the `full-ci`
+     label. Afterwards the unstarted Claude phases are P3 (`claude/perf-client-network`), P5
+     (`claude/perf-server-render`) and P7 (`claude/perf-indexes`; Production migration run is a
+     separate approval), each as its own task with a dated checkpoint and before/after numbers.
+     Still pending from P2: read and record the Production `Server-Timing` before/after for the
+     feed, collections and item-state routes (needs a signed-in session). The live P1 numbers
+     show `proxy-auth-db` at about 130 ms per request on Neon, so P7 should look at the
      `distil_resolve_auth_identity` lookup as well as the tenant transactions.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### PR review, merges and cleanup — 2026-09-17
+
+Integration pass on branch `claude/pr-review-merge-cleanup-5175d4` (worktree
+`.claude/worktrees/pr-review-merge-cleanup-5175d4`), at Amit's request to review and merge every
+open PR so the next task (P6 on Codex) starts from a clean `main`. Claude acted as integration
+owner per `AGENTS.md` §7; every merge was a squash through GitHub with the required
+`quality-gate` and `Vercel` checks green on the up-to-date head.
+
+- **PR [#25](https://github.com/amitsharmaak/distil/pull/25)** (Codex, docs-only, P4 release
+  state): reviewed against the actual state (P4 merged as `f295124`, deployment `6498811802`);
+  merged first as `9f0caf6`.
+- **PR [#27](https://github.com/amitsharmaak/distil/pull/27)** (local development loop): code
+  reviewed — the queue worker wiring moved verbatim into `src/lib/queue/capture-consumer.ts`,
+  `InlineCaptureDispatcher` defers a `structuredClone` of the message and routes failures to the
+  error hook, `scripts/local-db-reset.ts` refuses non-loopback hosts, and the Vercel path is
+  unchanged by default. `origin/main` (#25) merged in; only `docs/project-state.md` conflicted
+  and both checkpoints were kept. Quick gate and every Full gate job (deterministic tests,
+  PostgreSQL integration, production build, web/mobile E2E, extension E2E, coverage) passed on
+  head `8eefc54`; merged as `0d5e689`.
+- **PR [#26](https://github.com/amitsharmaak/distil/pull/26)** (P2): had never run CI because it
+  conflicted with `main` (GitHub skips `pull_request` workflows on conflicting PRs). Code
+  reviewed: the one-statement tenant verification keeps the six-way `current_setting` proof and
+  fails closed; `withTenantRepositories` binds one transaction with nested `begin` as savepoints;
+  `findNeighbours` matches the default `list()` order (ready-only, `created_at DESC`, id
+  tie-break); the summary projection drops only fields no list surface reads (`tsc` proves it).
+  Noted, not changed: `items.list()` now defaults to 200 rows, so `reprioritize`
+  (`/api/ai/prioritize`, `/api/ai/feedback`) and the legacy `GET /api/items` without `limit`
+  score or return at most the 200 newest ready items — documented in the P2 checkpoint as
+  deliberate. `origin/main` merged in twice (after #25 and after #27); code merged
+  automatically with P4's deletions and the local loop, only the state file conflicted. Local
+  gates on the combined tree: `npm run check` (lint 0 errors / 6 warnings, Prettier clean,
+  `tsc` clean, 201 suites / 1455 tests) and `npm run test:integration` (Docker, 12 suites / 45
+  tests). Quick gate and every Full gate job passed on head `48906b2`; merged as `a06d0d7`.
+- **Release (automatic, pin `unpinned`):** each merge auto-deployed. Production serves
+  `a06d0d7` as GitHub deployment `6499150136` (`success`); `https://distilai.app/api/health`
+  returned 200 with `cache-control: no-store`. The legacy alias `distil-pv-1850.vercel.app` was
+  not re-aliased (still the P1 release). No manual deploy, migration or environment change. The
+  P2 Production `Server-Timing` reading is still to be taken.
+- **Cleanup:** removed the merged worktrees `perf-auth-handoff-b58c37` (#23),
+  `perf-baseline-627eff` (#21), `perf-db-roundtrips-2118ba` (#26), `distil-urls-config-4d6132`
+  (#27) and `/private/tmp/distil-perf-bundle` (#24/#25), and the local branches
+  `claude/branch-workflow`, `claude/perf-baseline-627eff`, `claude/perf-p1-release-record`,
+  `claude/perf-auth-handoff-b58c37`, `codex/perf-bundle`, `codex/perf-bundle-release-state`,
+  `claude/distil-urls-config-4d6132`, `claude/perf-db-roundtrips` — each verified clean and
+  tree-identical to its squash commit first. The main checkout was on the merged
+  `claude/branch-workflow`; it is back on `main` at `a06d0d7`. Remote branches were auto-deleted.
+  Left alone: `.claude/worktrees/jabra-evolve-mic-test-7167d1` (clean, no commits, not a Distil
+  task; Amit decides).
+- **Handoff edits:** the "Performance overhaul", "Owner", "Branch / worktree" and "Local
+  iteration loop" bullets and next step 3 were rewritten to the post-merge state; a resolution
+  artifact that had spliced the local-loop bullet into the middle of the branch bullet was
+  untangled. The P6 file:line pointers in next step 3 were re-verified on `a06d0d7`.
 
 ### Performance P2: database round-trip diet — 2026-09-17
 
