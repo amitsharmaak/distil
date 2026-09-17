@@ -13,8 +13,8 @@ let authRepositoryPromise: Promise<AuthRepositoryPort> | undefined;
 /**
  * The proxy's account lookup adapter. Feature-off deployments never read this.
  * Feature-on deployments fail closed when PostgreSQL is not configured. Only
- * the auth adapter is constructed, on the shared client, so the proxy never
- * loads the full repository set.
+ * the auth adapter is constructed, on the shared (globalThis-memoised) client,
+ * so the proxy never loads the full repository set or opens a second pool.
  */
 export async function getAuthRepositoryPort(): Promise<AuthRepositoryPort> {
   authRepositoryPromise ??= Promise.all([

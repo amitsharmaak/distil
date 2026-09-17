@@ -8,7 +8,6 @@ import type { ControlPlaneRepositorySet } from "@/lib/repositories/ports";
 
 type LegacyModule = typeof import("@/lib/db");
 
-let clientPromise: Promise<import("postgres").Sql> | undefined;
 let repositoriesPromise: Promise<RepositorySet> | undefined;
 let legacyPromise: Promise<LegacyModule> | undefined;
 let tenantAccessPromise:
@@ -27,15 +26,15 @@ function usesPostgres(): boolean {
 
 /**
  * The one runtime-role client (`DATABASE_URL`) every composition root shares;
- * the control plane keeps its own client below. Created on first use so the
- * driver is never loaded by requests that do not touch the database.
+ * the control plane keeps its own client below. The pool is memoised on
+ * `globalThis` by the client module (never at module scope here) so it
+ * survives dev-server module reloads, and the driver is only loaded by
+ * requests that actually touch the database.
  */
 export async function getPostgresClient(): Promise<import("postgres").Sql> {
   if (!usesPostgres()) throw new Error("DATABASE_URL is required for PostgreSQL storage");
-  clientPromise ??= import("@/lib/postgres/client").then((client) =>
-    client.createPostgresClient({ url: config.databaseUrl })
-  );
-  return clientPromise;
+  const client = await import("@/lib/postgres/client");
+  return client.getSharedPostgresClient(config.databaseUrl);
 }
 
 async function repositories(): Promise<RepositorySet> {
@@ -56,14 +55,30 @@ export async function getRepositorySet(): Promise<RepositorySet> {
   return repositories();
 }
 
-/** Phase 3 composition root. The returned methods never accept a user id. */
-export async function getTenantRepositories(context: AuthContext): Promise<RepositorySet> {
+async function tenantAccess() {
   if (!usesPostgres()) throw new Error("DATABASE_URL is required for tenant repositories");
   tenantAccessPromise ??= Promise.all([
     getPostgresClient(),
     import("@/lib/postgres/tenant-repositories"),
   ]).then(([sql, access]) => access.createPostgresRepositoryAccess(sql));
-  return (await tenantAccessPromise).getTenantRepositories(context);
+  return tenantAccessPromise;
+}
+
+/** Phase 3 composition root. The returned methods never accept a user id. */
+export async function getTenantRepositories(context: AuthContext): Promise<RepositorySet> {
+  return (await tenantAccess()).getTenantRepositories(context);
+}
+
+/**
+ * Runs `operation` against a repository set bound to ONE tenant transaction,
+ * so a request that touches several repositories pays for a single tenant
+ * context round trip. Nested transactions become savepoints of that one.
+ */
+export async function withTenantRepositories<T>(
+  context: AuthContext,
+  operation: (repositories: RepositorySet) => Promise<T>
+): Promise<T> {
+  return (await tenantAccess()).withTenantRepositories(context, operation);
 }
 
 /** Exact-key pre-context lookup; every subsequent token operation is tenant-scoped. */
@@ -92,7 +107,7 @@ export async function getControlPlaneRepositories(
   ]).then(([sql, client, access]) =>
     access.createPostgresRepositoryAccess(
       sql,
-      client.createPostgresClient({ url: config.databaseControlPlaneUrl })
+      client.getSharedPostgresClient(config.databaseControlPlaneUrl)
     )
   );
   return (await controlPlaneAccessPromise).getControlPlaneRepositories(context);

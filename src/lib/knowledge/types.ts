@@ -41,6 +41,9 @@ export interface ContentChunkRecord {
   createdAt: string;
 }
 
+/** Chunk bookkeeping without the chunk text; for status and coverage queries. */
+export type ContentChunkMetadata = Omit<ContentChunkRecord, "content">;
+
 export interface GroundedClaim {
   id: string;
   artifactId: string;

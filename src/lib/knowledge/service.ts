@@ -267,17 +267,23 @@ export async function getItemIntelligence(
   parseAuthContext(context);
   const item = await repositories.items.findById(itemId);
   if (!item) throw new KnowledgeServiceError("ITEM_NOT_FOUND", 404, "Item was not found");
-  const contentVersion = await repositories.contentVersions.findLatestForItem(itemId);
-  const artifacts = await repositories.intelligenceArtifacts.listForItem(itemId);
-  const chunks = contentVersion
-    ? await repositories.contentChunks.listForContentVersion(contentVersion.id)
-    : [];
+  // Two waves of independent reads: the version and artifact history depend
+  // only on the item; chunk metadata and claims depend on that first wave.
+  const [contentVersion, artifacts] = await Promise.all([
+    repositories.contentVersions.findLatestForItem(itemId),
+    repositories.intelligenceArtifacts.listForItem(itemId),
+  ]);
   const currentClaimsArtifact = artifacts.find(
     (artifact) => artifact.artifactType === "claims" && artifact.isCurrent
   );
-  const claims = currentClaimsArtifact
-    ? await repositories.claims.listForArtifact(currentClaimsArtifact.id)
-    : [];
+  const [chunks, claims] = await Promise.all([
+    contentVersion
+      ? repositories.contentChunks.listMetadataForContentVersion(contentVersion.id)
+      : Promise.resolve([]),
+    currentClaimsArtifact
+      ? repositories.claims.listForArtifact(currentClaimsArtifact.id)
+      : Promise.resolve([]),
+  ]);
   return {
     item: { id: item.id, title: item.title, url: item.url },
     contentVersion: contentVersion

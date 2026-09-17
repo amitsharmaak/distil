@@ -1,7 +1,8 @@
 import type { Sql } from "postgres";
 
-import { mapItem } from "@/lib/postgres/mappers";
-import type { ContentItem, Priority } from "@/lib/types";
+import { itemSummaryColumnsSql } from "@/lib/postgres/item-columns";
+import { mapItemSummary } from "@/lib/postgres/mappers";
+import type { ContentItem, ContentItemSummary, Priority } from "@/lib/types";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 export const DEFAULT_FEED_PAGE_SIZE = 30;
@@ -45,7 +46,8 @@ export interface FeedRankExplanation {
   };
 }
 
-export type FeedItem = ContentItem & { rank: FeedRankExplanation };
+/** Feed rows are the summary projection: list surfaces never receive article bodies. */
+export type FeedItem = ContentItemSummary & { rank: FeedRankExplanation };
 
 export interface FeedPage {
   items: FeedItem[];
@@ -120,6 +122,9 @@ interface Cursor {
 }
 
 type Row = Record<string, unknown>;
+
+/** Static summary projection for the `items i` alias; never built from caller input. */
+const FEED_ITEM_COLUMNS = itemSummaryColumnsSql("i");
 
 function priorityScore(priority: Priority): number {
   return priority === "high" ? 90 : priority === "medium" ? 50 : 20;
@@ -384,7 +389,7 @@ export class PostgresFeedQuery {
         ? this.sql`ORDER BY i.created_at DESC, i.id DESC`
         : this.sql`ORDER BY ${score} DESC, i.created_at DESC, i.id DESC`;
     const rows = await this.sql<Row[]>`
-      SELECT i.*, s.summary AS ai_summary_text, i.ai_priority_score, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
+      SELECT ${this.sql.unsafe(FEED_ITEM_COLUMNS)}, s.summary AS ai_summary_text, i.ai_priority_score, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
       FROM items i
       LEFT JOIN ai_summaries s ON s.user_id=${this.context.userId}::uuid
         AND s.item_id=i.id AND s.prompt_type='brief'
@@ -394,7 +399,7 @@ export class PostgresFeedQuery {
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     let items = pageRows.map((row) => {
-      const item = mapItem(row);
+      const item = mapItemSummary(row);
       const rank = explainFeedRank(
         { ...item, aiPriorityScore: rowAiPriorityScore(row), affinityScore: rowAffinityScore(row) },
         sort,

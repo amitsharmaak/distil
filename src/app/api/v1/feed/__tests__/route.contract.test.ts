@@ -1,10 +1,12 @@
 jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
-jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
+jest.mock("@/lib/database", () => ({
+  withTenantRepositories: jest.fn(),
+}));
 
 import { GET } from "../route";
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { AuthError } from "@/lib/auth/errors";
-import { getTenantRepositories } from "@/lib/database";
+import { withTenantRepositories } from "@/lib/database";
 
 const context = {
   userId: "11111111-1111-4111-8111-111111111111",
@@ -22,10 +24,11 @@ beforeEach(() => {
   jest.mocked(resolveRequestAuthContext).mockResolvedValue(context);
   list.mockResolvedValue({ items: [], nextCursor: "opaque" });
   getPreferences.mockResolvedValue({ personalizationEnabled: true });
-  jest.mocked(getTenantRepositories).mockResolvedValue({
-    feed: { list },
-    digestExperience: { getPreferences },
-  } as never);
+  jest
+    .mocked(withTenantRepositories)
+    .mockImplementation(async (_context, operation) =>
+      operation({ feed: { list }, digestExperience: { getPreferences } } as never)
+    );
 });
 
 afterAll(() => {
@@ -40,7 +43,7 @@ describe("GET /api/v1/feed contract", () => {
       .mockRejectedValueOnce(new AuthError("UNAUTHORIZED", 401, "nope"));
     const response = await GET(new Request("https://distil.example/api/v1/feed"));
     expect(response.status).toBe(401);
-    expect(getTenantRepositories).not.toHaveBeenCalled();
+    expect(withTenantRepositories).not.toHaveBeenCalled();
   });
 
   it("rejects invalid filter combinations without querying", async () => {
@@ -50,10 +53,10 @@ describe("GET /api/v1/feed contract", () => {
       )
     );
     expect(response.status).toBe(400);
-    expect(getTenantRepositories).not.toHaveBeenCalled();
+    expect(withTenantRepositories).not.toHaveBeenCalled();
   });
 
-  it("accepts repeated facets and resolves the caller-bound repository once", async () => {
+  it("accepts repeated facets and opens the caller-bound tenant transaction once", async () => {
     const response = await GET(
       new Request(
         "https://distil.example/api/v1/feed?topic=ai,product&topic=engineering&source=manual&source=publisher&sort=for_you&limit=30"
@@ -62,7 +65,9 @@ describe("GET /api/v1/feed contract", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ items: [], nextCursor: "opaque" });
     expect(resolveRequestAuthContext).toHaveBeenCalledTimes(1);
-    expect(getTenantRepositories).toHaveBeenCalledWith(context);
+    expect(withTenantRepositories).toHaveBeenCalledTimes(1);
+    expect(withTenantRepositories).toHaveBeenCalledWith(context, expect.any(Function));
+    expect(getPreferences).toHaveBeenCalledTimes(1);
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({
         topics: ["ai", "product", "engineering"],

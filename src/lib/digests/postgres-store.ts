@@ -86,6 +86,13 @@ export class PostgresDigestStore implements DigestStore {
   }
 
   async getPreferences(): Promise<PersonalPreferences> {
+    // Readers cost one plain statement; only the first-touch insert serializes
+    // under the tenant lock, so concurrent first reads still yield one row.
+    const existing = await this.sql<Row[]>`
+      SELECT * FROM personal_preferences
+      WHERE user_id=${this.context.userId}::uuid AND id='default'
+    `;
+    if (existing[0]) return this.mapPreferences(existing[0]);
     return withTenantLocks(
       this.sql,
       [tenantLockKey("digest-preferences", "default")],

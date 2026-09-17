@@ -69,16 +69,23 @@ const digestInput = {
 };
 
 function fakeSql(rows: (query: Query) => Row[]) {
+  const statements: string[] = [];
   const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
     const query = { text: strings.join("?"), values };
+    statements.push(query.text);
     return Promise.resolve(rows(query));
   }) as unknown as {
     (strings: TemplateStringsArray, ...values: unknown[]): Promise<Row[]>;
     begin<T>(callback: (transaction: typeof sql) => Promise<T>): Promise<T>;
     json(value: unknown): unknown;
+    statements: string[];
   };
-  sql.begin = async (callback) => callback(sql);
+  sql.begin = async (callback) => {
+    statements.push("begin");
+    return callback(sql);
+  };
   sql.json = (value) => value;
+  sql.statements = statements;
   return sql;
 }
 
@@ -134,6 +141,41 @@ describe("PostgresDigestStore", () => {
         createdAt: "2026-09-07T00:00:00.000Z",
       })
     ).resolves.toMatchObject({ id: "job-1", requestedBy: "cron" });
+  });
+
+  it("reads present preferences with one plain statement and only locks to create them", async () => {
+    const present = fakeSql(({ text }) =>
+      text.includes("personal_preferences") ? [preferences] : []
+    );
+    await expect(tenantStore(present as never).getPreferences()).resolves.toMatchObject({
+      digestTimezone: "Asia/Kolkata",
+    });
+    expect(present.statements).toHaveLength(1);
+    expect(present.statements[0]).toContain("SELECT * FROM personal_preferences");
+    expect(present.statements.join("\n")).not.toContain("pg_advisory_xact_lock");
+    expect(present.statements).not.toContain("begin");
+
+    let inserted = false;
+    const missing = fakeSql(({ text }) => {
+      if (text.includes("INSERT INTO personal_preferences")) {
+        inserted = true;
+        return [preferences];
+      }
+      return [];
+    });
+    await expect(tenantStore(missing as never).getPreferences()).resolves.toMatchObject({
+      digestTimezone: "Asia/Kolkata",
+    });
+    expect(inserted).toBe(true);
+    const lockIndex = missing.statements.findIndex((text) =>
+      text.includes("pg_advisory_xact_lock")
+    );
+    const insertIndex = missing.statements.findIndex((text) =>
+      text.includes("INSERT INTO personal_preferences")
+    );
+    expect(missing.statements.indexOf("begin")).toBeGreaterThan(-1);
+    expect(lockIndex).toBeGreaterThan(missing.statements.indexOf("begin"));
+    expect(insertIndex).toBeGreaterThan(lockIndex);
   });
 
   it("maps priority and resurfacing candidates without leaking SQL row names", async () => {

@@ -19,7 +19,7 @@ jest.mock("next/link", () => ({
 }));
 
 jest.mock("@/lib/database", () => ({
-  getTenantRepositories: jest.fn(),
+  withTenantRepositories: jest.fn(),
 }));
 
 jest.mock("@/lib/phase2/feature-flags", () => ({
@@ -77,10 +77,24 @@ jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
   ),
 }));
 jest.mock("@/components/feed/detail-action-bar", () => ({
-  DetailActionBar: ({ title }: { title: string }) => <div data-testid="actions">{title}</div>,
+  DetailActionBar: ({
+    title,
+    prevId,
+    nextId,
+  }: {
+    title: string;
+    prevId: string | null;
+    nextId: string | null;
+  }) => (
+    <div data-testid="actions" data-prev={prevId ?? ""} data-next={nextId ?? ""}>
+      {title}
+    </div>
+  ),
 }));
 jest.mock("@/components/feed/article-navigation", () => ({
-  ArticleNavigation: () => null,
+  ArticleNavigation: ({ prevId, nextId }: { prevId: string | null; nextId: string | null }) => (
+    <div data-testid="navigation" data-prev={prevId ?? ""} data-next={nextId ?? ""} />
+  ),
 }));
 jest.mock("@/components/feed/video-embed", () => ({
   VideoEmbed: () => <div data-testid="video">video</div>,
@@ -93,7 +107,7 @@ jest.mock("@/components/feed/ai-summary", () => ({
 }));
 
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
-import { getTenantRepositories } from "@/lib/database";
+import { withTenantRepositories } from "@/lib/database";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 const auth = {
@@ -103,7 +117,7 @@ const auth = {
   requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 } as never;
 const repositories = {
-  items: { findById: jest.fn(), list: jest.fn() },
+  items: { findById: jest.fn(), findNeighbours: jest.fn() },
   summaries: { findAll: jest.fn() },
   feedback: { findForItem: jest.fn() },
 };
@@ -134,8 +148,10 @@ function item(overrides: Partial<ContentItem> = {}): ContentItem {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(resolveRequestAuthContext).mockResolvedValue(auth);
-  jest.mocked(getTenantRepositories).mockResolvedValue(repositories as never);
-  repositories.items.list.mockResolvedValue([]);
+  jest
+    .mocked(withTenantRepositories)
+    .mockImplementation(async (_auth, operation) => operation(repositories as never));
+  repositories.items.findNeighbours.mockResolvedValue({ previousId: null, nextId: null });
   repositories.items.findById.mockResolvedValue(undefined);
   repositories.summaries.findAll.mockResolvedValue({ brief: undefined, detailed: undefined });
   repositories.feedback.findForItem.mockResolvedValue(undefined);
@@ -152,14 +168,14 @@ describe("feed item detail page", () => {
     );
     expect(screen.getByText("Item not found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
+    expect(withTenantRepositories).toHaveBeenCalledWith(auth, expect.any(Function));
+    expect(repositories.items.findNeighbours).not.toHaveBeenCalled();
   });
 
   it("renders an article with knowledge UI and navigation context", async () => {
     const current = item({ id: "current", title: "https://example.test/raw" });
-    const previous = item({ id: "previous", title: "Previous" });
-    const next = item({ id: "next", title: "Next", isRead: true });
     repositories.items.findById.mockResolvedValue(current);
-    repositories.items.list.mockResolvedValue([previous, current, next]);
+    repositories.items.findNeighbours.mockResolvedValue({ previousId: "previous", nextId: "next" });
 
     render(
       await ItemDetailPage({
@@ -171,6 +187,34 @@ describe("feed item detail page", () => {
     expect(screen.getByTestId("reader-annotations")).toBeInTheDocument();
     expect(screen.getByTestId("knowledge-controls")).toHaveTextContent("current");
     expect(screen.getByTestId("actions")).toHaveTextContent("https://example.test/raw");
+    // The whole read runs inside one tenant transaction; neighbours come from a
+    // keyset lookup that ignores read state when the reader shows everything.
+    expect(withTenantRepositories).toHaveBeenCalledTimes(1);
+    expect(repositories.items.findNeighbours).toHaveBeenCalledWith("current", {
+      unreadOnly: false,
+    });
+    expect(screen.getByTestId("navigation")).toHaveAttribute("data-prev", "previous");
+    expect(screen.getByTestId("navigation")).toHaveAttribute("data-next", "next");
+    expect(screen.getByTestId("actions")).toHaveAttribute("data-prev", "previous");
+    expect(screen.getByTestId("actions")).toHaveAttribute("data-next", "next");
+  });
+
+  it("asks for unread neighbours only when no filter widens the reader", async () => {
+    repositories.items.findById.mockResolvedValue(item({ id: "current" }));
+    repositories.items.findNeighbours.mockResolvedValue({ previousId: null, nextId: "next" });
+
+    render(
+      await ItemDetailPage({
+        params: Promise.resolve({ id: "current" }),
+        searchParams: Promise.resolve({}),
+      })
+    );
+    expect(repositories.items.findNeighbours).toHaveBeenCalledWith("current", {
+      unreadOnly: true,
+    });
+    expect(screen.getByTestId("navigation")).toHaveAttribute("data-prev", "");
+    expect(screen.getByTestId("navigation")).toHaveAttribute("data-next", "next");
+    expect(screen.getByTestId("actions")).toHaveAttribute("data-next", "next");
   });
 
   it("renders tweet tokens, video, and podcast variants with knowledge disabled", async () => {

@@ -1,12 +1,16 @@
 /**
  * Performance regression fence: the number of provider round trips,
- * authentication lookups and database transactions one request costs.
+ * authentication lookups, database transactions and statements one request
+ * costs.
  *
  * P0 pinned the baseline (proxy: two provider calls + one auth query; route:
- * one provider call + one auth query + two transactions). P1 lowers it to
+ * one provider call + one auth query + two transactions). P1 lowered it to
  * proxy: one + one and route: zero + zero through the signed identity
- * handoff. Later phases lower the remaining assertions on purpose; an
- * accidental increase fails.
+ * handoff. P2 folds the route's repository calls into ONE tenant transaction
+ * whose context is verified by a single statement, so GET /api/v1/feed costs
+ * one transaction and three statements (verification, preferences, feed).
+ * Later phases lower the remaining assertions on purpose; an accidental
+ * increase fails.
  */
 import type { LinkedAccount } from "@/lib/auth/account";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
@@ -71,6 +75,8 @@ jest.mock("@/lib/auth/repository-runtime", () => ({
 jest.mock("@/lib/database", () => ({
   getTenantRepositories: async (auth: AuthContext) =>
     createPostgresRepositoryAccess(fakes.tenantSql).getTenantRepositories(auth),
+  withTenantRepositories: async (auth: AuthContext, operation: never) =>
+    createPostgresRepositoryAccess(fakes.tenantSql).withTenantRepositories(auth, operation),
 }));
 
 function authRepositories(account: LinkedAccount): AuthRepositoryPort {
@@ -94,11 +100,12 @@ function authRepositories(account: LinkedAccount): AuthRepositoryPort {
 /**
  * The sqlDouble pattern from tenant-repositories.unit.test.ts, extended to
  * report every statement and `BEGIN` to the request metrics store the way the
- * postgres.js `debug` hook does for a real client.
+ * postgres.js `debug` hook does for a real client. Like postgres.js, a tagged
+ * template is lazy: it only becomes a statement when awaited, so fragments
+ * spliced into another query (WHERE clauses, ranking expressions) never count.
  */
 function sqlDouble() {
-  const sql = jest.fn(async (strings: TemplateStringsArray): Promise<unknown[]> => {
-    const query = strings.join("?");
+  const execute = async (query: string): Promise<unknown[]> => {
     fakes.statements.push(query);
     recordDatabaseStatement(query);
     if (query.includes("current_setting('app.user_id'")) {
@@ -124,6 +131,13 @@ function sqlDouble() {
       ];
     }
     return [];
+  };
+  const sql = jest.fn((strings: TemplateStringsArray): PromiseLike<unknown[]> => {
+    const query = strings.join("?");
+    let pending: Promise<unknown[]> | undefined;
+    return {
+      then: (resolve, reject) => (pending ??= execute(query)).then(resolve, reject),
+    };
   }) as unknown as Sql;
   Object.assign(sql, {
     begin: jest.fn(async (operation: (transaction: Sql) => Promise<unknown>) => {
@@ -136,6 +150,8 @@ function sqlDouble() {
     savepoint: jest.fn(async (operation: (transaction: Sql) => Promise<unknown>) => operation(sql)),
     json: jest.fn((value: unknown) => value),
     array: jest.fn((value: unknown) => value),
+    // Static column lists are spliced in as fragments, not sent as statements.
+    unsafe: jest.fn((text: string) => text),
   });
   return sql;
 }
@@ -161,7 +177,12 @@ function forwarded(response: Response, name: string): string {
   return response.headers.get(`x-middleware-request-${name}`) ?? "";
 }
 
-describe("request cost fence (P1: one provider call and one auth query per request)", () => {
+/** The statements a tenant-bound operation issues to verify its context. */
+function verificationStatements(): string[] {
+  return fakes.statements.filter((statement) => statement.includes("AS search_path"));
+}
+
+describe("request cost fence (P2: one transaction, three statements)", () => {
   it("proxy: one authenticated GET costs one provider call and one auth query", async () => {
     const { proxy } = await import("@/proxy");
     const response = await proxy(
@@ -205,7 +226,7 @@ describe("request cost fence (P1: one provider call and one auth query per reque
     expect(forwarded(response, PROXY_TIMING_HEADER)).toMatch(/^proxy;dur=\d+\.\d$/);
   });
 
-  it("GET /api/v1/feed with the proxy's token: zero provider calls, zero auth queries, two transactions", async () => {
+  it("GET /api/v1/feed with the proxy's token: zero provider calls, zero auth queries, one transaction, three statements", async () => {
     const { GET } = await import("@/app/api/v1/feed/route");
     const token = await createIdentityToken(
       { userId, actorKind: "user", fresh: true, traceId },
@@ -226,18 +247,52 @@ describe("request cost fence (P1: one provider call and one auth query per reque
     // The route trusts only the signed handoff and performs no auth I/O.
     expect(fakes.provider.verifySession).not.toHaveBeenCalled();
     expect(fakes.authRepositories.findAccountByIdentity).not.toHaveBeenCalled();
-    // Preferences (advisory-locked) and the feed page each open a transaction.
-    expect(fakes.transactions).toBe(2);
-    expect((fakes.tenantSql.begin as jest.Mock).mock.calls).toHaveLength(2);
+    // Preferences and the feed page share ONE tenant transaction, verified by
+    // a single statement that both sets and reads back the tenant context.
+    expect(fakes.transactions).toBe(1);
+    expect((fakes.tenantSql.begin as jest.Mock).mock.calls).toHaveLength(1);
+    const verification = verificationStatements();
+    expect(verification).toHaveLength(1);
+    expect(verification[0]).toContain("set_config('app.user_id'");
+    expect(verification[0]).toContain("current_setting('app.user_id'");
+    // verification + preferences SELECT + feed SELECT
+    expect(fakes.statements).toHaveLength(3);
     expect(
-      fakes.statements.filter((statement) => statement.includes("AS search_path"))
-    ).toHaveLength(2);
+      fakes.statements.filter((statement) => statement.includes("personal_preferences"))
+    ).toHaveLength(1);
 
     const serverTiming = response.headers.get("server-timing") ?? "";
     expect(serverTiming).toMatch(
-      /^proxy-auth-provider;dur=1\.0;desc="calls=1", proxy;dur=2\.0, auth;dur=\d+\.\d, db;dur=\d+\.\d;desc="q=\d+ tx=2"/
+      /^proxy-auth-provider;dur=1\.0;desc="calls=1", proxy;dur=2\.0, auth;dur=\d+\.\d, db;dur=\d+\.\d;desc="q=3 tx=1"/
     );
-    expect(serverTiming).toMatch(/, total;dur=\d+\.\d;desc="q=\d+ tx=2"$/);
+    expect(serverTiming).toMatch(/, total;dur=\d+\.\d;desc="q=3 tx=1"$/);
+  });
+
+  it("GET /api/v1/feed with personalization off costs one transaction and two statements", async () => {
+    delete process.env.FEATURE_PERSONALIZATION;
+    try {
+      const { GET } = await import("@/app/api/v1/feed/route");
+      const token = await createIdentityToken(
+        { userId, actorKind: "user", fresh: true, traceId },
+        environment.NEON_AUTH_COOKIE_SECRET
+      );
+      const response = await GET(
+        new Request("https://distil.example/api/v1/feed", {
+          headers: { "x-trace-id": traceId, [IDENTITY_HEADER]: token },
+        })
+      );
+      expect(response.status).toBe(200);
+      expect(fakes.transactions).toBe(1);
+      expect(verificationStatements()).toHaveLength(1);
+      // verification + feed SELECT; no preferences lookup without the flag.
+      expect(fakes.statements).toHaveLength(2);
+      expect(fakes.statements.some((statement) => statement.includes("personal_preferences"))).toBe(
+        false
+      );
+      expect(response.headers.get("server-timing")).toMatch(/, total;dur=\d+\.\d;desc="q=2 tx=1"$/);
+    } finally {
+      process.env.FEATURE_PERSONALIZATION = environment.FEATURE_PERSONALIZATION;
+    }
   });
 
   it("end to end: the proxy's forwarded headers let the route skip authentication entirely", async () => {

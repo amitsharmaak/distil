@@ -384,6 +384,105 @@ describe("Phase 2 reader service contracts", () => {
     );
   });
 
+  it("issues the independent reads of putNote and addCollectionItem concurrently", async () => {
+    const deferred = <T>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((done) => (resolve = done));
+      return { promise, resolve };
+    };
+    const settle = () => new Promise((tick) => setImmediate(tick));
+    const item = { id: "item-1", isRead: false };
+
+    const findItem = deferred<typeof item>();
+    const findNote = deferred<undefined>();
+    const noteRepositories = fullRepositorySet({
+      items: { findById: jest.fn(() => findItem.promise) },
+      itemNotes: {
+        find: jest.fn(() => findNote.promise),
+        upsert: jest.fn().mockImplementation(async (note) => note),
+        delete: jest.fn(),
+      },
+    });
+    const note = putNote(noteRepositories, "item-1", "body");
+    await settle();
+    expect(noteRepositories.items.findById).toHaveBeenCalledWith("item-1");
+    expect(noteRepositories.itemNotes.find).toHaveBeenCalledWith("item-1");
+    expect(noteRepositories.itemNotes.upsert).not.toHaveBeenCalled();
+    findNote.resolve(undefined);
+    findItem.resolve(item);
+    await expect(note).resolves.toMatchObject({ body: "body" });
+
+    const findCollection = deferred<{ id: string }>();
+    const findMember = deferred<typeof item>();
+    const listItems = deferred<unknown[]>();
+    const collectionRepositories = fullRepositorySet({
+      items: { findById: jest.fn(() => findMember.promise) },
+      collections: {
+        find: jest.fn(() => findCollection.promise),
+        listItems: jest.fn(() => listItems.promise),
+        addItem: jest.fn().mockImplementation(async (membership) => membership),
+      },
+    });
+    const membership = addCollectionItem(collectionRepositories, "collection-1", "item-1");
+    await settle();
+    expect(collectionRepositories.collections.find).toHaveBeenCalledWith("collection-1");
+    expect(collectionRepositories.items.findById).toHaveBeenCalledWith("item-1");
+    expect(collectionRepositories.collections.listItems).toHaveBeenCalledWith("collection-1");
+    expect(collectionRepositories.collections.addItem).not.toHaveBeenCalled();
+    listItems.resolve([]);
+    findMember.resolve(item);
+    findCollection.resolve({ id: "collection-1" });
+    await expect(membership).resolves.toMatchObject({ collectionId: "collection-1", position: 0 });
+  });
+
+  it("keeps 404 precedence for missing items and collections over the sibling reads", async () => {
+    const missingItem = fullRepositorySet({
+      items: { findById: jest.fn().mockResolvedValue(undefined) },
+      itemNotes: {
+        find: jest.fn().mockResolvedValue({ itemId: "missing", body: "x", createdAt: "old" }),
+        upsert: jest.fn(),
+        delete: jest.fn(),
+      },
+    });
+    await expect(putNote(missingItem, "missing", "body")).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
+      status: 404,
+    });
+    expect(missingItem.itemNotes.upsert).not.toHaveBeenCalled();
+    await expect(
+      createAnnotation(missingItem, "missing", {
+        selectedQuote: "quote",
+        prefix: "",
+        suffix: "",
+        contentHash: "hash",
+        contentVersion: "version",
+      })
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
+    expect(missingItem.annotations.create).not.toHaveBeenCalled();
+    await expect(
+      updateAnnotation(missingItem, "missing", "annotation-1", { status: "active" })
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
+    await expect(addCollectionItem(missingItem, "collection-1", "missing")).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
+      status: 404,
+    });
+    expect(missingItem.collections.addItem).not.toHaveBeenCalled();
+
+    const missingCollection = fullRepositorySet({
+      items: { findById: jest.fn().mockResolvedValue(undefined) },
+      collections: {
+        find: jest.fn().mockResolvedValue(undefined),
+        listItems: jest.fn().mockResolvedValue([]),
+        addItem: jest.fn(),
+      },
+    });
+    await expect(addCollectionItem(missingCollection, "missing", "missing")).rejects.toMatchObject({
+      code: "COLLECTION_NOT_FOUND",
+      status: 404,
+    });
+    expect(missingCollection.collections.addItem).not.toHaveBeenCalled();
+  });
+
   it("uses existing membership position and makes missing collection operations explicit", async () => {
     const repositories = fullRepositorySet({
       collections: {

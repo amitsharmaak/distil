@@ -17,15 +17,39 @@ const context = createAuthContext({
   requestId: "30000000-0000-4000-8000-000000000001",
 });
 
+type Fragment = { text: string };
+const isFragment = (value: unknown): value is Fragment =>
+  typeof value === "object" && value !== null && "text" in value;
+
+/**
+ * Nested fragments and `sql.unsafe` column lists are spliced into the recorded
+ * statement text, so assertions cover the SQL PostgreSQL would receive.
+ */
 function fakeFeedSql(rows: Record<string, unknown>[]) {
-  const sql = ((strings: TemplateStringsArray) => {
-    const text = strings.join("?");
-    return Promise.resolve(text.includes("SELECT i.*, s.summary") ? rows : []);
+  const statements: string[] = [];
+  const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.reduce<string>(
+      (acc, part, index) =>
+        index === 0
+          ? part
+          : `${acc}${isFragment(values[index - 1]) ? (values[index - 1] as Fragment).text : "?"}${part}`,
+      ""
+    );
+    const isStatement = text.includes("FROM items i");
+    if (isStatement) statements.push(text);
+    const result = Promise.resolve(isStatement ? rows : []) as Promise<Record<string, unknown>[]> &
+      Fragment;
+    result.text = text;
+    return result;
   }) as unknown as {
     (strings: TemplateStringsArray, ...values: unknown[]): Promise<Record<string, unknown>[]>;
     array(values: string[]): string[];
+    unsafe(text: string): Fragment;
+    statements: string[];
   };
   sql.array = (values) => values;
+  sql.unsafe = (text) => ({ text });
+  sql.statements = statements;
   return sql;
 }
 
@@ -244,6 +268,37 @@ describe("feed ranking contracts", () => {
     await expect(new PostgresFeedQuery(fakeFeedSql([]) as never, context).list()).resolves.toEqual({
       items: [],
     });
+  });
+
+  it("selects the summary projection so feed rows never carry article bodies", async () => {
+    const sql = fakeFeedSql([
+      { ...feedRow("summary-only"), full_content: "<p>the whole body</p>" },
+    ]);
+    const page = await new PostgresFeedQuery(sql as never, context).list({
+      sort: "for_you",
+      personalizationEnabled: true,
+      collectionIds: ["collection-1"],
+      now,
+    });
+    expect(sql.statements).toHaveLength(1);
+    const statement = sql.statements[0];
+    expect(statement).toContain("SELECT i.id,i.title,i.summary,");
+    expect(statement).toContain("s.summary AS ai_summary_text, i.ai_priority_score,");
+    expect(statement).not.toContain("i.*");
+    for (const column of [
+      "full_content",
+      "extracted_links",
+      "detected_media",
+      "content_classification",
+      "thumbnail_url",
+      "search_vector",
+    ]) {
+      expect(statement).not.toContain(column);
+    }
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).not.toHaveProperty("fullContent");
+    expect(page.items[0]).toMatchObject({ id: "summary-only", title: "Item summary-only" });
+    expect(JSON.stringify(page)).not.toContain("the whole body");
   });
 
   it("fails closed for malformed keyset cursors before querying PostgreSQL", async () => {

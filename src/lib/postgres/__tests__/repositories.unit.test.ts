@@ -5,23 +5,40 @@ import { createPostgresRepositories } from "../repositories";
 type Row = Record<string, unknown>;
 const userId = "10000000-0000-4000-8000-000000000010" as never;
 
+type Fragment = { text: string; values: unknown[] };
+const isFragment = (value: unknown): value is Fragment =>
+  typeof value === "object" && value !== null && "text" in value && "values" in value;
+
+/**
+ * Nested fragments (and `sql.unsafe` column lists) are spliced into the
+ * recorded statement text so assertions see the SQL PostgreSQL would receive.
+ */
 function sqlDouble(initial: unknown[][] = []) {
   const responses = [...initial];
   const queries: string[] = [];
   const sql = jest.fn((strings: TemplateStringsArray | unknown[], ...values: unknown[]) => {
     if (!("raw" in strings)) return { values: strings };
-    const query = strings.join("?");
+    const query = strings.reduce<string>(
+      (text, part, index) =>
+        index === 0
+          ? part
+          : `${text}${isFragment(values[index - 1]) ? (values[index - 1] as Fragment).text : "?"}${part}`,
+      ""
+    );
     queries.push(query);
     return {
       then(resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) {
         const response = query.includes("pg_advisory_xact_lock") ? [] : (responses.shift() ?? []);
         return Promise.resolve(response).then(resolve, reject);
       },
+      text: query,
       values,
     };
   }) as unknown as Sql;
   Object.assign(sql, {
     json: jest.fn((value: unknown) => value),
+    array: jest.fn((value: unknown) => value),
+    unsafe: jest.fn((text: string) => ({ text, values: [] })),
     begin: jest.fn(async (callback: (tx: Sql) => Promise<unknown>) => callback(sql)),
   });
   return { sql, queries, responses };
@@ -118,6 +135,90 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     expect(fake.queries.some((query) => query.includes("websearch_to_tsquery"))).toBe(true);
     expect(fake.queries.some((query) => query.includes("CASE i.priority"))).toBe(true);
     expect(fake.queries.some((query) => query.includes("ai_priority_score"))).toBe(true);
+  });
+
+  test("selects explicit item columns, a summary projection, and a bounded default page", async () => {
+    const detailedRow = {
+      ...itemRow,
+      full_content: "<p>the whole body</p>",
+      thumbnail_url: "https://example.com/thumb.png",
+      extracted_links: [{ text: "x", url: "https://x.test" }],
+      content_classification: { kind: "article" },
+      detected_media: [],
+    };
+    const fake = sqlDouble([[detailedRow], [detailedRow]]);
+    const items = createPostgresRepositories(fake.sql).items;
+
+    const summaries = await items.listSummaries({ sort: "priority", isRead: false });
+    expect(summaries).toHaveLength(1);
+    for (const key of [
+      "fullContent",
+      "extractedLinks",
+      "detectedMedia",
+      "contentClassification",
+      "thumbnailUrl",
+    ]) {
+      expect(summaries[0]).not.toHaveProperty(key);
+    }
+    const statements = () => fake.queries.filter((query) => query.includes("FROM items"));
+    const summaryQuery = statements()[0];
+    expect(summaryQuery).toContain("i.id,i.title,i.summary");
+    expect(summaryQuery).toContain("CASE i.priority");
+    expect(summaryQuery).toContain("LIMIT ? OFFSET ?");
+    for (const column of [
+      "full_content",
+      "extracted_links",
+      "detected_media",
+      "content_classification",
+      "thumbnail_url",
+      "search_vector",
+      "i.*",
+    ]) {
+      expect(summaryQuery).not.toContain(column);
+    }
+
+    const full = await items.list();
+    expect(full[0]).toMatchObject({ fullContent: "<p>the whole body</p>" });
+    const fullQuery = statements()[1];
+    expect(fullQuery).toContain("i.full_content");
+    expect(fullQuery).not.toContain("search_vector");
+    expect(fullQuery).not.toContain("i.*");
+    expect(fake.sql).toHaveBeenCalledWith(
+      expect.arrayContaining([" LIMIT ", " OFFSET "]),
+      expect.anything(),
+      expect.anything(),
+      200,
+      0
+    );
+  });
+
+  test("finds keyset neighbours with two single-row statements", async () => {
+    const fake = sqlDouble([[{ id: "newer" }], [{ id: "older" }], [], []]);
+    const items = createPostgresRepositories(fake.sql).items;
+
+    await expect(items.findNeighbours("middle")).resolves.toEqual({
+      previousId: "newer",
+      nextId: "older",
+    });
+    const statements = () => fake.queries.filter((query) => query.includes("FROM items i"));
+    expect(statements()).toHaveLength(2);
+    expect(statements().filter((query) => query.includes("LIMIT 1"))).toHaveLength(2);
+    expect(statements()[0]).toContain("(i.created_at, i.id) > (SELECT created_at, id FROM items");
+    expect(statements()[0]).toContain("ORDER BY i.created_at ASC, i.id ASC");
+    expect(statements()[1]).toContain("(i.created_at, i.id) < (SELECT created_at, id FROM items");
+    expect(statements()[1]).toContain("ORDER BY i.created_at DESC, i.id DESC");
+    for (const query of statements()) {
+      expect(query).toContain("processing_status='ready'");
+      expect(query).not.toContain("is_read=false");
+    }
+
+    await expect(items.findNeighbours("missing", { unreadOnly: true })).resolves.toEqual({
+      previousId: null,
+      nextId: null,
+    });
+    expect(statements()).toHaveLength(4);
+    expect(statements()[2]).toContain("i.is_read=false");
+    expect(statements()[3]).toContain("i.is_read=false");
   });
 
   test("handles item insert, update, delete, and status mutations", async () => {
@@ -854,6 +955,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       [chunk],
       [],
       [chunk],
+      [chunk],
       [],
       [],
       [chunk],
@@ -897,6 +999,19 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     await expect(
       repositories.contentChunks.listForContentVersion("version-1")
     ).resolves.toHaveLength(1);
+    const chunkQueries = fake.queries.filter((query) => query.includes("FROM content_chunks"));
+    expect(chunkQueries.length).toBeGreaterThanOrEqual(3);
+    for (const query of chunkQueries) {
+      expect(query).not.toContain("SELECT *");
+      expect(query).not.toContain("search_vector");
+    }
+    const metadata = await repositories.contentChunks.listMetadataForContentVersion("version-1");
+    expect(metadata).toHaveLength(1);
+    expect(metadata[0]).not.toHaveProperty("content");
+    expect(metadata[0]).toMatchObject({ id: "chunk-1", ordinal: 0, tokenCount: 4 });
+    const metadataQuery = fake.queries.at(-1)!;
+    expect(metadataQuery).not.toMatch(/\bcontent\b/);
+    expect(metadataQuery).not.toContain("search_vector");
     await expect(repositories.contentChunks.insertMany([])).resolves.toEqual({
       records: [],
       insertedCount: 0,
@@ -1103,6 +1218,45 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
         evidence: [expect.objectContaining({ chunkId: "chunk-1", exactExcerpt: "Durable" })],
       }),
     ]);
+    expect(listing.queries).toHaveLength(2);
+    expect(listing.queries[1]).toContain("claim_id = ANY(?)");
+    expect(listing.queries[1]).toContain(
+      "ORDER BY claim_id ASC,chunk_id ASC,start_offset ASC,end_offset ASC"
+    );
+
+    const secondClaim = { ...claim, id: "claim-2", ordinal: 1, confidence: 0.5 };
+    const grouped = sqlDouble([
+      [claim, secondClaim],
+      [
+        { ...evidence, claim_id: "claim-2", chunk_id: "chunk-0" },
+        evidence,
+        { ...evidence, chunk_id: "chunk-2", start_offset: 3, end_offset: 9 },
+      ],
+    ]);
+    await expect(
+      createPostgresRepositories(grouped.sql).claims.listForArtifact("artifact-1")
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "claim-1",
+        evidence: [
+          expect.objectContaining({ claimId: "claim-1", chunkId: "chunk-1" }),
+          expect.objectContaining({ claimId: "claim-1", chunkId: "chunk-2", startOffset: 3 }),
+        ],
+      }),
+      expect.objectContaining({
+        id: "claim-2",
+        confidence: 0.5,
+        evidence: [expect.objectContaining({ claimId: "claim-2", chunkId: "chunk-0" })],
+      }),
+    ]);
+    expect(grouped.queries).toHaveLength(2);
+    expect(grouped.sql.array).toHaveBeenCalledWith(["claim-1", "claim-2"]);
+
+    const empty = sqlDouble([[]]);
+    await expect(
+      createPostgresRepositories(empty.sql).claims.listForArtifact("artifact-none")
+    ).resolves.toEqual([]);
+    expect(empty.queries).toHaveLength(1);
 
     const claims = createPostgresRepositories(sqlDouble().sql).claims;
     await expect(claims.insertWithEvidence([])).resolves.toEqual([]);

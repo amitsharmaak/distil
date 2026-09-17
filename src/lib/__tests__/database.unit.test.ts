@@ -72,14 +72,31 @@ function repositoryDouble() {
 async function loadPostgres() {
   jest.resetModules();
   const { groups, repositories } = repositoryDouble();
-  const createPostgresClient = jest.fn().mockReturnValue("sql-client");
+  const getSharedPostgresClient = jest.fn().mockReturnValue("sql-client");
   const createPostgresRepositories = jest.fn().mockReturnValue(repositories);
+  const tenantAccess = {
+    getTenantRepositories: jest.fn().mockReturnValue(repositories),
+    withTenantRepositories: jest.fn(
+      async (_context: unknown, operation: (value: RepositorySet) => Promise<unknown>) =>
+        operation(repositories)
+    ),
+  };
+  const createPostgresRepositoryAccess = jest.fn().mockReturnValue(tenantAccess);
   jest.doMock("@/lib/config", () => ({ config: { databaseUrl: "postgres://test" } }));
-  jest.doMock("@/lib/postgres/client", () => ({ createPostgresClient }));
+  jest.doMock("@/lib/postgres/client", () => ({ getSharedPostgresClient }));
   jest.doMock("@/lib/postgres/repositories", () => ({ createPostgresRepositories }));
+  jest.doMock("@/lib/postgres/tenant-repositories", () => ({ createPostgresRepositoryAccess }));
   jest.doMock("@/lib/db", () => ({}));
   const database = await import("@/lib/database");
-  return { database, groups, repositories, createPostgresClient, createPostgresRepositories };
+  return {
+    database,
+    groups,
+    repositories,
+    getSharedPostgresClient,
+    createPostgresRepositories,
+    createPostgresRepositoryAccess,
+    tenantAccess,
+  };
 }
 
 async function loadLegacy() {
@@ -194,9 +211,34 @@ describe("database facade using PostgreSQL", () => {
 
     await expect(loaded.database.getRepositorySet()).resolves.toBe(loaded.repositories);
     await expect(loaded.database.getRepositorySet()).resolves.toBe(loaded.repositories);
-    expect(loaded.createPostgresClient).toHaveBeenCalledTimes(1);
-    expect(loaded.createPostgresClient).toHaveBeenCalledWith({ url: "postgres://test" });
+    expect(loaded.getSharedPostgresClient).toHaveBeenCalledTimes(1);
+    expect(loaded.getSharedPostgresClient).toHaveBeenCalledWith("postgres://test");
     expect(loaded.createPostgresRepositories).toHaveBeenCalledWith("sql-client");
+  });
+
+  test("resolves the pool through the shared registry rather than a module-level promise", async () => {
+    const loaded = await loadPostgres();
+    await expect(loaded.database.getPostgresClient()).resolves.toBe("sql-client");
+    await expect(loaded.database.getPostgresClient()).resolves.toBe("sql-client");
+    // Every lookup goes through the globalThis memo; nothing is cached here.
+    expect(loaded.getSharedPostgresClient).toHaveBeenCalledTimes(2);
+    expect(loaded.getSharedPostgresClient).toHaveBeenCalledWith("postgres://test");
+  });
+
+  test("runs withTenantRepositories on the memoised tenant access root", async () => {
+    const loaded = await loadPostgres();
+    const context = { userId: "user-1" } as never;
+    const operation = jest.fn(async (set: RepositorySet) => set);
+
+    await expect(loaded.database.withTenantRepositories(context, operation)).resolves.toBe(
+      loaded.repositories
+    );
+    await expect(loaded.database.getTenantRepositories(context)).resolves.toBe(loaded.repositories);
+    expect(operation).toHaveBeenCalledWith(loaded.repositories);
+    expect(loaded.tenantAccess.withTenantRepositories).toHaveBeenCalledWith(context, operation);
+    expect(loaded.tenantAccess.getTenantRepositories).toHaveBeenCalledWith(context);
+    expect(loaded.createPostgresRepositoryAccess).toHaveBeenCalledTimes(1);
+    expect(loaded.createPostgresRepositoryAccess).toHaveBeenCalledWith("sql-client");
   });
 
   test("delegates item, settings, content, notification, job, and publisher operations", async () => {
@@ -586,6 +628,20 @@ describe("database facade using PostgreSQL", () => {
 });
 
 describe("database facade fail-closed and legacy behavior", () => {
+  test("requires DATABASE_URL for tenant repository access", async () => {
+    jest.resetModules();
+    jest.doMock("@/lib/config", () => ({ config: { databaseUrl: "" } }));
+    jest.doMock("@/lib/db", () => ({}));
+    const db: DatabaseModule = await import("@/lib/database");
+    const context = { userId: "user-1" } as never;
+    await expect(db.withTenantRepositories(context, async () => "never")).rejects.toThrow(
+      "DATABASE_URL is required for tenant repositories"
+    );
+    await expect(db.getTenantRepositories(context)).rejects.toThrow(
+      "DATABASE_URL is required for tenant repositories"
+    );
+  });
+
   test("requires DATABASE_URL for Phase 1 repository access", async () => {
     jest.resetModules();
     jest.doMock("@/lib/config", () => ({ config: { databaseUrl: "" } }));

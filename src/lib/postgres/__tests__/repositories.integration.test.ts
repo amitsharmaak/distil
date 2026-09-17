@@ -102,6 +102,66 @@ describe("PostgreSQL repository contracts", () => {
     expect(await repos.summaries.find("new", "brief")).toBeUndefined();
   });
 
+  it("lists summaries without article bodies and finds keyset neighbours in list order", async () => {
+    const repos = createPostgresRepositories(harness.sql);
+    await repos.items.insert({
+      ...item("oldest", "https://example.com/oldest"),
+      createdAt: "2026-01-01T00:00:00Z",
+      fullContent: "<p>oldest body</p>",
+      thumbnailUrl: "https://example.com/oldest.png",
+    });
+    await repos.items.insert({
+      ...item("middle", "https://example.com/middle"),
+      createdAt: "2026-01-02T00:00:00Z",
+      fullContent: "<p>middle body</p>",
+    });
+    await repos.items.insert({
+      ...item("newest", "https://example.com/newest"),
+      createdAt: "2026-01-03T00:00:00Z",
+      isRead: true,
+      fullContent: "<p>newest body</p>",
+    });
+    await repos.items.insert({
+      ...item("processing", "https://example.com/processing"),
+      createdAt: "2026-01-04T00:00:00Z",
+      processingStatus: "processing",
+    });
+
+    const summaries = await repos.items.listSummaries();
+    expect(summaries.map((x) => x.id)).toEqual(["newest", "middle", "oldest"]);
+    expect(summaries.map((x) => x.id)).toEqual((await repos.items.list()).map((x) => x.id));
+    for (const summary of summaries) {
+      for (const key of [
+        "fullContent",
+        "extractedLinks",
+        "detectedMedia",
+        "contentClassification",
+        "thumbnailUrl",
+      ]) {
+        expect(summary).not.toHaveProperty(key);
+      }
+    }
+    expect(JSON.stringify(summaries)).not.toContain("body</p>");
+    expect((await repos.items.findById("oldest"))?.fullContent).toBe("<p>oldest body</p>");
+
+    await expect(repos.items.findNeighbours("middle")).resolves.toEqual({
+      previousId: "newest",
+      nextId: "oldest",
+    });
+    await expect(repos.items.findNeighbours("middle", { unreadOnly: true })).resolves.toEqual({
+      previousId: null,
+      nextId: "oldest",
+    });
+    await expect(repos.items.findNeighbours("newest")).resolves.toEqual({
+      previousId: null,
+      nextId: "middle",
+    });
+    await expect(repos.items.findNeighbours("missing")).resolves.toEqual({
+      previousId: null,
+      nextId: null,
+    });
+  });
+
   it("rejects capture creation without tenant identity", async () => {
     const repos = createPostgresRepositories(harness.sql);
     await expect(

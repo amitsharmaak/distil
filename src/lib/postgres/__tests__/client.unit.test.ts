@@ -1,7 +1,7 @@
 const postgresMock = jest.fn();
 jest.mock("postgres", () => ({ __esModule: true, default: postgresMock }));
 
-import { closePostgresClient, createPostgresClient } from "../client";
+import { closePostgresClient, createPostgresClient, getSharedPostgresClient } from "../client";
 
 const originalUrl = process.env.DATABASE_URL;
 
@@ -44,4 +44,50 @@ it("honours explicit URL and pool sizing and closes gracefully", async () => {
 
   await closePostgresClient(sql as never);
   expect(sql.end).toHaveBeenCalledWith({ timeout: 5 });
+});
+
+describe("getSharedPostgresClient", () => {
+  const registryKey = Symbol.for("distil.postgres.clients");
+  const clearRegistry = () => {
+    delete (globalThis as Record<symbol, unknown>)[registryKey];
+  };
+
+  beforeEach(clearRegistry);
+  afterAll(clearRegistry);
+
+  it("memoises one client per URL and keeps different URLs apart", () => {
+    postgresMock.mockImplementation(() => ({ end: jest.fn() }));
+
+    const runtime = getSharedPostgresClient("postgres://runtime");
+    expect(getSharedPostgresClient("postgres://runtime")).toBe(runtime);
+    expect(getSharedPostgresClient("postgres://runtime", { max: 1 })).toBe(runtime);
+    expect(postgresMock).toHaveBeenCalledTimes(1);
+
+    const controlPlane = getSharedPostgresClient("postgres://control-plane", { max: 1 });
+    expect(controlPlane).not.toBe(runtime);
+    expect(getSharedPostgresClient("postgres://control-plane")).toBe(controlPlane);
+    expect(postgresMock).toHaveBeenCalledTimes(2);
+    expect(postgresMock).toHaveBeenLastCalledWith(
+      "postgres://control-plane",
+      expect.objectContaining({ max: 1 })
+    );
+  });
+
+  it("survives a module reload because the registry lives on globalThis", async () => {
+    postgresMock.mockImplementation(() => ({ end: jest.fn() }));
+    const before = getSharedPostgresClient("postgres://reload");
+
+    jest.resetModules();
+    jest.doMock("postgres", () => ({ __esModule: true, default: postgresMock }));
+    const reloaded: typeof import("../client") = await import("../client");
+
+    expect(reloaded.getSharedPostgresClient).not.toBe(getSharedPostgresClient);
+    expect(reloaded.getSharedPostgresClient("postgres://reload")).toBe(before);
+    expect(postgresMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an empty URL without echoing configuration", () => {
+    expect(() => getSharedPostgresClient("")).toThrow("DATABASE_URL is required");
+    expect(postgresMock).not.toHaveBeenCalled();
+  });
 });

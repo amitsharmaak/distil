@@ -53,6 +53,7 @@ function dependencies(
     contentChunks: {
       findById: jest.fn(),
       listForContentVersion: jest.fn(),
+      listMetadataForContentVersion: jest.fn(),
       insertMany: jest.fn(),
       listUnchunkedVersions: jest.fn().mockResolvedValue([]),
     },

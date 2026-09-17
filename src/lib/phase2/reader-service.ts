@@ -229,12 +229,17 @@ export async function putNote(
   itemId: string,
   body: string
 ): Promise<ItemNoteRecord> {
-  requireItem(await repositories.items.findById(itemId), itemId);
+  // Independent reads run together; a missing item still wins over the note.
+  const [item, existing] = await Promise.all([
+    repositories.items.findById(itemId),
+    repositories.itemNotes.find(itemId),
+  ]);
+  requireItem(item, itemId);
   const now = isoNow();
   return repositories.itemNotes.upsert({
     itemId,
     body,
-    createdAt: (await repositories.itemNotes.find(itemId))?.createdAt ?? now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   });
 }
@@ -257,13 +262,15 @@ export async function createAnnotation(
   itemId: string,
   input: z.infer<typeof annotationCreateSchema>
 ): Promise<AnnotationRecord> {
-  requireItem(await repositories.items.findById(itemId), itemId);
+  const [item, annotations] = await Promise.all([
+    repositories.items.findById(itemId),
+    repositories.annotations.listForItem(itemId),
+  ]);
+  requireItem(item, itemId);
   const id = input.idempotencyKey
     ? deterministicId("annotation", `${itemId}:${input.idempotencyKey}`)
     : randomUUID();
-  const existing = (await repositories.annotations.listForItem(itemId)).find(
-    (annotation) => annotation.id === id
-  );
+  const existing = annotations.find((annotation) => annotation.id === id);
   if (existing) return existing;
   try {
     return await repositories.annotations.create({
@@ -294,10 +301,12 @@ async function annotationForItem(
   itemId: string,
   annotationId: string
 ): Promise<AnnotationRecord> {
-  requireItem(await repositories.items.findById(itemId), itemId);
-  const annotation = (await repositories.annotations.listForItem(itemId)).find(
-    (value) => value.id === annotationId
-  );
+  const [item, annotations] = await Promise.all([
+    repositories.items.findById(itemId),
+    repositories.annotations.listForItem(itemId),
+  ]);
+  requireItem(item, itemId);
+  const annotation = annotations.find((value) => value.id === annotationId);
   if (!annotation)
     throw new ReaderError(
       "ANNOTATION_NOT_FOUND",
@@ -413,17 +422,20 @@ export async function addCollectionItem(
   itemId: string,
   position?: number
 ): Promise<CollectionItemRecord> {
-  const collection = await repositories.collections.find(collectionId);
+  // All three reads are independent; error precedence stays collection, then item.
+  const [collection, item, memberships] = await Promise.all([
+    repositories.collections.find(collectionId),
+    repositories.items.findById(itemId),
+    repositories.collections.listItems(collectionId),
+  ]);
   if (!collection)
     throw new ReaderError(
       "COLLECTION_NOT_FOUND",
       404,
       `Collection with id "${collectionId}" was not found`
     );
-  requireItem(await repositories.items.findById(itemId), itemId);
-  const existing = (await repositories.collections.listItems(collectionId)).find(
-    (value) => value.itemId === itemId
-  );
+  requireItem(item, itemId);
+  const existing = memberships.find((value) => value.itemId === itemId);
   const record = await repositories.collections.addItem({
     collectionId,
     itemId,

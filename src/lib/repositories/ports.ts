@@ -2,6 +2,7 @@ import type { CaptureReceipt, CaptureSource, CaptureStatus } from "@/lib/contrac
 import type { IntelligenceArtifact } from "@/lib/knowledge/artifacts";
 import type {
   ClaimEvidence,
+  ContentChunkMetadata,
   ContentChunkRecord,
   ContentVersionSource,
   GroundedClaim,
@@ -9,7 +10,7 @@ import type {
   KnowledgeBackfillCheckpoint,
   KnowledgeBackfillType,
 } from "@/lib/knowledge/types";
-import type { ContentItem, Notification, Priority } from "@/lib/types";
+import type { ContentItem, ContentItemSummary, Notification, Priority } from "@/lib/types";
 import type { UserId } from "@/lib/contracts/tenant-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { DigestStore } from "@/lib/digests/types";
@@ -35,6 +36,13 @@ export interface ItemFilters {
 
 export interface ItemRepository {
   list(filters?: ItemFilters): Promise<ContentItem[]>;
+  /** Same filters and order as `list`, but the summary projection: never article bodies. */
+  listSummaries(filters?: ItemFilters): Promise<ContentItemSummary[]>;
+  /** Adjacent ids in the default `list` order; a missing item yields both null. */
+  findNeighbours(
+    itemId: string,
+    options?: { unreadOnly?: boolean }
+  ): Promise<{ previousId: string | null; nextId: string | null }>;
   findById(id: string): Promise<ContentItem | undefined>;
   findByNormalizedUrl(url: string): Promise<ContentItem | undefined>;
   listRejected(limit?: number, offset?: number): Promise<{ items: ContentItem[]; total: number }>;
@@ -445,6 +453,8 @@ export interface ContentVersionRepository {
 export interface ContentChunkRepository {
   findById(id: string): Promise<ContentChunkRecord | undefined>;
   listForContentVersion(contentVersionId: string): Promise<ContentChunkRecord[]>;
+  /** Chunk bookkeeping without chunk text, for status and coverage checks. */
+  listMetadataForContentVersion(contentVersionId: string): Promise<ContentChunkMetadata[]>;
   /** Inserts a complete chunk set in one transaction; existing deterministic chunks are retained. */
   insertMany(
     records: ContentChunkRecord[]

@@ -1,17 +1,28 @@
 import type { CaptureRecord, CaptureTokenRecord } from "@/lib/repositories/ports";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
-import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
+import type {
+  ContentItem,
+  ContentItemSummary,
+  ContentType,
+  Priority,
+  SourceType,
+} from "@/lib/types";
 
 type Row = Record<string, unknown>;
 const iso = (value: unknown): string =>
   value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 
-export function mapItem(row: Row): ContentItem {
+/**
+ * Maps the summary column projection of an items row. It deliberately never
+ * reads `full_content`, `extracted_links`, `detected_media`,
+ * `content_classification` or `thumbnail_url`, so list surfaces cannot leak
+ * article bodies even when a row happens to carry them.
+ */
+export function mapItemSummary(row: Row): ContentItemSummary {
   return {
     id: String(row.id),
     title: String(row.title),
     summary: String(row.summary),
-    fullContent: row.full_content == null ? undefined : String(row.full_content),
     sourceType: row.source_type as SourceType,
     contentType: row.content_type as ContentType,
     topics: (row.topics ?? []) as string[],
@@ -27,17 +38,25 @@ export function mapItem(row: Row): ContentItem {
     manualPriority: row.manual_priority == null ? undefined : (row.manual_priority as Priority),
     createdAt: iso(row.created_at),
     duration: row.duration == null ? undefined : String(row.duration),
-    thumbnailUrl: row.thumbnail_url == null ? undefined : String(row.thumbnail_url),
-    extractedLinks: row.extracted_links == null ? undefined : ContentItemLinks(row.extracted_links),
     contentExtractedAt:
       row.content_extracted_at == null ? undefined : iso(row.content_extracted_at),
     aiSummary: row.ai_summary_text == null ? undefined : String(row.ai_summary_text),
     processingStatus: (row.processing_status ?? "ready") as ContentItem["processingStatus"],
     rejectionReason: row.rejection_reason == null ? undefined : String(row.rejection_reason),
-    contentClassification: row.content_classification ?? undefined,
-    detectedMedia: row.detected_media == null ? undefined : (row.detected_media as unknown[]),
     informationDensity:
       row.information_density == null ? undefined : Number(row.information_density),
+  };
+}
+
+/** Maps a full items row: the summary projection plus the bulky detail columns. */
+export function mapItem(row: Row): ContentItem {
+  return {
+    ...mapItemSummary(row),
+    fullContent: row.full_content == null ? undefined : String(row.full_content),
+    thumbnailUrl: row.thumbnail_url == null ? undefined : String(row.thumbnail_url),
+    extractedLinks: row.extracted_links == null ? undefined : ContentItemLinks(row.extracted_links),
+    contentClassification: row.content_classification ?? undefined,
+    detectedMedia: row.detected_media == null ? undefined : (row.detected_media as unknown[]),
   };
 }
 

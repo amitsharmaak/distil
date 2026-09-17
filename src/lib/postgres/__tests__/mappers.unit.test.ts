@@ -1,4 +1,4 @@
-import { mapCapture, mapCaptureToken, mapItem } from "../mappers";
+import { mapCapture, mapCaptureToken, mapItem, mapItemSummary } from "../mappers";
 
 describe("PostgreSQL row mappers", () => {
   it("maps native PostgreSQL JSON, booleans, and timestamps to public item types", () => {
@@ -43,6 +43,56 @@ describe("PostgreSQL row mappers", () => {
     });
     expect(item.createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(item.archivedAt).toBe("2026-01-03T00:00:00.000Z");
+  });
+
+  it("never carries article bodies or detail payloads in the summary projection", () => {
+    const row = {
+      id: "item-1",
+      title: "Postgres",
+      summary: "summary",
+      full_content: "<article>the whole body</article>",
+      source_type: "manual",
+      content_type: "article",
+      topics: ["database"],
+      url: "https://example.com/postgres",
+      priority: "high",
+      is_read: true,
+      created_at: "2026-01-01T00:00:00Z",
+      thumbnail_url: "https://example.com/thumb.png",
+      extracted_links: [{ text: "Docs", url: "https://postgresql.org" }],
+      content_classification: { kind: "article" },
+      detected_media: [{ kind: "video" }],
+      ai_summary_text: "AI summary",
+      information_density: 0.8,
+    };
+    const summary = mapItemSummary(row);
+    for (const key of [
+      "fullContent",
+      "extractedLinks",
+      "detectedMedia",
+      "contentClassification",
+      "thumbnailUrl",
+    ]) {
+      expect(summary).not.toHaveProperty(key);
+    }
+    expect(summary).toMatchObject({
+      id: "item-1",
+      isRead: true,
+      aiSummary: "AI summary",
+      informationDensity: 0.8,
+      processingStatus: "ready",
+    });
+    expect(JSON.stringify(summary)).not.toContain("the whole body");
+
+    const full = mapItem(row);
+    expect(full).toMatchObject({
+      ...summary,
+      fullContent: "<article>the whole body</article>",
+      thumbnailUrl: "https://example.com/thumb.png",
+      extractedLinks: [{ text: "Docs", url: "https://postgresql.org" }],
+      contentClassification: { kind: "article" },
+      detectedMedia: [{ kind: "video" }],
+    });
   });
 
   it("maps capture errors and token lifecycle dates", () => {
