@@ -318,6 +318,7 @@ export class PostgresFeedQuery {
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
     if (query.resurface === "stale") {
+      conditions.push(this.sql`i.processing_status='ready'`);
       conditions.push(this.sql`i.is_read=false`);
       conditions.push(this.sql`i.last_opened_at IS NOT NULL`);
       conditions.push(this.sql`i.last_opened_at <= ${now}::timestamptz - INTERVAL '14 days'`);

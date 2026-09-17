@@ -310,6 +310,7 @@ describe("feed ranking contracts", () => {
     });
 
     expect(sql.statements[0]).toContain("i.is_read=false");
+    expect(sql.statements[0]).toContain("i.processing_status='ready'");
     expect(sql.statements[0]).toContain("i.last_opened_at IS NOT NULL");
     expect(sql.statements[0]).toContain("i.last_opened_at <= ?::timestamptz - INTERVAL '14 days'");
   });
