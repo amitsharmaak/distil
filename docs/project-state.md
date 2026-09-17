@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-16 (Asia/Kolkata)
+Last updated: 2026-09-17 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -18,11 +18,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (planned 2026-09-16, not started):** the checkpoint "Performance analysis
-  and phased plan — 2026-09-16" below records a verified analysis and eight PR-sized phases P0–P7.
-  Amit picks one phase per task, in order, each on its own `claude/<task>` branch with a dated
-  checkpoint; P0 (measurement baseline) comes first so every later phase records before/after
-  numbers. No code changed for the plan itself (branch `claude/perf-plan`, docs only).
+- **Performance overhaul (P0 implemented and locally verified 2026-09-17; P1–P7 not started):**
+  the checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified
+  analysis and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its
+  own `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) is complete on
+  branch `claude/perf-baseline-627eff` (worktree `.claude/worktrees/perf-baseline-627eff`) and
+  awaits Amit's review and merge; see the checkpoint "Performance baseline (P0) — 2026-09-17"
+  below for the baseline numbers every later phase compares against. Not deployed.
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -144,8 +146,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: pick the next unstarted phase from the checkpoint "Performance analysis
-     and phased plan — 2026-09-16" in order P0 → P7. Each phase is a separate task on its own
+  3. Performance overhaul: merge the P0 PR (branch `claude/perf-baseline-627eff`) after review,
+     then pick the next unstarted phase (P1, `claude/perf-auth-handoff`) from the checkpoint
+     "Performance analysis and phased plan — 2026-09-16" in order P0 → P7. Each phase is a
+     separate task on its own
      branch (`claude/perf-baseline`, `claude/perf-auth-handoff`, `claude/perf-db-roundtrips`,
      `claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
@@ -158,6 +162,138 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance baseline (P0) — 2026-09-17
+
+Phase P0 of the performance plan, branch `claude/perf-baseline-627eff` (Claude Code worktree
+`.claude/worktrees/perf-baseline-627eff`, based on `origin/main` at `fa7dda5`). Implementation
+commit `8d8de85`; the PR link is recorded in the handoff bullet once opened. No behaviour change:
+the same provider calls, queries and transactions run as before; they are now counted and timed.
+Every file:line reference in the P0 brief was re-checked against `fa7dda5` before editing and none
+had moved. Nothing was deployed; no environment variable, migration or Production resource changed.
+
+**What changed**
+
+- `src/lib/observability/request-metrics.ts` (new): an `AsyncLocalStorage` store per request that
+  counts provider calls, statements and transactions, attributes them and wall time to named
+  phases, renders a `Server-Timing` value (durations and counts only, never identifiers or
+  content) and exports `withRequestMetrics(handler)`.
+- `src/lib/postgres/client.ts`: `createPostgresClient` wires the postgres.js `debug` hook to the
+  counters (`BEGIN` marks a transaction; `COMMIT`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` are not
+  counted as queries; the hook receives SQL text only, never parameters).
+  `src/lib/postgres/tenant-repositories.ts`: tenant and system transactions accumulate the `db`
+  phase. `src/lib/auth/account-service.ts`: `resolveRequestAuthContext` accumulates the `auth`
+  phase and counts provider session lookups through `src/lib/auth/auth-metrics.ts` (new).
+- `src/proxy.ts` runs inside a metrics store and times the provider middleware call, the
+  `getSession` call and `findAccountByIdentity` as `proxy-auth-provider` and `proxy-auth-db`
+  through `instrumentNeonProxyDependencies`, so `src/lib/auth/neon-proxy.ts` is untouched and the
+  CSRF fixture digest and the three pinned proxy literals are unchanged. Pages and proxy-terminated
+  responses get `Server-Timing: proxy-auth-provider;dur=…;desc="calls=2", proxy-auth-db;dur=…;
+desc="q=1", proxy;dur=…` directly. For API pass-throughs the proxy instead forwards the value in
+  the request header `x-distil-proxy-timing` (set or cleared by the proxy on every request; a
+  client-supplied value never survives), because a header set on the pass-through response
+  replaces the route's own `Server-Timing` (observed under `next start`). The wrapped routes merge
+  it in front of their entries after an allowlist check; unwrapped API routes carry no timing.
+- Five hot routes wrapped with `withRequestMetrics`: `GET /api/v1/feed`, `GET /api/items`,
+  `GET|POST /api/v1/collections`, `GET|PATCH /api/v1/items/[id]/state`, `POST /api/ai/summarize`.
+  Result seen in the browser: `proxy;dur=0.8, auth;dur=0.3, db;dur=21.9;desc="q=7 tx=2",
+total;dur=22.4;desc="q=7 tx=2"` on `/api/v1/feed`.
+- `tests/perf/round-trips.unit.test.ts` (new): a fake provider, a fake auth repository and the
+  `sqlDouble` pattern drive `proxy()` and then `GET /api/v1/feed` and pin today's counts (table
+  below). Later phases lower these assertions on purpose. The pinned `account-service` and
+  `client` unit tests were updated for the counting wrapper and the `debug` option.
+- `scripts/perf/bundle-diff.mjs` (`npm run perf:bundle`) gzips every first-load chunk listed in
+  `.next/diagnostics/route-bundle-stats.json` and diffs against the committed
+  `docs/perf/route-bundle-stats.baseline.json` (`--write` regenerates; `--fail-on-growth[=N]`
+  optional). `scripts/perf/measure-web-vitals.ts` (`npm run perf:vitals`) starts a
+  `postgres:16-alpine` Testcontainer, applies migrations 0001–0009 and the Phase 3 roles, seeds one
+  active user and 12 ready items through the tenant repositories, starts `next start` through the
+  production mode of `tests/support/browser/server.ts` on `127.0.0.1:3100` with the legacy session
+  bridge and a signed cookie, and records TTFB, FCP, LCP, DOMContentLoaded, load, request count,
+  transferred bytes and every `Server-Timing` value for `/`, `/feed`, `/feed/[id]` and `/settings`
+  (one warm-up plus five timed runs each) into the gitignored `.perf/`.
+- `package.json` scripts `perf:bundle` and `perf:vitals`; `.gitignore` entry `/.perf/`.
+
+**Deviations from the brief, deliberate**
+
+- The vitals script is `scripts/perf/measure-web-vitals.ts`, not `.mjs`: under Node 22.23 an
+  `.mjs` entry could not import the TypeScript support modules even through tsx, and every other
+  script in `scripts/` is already a tsx-run `.ts` file.
+- The measured origin is `http://127.0.0.1:3100` (the CI full gate's production-E2E convention),
+  not port 3000: the client bundle inlines `NEXT_PUBLIC_API_BASE_URL` at build time, so the
+  measurement needs `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build` first (the
+  script verifies the baked origin and refuses otherwise), and port 3000 was held by another
+  session's dev server, which was left alone.
+- Files outside the P0 ownership list that changed: the five route files named in the brief,
+  `package.json`, `.gitignore`, `docs/perf/`. `docs/authorization-matrix.json` is unchanged (no
+  route added or removed).
+
+**Baseline: request cost (from `tests/perf/round-trips.unit.test.ts`, Neon Auth path)**
+
+| Request                                       | Provider calls                | Auth queries                | Transactions                                   | Statements |
+| --------------------------------------------- | ----------------------------- | --------------------------- | ---------------------------------------------- | ---------- |
+| Proxy, authenticated GET (any path)           | 2 (middleware + `getSession`) | 1 (`findAccountByIdentity`) | 0                                              | 1          |
+| `GET /api/v1/feed` route (personalization on) | 1                             | 1                           | 2 (preferences under advisory lock, feed page) | 7          |
+| Total per `/api/v1/feed` request              | 3                             | 2                           | 2                                              | 8          |
+
+Live `Server-Timing` under `next start` (legacy auth path, local PostgreSQL, so `auth` is cookie
+verification only): `/api/v1/feed` `db;dur≈21ms q=7 tx=2`; `/api/v1/collections` `db≈7.5ms q=3
+tx=1`; `/api/v1/items/[id]/state` `db≈9ms q=3 tx=1`. Each tenant transaction spends two of its
+statements on `set_config` and the verification `SELECT`.
+
+**Baseline: client JavaScript (`npm run perf:bundle`, Turbopack production build of `8d8de85`,
+gzip level 9 of every first-load chunk; zero delta against the committed baseline)**
+
+| Route                              | Raw        | Gzip           | Chunks |
+| ---------------------------------- | ---------- | -------------- | ------ |
+| shared by every route              | 553.5 kB   | 169.3 kB       | 9      |
+| `/`                                | 560.9 kB   | 172.5 kB       | 10     |
+| `/feed`                            | 602.5 kB   | 186.1 kB       | 11     |
+| `/feed/[id]`                       | 946.4 kB   | 301.0 kB       | 13     |
+| `/settings`                        | 572.4 kB   | 175.6 kB       | 10     |
+| `/account`, `/onboarding`          | 577.2 kB   | 175.5 kB       | 10     |
+| `/research/[id]`                   | 730.0 kB   | 223.7 kB       | 12     |
+| `/sources`, `/topics`, `/research` | 591–604 kB | 181.9–184.8 kB | 11     |
+| other routes                       | 553–569 kB | 169.3–174.3 kB | 9–10   |
+
+**Baseline: page-load medians (`npm run perf:vitals`, 5 runs, 12 seeded items, Chromium 1440×900,
+build `cmZPo49L_pJjWEMls_LH4` on this Mac; local PostgreSQL, so absolute times are far below
+Production and the request counts and bytes are the comparable part)**
+
+| Page         | TTFB | FCP   | LCP    | DOMContentLoaded | load  | Requests | Transferred |
+| ------------ | ---- | ----- | ------ | ---------------- | ----- | -------- | ----------- |
+| `/`          | 7 ms | 28 ms | 100 ms | 22 ms            | 45 ms | 43       | 509 kB      |
+| `/feed`      | 3 ms | 24 ms | 96 ms  | 18 ms            | 40 ms | 47       | 477 kB      |
+| `/feed/[id]` | 8 ms | 32 ms | 32 ms  | 27 ms            | 55 ms | 40       | 568 kB      |
+| `/settings`  | 3 ms | 28 ms | 28 ms  | 14 ms            | 44 ms | 29       | 425 kB      |
+
+Observations for later phases, recorded not acted on: `/feed` prefetches five reader pages and
+`/feed/[id]` prefetches `/`, `/feed`, `/search`, `/ask`, `/save` and `/settings` on load (each
+prefetch pays the full proxy auth cost in Production); `next start` logged "The requested resource
+isn't a valid image for /logo.png received null" on every page load, so `next/image` is failing
+for the 60 KB logo (candidate for P4's asset cleanup); the seeded library shows LCP at ~100 ms on
+`/` and `/feed` versus ~30 ms on the server-rendered reader.
+
+**Verification (all locally verified 2026-09-17 on `8d8de85`)**
+
+- `npm run check`: ESLint 0 errors / 10 baseline warnings, Prettier clean, `tsc --noEmit` clean,
+  Jest 202 suites / 1450 tests passed (includes the 4 new perf tests and the Phase 3 inventory,
+  CSRF-digest and authorization-matrix suites).
+- `npm run build` (default env) succeeded and wrote `.next/diagnostics/route-bundle-stats.json`;
+  `npm run perf:bundle` created the baseline and prints zero delta. A second build with
+  `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100` differs by a few bytes per route only.
+- `npm run perf:vitals` ran twice to completion against Docker (`postgres:16-alpine`); all four
+  pages returned 200 without redirecting to `/login`.
+- Not run: `npm run test:integration`, E2E and extension Playwright (the brief requires them for
+  P1, P2 and P7 only; P0 adds no PostgreSQL behaviour).
+- Previously recorded external state, not re-checked: Production serving `509fccc`, the release
+  pin `unpinned`, Neon branches and the nightly Full gate.
+
+**Restart steps**: `git fetch origin && git switch claude/perf-baseline-627eff` in its worktree;
+`npm run check`; for numbers `npm run build && npm run perf:bundle` and
+`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run perf:vitals` (needs
+Docker and a free port 3100). P1 starts from `origin/main` after this PR merges and lowers the
+assertions in `tests/perf/round-trips.unit.test.ts` as its acceptance test.
 
 ### Branch workflow tooling — 2026-09-16
 
