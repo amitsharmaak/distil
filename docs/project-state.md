@@ -35,9 +35,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   transaction per request with the verification folded into one statement, summary projections
   and keyset neighbours) merged as PR [#26](https://github.com/amitsharmaak/distil/pull/26)
   (`a06d0d7`) and is live on Production; see the checkpoints "Performance P2: database
-  round-trip diet — 2026-09-17" (design and local before/after) and "PR review, merges and
-  cleanup — 2026-09-17" (integration, gates, release) below. The Production `Server-Timing`
-  before/after for P2 has not been read yet. Next phase by Amit's decision (chat, 2026-09-17):
+  round-trip diet — 2026-09-17" (design and local before/after), "PR review, merges and
+  cleanup — 2026-09-17" (integration, gates, release) and "Performance P2 released —
+  2026-09-17" (live Production numbers) below. Next phase by Amit's decision (chat, 2026-09-17):
   P6 (`codex/perf-ai`) on Codex; P3, P5 and P7 remain unstarted for later tasks.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
@@ -194,8 +194,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      label. Afterwards the unstarted Claude phases are P3 (`claude/perf-client-network`), P5
      (`claude/perf-server-render`) and P7 (`claude/perf-indexes`; Production migration run is a
      separate approval), each as its own task with a dated checkpoint and before/after numbers.
-     Still pending from P2: read and record the Production `Server-Timing` before/after for the
-     feed, collections and item-state routes (needs a signed-in session). The live P1 numbers
+     The P2 Production reading is recorded ("Performance P2 released — 2026-09-17"); the
+     item-state route stays unmeasured until the library has an item. The live P1 numbers
      show `proxy-auth-db` at about 130 ms per request on Neon, so P7 should look at the
      `distil_resolve_auth_identity` lookup as well as the tenant transactions.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
@@ -203,6 +203,37 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P2 released — 2026-09-17
+
+PR [#26](https://github.com/amitsharmaak/distil/pull/26) merged as `a06d0d7` and auto-deployed
+(GitHub deployment `6499150136`); the docs-only `c85f336` (#28) redeployed identical application
+code as `6499256635`, which served the reading below. Merge and gates are recorded in "PR review,
+merges and cleanup — 2026-09-17". No environment variable, migration or Neon resource changed;
+the legacy alias `distil-pv-1850.vercel.app` still points at the P1 release.
+
+**Live verification (Production `c85f336`, hosted Neon Auth, Amit's signed-in session in the
+in-app browser, 2026-09-17, `Server-Timing` read through same-origin `fetch`, second of two
+readings per route; library empty, so `db` costs are the floor of each query shape)**
+
+| Request                   | Proxy provider      | Proxy auth query | Proxy total             | Route `auth` | Route `db` (P1 → P2)                        |
+| ------------------------- | ------------------- | ---------------- | ----------------------- | ------------ | ------------------------------------------- |
+| `GET /api/v1/feed`        | 128.7 ms, `calls=1` | 128.9 ms, `q=1`  | 260.1 ms, `calls=1 q=1` | 0.7 ms       | 45.9 ms `q=7 tx=2` → **19.2 ms `q=3 tx=1`** |
+| `GET /api/v1/collections` | 81.5 ms, `calls=1`  | 128.2 ms, `q=1`  | 211.1 ms, `calls=1 q=1` | 1.8 ms       | 18.0 ms `q=3 tx=1` → **10.8 ms `q=2 tx=1`** |
+| `GET /feed` (page)        | 82.5 ms, `calls=1`  | 128.7 ms, `q=1`  | 212.3 ms, `calls=1 q=1` | n/a          | n/a                                         |
+
+The feed's first (cold) reading was `db;dur=21.7` with the same `q=3 tx=1`, collections
+`db;dur=18.0` then `10.8`. The statement and transaction counts match the local P2 checkpoint
+exactly (feed 7 → 3 statements, 2 → 1 transactions with personalization on; collections 3 → 2).
+The proxy phases are unchanged from P1 (one provider call, one auth query of about 128 ms), as
+P2 did not touch `src/proxy.ts` or `neon-proxy.ts`; that query remains the largest fixed cost per
+request and is P7's target. The item-state route (`q=3 tx=1` → `q=2 tx=1` locally) could not be
+read because the Production library has no item; take it after the first capture. The
+`/api/v1/feed` response carried `items: []`, so the summary-projection payload saving is not
+visible on Production yet either.
+
+**Rollback**: revert `a06d0d7` on `main` (auto-deploys) or promote deployment `6499086682`
+(`0d5e689`) in Vercel; no schema changed.
 
 ### PR review, merges and cleanup — 2026-09-17
 
