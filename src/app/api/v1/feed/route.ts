@@ -5,6 +5,7 @@ import { FeedQueryError } from "@/lib/feed/feed-query";
 import { getTenantRepositories } from "@/lib/database";
 import { apiLogger } from "@/lib/logger";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 const querySchema = z.object({
   read: z.enum(["true", "false"]).optional(),
@@ -32,7 +33,7 @@ function multi(searchParams: URLSearchParams, name: string): string[] | undefine
   return values.length ? values : undefined;
 }
 
-export async function GET(request: Request): Promise<Response> {
+export const GET = withRequestMetrics(async (request: Request): Promise<Response> => {
   try {
     const context = await resolveRequestAuthContext(request);
     if (!process.env.DATABASE_URL) {
@@ -120,4 +121,4 @@ export async function GET(request: Request): Promise<Response> {
       { status: 500 }
     );
   }
-}
+});

@@ -5,9 +5,10 @@ import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenan
 import { AIProviderError } from "@/lib/ai/errors";
 import { AIQuotaExceededError } from "@/lib/ai/router";
 import { isTwitterUrl } from "@/lib/utils";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
-export async function POST(req: NextRequest) {
+export const POST = withRequestMetrics(async (req: NextRequest) => {
   try {
     const { context, repositories } = await requireTenantRoute(req);
     const body = await req.json();
@@ -74,4 +75,4 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 });
   }
-}
+});

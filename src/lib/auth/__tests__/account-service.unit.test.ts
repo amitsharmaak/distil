@@ -55,14 +55,26 @@ describe("account service composition", () => {
     );
     expect(mockedGetServer).not.toHaveBeenCalled();
     expect(mockedGetRepositories).not.toHaveBeenCalled();
-    expect(mockedResolveNeon).toHaveBeenCalledWith(provider, repositories, context.requestId);
+    expect(mockedResolveNeon).toHaveBeenCalledWith(
+      expect.objectContaining({ getSession: expect.any(Function) }),
+      repositories,
+      context.requestId
+    );
+    // The provider is wrapped only to count calls; every lookup still reaches it.
+    const counted = mockedResolveNeon.mock.calls[0][0];
+    await counted.getSession({ query: { disableCookieCache: "true" } });
+    expect(provider.getSession).toHaveBeenCalledWith({ query: { disableCookieCache: "true" } });
   });
 
   it("loads default runtime dependencies and tolerates a missing trace id", async () => {
     await resolveCurrentAccount(new Request("https://distil.example/account"));
     expect(mockedGetServer).toHaveBeenCalledTimes(1);
     expect(mockedGetRepositories).toHaveBeenCalledTimes(1);
-    expect(mockedResolveNeon).toHaveBeenCalledWith(provider, repositories, undefined);
+    expect(mockedResolveNeon).toHaveBeenCalledWith(
+      expect.objectContaining({ getSession: expect.any(Function) }),
+      repositories,
+      undefined
+    );
   });
 
   it("returns the locked Neon context when the provider rollout is enabled", async () => {

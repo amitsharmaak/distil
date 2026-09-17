@@ -23,6 +23,7 @@ import { createCaptureCollectionHandlers } from "@/lib/capture/http";
 import { createCaptureSchema } from "@/lib/capture/schema";
 import { hybridSearch } from "@/lib/ai/search";
 import type { ContentItem } from "@/lib/types";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 /**
  * Fetches the URL and runs the full intelligence pipeline.
@@ -75,7 +76,7 @@ function withCorsHeaders(response: Response): Response {
  * Response shape:
  *   { items: ContentItem[], total: number }
  */
-export async function GET(request: NextRequest) {
+export const GET = withRequestMetrics(async (request: NextRequest) => {
   try {
     const { repositories } = await requireTenantRoute(request);
     const { searchParams } = request.nextUrl;
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
       { status: 500, headers: CORS_HEADERS }
     );
   }
-}
+});
 
 // ── POST /api/items ───────────────────────────────────────────────────────────
 

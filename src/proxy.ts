@@ -15,6 +15,13 @@ import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
+import { instrumentNeonProxyDependencies } from "@/lib/auth/auth-metrics";
+import {
+  PROXY_TIMING_HEADER,
+  runWithRequestMetrics,
+  serverTimingHeader,
+  type RequestMetrics,
+} from "@/lib/observability/request-metrics";
 
 const CONNECTOR_API_PREFIXES = [
   "/api/auth/gmail",
@@ -33,12 +40,23 @@ function connectorsDisabled(pathname: string): boolean {
   );
 }
 
-export async function proxy(request: NextRequest) {
+export function proxy(request: NextRequest): Promise<NextResponse> {
+  return runWithRequestMetrics((metrics) => handleProxy(request, metrics));
+}
+
+async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
   const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
-  const finish = (response: NextResponse) =>
-    applyPrivateApiCacheControl(pathname, isApi ? applyCors(request, response) : response);
+  const finish = (response: NextResponse, passThrough = false) => {
+    // Durations and counters only (see request-metrics.ts); visible in DevTools.
+    // A header on an API pass-through would replace the route's own
+    // Server-Timing, so those receive it as a request header instead.
+    if (!(isApi && passThrough)) {
+      response.headers.set("server-timing", serverTimingHeader(metrics, "proxy"));
+    }
+    return applyPrivateApiCacheControl(pathname, isApi ? applyCors(request, response) : response);
+  };
 
   if (connectorsDisabled(pathname)) {
     return finish(
@@ -65,10 +83,13 @@ export async function proxy(request: NextRequest) {
     if (authError) return finish(authError);
   } else {
     try {
-      const auth = getNeonAuthServer();
-      const authorization = await authorizeNeonProxy(request, traceId, {
-        provider: auth,
+      const dependencies = instrumentNeonProxyDependencies({
+        provider: getNeonAuthServer(),
         repositories: await getAuthRepositoryPort(),
+      });
+      const authorization = await authorizeNeonProxy(request, traceId, {
+        provider: dependencies.provider,
+        repositories: dependencies.repositories,
         allowedOrigins: readAuthEnvironment().allowedOrigins,
       });
       if (authorization.response) {
@@ -93,6 +114,9 @@ export async function proxy(request: NextRequest) {
 
   // Add trace ID header for downstream use (Edge runtime uses Web Crypto API)
   requestHeaders.set("x-trace-id", traceId);
+  // Never trust a client-supplied value; set or clear it here on every request.
+  if (isApi) requestHeaders.set(PROXY_TIMING_HEADER, serverTimingHeader(metrics, "proxy"));
+  else requestHeaders.delete(PROXY_TIMING_HEADER);
 
   const response = NextResponse.next({
     request: { headers: requestHeaders },
@@ -105,7 +129,7 @@ export async function proxy(request: NextRequest) {
   });
 
   // Apply CORS headers
-  return finish(response);
+  return finish(response, true);
 }
 
 export const config = {

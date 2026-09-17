@@ -8,6 +8,11 @@ import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import type { AuthContext } from "@/lib/contracts";
+import { countProviderCalls } from "@/lib/auth/auth-metrics";
+import { measurePhase } from "@/lib/observability/request-metrics";
+
+/** Server-Timing phase covering provider verification and the account lookup. */
+const AUTH_PHASE = "auth";
 
 export async function resolveCurrentAccount(
   request: Request,
@@ -19,14 +24,21 @@ export async function resolveCurrentAccount(
     dependencies?.provider ?? (await import("@/lib/auth/neon-server")).getNeonAuthServer();
   const repositories = dependencies?.repositories ?? (await getAuthRepositoryPort());
   return resolveNeonAuthRequest(
-    provider,
+    countProviderCalls(provider),
     repositories,
     request.headers.get("x-trace-id") ?? undefined
   );
 }
 
 /** Resolve the exact locked AuthContext for tenant-aware application code. */
-export async function resolveRequestAuthContext(
+export function resolveRequestAuthContext(
+  request: Request,
+  dependencies?: { provider: ProviderIdentityPort; repositories: AuthRepositoryPort }
+): Promise<AuthContext> {
+  return measurePhase(AUTH_PHASE, () => resolveRequestAuthContextUnmeasured(request, dependencies));
+}
+
+async function resolveRequestAuthContextUnmeasured(
   request: Request,
   dependencies?: { provider: ProviderIdentityPort; repositories: AuthRepositoryPort }
 ): Promise<AuthContext> {
