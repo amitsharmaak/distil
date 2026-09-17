@@ -1,0 +1,4 @@
+# Gitignored local files copied into every worktree Claude Code creates.
+# Local configuration only; never list captured content, exports or credentials
+# beyond what the app already needs in .env.local.
+.env.local

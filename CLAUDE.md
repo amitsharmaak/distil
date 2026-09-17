@@ -20,9 +20,11 @@ Conversation history is not shared between agents. Repository files are the shar
 - Production is live at `https://distilai.app` on Vercel with Neon PostgreSQL as the system of
   record. Phases 1–3 (cloud capture, daily knowledge experience, multi-user tenant isolation) are
   complete. Legacy SQLite code in `src/lib/db.ts` is compatibility only.
-- `main` is the integration and release branch. Work on short-lived `claude/<task>` branches from
-  current `main`, include the state-file update in the same branch, and never overwrite another
-  agent's or Amit's uncommitted work.
+- `main` is the integration and release branch. Work on short-lived `claude/<task>` or
+  `worktree-<task>` branches from current `origin/main`, one branch per session, include the
+  state-file update in the same branch, and never overwrite another agent's or Amit's
+  uncommitted work. `AGENTS.md` §7.1 is the routine; `/start-task <name>` and `/finish-task`
+  script it.
 - Releases, cloud mutations, invitations and data deletion need task-specific authorization from
   Amit for that task; recorded historical approvals are not blanket permission.
 

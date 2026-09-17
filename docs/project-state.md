@@ -26,12 +26,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
-- **Branch / worktree:** `main` at `509fccc` (squash merge of PR
-  [#16](https://github.com/amitsharmaak/distil/pull/16), which integrated the tiering and
-  UI-simplification branches) plus this release record. No task branches or extra worktrees
-  remain for this work. The worktree `/Users/amitsharma/Projects/distil-ui-simplification`
-  (branch `claude/ui-simplification`, clean, now merged) can be removed by Amit with
-  `git worktree remove /Users/amitsharma/Projects/distil-ui-simplification`.
+- **Branch / worktree:** `main` at `22cd7aa` (squash merge of PR
+  [#19](https://github.com/amitsharmaak/distil/pull/19), the performance plan) on
+  2026-09-16. The `distil-ui-simplification` and `distil-perf-plan` worktrees and their branches
+  are gone; only the main checkout on `main` remains. Task branches now follow the
+  parallel-session routine in `AGENTS.md` §7.1 (one session per branch, branch from
+  `origin/main`, merge not rebase, `/start-task` and `/finish-task`).
   Production serves release `509fccc` as deployment `dpl_DMRkvC5CgYvMW9apSP6yfn93P3SH` on both
   `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-16). Release pin
   `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase): every push to
@@ -102,11 +102,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
     handler is registered (`src/lib/jobs/tenant-runtime.ts` completes them as "No tenant handler
     registered"), so the nightly digest cron in `vercel.json` is write-only. Amit chose not to add
     digest work now; either register handlers or stop enqueuing in a later task.
-  - Concurrent docs branch: `claude/pwa-reinstall-notes` (`f763aad`, iPhone Home Screen reinstall
-    notes) was checked out in the primary working directory while this plan was written, so
-    `claude/perf-plan` lives in the worktree `/Users/amitsharma/Projects/distil-perf-plan`. Both
-    branches insert a checkpoint at the same place in this file; whoever integrates second keeps
-    both checkpoints.
+  - Resolved 2026-09-16: the concurrent docs branches `claude/pwa-reinstall-notes` (PR #18,
+    `735ee4d`) and `claude/perf-plan` (PR #19, `22cd7aa`) both merged; both checkpoints kept.
+  - Two files of the branch-workflow tooling could not be written by Claude Code because the
+    auto-mode classifier refused them: the shared `.claude/settings.json` (permission allowlist,
+    `worktree.baseRef`) and `.claude/skills/finish-task/SKILL.md`. Amit adds them by hand from
+    the checkpoint "Branch workflow tooling — 2026-09-16" below.
 - **Verification of the integration branch (locally verified 2026-09-16, full gate on the
   combined tree at `54e8263`):** `npm run lint` 0 errors / 10 baseline warnings, Prettier clean;
   `tsc --noEmit` clean; `npm test` 201 suites / 1446 tests passed; `npm run test:integration`
@@ -157,6 +158,43 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Branch workflow tooling — 2026-09-16
+
+Docs and configuration only, branch `claude/branch-workflow`. Amit asked for a way to run
+several Claude Code sessions against this repository without the rebase and squash friction of
+the previous week (PR #18 and PR #19 were written in parallel and both touched this file; one
+branch had been committed from two places). What changed:
+
+- `AGENTS.md` §7.1 records the parallel-session routine: one session per branch, branch from
+  `origin/main` only, sync with `git merge origin/main` rather than rebase, never reuse a merged
+  branch, append-only checkpoints in this file, Claude worktrees under `.claude/worktrees/<task>`
+  on `worktree-<task>` branches accepted alongside `claude/<task>`.
+- `CLAUDE.md` baseline bullet points at §7.1 and the two skills.
+- `.gitignore` now ignores `.claude/*` except `.claude/settings.json` and `.claude/skills/`, so
+  shared Claude configuration is tracked; `settings.local.json`, `launch.json` and
+  `.claude/worktrees/` stay ignored.
+- `.worktreeinclude` lists `.env.local` so Claude-created worktrees get the local environment.
+- `.claude/skills/start-task/SKILL.md`: user-invoked `/start-task <name>` (refuse on dirty tree,
+  fetch, enter or confirm a fresh worktree from `origin/main`, `npm ci`, report).
+- Local, not in the repo: `git config rerere.enabled true` in the main checkout.
+
+Not written (auto-mode classifier refused every attempt, by Write and by shell): the shared
+`.claude/settings.json` (permission allowlist for fetch, status, log, diff, branch, worktree,
+switch, fast-forward merge and push of task branches, `gh pr view|list|checks|create`,
+`gh run`, `npm run check*`, `npm ci`, `npx prettier`; `autoMode.allow` entry for branch and
+worktree housekeeping;
+`worktree.baseRef: fresh`) and `.claude/skills/finish-task/SKILL.md` (sync by merge, append
+checkpoint, `npm run check`, commit, push, `gh pr create`, `gh pr checks --watch`, squash merge
+on Amit's request, `ExitWorktree`, fast-forward `main`, remove worktree and branch). Claude Code
+saved both files' content in its session scratchpad and printed it in chat; Amit adds them by
+hand on this branch before merging. `gh pr merge` stays only in the gitignored
+`settings.local.json`.
+
+Locally verified 2026-09-16: `git check-ignore` confirms the new ignore rules track
+`.claude/settings.json` and `.claude/skills/**` and still ignore `settings.local.json`,
+`launch.json` and `.claude/worktrees/`; `npx prettier --check` clean on the changed markdown.
+No code, tests, dependencies, environment variables or deployments changed.
 
 ### Performance analysis and phased plan — 2026-09-16
 
