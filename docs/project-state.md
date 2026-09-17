@@ -221,6 +221,22 @@ a laptop, with a database that can be wiped at will and no Vercel deploy per fix
   nothing was deployed.
 - **Follow-ups:** a Neon dev branch is deliberately not part of this loop (Amit wants local data
   independent of Production). Tenant lifecycle jobs still have no local consumer.
+- **Rebased 2026-09-17** onto `origin/main` at `f295124` (P0, P1, P4 merged). Only
+  `docs/project-state.md` conflicted; the code merged cleanly and P4 did not touch the queue,
+  capture or knowledge modules. After the rebase: `npm run check` passed (201 suites, 1435 tests;
+  a stale `.next/dev/types` file from the earlier dev run had to be deleted first, it is not
+  source). `npm run test:integration` passed (12 Testcontainers suites, 44 tests).
+- **Note for P6 (`claude/perf-ai`):** the P6 brief edits the `enqueueEnrichment` hook "in
+  `src/app/api/queue/capture-requests/route.ts`". That hook, the `CaptureWorker` construction and
+  `createDefaultCaptureProcessor` wiring now live in `consumeCaptureMessage` in
+  `src/lib/queue/capture-consumer.ts`; the route only keeps `handleCallback`, the message
+  validation (`createCaptureQueueMessageHandler`) and the re-exported `CAPTURE_QUEUE_ACTOR_ID`.
+  Put the per-capture brief summary call after `indexCapturedItem` inside that consumer so it
+  runs identically behind Vercel Queue and behind the local inline dispatcher; the route contract
+  test still mocks `@vercel/queue` and does not exercise the consumer. `composeCaptureRoutes` in
+  `src/lib/capture/composition.ts` chooses the dispatcher from `config.captureDispatch`
+  (`"queue"` default, `"inline"` local) and imports the consumer lazily so the request path
+  never loads the worker on Vercel.
 
 ### Performance P4: bundle and rendering — 2026-09-17
 
