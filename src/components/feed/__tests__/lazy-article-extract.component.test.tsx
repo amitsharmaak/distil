@@ -12,10 +12,6 @@ jest.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
 }));
 
-jest.mock("@/lib/config", () => ({
-  config: { apiBaseUrl: "https://distil.test" },
-}));
-
 function response({ ok = true, extracted = false }: { ok?: boolean; extracted?: boolean } = {}) {
   return {
     ok,
@@ -69,7 +65,7 @@ describe("LazyArticleExtract", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("shows progress, completes extraction, and refreshes only when content changed", async () => {
+  it("shows progress and settles optimistically without a successful refresh", async () => {
     const request = deferred<Response>();
     fetchMock.mockReturnValue(request.promise);
 
@@ -80,7 +76,7 @@ describe("LazyArticleExtract", () => {
     );
 
     expect(screen.getByText("Loading article content…")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("https://distil.test/api/items/item-1/extract", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/items/item-1/extract", {
       method: "POST",
     });
 
@@ -89,14 +85,11 @@ describe("LazyArticleExtract", () => {
     });
 
     expect(await screen.findByText("Article body")).toBeInTheDocument();
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { label: "no content was extracted", result: response({ extracted: false }) },
-    { label: "the endpoint rejects the request", result: response({ ok: false }) },
-  ])("settles without refreshing when $label", async ({ result }) => {
-    fetchMock.mockResolvedValue(result);
+  it("settles without refreshing when no content was extracted", async () => {
+    fetchMock.mockResolvedValue(response({ extracted: false }));
 
     render(
       <LazyArticleExtract itemId="item-2" url="https://article.test" hasFullContent={false}>
@@ -106,6 +99,23 @@ describe("LazyArticleExtract", () => {
 
     expect(await screen.findByText("Fallback body")).toBeInTheDocument();
     expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "the endpoint rejects the request", result: response({ ok: false }) },
+    { label: "the network request fails", result: new Error("offline") },
+  ])("refreshes to roll back when $label", async ({ result }) => {
+    if (result instanceof Error) fetchMock.mockRejectedValue(result);
+    else fetchMock.mockResolvedValue(result);
+
+    render(
+      <LazyArticleExtract itemId="item-3" url="https://article.test" hasFullContent={false}>
+        <p>Fallback body</p>
+      </LazyArticleExtract>
+    );
+
+    expect(await screen.findByText("Fallback body")).toBeInTheDocument();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("settles after a network failure", async () => {
@@ -118,7 +128,7 @@ describe("LazyArticleExtract", () => {
     );
 
     expect(await screen.findByText("Fallback body")).toBeInTheDocument();
-    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a successful response after unmount", async () => {

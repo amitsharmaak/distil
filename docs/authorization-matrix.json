@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-16",
+  "updatedAt": "2026-09-17",
   "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
   "status": "wave-3-integration-in-progress",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
@@ -1269,6 +1269,17 @@
       "testProfile": "owner"
     },
     {
+      "path": "/api/v1/items/status",
+      "source": "src/app/api/v1/items/status/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items"],
+      "testProfile": "owner",
+      "notes": "At most 50 caller-supplied ids; tenant repository omits foreign and missing ids."
+    },
+    {
       "path": "/api/v1/items/:id/annotations/:annotationId",
       "source": "src/app/api/v1/items/[id]/annotations/[annotationId]/route.ts",
       "methods": ["PATCH", "DELETE"],
@@ -1502,7 +1513,7 @@
       "source": "src/app/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "dataPath": "fixture-backed TodayExperience; future tenant API only",
+      "dataPath": "/api/v1/feed with owner-scoped priority and stale resurfacing projections",
       "testProfile": "owner"
     },
     {
@@ -1562,7 +1573,7 @@
       "source": "src/app/feed/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "dataPath": "/api/v1/feed and /api/v1/collections",
+      "dataPath": "/api/v1/feed, /api/v1/collections and bounded /api/v1/items/status polling",
       "testProfile": "owner"
     },
     {
@@ -2323,7 +2334,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 81,
+    "expectedApiRouteFileCount": 82,
     "expectedPageFileCount": 18,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

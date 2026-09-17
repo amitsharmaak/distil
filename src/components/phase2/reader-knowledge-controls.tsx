@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, ArchiveRestore, BookmarkPlus, NotebookPen, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 import type { Priority } from "@/lib/types";
 
 type ReaderState = {
@@ -17,7 +16,7 @@ type Collection = { id: string; name: string; description?: string };
 type CollectionDetail = { collection: Collection; items: Array<{ itemId: string }> };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.apiBaseUrl}${path}`, init);
+  const response = await fetch(path, init);
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string };
   };

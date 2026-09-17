@@ -142,6 +142,18 @@ describe("GET /api/items", () => {
     expect(body.items).toHaveLength(2);
   });
 
+  it("caps an unbounded list request at 100 items", async () => {
+    for (let index = 0; index < 101; index += 1) {
+      await insertItem(makeItem({ id: `capped-${index}` }));
+    }
+
+    const res = await GET(makeRequest("http://localhost:3000/api/items"));
+    const body = await res.json();
+
+    expect(body.total).toBe(100);
+    expect(body.items).toHaveLength(100);
+  });
+
   it("filters by source query param", async () => {
     await insertItem(makeItem({ id: "g", sourceType: "gmail" }));
     await insertItem(makeItem({ id: "s", sourceType: "slack" }));

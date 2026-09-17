@@ -6,7 +6,6 @@ import { CheckCheck, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { config } from "@/lib/config";
 import type { Notification } from "@/lib/types";
 
 function timeAgo(dateStr: string): string {
@@ -33,7 +32,7 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
   const [loading, setLoading] = useState(true);
 
   const fetchNotifications = useCallback(() => {
-    fetch(`${config.apiBaseUrl}/api/notifications`)
+    fetch("/api/notifications")
       .then((res) => res.json())
       .then((data) => {
         setNotifications(data.notifications ?? []);
@@ -48,22 +47,20 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
   }, [fetchNotifications]);
 
   async function markAllRead() {
-    await fetch(`${config.apiBaseUrl}/api/notifications`, { method: "POST" });
+    await fetch("/api/notifications", { method: "POST" });
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     onCountChange(0);
   }
 
   async function handleClick(notification: Notification) {
     if (!notification.isRead) {
-      fetch(`${config.apiBaseUrl}/api/notifications/${notification.id}`, {
+      fetch(`/api/notifications/${notification.id}`, {
         method: "PATCH",
       });
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)),
+        prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
       );
-      onCountChange(
-        notifications.filter((n) => !n.isRead && n.id !== notification.id).length,
-      );
+      onCountChange(notifications.filter((n) => !n.isRead && n.id !== notification.id).length);
     }
     onClose();
   }
@@ -93,9 +90,7 @@ export function NotificationPanel({ onClose, onCountChange }: NotificationPanelP
       {/* Notification list */}
       <ScrollArea className="max-h-[70dvh] sm:max-h-80">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Loading...</div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
             <Bell className="h-5 w-5" />

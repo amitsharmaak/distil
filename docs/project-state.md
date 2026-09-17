@@ -19,7 +19,7 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Performance overhaul (P0, P1, P4, P2 and P6 merged and released 2026-09-17, in that
-  order; P3, P5 and P7 not started):** the
+  order; P3 implementation complete and locally verified; P5 and P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -41,16 +41,24 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   summary, accounting off the critical path, answer cache, provider bounds) merged as PR
   [#30](https://github.com/amitsharmaak/distil/pull/30) (`637d923`) and is live on Production;
   see "Performance P6: AI cost and latency — 2026-09-17" (design and local evidence) and
-  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3, P5 and
-  P7 remain unstarted for later tasks.
+  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3 is
+  implementation-complete on `codex/perf-client-network`, locally verified, and open as PR
+  [#32](https://github.com/amitsharmaak/distil/pull/32) with `full-ci`; its dated checkpoint is
+  directly below this handoff. P5 and P7 remain unstarted for later tasks.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
   merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
   force; P6 ran alone from `origin/main` with no ownership split.
+- **Performance P3 task:** Codex owns `codex/perf-client-network` in
+  `/Users/amitsharma/Projects/distil-codex-perf-client-network`, based on `origin/main` `58a4a9c`.
+  Implementation commit `8627ab3`; verified PR-opening head `25d5a01`. No ownership split is in
+  force. Implementation and local gates are complete; PR #32 is open with `full-ci` for Amit's
+  review and merge decision.
 - **Branch / worktree:** `main` at `637d923` (squash merge of PR
   [#30](https://github.com/amitsharmaak/distil/pull/30), P6) on 2026-09-17, after `eb557a7`
   (#29, P2 release record), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689`
-  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). No PR is open.
+  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). PR #32 is the only
+  open PR.
   Every merged task branch and worktree is deleted; the main checkout
   (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
   the one that wrote this checkpoint is `.claude/worktrees/jabra-evolve-mic-test-7167d1`
@@ -186,8 +194,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      (this is also handoff step 1), then confirm the item reaches `ready`, a generated `brief`
      summary appears in the reader, and Vercel runtime logs show no `capture_summary_skipped`;
      with that item id, read `Server-Timing` on `GET /api/v1/items/<id>/state` (expected `q=2
-tx=1`) and note both in a dated checkpoint. Then the unstarted phases are P3
-     (`claude/perf-client-network`), P5 (`claude/perf-server-render`) and P7
+tx=1`) and note both in a dated checkpoint. P3 is complete locally and awaits Amit's merge; the
+     unstarted phases are P5 (`claude/perf-server-render`) and P7
      (`claude/perf-indexes`; Production migration run is a separate approval; adds the
      `ai_summaries.content_hash` column P6 left un-keyed), each as its own task from fresh
      `origin/main` with a dated checkpoint and before/after numbers. The live P1 numbers
@@ -198,6 +206,87 @@ tx=1`) and note both in a dated checkpoint. Then the unstarted phases are P3
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P3: client payload and network — 2026-09-17
+
+Codex implemented P3 on branch `codex/perf-client-network` in worktree
+`/Users/amitsharma/Projects/distil-codex-perf-client-network`, based on fresh `origin/main`
+`58a4a9c` (later than the requested floor because it records the P6 release). Implementation commit
+`8627ab3`; verified PR-opening head `25d5a01`. PR
+[#32](https://github.com/amitsharmaak/distil/pull/32) is open against `main` with the `full-ci`
+label. Nothing was merged or deployed; Production, Neon, Vercel, migrations, environment
+variables and the release pin were not touched. The P6 capture path, `src/lib/ai/**`,
+`src/proxy.ts` and `src/lib/auth/neon-proxy.ts` were not edited.
+
+**What changed**
+
+- Every client fetch now uses a same-origin relative `/api/...` URL. New
+  `src/lib/public-config.ts` is the only browser-safe configuration surface and exports only
+  `apiBaseUrl`; no client component imports `src/lib/config.ts`. A production-build scan found no
+  server configuration field names or API-base literal in `.next/static/chunks`.
+- Legacy `GET /api/items` defaults to `limit=100`. New tenant-bound
+  `GET /api/v1/items/status?ids=` accepts 1–50 ids and returns only `{ id, processingStatus }`
+  projections visible through the caller's tenant repository; foreign/missing ids are omitted.
+  The authorization matrix, frozen route inventory and reviewed route count now cover 82 API
+  files and 18 pages.
+- `/feed` keeps server filters authoritative (only the rejected guard remains), polls the status
+  projection every three seconds only while processing ids exist, and patches the matching rows.
+  A component test advances the interval and proves no second `/api/v1/feed` request occurs.
+- Today now makes one
+  `/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale` request. The route returns the
+  priority page plus `resurfacedItems` selected inside the same tenant transaction; PostgreSQL
+  enforces unread, unarchived, ready, `last_opened_at` present and at least 14 days old. The old
+  100-item Today scan and client filtering are gone.
+- Next client-cache TTLs are `staleTimes: { dynamic: 30, static: 300 }`. Mark-read, lazy extract
+  and profile updates apply local state first; success performs no `router.refresh()`, while a
+  failed update rolls back where applicable and refreshes. P2/P4 work was retained: summary feed
+  rows still exclude `thumbnailUrl`, and the P4 compiler/import optimizations remain enabled.
+- `scripts/perf/measure-web-vitals.ts` now builds for relative same-origin requests and records a
+  processing-feed sample across one polling interval in addition to the existing pages.
+
+**Before / after (local production build, Docker PostgreSQL, medians of five runs unless noted)**
+
+| Page                             | Requests before | Requests after | Transfer before | Transfer after |
+| -------------------------------- | --------------: | -------------: | --------------: | -------------: |
+| `/`                              |              41 |             40 |          490 kB |         480 kB |
+| `/feed`                          |              45 |             45 |          480 kB |         479 kB |
+| `/feed` with one processing item |              45 |             45 |          487 kB |         479 kB |
+
+The processing total stays at 45 because a non-clickable processing card removes one reader-link
+prefetch while one poll is added. Before P3 that poll was another full `GET /api/v1/feed`; after
+P3 the measured request is only `GET /api/v1/items/status`. The component proof additionally
+asserts the full feed request count does not increase after the interval. Baseline processing
+numbers use three runs on an otherwise clean detached `58a4a9c`; the ordinary baseline and all
+after numbers use five runs. Final output:
+`.perf/web-vitals-2026-09-17T15-25-59-313Z.json` (gitignored).
+
+**Client bundle (`npm run build && npm run perf:bundle -- --fail-on-growth=0`)**
+
+| Route                 | `58a4a9c` gzip |  P3 gzip |   Delta |
+| --------------------- | -------------: | -------: | ------: |
+| `/`                   |       140.4 kB | 139.8 kB | -0.6 kB |
+| `/feed`               |       171.2 kB | 169.3 kB | -1.9 kB |
+| shared by every route |       132.8 kB | 132.8 kB |       0 |
+
+The required client-bundle delta is therefore non-positive. The committed P0 comparison also
+remains negative for every extant route; the no-growth command exited 0.
+
+**Locally verified**
+
+- `npm run check`: ESLint 0 errors / 5 existing warnings, formatting and TypeScript clean; Jest
+  206 suites / 1,478 tests passed. This includes owner success, anonymous 401, foreign/missing-id
+  omission and malformed-input coverage for the new status route, the 100-item legacy cap, the
+  server stale filter and optimistic success/failure behavior.
+- `npm run test:e2e`: 27 passed / 3 expected feature-flag skips across desktop Chromium, mobile
+  Chromium and mobile WebKit. Updated Phase 2 feed mocks return both response projections.
+- Production build succeeded with the new route and `staleTimes`; the bundle command above and
+  `npm run perf:vitals` both passed. Deterministic tests and measurements used local resources and
+  contacted no hosted service.
+
+**Unfinished / exact restart:** PR #32 is open with `full-ci`; its Quick gate and Vercel check had
+started when this checkpoint closed. Amit decides merge and release. Inspect the PR checks, review
+the diff and merge only on Amit's instruction. After a later merge, re-check the resulting `main`
+Quick/Full gates and Vercel deployment before calling P3 deployed.
 
 ### Performance P6 released — 2026-09-17
 

@@ -5,13 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Clock3, ExternalLink, Loader2, Play, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 import type { DigestItem, DigestRun, PersonalPreferences } from "@/lib/digests/types";
 
 type ApiError = Error & { code?: string; status?: number };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.apiBaseUrl}${path}`, init);
+  const response = await fetch(path, init);
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { code?: string; message?: string };
   };

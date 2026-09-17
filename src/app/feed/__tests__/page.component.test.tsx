@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import FeedPage from "../page";
 import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
@@ -10,10 +10,6 @@ let mockSearch = "";
 
 jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mockSearch),
-}));
-
-jest.mock("@/lib/config", () => ({
-  config: { apiBaseUrl: "https://distil.test" },
 }));
 
 jest.mock("@/components/feed/content-card", () => ({
@@ -26,11 +22,16 @@ jest.mock("@/components/feed/content-card", () => ({
     item: ContentItem;
     compact: boolean;
     filter: string;
-    onMarkRead: (id: string) => void;
+    onMarkRead: (id: string, read: boolean) => void;
   }) => (
-    <article data-testid={`item-${item.id}`} data-compact={String(compact)} data-filter={filter}>
+    <article
+      data-testid={`item-${item.id}`}
+      data-compact={String(compact)}
+      data-filter={filter}
+      data-read={String(item.isRead)}
+    >
       <span>{item.title}</span>
-      <button type="button" onClick={() => onMarkRead(item.id)}>
+      <button type="button" onClick={() => onMarkRead(item.id, true)}>
         Mark {item.title} read
       </button>
     </article>
@@ -174,7 +175,7 @@ describe("FeedPage", () => {
     jest.clearAllMocks();
   });
 
-  it("settles loading, hides read and rejected items, and marks an item read optimistically", async () => {
+  it("trusts server filtering, keeps the rejected guard, and marks an item read optimistically", async () => {
     fetchMock.mockResolvedValue(
       itemsResponse([
         makeItem(),
@@ -187,18 +188,18 @@ describe("FeedPage", () => {
 
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(screen.queryByText("Read video")).not.toBeInTheDocument();
+    expect(screen.getByText("Read video")).toBeInTheDocument();
     expect(screen.queryByText("Rejected")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false"
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false"
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mark Unread article read" }));
-    expect(screen.queryByText("Unread article")).not.toBeInTheDocument();
-    expect(screen.getByText("No items match your filters.")).toBeInTheDocument();
+    expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-read", "true");
+    expect(screen.getByText("Read video")).toBeInTheDocument();
   });
 
-  it("applies source, type, priority, read, and compact-view controls", async () => {
+  it("sends source, type, priority, and read filters to the server", async () => {
     fetchMock.mockResolvedValue(
       itemsResponse([
         makeItem({ id: "manual", title: "Manual high article" }),
@@ -222,17 +223,22 @@ describe("FeedPage", () => {
     expect(await screen.findByText("Gmail high video")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
-    expect(screen.queryByText("Manual high article")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("source=gmail"))
+    );
     fireEvent.click(screen.getByRole("button", { name: "Videos only" }));
     fireEvent.click(screen.getByRole("button", { name: "High only" }));
-    expect(screen.getByText("Gmail high video")).toBeInTheDocument();
-    expect(screen.queryByText("Gmail low video")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("priority=high"))
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "All sources" }));
     fireEvent.click(screen.getByRole("button", { name: "All types" }));
     fireEvent.click(screen.getByRole("button", { name: "All priorities" }));
     fireEvent.click(screen.getByRole("button", { name: "Toggle read" }));
-    expect(screen.getByText("Read item")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(expect.not.stringContaining("read=false"))
+    );
     expect(screen.getByTestId("item-read")).toHaveAttribute("data-filter", "all");
 
     fireEvent.click(screen.getByRole("button", { name: "Compact view" }));
@@ -247,9 +253,7 @@ describe("FeedPage", () => {
 
     expect(screen.getByText('Search results for "durable queues"')).toBeInTheDocument();
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/items?includeProcessing=true&q=durable+queues"
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/items?includeProcessing=true&q=durable+queues");
   });
 
   it("initializes the read filter from the URL", async () => {
@@ -279,14 +283,30 @@ describe("FeedPage", () => {
 
   it("polls while an item is processing and stops its timer on unmount", async () => {
     jest.useFakeTimers();
-    fetchMock.mockResolvedValue(
-      itemsResponse([makeItem({ processingStatus: "processing", title: "Processing item" })])
-    );
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/items/status")) {
+        return Promise.resolve(
+          itemsResponse([makeItem({ processingStatus: "ready", title: "Processing item" })])
+        );
+      }
+      if (url === "/api/v1/collections") {
+        return Promise.resolve({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ collections: [] }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(
+        itemsResponse([makeItem({ processingStatus: "processing", title: "Processing item" })])
+      );
+    });
     const clearIntervalSpy = jest.spyOn(global, "clearInterval");
     const { unmount } = render(<FeedPage />);
     await settleInitialFetch();
     expect(screen.getByText("Processing item")).toBeInTheDocument();
-    const initialCalls = fetchMock.mock.calls.length;
+    const initialFeedCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).startsWith("/api/v1/feed?")
+    ).length;
 
     await act(async () => {
       jest.advanceTimersByTime(3_000);
@@ -294,7 +314,10 @@ describe("FeedPage", () => {
       await Promise.resolve();
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(initialCalls + 1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/items/status?ids=item-1");
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/feed?")).length
+    ).toBe(initialFeedCalls);
     unmount();
     expect(clearIntervalSpy).toHaveBeenCalled();
   });

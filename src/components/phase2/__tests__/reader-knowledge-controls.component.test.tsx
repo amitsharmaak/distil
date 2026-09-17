@@ -6,8 +6,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { ReaderKnowledgeControls } from "../reader-knowledge-controls";
 
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
@@ -41,7 +39,7 @@ describe("ReaderKnowledgeControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save note" }));
     expect(await screen.findByText("Note saved")).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/items/item-1/note",
+      "/api/v1/items/item-1/note",
       expect.objectContaining({ method: "PUT" })
     );
   });
@@ -100,7 +98,7 @@ describe("ReaderKnowledgeControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "100%" }));
     await screen.findByText("Progress set to 100%");
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/items/item-1/state",
+      "/api/v1/items/item-1/state",
       expect.objectContaining({ method: "PATCH" })
     );
   });

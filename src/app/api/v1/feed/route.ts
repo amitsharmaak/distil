@@ -23,6 +23,7 @@ const querySchema = z.object({
   sort: z.enum(["recent", "priority", "for_you"]).default("for_you"),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().min(1).max(1024).optional(),
+  resurface: z.enum(["stale"]).optional(),
 });
 
 function multi(searchParams: URLSearchParams, name: string): string[] | undefined {
@@ -57,6 +58,7 @@ export const GET = withRequestMetrics(async (request: Request): Promise<Response
       sort: params.get("sort") ?? undefined,
       limit: params.get("limit") ?? undefined,
       cursor: params.get("cursor") ?? undefined,
+      resurface: params.get("resurface") ?? undefined,
     });
     if (!parsed.success) {
       return Response.json(
@@ -84,7 +86,7 @@ export const GET = withRequestMetrics(async (request: Request): Promise<Response
       const preferences = flags.personalization
         ? await repositories.digestExperience.getPreferences()
         : undefined;
-      return repositories.feed.list({
+      const page = await repositories.feed.list({
         read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
         archive: parsed.data.archive,
         topics: parsed.data.topic,
@@ -101,6 +103,16 @@ export const GET = withRequestMetrics(async (request: Request): Promise<Response
           flags.personalization && preferences?.personalizationEnabled
         ),
       });
+      if (parsed.data.resurface !== "stale") return page;
+      const resurfaced = await repositories.feed.list({
+        read: false,
+        archive: "exclude",
+        sort: "recent",
+        limit: 3,
+        resurface: "stale",
+        personalizationEnabled: false,
+      });
+      return { ...page, resurfacedItems: resurfaced.items };
     });
     return Response.json(page);
   } catch (error) {

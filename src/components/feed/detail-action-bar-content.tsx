@@ -7,7 +7,6 @@ import { ChevronLeft, ChevronRight, ExternalLink, ThumbsUp, ThumbsDown, Check } 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { config } from "@/lib/config";
 
 export interface DetailActionBarProps {
   itemId: string;
@@ -41,7 +40,7 @@ export function DetailActionBar({
     if (submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/feedback`, {
+      const res = await fetch("/api/ai/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, rating: value }),
@@ -58,7 +57,7 @@ export function DetailActionBar({
     if (read || markingRead) return;
     setMarkingRead(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/items/${itemId}`, {
+      const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isRead: true }),

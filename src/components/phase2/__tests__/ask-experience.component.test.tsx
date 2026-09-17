@@ -5,8 +5,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AskExperience } from "../ask-experience";
 import type { GroundedAnswerResponse } from "@/lib/knowledge/service";
 
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 const answer: GroundedAnswerResponse = {
   status: "ready",
   intent: "specific",
