@@ -18,7 +18,7 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0 and P1 merged and released 2026-09-17; P4 implemented on a PR;
+- **Performance overhaul (P0, P1 and P4 merged and released 2026-09-17;
   P2–P3 and P5–P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
@@ -28,14 +28,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   [#22](https://github.com/amitsharmaak/distil/pull/22) (`f2e4155`) and is live on Production;
   see the checkpoints "Performance P1 released — 2026-09-17" (live numbers) and "Performance P1:
   one auth verification per request — 2026-09-17" (design and local before/after) below. Codex
-  completed P4 locally on `codex/perf-bundle` (owns `src/components/**`, `src/app/layout.tsx`,
+  completed P4 on `codex/perf-bundle` (owns `src/components/**`, `src/app/layout.tsx`,
   `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
   the route counts in `docs/authorization-matrix.json`), based on `53edd84`; its checkpoint below
-  records the target exception and verification. Next Claude phase: P2
+  records the target exception and release verification. Next Claude phase: P2
   (`claude/perf-db-roundtrips`).
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
-  files only. Claude is the integration owner for the concurrent P2/P4 pair; Codex opened the P4
-  PR but will not merge it.
+  files only. Claude is the integration owner for the concurrent P2/P4 pair; Amit merged the P4
+  PR after its Quick and Full gates passed.
 - **Branch / worktree:** `main` at `22cd7aa` (squash merge of PR
   [#19](https://github.com/amitsharmaak/distil/pull/19), the performance plan) on
   2026-09-16. The `distil-ui-simplification` and `distil-perf-plan` worktrees and their branches
@@ -50,11 +50,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
   deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
-  P4 is on `codex/perf-bundle` in `/private/tmp/distil-perf-bundle`, based on `origin/main` at
-  `53edd84`; implementation commit `5578b7b` and documentation checkpoint `83c8b03` are in PR
-  [#24](https://github.com/amitsharmaak/distil/pull/24), labeled `full-ci`. No Production
-  deployment or environment change was made; opening the PR created the normal automatic Vercel
-  Preview deployment only.
+  P4 PR [#24](https://github.com/amitsharmaak/distil/pull/24) was squash-merged by Amit as
+  `f295124` and automatically deployed to Production as GitHub deployment `6498811802`; the apex
+  health endpoint returned 200. No manual deploy, migration or environment change was made. The
+  legacy Vercel alias was not re-aliased or re-checked.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -162,9 +161,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: P1 is released and P4 is implemented on its review branch. Claude,
-     as integration owner, reconciles P2 and P4 if either merges first. Pick the next unstarted
-     Claude phase, P2 (`claude/perf-db-roundtrips`), from the checkpoint "Performance analysis and
+  3. Performance overhaul: P1 and P4 are released. Pick the next unstarted Claude phase, P2
+     (`claude/perf-db-roundtrips`), from the checkpoint "Performance analysis and
      phased plan — 2026-09-16". Each phase is a separate task on its own branch
      (`claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
@@ -179,6 +177,22 @@ test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated c
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P4 released — 2026-09-17
+
+Amit squash-merged PR [#24](https://github.com/amitsharmaak/distil/pull/24) as `f295124` while the
+Codex handoff was in progress. Codex did not invoke the merge or a deployment. Because the release
+pin remains `unpinned`, Vercel's Git integration then created Production deployment `6498811802`;
+its status is `success`, and `https://distilai.app/api/health` returned 200 with
+`cache-control: no-store`. The legacy alias was not re-aliased or re-checked. No migration or
+environment-variable change occurred.
+
+The PR's final head `1eef11f` passed the Quick gate and every labeled Full gate job: deterministic
+tests, PostgreSQL integration, production build, web/mobile E2E, extension E2E and the non-blocking
+coverage job. The post-merge Quick gate on `f295124` also passed. The implementation results and
+the shared-bundle target deviation remain in the next checkpoint. This docs-only release-state
+correction is branch `codex/perf-bundle-release-state`; merge its PR to make the canonical handoff
+match the already-released external state.
 
 ### Performance P4: bundle and rendering — 2026-09-17
 
