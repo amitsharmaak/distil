@@ -5,7 +5,9 @@ import { readAuthEnvironment } from "@/lib/auth/environment";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { getCaptureTokenIdentityResolver, getTenantRepositories } from "@/lib/database";
-import { createVercelCaptureDispatcher } from "@/lib/queue/dispatchers";
+import { config } from "@/lib/config";
+import { apiLogger, sanitizeLogError } from "@/lib/logger";
+import { createVercelCaptureDispatcher, InlineCaptureDispatcher } from "@/lib/queue/dispatchers";
 import { CaptureService } from "./service";
 
 export interface CaptureRouteComposition {
@@ -14,6 +16,12 @@ export interface CaptureRouteComposition {
 }
 
 async function defaultDispatcher(): Promise<CaptureDispatcher> {
+  if (config.captureDispatch === "inline") {
+    const { consumeCaptureMessage } = await import("@/lib/queue/capture-consumer");
+    return new InlineCaptureDispatcher(consumeCaptureMessage, (error) => {
+      apiLogger.error({ err: sanitizeLogError(error) }, "inline capture processing failed");
+    });
+  }
   return createVercelCaptureDispatcher();
 }
 

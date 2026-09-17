@@ -1,0 +1,25 @@
+# Local-only PostgreSQL for iterating on Distil without touching Neon.
+# Data lives in the named volume; `npm run db:local:reset` wipes the schema,
+# `docker compose down -v` wipes everything.
+name: distil-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: distil-local-postgres
+    environment:
+      POSTGRES_USER: distil
+      POSTGRES_PASSWORD: distil
+      POSTGRES_DB: distil_local
+    ports:
+      - "5433:5432"
+    volumes:
+      - distil-local-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U distil -d distil_local"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  distil-local-postgres:

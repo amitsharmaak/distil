@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-16
+## Current handoff — 2026-09-17
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -45,6 +45,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   Production serves release `f2e4155` (P1) as deployment `dpl_HMjgEvzutvgy3xZNxyBBHeAn65tJ` on
   both `distilai.app` and `distil-pv-1850.vercel.app` (verified 2026-09-17; the P0 merge
   `f1cb2ac` auto-deployed earlier the same day and was superseded). Release pin
+- **Local iteration loop (landing 2026-09-17, branch `claude/distil-urls-config-4d6132`):**
+  Amit now captures articles into a laptop-only PostgreSQL (Docker, in-process capture worker,
+  legacy password login) and ships fixes to Production in batches. Runbook
+  `docs/runbooks/local-development.md`; checkpoint "Local development loop — 2026-09-17" below.
+  Local data is independent of Production and is wiped with `npm run db:local:reset`.
   `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase): every push to
   `main` now auto-deploys to Production through Vercel's Git integration. The legacy alias
   `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
@@ -177,6 +182,59 @@ test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated c
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Local development loop — 2026-09-17
+
+Branch `claude/distil-urls-config-4d6132`. Goal: iterate on the UI and capture behaviour entirely on
+a laptop, with a database that can be wiped at will and no Vercel deploy per fix.
+
+- **Local PostgreSQL:** `docker-compose.yml` (project `distil-local`, `postgres:16-alpine` on
+  port 5433, owner `distil`, database `distil_local`). `npm run dev:local` starts it and then
+  `next dev`; `npm run db:local:down` stops it.
+- **Reset:** `scripts/local-db-reset.ts` (`npm run db:local:reset`) drops `public` and
+  `tenant_api`, re-applies the four base migrations, `phase3_roles.sql`, the five tenant stages
+  (expand → baseline → backfill → contract → lifecycle → returning-auth) with
+  `DISTIL_LEGACY_USER_ID` as owner, creates the `distil_app` login role (member of
+  `distil_runtime`), and activates the owner user. It refuses non-loopback hosts.
+- **In-process capture:** `DISTIL_CAPTURE_DISPATCH=inline` selects the new
+  `InlineCaptureDispatcher` (`src/lib/queue/dispatchers.ts`) in `src/lib/capture/composition.ts`.
+  The queue callback's worker wiring moved to `src/lib/queue/capture-consumer.ts` and is shared
+  by the Vercel route and the inline path, so both run the same worker, processor and knowledge
+  indexing. Default remains the Vercel queue; the flag is local-only.
+- **Secrets helper:** `npm run local:secrets -- <password>` prints `DISTIL_LEGACY_USER_ID`,
+  `DISTIL_SESSION_SECRET` and `DISTIL_WEB_PASSWORD_HASH`. The hash is emitted with `\$` escapes
+  because `@next/env` expands `$name` even inside single quotes (verified: an unescaped hash
+  collapses to 32 characters and every login returns 401).
+- **Auth locally:** `FEATURE_NEON_AUTH=false`, legacy password login only. Phase 2 experience
+  flags are set to `true` in `.env.local.example` so the full app renders.
+- **Docs:** `.env.local.example` (new), `docs/runbooks/local-development.md` (new), README
+  "Running locally" rewritten, AGENTS.md command list extended.
+- **Tests:** `InlineCaptureDispatcher` unit tests (deferred execution, detached copy, error hook)
+  and composition tests for the default and inline selection. Existing queue route contract tests
+  unchanged and passing.
+- **Verified locally (2026-09-17):** fresh reset, `npm run dev:local`, password login, saving
+  `https://paulgraham.com/greatwork.html` from `/save` returned 202, the capture request row went
+  `queued → ready` in about two seconds through the inline worker, and "How to Do Great Work"
+  appeared in the Feed. Not verified: the browser extension against localhost (Amit's step), and
+  nothing was deployed.
+- **Follow-ups:** a Neon dev branch is deliberately not part of this loop (Amit wants local data
+  independent of Production). Tenant lifecycle jobs still have no local consumer.
+- **Rebased 2026-09-17** onto `origin/main` at `f295124` (P0, P1, P4 merged). Only
+  `docs/project-state.md` conflicted; the code merged cleanly and P4 did not touch the queue,
+  capture or knowledge modules. After the rebase: `npm run check` passed (201 suites, 1435 tests;
+  a stale `.next/dev/types` file from the earlier dev run had to be deleted first, it is not
+  source). `npm run test:integration` passed (12 Testcontainers suites, 44 tests).
+- **Note for P6 (`claude/perf-ai`):** the P6 brief edits the `enqueueEnrichment` hook "in
+  `src/app/api/queue/capture-requests/route.ts`". That hook, the `CaptureWorker` construction and
+  `createDefaultCaptureProcessor` wiring now live in `consumeCaptureMessage` in
+  `src/lib/queue/capture-consumer.ts`; the route only keeps `handleCallback`, the message
+  validation (`createCaptureQueueMessageHandler`) and the re-exported `CAPTURE_QUEUE_ACTOR_ID`.
+  Put the per-capture brief summary call after `indexCapturedItem` inside that consumer so it
+  runs identically behind Vercel Queue and behind the local inline dispatcher; the route contract
+  test still mocks `@vercel/queue` and does not exercise the consumer. `composeCaptureRoutes` in
+  `src/lib/capture/composition.ts` chooses the dispatcher from `config.captureDispatch`
+  (`"queue"` default, `"inline"` local) and imports the consumer lazily so the request path
+  never loads the worker on Vercel.
 
 ### Performance P4 released — 2026-09-17
 

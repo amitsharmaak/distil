@@ -22,6 +22,14 @@ export const config = {
   /** Separately privileged account-enumeration URL used only by signed control-plane jobs. */
   databaseControlPlaneUrl: process.env.DATABASE_CONTROL_PLANE_URL ?? "",
 
+  /**
+   * How accepted captures reach the worker. `queue` (default) publishes to the
+   * Vercel Queue topic; `inline` runs the worker in-process, for local `next dev`
+   * against a local PostgreSQL where no queue credentials exist. Never set
+   * `inline` on Vercel: request lifetimes there end before the worker finishes.
+   */
+  captureDispatch: process.env.DISTIL_CAPTURE_DISPATCH === "inline" ? "inline" : "queue",
+
   /** Source connectors stay off in hosted Phase 1 deployments. */
   featureConnectors: process.env.FEATURE_CONNECTORS !== "false",
 

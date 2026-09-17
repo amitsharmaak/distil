@@ -3,6 +3,7 @@ import {
   createVercelTenantJobDispatcher,
   FakeCaptureDispatcher,
   FakeTenantJobDispatcher,
+  InlineCaptureDispatcher,
   LocalCaptureDispatcher,
   VercelCaptureDispatcher,
   VercelTenantJobDispatcher,
@@ -10,6 +11,7 @@ import {
 import {
   createCaptureQueueMessageV2,
   createTenantJobEnvelopeV1,
+  type CaptureQueueMessageV2,
 } from "@/lib/contracts/tenant-jobs";
 
 jest.mock("@vercel/queue", () => ({ send: jest.fn().mockResolvedValue({ messageId: "queue-1" }) }));
@@ -27,6 +29,30 @@ const lifecycleMessage = createTenantJobEnvelopeV1({
 });
 
 describe("capture dispatchers", () => {
+  it("runs the inline consumer after the dispatch call returns, with a detached copy", async () => {
+    const consume = jest.fn<Promise<void>, [CaptureQueueMessageV2]>(async () => undefined);
+    const dispatcher = new InlineCaptureDispatcher(consume);
+    await dispatcher.dispatch(message, { idempotencyKey: message.captureId });
+    expect(consume).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(consume.mock.calls[0][0]).toEqual(message);
+    expect(consume.mock.calls[0][0]).not.toBe(message);
+  });
+
+  it("reports inline consumer failures to the error hook instead of the request", async () => {
+    const failure = new Error("fetch failed");
+    const onError = jest.fn();
+    const dispatcher = new InlineCaptureDispatcher(async () => {
+      throw failure;
+    }, onError);
+    await expect(
+      dispatcher.dispatch(message, { idempotencyKey: message.captureId })
+    ).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onError).toHaveBeenCalledWith(failure);
+  });
+
   it("deduplicates fake and local messages by idempotency key", async () => {
     const dispatcher = new FakeCaptureDispatcher();
     await dispatcher.dispatch(message, { idempotencyKey: message.captureId });
