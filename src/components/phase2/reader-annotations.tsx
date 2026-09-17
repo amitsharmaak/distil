@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Highlighter, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 
 type Annotation = {
   id: string;
@@ -30,7 +29,7 @@ type SelectionAnchor = {
 };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.apiBaseUrl}${path}`, init);
+  const response = await fetch(path, init);
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string };
   };

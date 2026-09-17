@@ -6,7 +6,6 @@ jest.mock("react-markdown", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 jest.mock("remark-gfm", () => ({ __esModule: true, default: () => {} }));
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "" } }));
 beforeEach(() => jest.mocked(global.fetch).mockReset());
 
 it("escapes plain original content instead of interpreting it as HTML", async () => {

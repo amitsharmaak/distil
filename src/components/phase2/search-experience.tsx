@@ -13,7 +13,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 import type { PassageSearchResponse, PassageSearchResult } from "@/lib/knowledge/retrieval";
 
 const sources = ["gmail", "slack", "browser-extension", "manual", "publisher"];
@@ -33,7 +32,7 @@ function sameValues(left: string[], right: string[]): boolean {
 }
 
 async function requestSearch(query: URLSearchParams): Promise<PassageSearchResponse> {
-  const response = await fetch(`${config.apiBaseUrl}/api/v1/search?${query.toString()}`);
+  const response = await fetch(`/api/v1/search?${query.toString()}`);
   const payload = (await response.json().catch(() => ({}))) as PassageSearchResponse & {
     error?: { message?: string; code?: string };
   };

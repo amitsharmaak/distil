@@ -140,6 +140,19 @@ class PostgresItems implements ItemRepository {
   async listSummaries(f: ItemFilters = {}): Promise<ContentItemSummary[]> {
     return this.selectSummaries(this.listClause(f));
   }
+  async listProcessingStatuses(ids: string[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.sql<{ id: string; processing_status: string }[]>`
+      SELECT id, processing_status
+      FROM items
+      WHERE id = ANY(${this.sql.array(ids)})`;
+    return rows.map((row) => ({
+      id: String(row.id),
+      processingStatus: (row.processing_status ?? "ready") as NonNullable<
+        ContentItem["processingStatus"]
+      >,
+    }));
+  }
   /**
    * Keyset neighbours in the default `list()` order (ready items, newest
    * first, id as the tie-break): "previous" is the next-newer item and "next"

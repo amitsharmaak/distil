@@ -4,21 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 
 interface MarkReadButtonProps {
   itemId: string;
   isRead: boolean;
-  onRead?: () => void;
+  onRead?: (read: boolean) => void;
   showLabel?: boolean;
 }
 
-export function MarkReadButton({
-  itemId,
-  isRead,
-  onRead,
-  showLabel = false,
-}: MarkReadButtonProps) {
+export function MarkReadButton({ itemId, isRead, onRead, showLabel = false }: MarkReadButtonProps) {
   const router = useRouter();
   const [read, setRead] = useState(isRead);
   const [loading, setLoading] = useState(false);
@@ -29,18 +23,24 @@ export function MarkReadButton({
 
     if (read || loading) return;
 
+    setRead(true);
+    onRead?.(true);
     setLoading(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/items/${itemId}`, {
+      const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isRead: true }),
       });
-      if (res.ok) {
-        setRead(true);
-        onRead?.();
+      if (!res.ok) {
+        setRead(false);
+        onRead?.(false);
         router.refresh();
       }
+    } catch {
+      setRead(false);
+      onRead?.(false);
+      router.refresh();
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,11 @@ export function MarkReadButton({
     <Button
       variant={showLabel ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
-      className={showLabel ? "gap-1.5" : "h-11 w-11 md:h-8 md:w-8 shrink-0 text-muted-foreground hover:text-foreground"}
+      className={
+        showLabel
+          ? "gap-1.5"
+          : "h-11 w-11 md:h-8 md:w-8 shrink-0 text-muted-foreground hover:text-foreground"
+      }
       onClick={handleClick}
       disabled={loading}
       title="Mark as read"

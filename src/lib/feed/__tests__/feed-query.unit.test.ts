@@ -301,6 +301,19 @@ describe("feed ranking contracts", () => {
     expect(JSON.stringify(page)).not.toContain("the whole body");
   });
 
+  it("filters stale resurfacing candidates in PostgreSQL using the 14-day rule", async () => {
+    const sql = fakeFeedSql([feedRow("stale")]);
+    await new PostgresFeedQuery(sql as never, context).list({
+      sort: "recent",
+      resurface: "stale",
+      now,
+    });
+
+    expect(sql.statements[0]).toContain("i.is_read=false");
+    expect(sql.statements[0]).toContain("i.last_opened_at IS NOT NULL");
+    expect(sql.statements[0]).toContain("i.last_opened_at <= ?::timestamptz - INTERVAL '14 days'");
+  });
+
   it("fails closed for malformed keyset cursors before querying PostgreSQL", async () => {
     const query = new PostgresFeedQuery(fakeFeedSql([]) as never, context);
     await expect(query.list({ cursor: "invalid" })).rejects.toMatchObject({

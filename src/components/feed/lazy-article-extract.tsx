@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { config } from "@/lib/config";
 
 interface LazyArticleExtractProps {
   itemId: string;
@@ -41,19 +40,21 @@ export function LazyArticleExtract({
     async function run() {
       setStatus("loading");
       try {
-        const res = await fetch(`${config.apiBaseUrl}/api/items/${itemId}/extract`, {
+        const res = await fetch(`/api/items/${itemId}/extract`, {
           method: "POST",
         });
         if (cancelled) return;
         if (res.ok) {
-          const data = await res.json();
           setStatus("done");
-          if (data.extracted) router.refresh();
         } else {
           setStatus("done");
+          router.refresh();
         }
       } catch {
-        if (!cancelled) setStatus("done");
+        if (!cancelled) {
+          setStatus("done");
+          router.refresh();
+        }
       }
     }
 

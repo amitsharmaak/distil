@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["radix-ui"],
     inlineCss: true,
+    staleTimes: { dynamic: 30, static: 300 },
   },
   /**
    * Mark better-sqlite3 as a server-external package.

@@ -157,35 +157,46 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!account) return;
+    const previous = account;
     setSaving(true);
     setError(undefined);
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/v1/account", {
-      method: "PATCH",
-      headers: { "content-type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        displayName: form.get("displayName"),
-        timezone: form.get("timezone"),
-        onboardingCompleted: onboarding || account.onboardingCompleted,
-        privacy: {
-          allowPersonalization: form.get("allowPersonalization") === "on",
-          allowAiProcessing: form.get("allowAiProcessing") === "on",
-        },
-      }),
-    });
-    setSaving(false);
-    if (!response.ok) {
-      setError(await messageFor(response, "Could not save your account."));
-      return;
-    }
-    const payload = (await response.json()) as { account: AccountProfile };
-    setAccount(payload.account);
-    if (onboarding) {
-      router.replace("/");
+    const update = {
+      displayName: String(form.get("displayName") ?? ""),
+      timezone: String(form.get("timezone") ?? account.timezone),
+      onboardingCompleted: onboarding || account.onboardingCompleted,
+      privacy: {
+        allowPersonalization: form.get("allowPersonalization") === "on",
+        allowAiProcessing: form.get("allowAiProcessing") === "on",
+      },
+    };
+    setAccount({ ...account, ...update });
+    try {
+      const response = await fetch("/api/v1/account", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(update),
+      });
+      if (!response.ok) {
+        setAccount(previous);
+        setError(await messageFor(response, "Could not save your account."));
+        router.refresh();
+        return;
+      }
+      const payload = (await response.json()) as { account: AccountProfile };
+      setAccount(payload.account);
+      if (onboarding) {
+        router.replace("/");
+        return;
+      }
+      setNotice("Account details saved.");
+    } catch {
+      setAccount(previous);
+      setError("Could not save your account.");
       router.refresh();
-      return;
+    } finally {
+      setSaving(false);
     }
-    setNotice("Account details saved.");
   }
 
   async function revokeSession(id: string) {

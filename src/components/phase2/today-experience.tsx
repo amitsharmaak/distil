@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 
-import { config } from "@/lib/config";
 import { toPlainText } from "@/lib/format";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { TodayPrototype } from "./today-prototype";
 import type { KnowledgeItem } from "./types";
 
-type FeedResponse = { items?: FeedItem[]; error?: { message?: string } };
+type FeedResponse = {
+  items?: FeedItem[];
+  resurfacedItems?: FeedItem[];
+  error?: { message?: string };
+};
 
 function sourceName(item: FeedItem): string {
   return item.publication || item.author || item.sourceType;
@@ -26,11 +29,17 @@ function toKnowledgeItem(item: FeedItem): KnowledgeItem {
   };
 }
 
-async function getFeed(query: URLSearchParams): Promise<FeedItem[]> {
-  const response = await fetch(`${config.apiBaseUrl}/api/v1/feed?${query.toString()}`);
+async function getFeed(): Promise<FeedResponse> {
+  const query = new URLSearchParams({
+    sort: "priority",
+    read: "false",
+    limit: "6",
+    resurface: "stale",
+  });
+  const response = await fetch(`/api/v1/feed?${query.toString()}`);
   const payload = (await response.json().catch(() => ({}))) as FeedResponse;
   if (!response.ok) throw new Error(payload.error?.message || "Unable to load your reading queue.");
-  return payload.items ?? [];
+  return payload;
 }
 
 /**
@@ -50,26 +59,14 @@ export function TodayExperience() {
       setLoading(true);
       setError(null);
       try {
-        const [priorityItems, recentItems] = await Promise.all([
-          getFeed(new URLSearchParams({ sort: "priority", read: "false", limit: "6" })),
-          getFeed(new URLSearchParams({ sort: "recent", archive: "exclude", limit: "100" })),
-        ]);
+        const payload = await getFeed();
         if (cancelled) return;
-        const staleAfter = Date.now() - 14 * 24 * 60 * 60 * 1000;
-        setPriority(priorityItems.map(toKnowledgeItem));
+        setPriority((payload.items ?? []).map(toKnowledgeItem));
         setRevisiting(
-          recentItems
-            .filter(
-              (item) =>
-                !item.isRead &&
-                item.lastOpenedAt &&
-                new Date(item.lastOpenedAt).getTime() <= staleAfter
-            )
-            .slice(0, 3)
-            .map((item) => ({
-              ...toKnowledgeItem(item),
-              reason: "Unopened for two weeks · worth another look",
-            }))
+          (payload.resurfacedItems ?? []).map((item) => ({
+            ...toKnowledgeItem(item),
+            reason: "Unopened for two weeks · worth another look",
+          }))
         );
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Unable to load Today.");

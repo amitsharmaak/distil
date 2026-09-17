@@ -77,4 +77,37 @@ describe("GET /api/v1/feed contract", () => {
       })
     );
   });
+
+  it("adds server-filtered 14-day resurfacing candidates in the same response", async () => {
+    const priority = { items: [{ id: "priority" }] };
+    const stale = { items: [{ id: "stale" }] };
+    list.mockResolvedValueOnce(priority).mockResolvedValueOnce(stale);
+
+    const response = await GET(
+      new Request(
+        "https://distil.example/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      items: priority.items,
+      resurfacedItems: stale.items,
+    });
+    expect(withTenantRepositories).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sort: "priority", read: false, limit: 6 })
+    );
+    expect(list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        sort: "recent",
+        read: false,
+        archive: "exclude",
+        limit: 3,
+        resurface: "stale",
+      })
+    );
+  });
 });

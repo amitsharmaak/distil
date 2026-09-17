@@ -48,6 +48,7 @@
   "GET /api/v1/collections/:id",
   "GET /api/v1/digests",
   "GET /api/v1/feed",
+  "GET /api/v1/items/status",
   "GET /api/v1/items/:id/annotations",
   "GET /api/v1/items/:id/intelligence",
   "GET /api/v1/items/:id/note",

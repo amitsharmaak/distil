@@ -14,8 +14,6 @@ const push = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 function response(payload: unknown, ok = true): Response {
   return {
     ok,
@@ -70,7 +68,7 @@ describe("library experiences", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Offline");
     expect(screen.getByText("A saved article")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/items/item-1/state",
+      "/api/v1/items/item-1/state",
       expect.objectContaining({ method: "PATCH" })
     );
   });

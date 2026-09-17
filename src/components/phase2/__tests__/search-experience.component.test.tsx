@@ -12,8 +12,6 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(search),
   useRouter: () => ({ push }),
 }));
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 const result = {
   itemId: "item-1",
   chunkId: "chunk-1",

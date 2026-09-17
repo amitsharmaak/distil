@@ -6,14 +6,13 @@ import { ArchiveRestore, FolderPlus, Pencil, Save, Trash2, X } from "lucide-reac
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 import type { FeedItem } from "@/lib/feed/feed-query";
 
 type Collection = { id: string; name: string; description?: string };
 type CollectionDetail = { collection: Collection; items: Array<{ itemId: string }> };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.apiBaseUrl}${path}`, init);
+  const response = await fetch(path, init);
   const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } };
   if (!response.ok)
     throw new Error(payload.error?.message || "The request could not be completed.");

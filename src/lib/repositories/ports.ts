@@ -38,6 +38,10 @@ export interface ItemRepository {
   list(filters?: ItemFilters): Promise<ContentItem[]>;
   /** Same filters and order as `list`, but the summary projection: never article bodies. */
   listSummaries(filters?: ItemFilters): Promise<ContentItemSummary[]>;
+  /** Minimal polling projection; tenant scoping omits missing and foreign ids. */
+  listProcessingStatuses(
+    ids: string[]
+  ): Promise<Array<{ id: string; processingStatus: NonNullable<ContentItem["processingStatus"]> }>>;
   /** Adjacent ids in the default `list` order; a missing item yields both null. */
   findNeighbours(
     itemId: string,
