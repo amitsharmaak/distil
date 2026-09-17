@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Distil</title>
+  <defs>
+    <linearGradient id="glow" x1="12" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8BE9FD"/>
+      <stop offset="1" stop-color="#6C63FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#11152F"/>
+  <path d="M13 15h38L37 34v12l-10 5V34L13 15Z" fill="none" stroke="url(#glow)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m24 23 8-6 8 6-8 7-8-7Z" fill="#8BE9FD" fill-opacity=".18" stroke="#8BE9FD" stroke-width="2"/>
+  <circle cx="32" cy="23" r="2.5" fill="#D9FAFF"/>
+</svg>

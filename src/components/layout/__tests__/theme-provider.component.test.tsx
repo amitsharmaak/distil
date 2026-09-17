@@ -49,6 +49,7 @@ describe("ThemeProvider", () => {
 
   it("hydrates a persisted dark theme and follows external storage changes", () => {
     localStorage.setItem("theme", "dark");
+    document.documentElement.classList.add("dark");
     render(
       <ThemeProvider>
         <ThemeConsumer />

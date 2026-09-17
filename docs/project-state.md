@@ -18,7 +18,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0 and P1 merged and released 2026-09-17; P2 implemented and locally verified on `claude/perf-db-roundtrips`, PR open, awaiting Amit's merge; P3–P7 not started):** the
+- **Performance overhaul (P0, P1 and P4 merged and released 2026-09-17; P2 implemented and
+  verified on `claude/perf-db-roundtrips`, PR
+  [#26](https://github.com/amitsharmaak/distil/pull/26), reconciled with `main` after P4;
+  P3 and P5–P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -27,17 +30,17 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   [#22](https://github.com/amitsharmaak/distil/pull/22) (`f2e4155`) and is live on Production;
   see the checkpoints "Performance P1 released — 2026-09-17" (live numbers) and "Performance P1:
   one auth verification per request — 2026-09-17" (design and local before/after) below. Codex
-  runs P4 in parallel on its own branch (owns `src/components/**`, `src/app/layout.tsx`,
+  completed P4 on `codex/perf-bundle` (owns `src/components/**`, `src/app/layout.tsx`,
   `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
-  the route counts in `docs/authorization-matrix.json`); it must branch from or merge `main` at
-  `f2e4155` or later. P2 (`claude/perf-db-roundtrips`, commit `43f0cb4`): one shared pool, one
-  tenant transaction per request with the verification folded into one statement, summary
-  projections and keyset neighbours; see the checkpoint "Performance P2: database round-trip
-  diet — 2026-09-17" below. Claude is the integration owner while Codex's P4 is open. Next
-  Claude phase after P2 merges: P3 (`claude/perf-client-network`).
+  the route counts in `docs/authorization-matrix.json`), based on `53edd84`; its checkpoint below
+  records the target exception and release verification. P2 (`claude/perf-db-roundtrips`,
+  commit `43f0cb4`, then merged with `main` at `9f0caf6`): one shared pool, one tenant
+  transaction per request with the verification folded into one statement, summary projections
+  and keyset neighbours; see the checkpoint "Performance P2: database round-trip diet —
+  2026-09-17" below. Next Claude phase after P2 merges: P3 (`claude/perf-client-network`).
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
-  files only. Nominate the integration owner per task in this section when both agents are active;
-  default is the agent that opens the PR.
+  files only. Claude is the integration owner for the concurrent P2/P4 pair; Amit merged the P4
+  PR after its Quick and Full gates passed.
 - **Branch / worktree:** `main` at `22cd7aa` (squash merge of PR
   [#19](https://github.com/amitsharmaak/distil/pull/19), the performance plan) on
   2026-09-16. The `distil-ui-simplification` and `distil-perf-plan` worktrees and their branches
@@ -52,6 +55,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
   deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
+  P4 PR [#24](https://github.com/amitsharmaak/distil/pull/24) was squash-merged by Amit as
+  `f295124` and automatically deployed to Production as GitHub deployment `6498811802`; the apex
+  health endpoint returned 200. No manual deploy, migration or environment change was made. The
+  legacy Vercel alias was not re-aliased or re-checked.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -106,8 +113,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
   `babel-plugin-react-compiler` at the end of P4; running the P7 index migration in Production is a
   separate approval.
 - **Blockers / open items (all non-blocking):**
-  - `src/lib/notifications.ts` still imports the SQLite module statically but has no importers
-    anywhere in `src/`; it is dead code and can be deleted or ported in a later cleanup.
+  - P4 reduced the shared first-load bundle from 169.3 to 132.8 KB gzip but did not reach the
+    brief's under-120 KB target: 130.7 KB is Next.js/React/Turbopack framework code before the
+    remaining Distil shell. The reader target is met at 155.0 KB gzip. This is a recorded P4
+    deviation, not a reason to move framework code or touch P3/P5-owned paths.
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
   - Known functional gap found during the performance analysis: the tenant job types
@@ -157,12 +166,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: P1 is released; P2 is implemented and locally verified on
-     `claude/perf-db-roundtrips` and waits for Amit to merge (then Vercel auto-deploys and the
-     Production `Server-Timing` before/after for the feed, collections and state routes should
-     be read and recorded). Next unstarted Claude phase: P3 (`claude/perf-client-network`), from
-     the checkpoint "Performance analysis and phased plan — 2026-09-16" (P4 is Codex's, in
-     parallel). Each phase is a separate task on its own branch
+  3. Performance overhaul: P1 and P4 are released; P2 is implemented and verified on
+     `claude/perf-db-roundtrips` (PR #26) and waits for the merge (then Vercel auto-deploys and
+     the Production `Server-Timing` before/after for the feed, collections and state routes
+     should be read and recorded). Next unstarted Claude phase: P3
+     (`claude/perf-client-network`), from the checkpoint "Performance analysis and phased plan —
+     2026-09-16". Each phase is a separate task on its own branch
      (`claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
      against current `main` before editing, passes `npm run check` (plus `npm run
@@ -359,6 +368,111 @@ not apply the settings before reading them back (it would fail closed, never lea
 run perf:bundle` and `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run
 perf:vitals` (free port 3100). If Codex's P4 merges first: `git merge origin/main` (never rebase)
 and rerun `npm run check`; the `neon-proxy.ts` CSRF digest is untouched by P2.
+
+### Performance P4 released — 2026-09-17
+
+Amit squash-merged PR [#24](https://github.com/amitsharmaak/distil/pull/24) as `f295124` while the
+Codex handoff was in progress. Codex did not invoke the merge or a deployment. Because the release
+pin remains `unpinned`, Vercel's Git integration then created Production deployment `6498811802`;
+its status is `success`, and `https://distilai.app/api/health` returned 200 with
+`cache-control: no-store`. The legacy alias was not re-aliased or re-checked. No migration or
+environment-variable change occurred.
+
+The PR's final head `1eef11f` passed the Quick gate and every labeled Full gate job: deterministic
+tests, PostgreSQL integration, production build, web/mobile E2E, extension E2E and the non-blocking
+coverage job. The post-merge Quick gate on `f295124` also passed. The implementation results and
+the shared-bundle target deviation remain in the next checkpoint. This docs-only release-state
+correction is branch `codex/perf-bundle-release-state`; merge its PR to make the canonical handoff
+match the already-released external state.
+
+### Performance P4: bundle and rendering — 2026-09-17
+
+Phase P4 is implementation-complete on branch `codex/perf-bundle`, worktree
+`/private/tmp/distil-perf-bundle`, based on `origin/main` at `53edd84` (P1 included).
+Implementation commit `5578b7b`, documentation checkpoint `83c8b03`, PR
+[#24](https://github.com/amitsharmaak/distil/pull/24) with the `full-ci` label. Nothing was
+deployed to Production, no migration ran, no environment variable changed and no Production
+resource was touched. The PR integration created automatic Vercel Preview deployment
+`6498702959` after the branch was pushed.
+
+**What changed**
+
+- The reader page sanitizes article content on the server before crossing the client boundary.
+  Client components render server-sanitized HTML or escaped plain text; a component test pins the
+  latter. React Markdown, the AI-summary implementation, detail actions, Reader View overlay and
+  authenticated app shell are split behind `next/dynamic`, removing `sanitize-html` and large
+  reader-only UI graphs from first load.
+- Root layout drops Geist Mono and the global tooltip graph. Its blocking head script reads only
+  `localStorage.theme` and applies the `dark` class; the provider reads that class. A Playwright
+  reload with stored dark mode had `dark` applied at the first recorded paint (24 ms), with no
+  light flash.
+- Next enables Radix import optimization, inline CSS and the React compiler, removes the serial
+  build-worker override, and TypeScript targets ES2022. `babel-plugin-react-compiler` was added
+  last and retained because both the production build and the full web E2E suite stayed green.
+  Warm local build wall time was 7.66 s without the compiler and 15.83 s with it (first compiler
+  build; 2.2 s compilation plus 11.1 s TypeScript validation).
+- The sidebar uses the new 688-byte `logo.svg`; `logo.png` is 6.4 KB for the remaining login page.
+  Re-encoded icons are 11.7/13.1/37.0 KB and the unused CRA SVG assets are gone.
+- Deleted the unlinked `/sources`, `/topics` and `/research` pages, all
+  `/api/ai/research/**` and `/api/agent/**` routes, their route-only UI/tests, the approved dead AI
+  and agent modules, `src/lib/notifications.ts`, and the unmounted agent status panel. The
+  authorization inventory and its frozen route surfaces now cover 81 API route files and 18 page
+  files; the CSRF fixture digest remains unchanged because `src/lib/auth/neon-proxy.ts` was not
+  edited. No cross-tenant cache was added.
+
+**Bundle result (`npm run build && npm run perf:bundle`, committed P0 baseline → P4)**
+
+| Route                 | P0 gzip  | P4 gzip  | Delta     |
+| --------------------- | -------- | -------- | --------- |
+| shared by every route | 169.3 KB | 132.8 KB | -36.5 KB  |
+| `/`                   | 172.5 KB | 140.4 KB | -32.1 KB  |
+| `/feed`               | 186.1 KB | 171.1 KB | -15.0 KB  |
+| `/feed/[id]`          | 301.0 KB | 155.0 KB | -146.0 KB |
+| `/settings`           | 175.6 KB | 155.0 KB | -20.6 KB  |
+
+The `/feed/[id]` target (under 170 KB) is met. The shared target (under 120 KB) is not: inspection
+of the final route stats attributes 130.7 KB gzip to the Next.js/React/Turbopack framework chunks
+before the remaining Distil lazy shell. The phase stops at 132.8 KB rather than moving into
+P3/P5-owned code or changing framework/runtime versions. The committed baseline file was not
+regenerated.
+
+**Vitals medians (`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run
+perf:vitals`, Docker PostgreSQL, one warm-up plus five runs; P0 → P4)**
+
+| Page         | TTFB     | FCP        | LCP          | Requests | Transferred  |
+| ------------ | -------- | ---------- | ------------ | -------- | ------------ |
+| `/`          | 7 → 7 ms | 28 → 28 ms | 100 → 104 ms | 43 → 41  | 509 → 543 kB |
+| `/feed`      | 3 → 5 ms | 24 → 24 ms | 96 → 104 ms  | 47 → 45  | 477 → 506 kB |
+| `/feed/[id]` | 8 → 8 ms | 32 → 36 ms | 32 → 36 ms   | 40 → 40  | 568 → 511 kB |
+| `/settings`  | 3 → 5 ms | 28 → 28 ms | 28 → 28 ms   | 29 → 27  | 425 → 456 kB |
+
+Local timing differences are within one-run noise; requests fell by two on `/`, `/feed` and
+`/settings`, while the reader transferred 57 KB less. The other transfer totals include changed
+prefetch and inline-CSS behavior and are recorded without claiming an improvement.
+
+**Locally verified**
+
+- `npm run check`: ESLint 0 errors / 5 existing warnings; formatting and TypeScript clean; Jest
+  201 suites / 1431 tests passed. This includes the tenancy, authorization-matrix and
+  CSRF-boundary harnesses.
+- `npm run test:e2e`: 27 passed / 3 feature-flag skips after the final dynamic-boundary refactor.
+  `npm run test:extension`: 11 passed. Production builds succeeded both without and with the
+  compiler; the compiler-on build produced the numbers above.
+- `npm run perf:vitals`: all four measured pages returned 200 without redirects; output
+  `.perf/web-vitals-2026-09-17T08-18-04-743Z.json`. Deterministic tests used fakes/local resources
+  and did not contact hosted services.
+- Externally verified after opening the PR: Quick gate and every Full gate job passed on
+  `d3e5a24` (deterministic tests, PostgreSQL integration, production build, coverage, web/mobile
+  E2E and extension E2E); Vercel Preview deployment `6498702959` passed. Previously recorded and
+  not re-checked: Production at P1 release `f2e4155`, release pin `unpinned`, Neon resources and
+  nightly CI. P4 is not merged or deployed to Production.
+
+**Deviations and restart:** besides the shared-size exception above, deletion-dependent security
+tests and frozen route-inventory expectations were removed or count-adjusted so the required
+harnesses continue to prove every remaining surface. If review requests work, restart with
+`git fetch origin && git switch codex/perf-bundle` in `/private/tmp/distil-perf-bundle`; if P2 or
+another Claude PR merged first, run `git merge origin/main` (never rebase), resolve only this
+checkpoint, then rerun `npm run check`, `npm run test:e2e`, `npm run build && npm run perf:bundle`.
 
 ### Performance P1 released — 2026-09-17
 

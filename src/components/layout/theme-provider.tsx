@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -13,7 +13,7 @@ const THEME_STORAGE_KEY = "theme";
 const THEME_CHANGE_EVENT = "distil-theme-change";
 
 function getThemeSnapshot(): Theme {
-  return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 function getServerThemeSnapshot(): Theme {
@@ -21,10 +21,18 @@ function getServerThemeSnapshot(): Theme {
 }
 
 function subscribeToTheme(onStoreChange: () => void): () => void {
-  window.addEventListener("storage", onStoreChange);
+  function syncStoredTheme() {
+    document.documentElement.classList.toggle(
+      "dark",
+      localStorage.getItem(THEME_STORAGE_KEY) === "dark"
+    );
+    onStoreChange();
+  }
+
+  window.addEventListener("storage", syncStoredTheme);
   window.addEventListener(THEME_CHANGE_EVENT, onStoreChange);
   return () => {
-    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("storage", syncStoredTheme);
     window.removeEventListener(THEME_CHANGE_EVENT, onStoreChange);
   };
 }
@@ -35,10 +43,6 @@ export function useTheme() {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, getServerThemeSnapshot);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
 
   function toggle() {
     const next = theme === "light" ? "dark" : "light";

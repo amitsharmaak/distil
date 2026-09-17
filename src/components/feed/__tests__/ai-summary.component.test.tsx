@@ -8,6 +8,21 @@ jest.mock("react-markdown", () => ({
 jest.mock("remark-gfm", () => ({ __esModule: true, default: () => {} }));
 jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "" } }));
 beforeEach(() => jest.mocked(global.fetch).mockReset());
+
+it("escapes plain original content instead of interpreting it as HTML", async () => {
+  const { container } = render(
+    <AISummary
+      itemId="one"
+      ogSummary="fallback"
+      fullContent={'Plain text with <script data-test="unsafe">alert(1)</script>'}
+      fullContentIsHtml={false}
+    />
+  );
+
+  expect(container.querySelector("script[data-test=unsafe]")).toBeNull();
+  expect(await screen.findByText(/Plain text with <script/)).toBeVisible();
+});
+
 it("keeps the original readable after generation fails", async () => {
   jest.mocked(global.fetch).mockResolvedValue({
     ok: false,

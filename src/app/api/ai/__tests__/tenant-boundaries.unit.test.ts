@@ -6,15 +6,12 @@ jest.mock("@/lib/auth/tenant-route", () => ({
   tenantRouteFailureResponse: () => Response.json({ error: "auth" }, { status: 401 }),
 }));
 jest.mock("@/lib/ai/summarize", () => ({ generateSummary: jest.fn() }));
-jest.mock("@/lib/ai/research", () => ({ startResearch: jest.fn() }));
 
 import { POST as feedback } from "../feedback/route";
-import { POST as research } from "../research/route";
 
 const repositories = {
   items: { findById: jest.fn() },
   feedback: { insert: jest.fn() },
-  research: { findReport: jest.fn() },
 };
 
 function request(path: string, body: unknown): NextRequest {
@@ -42,14 +39,4 @@ it("returns 404 before feedback persistence when an item is outside the tenant",
 
   expect(response.status).toBe(404);
   expect(repositories.feedback.insert).not.toHaveBeenCalled();
-});
-
-it("returns 404 before starting provider-backed research for a foreign item", async () => {
-  repositories.items.findById.mockResolvedValue(undefined);
-
-  const response = await research(
-    request("/api/ai/research", { query: "analyse this", itemId: "tenant-b-item" })
-  );
-
-  expect(response.status).toBe(404);
 });
