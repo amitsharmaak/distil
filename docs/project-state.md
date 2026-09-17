@@ -25,7 +25,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   checkpoint. P0 (measurement baseline) merged as PR
   [#21](https://github.com/amitsharmaak/distil/pull/21). P1 (one auth verification per request
   and a signed identity handoff) is complete on branch `claude/perf-auth-handoff` (worktree
-  `.claude/worktrees/perf-auth-handoff-b58c37`) and awaits Amit's review and merge; see the
+  `.claude/worktrees/perf-auth-handoff-b58c37`) and awaits Amit's review and merge as PR
+  [#22](https://github.com/amitsharmaak/distil/pull/22) (label `full-ci`); see the
   checkpoint "Performance P1: one auth verification per request — 2026-09-17" below for the
   before/after numbers. Codex runs P4 in parallel on its own branch (owns `src/components/**`,
   `src/app/layout.tsx`, `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the
@@ -174,8 +175,9 @@ test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated c
 
 Phase P1 of the performance plan, branch `claude/perf-auth-handoff` (Claude Code worktree
 `.claude/worktrees/perf-auth-handoff-b58c37`, based on `origin/main` at `f1cb2ac`, the P0 merge).
-Implementation commit `f7f330b`; the state-file update is the following commit on the same
-branch; PR link in the handoff section. Every file:line reference in the P1 brief was re-checked
+Implementation commit `f7f330b`; the state-file update follows on the same branch; PR
+[#22](https://github.com/amitsharmaak/distil/pull/22). The `full-ci` label did not exist in the
+repository yet (the tiering checkpoint assumed it); it was created on 2026-09-17 and applied. Every file:line reference in the P1 brief was re-checked
 against `f1cb2ac` before editing: P0 had moved the proxy matcher to `src/proxy.ts:136` and the
 eager repository await to line 88; everything else was where the brief said. Amit's decision
 stands: exactly one uncached provider check per request, so a revoked session is rejected on the
