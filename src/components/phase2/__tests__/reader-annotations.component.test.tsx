@@ -4,8 +4,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { ReaderAnnotations } from "../reader-annotations";
 
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 function response(payload: unknown, ok = true): Response {
   return { ok, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
@@ -62,7 +60,7 @@ describe("ReaderAnnotations", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save highlight" }));
     expect(await screen.findByText("Highlight saved")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/items/item-1/annotations",
+      "/api/v1/items/item-1/annotations",
       expect.objectContaining({ method: "POST" })
     );
 
@@ -83,7 +81,7 @@ describe("ReaderAnnotations", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("Highlight deleted")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/items/item-1/annotations/annotation-1",
+      "/api/v1/items/item-1/annotations/annotation-1",
       expect.objectContaining({ method: "DELETE" })
     );
   });

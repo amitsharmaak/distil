@@ -6,7 +6,6 @@ import { Zap, RefreshCw, Sparkles, FileText, Minimize2, Maximize2 } from "lucide
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { config } from "@/lib/config";
 
 const Markdown = dynamic(() => import("@/components/markdown").then((module) => module.Markdown));
 
@@ -168,7 +167,7 @@ export function AISummary({
     setRetryRequest({ length, force });
     setError(null);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/summarize`, {
+      const res = await fetch("/api/ai/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, length, force }),

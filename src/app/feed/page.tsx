@@ -7,8 +7,8 @@
  * filters (source, type, priority, read status). Items are fetched from
  * the API on mount and whenever filters are cleared/reset.
  *
- * The `filteredItems` computation happens client-side so filter changes
- * feel instant — no round-trip for each filter toggle.
+ * Filter changes are sent to the server, which remains authoritative for the
+ * returned page. The client only suppresses rejected items defensively.
  *
  * useSearchParams() requires a Suspense boundary, so the actual page
  * content lives in FeedPageContent and FeedPage wraps it in <Suspense>.
@@ -19,8 +19,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilters } from "@/components/feed/feed-filters";
-import type { ContentItem, SourceType, ContentType, Priority } from "@/lib/types";
-import { config } from "@/lib/config";
+import type { ContentItemSummary, SourceType, ContentType, Priority } from "@/lib/types";
 import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
 
 function queryValues(params: URLSearchParams, name: string): string[] {
@@ -51,7 +50,7 @@ function FeedPageContent() {
   // ── State ───────────────────────────────────────────────────────────────────
 
   /** All items fetched from the API. */
-  const [items, setItems] = useState<ContentItem[]>([]);
+  const [items, setItems] = useState<ContentItemSummary[]>([]);
   /** Search query represented by the current items; null until the first fetch settles. */
   const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
   /** Message from the last failed fetch; null when the last fetch succeeded. */
@@ -109,30 +108,29 @@ function FeedPageContent() {
     (cursor?: string, append = false) => {
       // Phase 2 owns normal consumption queries. Search remains on the legacy
       // endpoint until the cited keyword-search route is wired in its next slice.
-      const url = new URL(`${config.apiBaseUrl}${searchQuery ? "/api/items" : "/api/v1/feed"}`);
+      const path = searchQuery ? "/api/items" : "/api/v1/feed";
+      const query = new URLSearchParams();
       if (searchQuery) {
-        url.searchParams.set("includeProcessing", "true");
-        url.searchParams.set("q", searchQuery);
+        query.set("includeProcessing", "true");
+        query.set("q", searchQuery);
       } else {
-        url.searchParams.set("archive", archive);
-        url.searchParams.set("sort", sort);
-        url.searchParams.set("limit", "100");
-        if (!showRead) url.searchParams.set("read", "false");
-        selectedTopics.forEach((topic) => url.searchParams.append("topic", topic));
-        selectedSources.forEach((source) => url.searchParams.append("source", source));
-        selectedTypes.forEach((type) => url.searchParams.append("contentType", type));
-        selectedPriorities.forEach((priority) => url.searchParams.append("priority", priority));
-        selectedCollections.forEach((collection) =>
-          url.searchParams.append("collection", collection)
-        );
-        if (dateFrom) url.searchParams.set("dateFrom", dateQueryValue(dateFrom));
-        if (dateTo) url.searchParams.set("dateTo", dateQueryValue(dateTo, true));
-        if (cursor) url.searchParams.set("cursor", cursor);
+        query.set("archive", archive);
+        query.set("sort", sort);
+        query.set("limit", "100");
+        if (!showRead) query.set("read", "false");
+        selectedTopics.forEach((topic) => query.append("topic", topic));
+        selectedSources.forEach((source) => query.append("source", source));
+        selectedTypes.forEach((type) => query.append("contentType", type));
+        selectedPriorities.forEach((priority) => query.append("priority", priority));
+        selectedCollections.forEach((collection) => query.append("collection", collection));
+        if (dateFrom) query.set("dateFrom", dateQueryValue(dateFrom));
+        if (dateTo) query.set("dateTo", dateQueryValue(dateTo, true));
+        if (cursor) query.set("cursor", cursor);
       }
-      return fetch(url.toString())
+      return fetch(`${path}?${query.toString()}`)
         .then(async (res) => {
           const data = (await res.json().catch(() => ({}))) as {
-            items?: ContentItem[];
+            items?: ContentItemSummary[];
             nextCursor?: string;
             error?: { message?: string };
           };
@@ -152,7 +150,7 @@ function FeedPageContent() {
             setItems([]);
             setLoadedQuery(searchQuery);
           }
-          return [] as ContentItem[];
+          return [] as ContentItemSummary[];
         });
     },
     [
@@ -179,7 +177,7 @@ function FeedPageContent() {
   useEffect(() => {
     if (searchQuery) return;
     let cancelled = false;
-    fetch(`${config.apiBaseUrl}/api/v1/collections`)
+    fetch("/api/v1/collections")
       .then((res) => res.json())
       .then((data: { collections?: { id: string; name: string }[] }) => {
         if (!cancelled) setCollections(data.collections ?? []);
@@ -198,30 +196,51 @@ function FeedPageContent() {
    * Poll every 3 seconds while any items are in processing state.
    * Stops polling once all items are ready (or rejected).
    */
-  const hasProcessingItems = items.some((item) => item.processingStatus === "processing");
+  const processingIds = items
+    .filter((item) => item.processingStatus === "processing")
+    .slice(0, 50)
+    .map((item) => item.id);
+  const processingKey = processingIds.join(",");
 
   useEffect(() => {
-    if (!hasProcessingItems) return;
-    const interval = setInterval(() => fetchItems(), 3000);
-    return () => clearInterval(interval);
-  }, [hasProcessingItems, fetchItems]);
+    if (!processingKey) return;
+    let cancelled = false;
+    const pollStatuses = async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/items/status?ids=${encodeURIComponent(processingKey)}`
+        );
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          items?: Array<{
+            id: string;
+            processingStatus: NonNullable<ContentItemSummary["processingStatus"]>;
+          }>;
+        };
+        if (cancelled || !payload.items?.length) return;
+        const statuses = new Map(payload.items.map((item) => [item.id, item.processingStatus]));
+        setItems((current) =>
+          current.map((item) => {
+            const processingStatus = statuses.get(item.id);
+            return processingStatus ? { ...item, processingStatus } : item;
+          })
+        );
+      } catch {
+        // A transient poll failure leaves the current cards intact; the next
+        // interval retries while an item is still processing.
+      }
+    };
+    const interval = setInterval(() => void pollStatuses(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [processingKey]);
 
   // ── Filtering ───────────────────────────────────────────────────────────────
 
-  /**
-   * Apply active filters to the full items array.
-   * Each filter is skipped when its selection is empty (show-all behaviour).
-   */
-  const filteredItems = items.filter((item) => {
-    // Rejected items are shown in Settings for review, not in the feed.
-    if (item.processingStatus === "rejected") return false;
-    if (selectedSources.length > 0 && !selectedSources.includes(item.sourceType)) return false;
-    if (selectedTypes.length > 0 && !selectedTypes.includes(item.contentType)) return false;
-    if (selectedPriorities.length > 0 && !selectedPriorities.includes(item.priority)) return false;
-    // Search always shows both read and unread; otherwise respect the toggle.
-    if (!searchQuery && !showRead && item.isRead) return false;
-    return true;
-  });
+  /** Rejected items remain confined to Settings even if an API regresses. */
+  const filteredItems = items.filter((item) => item.processingStatus !== "rejected");
 
   const topicOptions = Array.from(new Set(items.flatMap((item) => item.topics))).sort();
 
@@ -267,8 +286,10 @@ function FeedPageContent() {
   };
 
   /** Optimistically mark an item as read in local state. */
-  function handleMarkRead(id: string) {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)));
+  function handleMarkRead(id: string, read: boolean) {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, isRead: read } : item))
+    );
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────

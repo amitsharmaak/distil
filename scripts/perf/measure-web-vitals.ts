@@ -15,20 +15,19 @@
  *      `/`, `/feed`, `/feed/[id]` and `/settings`, five runs each;
  *   4. writes medians to the gitignored `.perf/` directory and prints them.
  *
- * Requires Docker and a production build baked for the measurement origin,
- * because the client bundle inlines `NEXT_PUBLIC_API_BASE_URL` at build time
- * (the same convention the CI full gate uses for production-mode E2E):
+ * Requires Docker and a production build. Client API requests are relative to
+ * the measured origin, so the build no longer needs an inlined API base URL:
  *
- *   NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run perf:vitals
+ *   npm run build && npm run perf:vitals
  *
  * `DISTIL_E2E_HOST` / `DISTIL_E2E_PORT` change the origin (default
  * 127.0.0.1:3100, never the dev server's port 3000). Options: `--runs=N`,
  * `--items=N`, `--keep-server`.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Cookie } from "playwright";
 import type { Sql } from "postgres";
@@ -112,20 +111,6 @@ function fail(message: string): never {
 if (!existsSync(resolve(root, ".next/BUILD_ID"))) {
   fail(
     `No production build found. Run \`NEXT_PUBLIC_API_BASE_URL=${baseUrl} npm run build\` first.`
-  );
-}
-
-function buildTargetsOrigin(): boolean {
-  const chunks = resolve(root, ".next/static/chunks");
-  return readdirSync(chunks)
-    .filter((name) => name.endsWith(".js"))
-    .some((name) => readFileSync(join(chunks, name), "utf8").includes(baseUrl));
-}
-
-if (!buildTargetsOrigin()) {
-  fail(
-    `The client bundle was not built for ${baseUrl}; browser fetches would leave the measured server.\n` +
-      `Rebuild with \`NEXT_PUBLIC_API_BASE_URL=${baseUrl} npm run build\` and rerun.`
   );
 }
 
@@ -259,7 +244,12 @@ async function waitForServer(): Promise<void> {
   throw new Error("The Next.js server did not become healthy within 120 s");
 }
 
-async function measurePage(browser: Browser, cookie: Cookie, path: string): Promise<Sample> {
+async function measurePage(
+  browser: Browser,
+  cookie: Cookie,
+  path: string,
+  settleMs = 500
+): Promise<Sample> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addCookies([cookie]);
   const page = await context.newPage();
@@ -309,7 +299,7 @@ async function measurePage(browser: Browser, cookie: Cookie, path: string): Prom
   const startedAt = Date.now();
   await page.goto(`${baseUrl}${path}`, { waitUntil: "load", timeout: 60_000 });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(settleMs);
   await Promise.all(pendingSizes);
   const finalUrl = page.url();
   const vitals = await page.evaluate(() => {
@@ -360,15 +350,13 @@ async function main(): Promise<void> {
       secure: false,
       sameSite: "Lax",
     };
-    const pages = ["/", "/feed", `/feed/${itemIds[0]}`, "/settings"];
     const results: Record<string, PageResult> = {};
-    for (const path of pages) {
+    const measureRoute = async (path: string, label: string, settleMs = 500) => {
       const samples: Sample[] = [];
       // One untimed warm-up so route compilation and pool creation are excluded.
-      await measurePage(browser, cookie, path);
+      await measurePage(browser, cookie, path, settleMs);
       for (let run = 0; run < runs; run += 1)
-        samples.push(await measurePage(browser, cookie, path));
-      const label = path.startsWith("/feed/perf-item") ? "/feed/[id]" : path;
+        samples.push(await measurePage(browser, cookie, path, settleMs));
       results[label] = {
         runs: samples.length,
         redirected: samples.some((sample) => sample.redirected),
@@ -381,7 +369,15 @@ async function main(): Promise<void> {
         ) as Record<SampleMetric, number>,
         samples,
       };
-    }
+    };
+    await measureRoute("/", "/");
+    await measureRoute("/feed", "/feed");
+    await measureRoute(`/feed/${itemIds[0]}`, "/feed/[id]");
+    await measureRoute("/settings", "/settings");
+    await owner.sql`UPDATE items SET processing_status='processing' WHERE id=${itemIds[0]}`;
+    // Wait through one three-second interval. This pins the network cost and
+    // endpoint shape of a feed that is actively polling one processing item.
+    await measureRoute("/feed", "/feed (processing)", 3_500);
     const output = {
       generatedAt: new Date().toISOString(),
       buildId: readFileSync(resolve(root, ".next/BUILD_ID"), "utf8").trim(),

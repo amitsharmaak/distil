@@ -88,7 +88,7 @@ export const GET = withRequestMetrics(async (request: NextRequest) => {
       priority: searchParams.get("priority") ?? undefined,
       // "unread=true" means we want items where isRead is false.
       isRead: searchParams.get("unread") === "true" ? false : undefined,
-      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : 100,
       sort: (searchParams.get("sort") as "recent" | "priority") ?? undefined,
       query: searchParams.get("q") ?? undefined,
       includeProcessing: searchParams.get("includeProcessing") === "true",

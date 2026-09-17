@@ -27,6 +27,8 @@ export interface FeedQuery extends FeedFilters {
   sort?: FeedSort;
   limit?: number;
   cursor?: string;
+  /** Restrict the page to items last opened at least 14 days ago. */
+  resurface?: "stale";
   /** Injectable clock keeps ordering and cursor tests deterministic. */
   now?: Date;
   /** Server-gated and user-controlled; never inferred from a client request. */
@@ -315,6 +317,12 @@ export class PostgresFeedQuery {
       )`);
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
+    if (query.resurface === "stale") {
+      conditions.push(this.sql`i.processing_status='ready'`);
+      conditions.push(this.sql`i.is_read=false`);
+      conditions.push(this.sql`i.last_opened_at IS NOT NULL`);
+      conditions.push(this.sql`i.last_opened_at <= ${now}::timestamptz - INTERVAL '14 days'`);
+    }
 
     // The same expression is used for the ordering cursor and explainFeedRank.
     const baseline =

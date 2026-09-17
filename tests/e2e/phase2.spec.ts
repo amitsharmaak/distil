@@ -10,7 +10,11 @@ const allPhase2UiEnabled = [
 
 async function mockTodayFeed(page: Page) {
   await page.route("**/api/v1/feed?*", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: '{"items":[]}' })
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"items":[],"resurfacedItems":[]}',
+    })
   );
 }
 

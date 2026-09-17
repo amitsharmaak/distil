@@ -221,6 +221,26 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     expect(statements()[3]).toContain("i.is_read=false");
   });
 
+  test("reads only processing statuses for a bounded tenant-scoped id set", async () => {
+    const fake = sqlDouble([
+      [
+        { id: "item-1", processing_status: "processing" },
+        { id: "item-2", processing_status: "ready" },
+      ],
+    ]);
+    const items = createPostgresRepositories(fake.sql).items;
+
+    await expect(items.listProcessingStatuses(["item-1", "item-2"])).resolves.toEqual([
+      { id: "item-1", processingStatus: "processing" },
+      { id: "item-2", processingStatus: "ready" },
+    ]);
+    expect(fake.queries[0]).toContain("SELECT id, processing_status");
+    expect(fake.queries[0]).toContain("WHERE id = ANY(?)");
+    expect(fake.sql.array).toHaveBeenCalledWith(["item-1", "item-2"]);
+    await expect(items.listProcessingStatuses([])).resolves.toEqual([]);
+    expect(fake.queries).toHaveLength(1);
+  });
+
   test("handles item insert, update, delete, and status mutations", async () => {
     const fake = sqlDouble([
       [],

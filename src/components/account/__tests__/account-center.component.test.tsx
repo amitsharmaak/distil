@@ -415,7 +415,7 @@ describe("AccountCenter lifecycle recovery", () => {
       )
     );
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).not.toHaveBeenCalled();
     unmount();
 
     fetchMock.mockReset();
@@ -427,6 +427,7 @@ describe("AccountCenter lifecycle recovery", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByText("Profile update was rejected")).toBeInTheDocument();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("saves normal profile changes with the existing onboarding status", async () => {

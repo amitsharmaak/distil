@@ -10,7 +10,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { config } from "@/lib/config";
 
 const Markdown = dynamic(() => import("@/components/markdown").then((module) => module.Markdown));
 
@@ -49,7 +48,7 @@ export function ChatPanel() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/agent/chat`, {
+      const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, conversationId }),

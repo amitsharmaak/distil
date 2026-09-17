@@ -5,14 +5,13 @@ import { useState } from "react";
 import { AlertCircle, Bot, ExternalLink, Loader2, Send, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { config } from "@/lib/config";
 import type { GroundedAnswerResponse, ValidatedCitation } from "@/lib/knowledge/service";
 
 type Message = { role: "user" | "assistant"; content: string };
 type AskError = Error & { code?: string; status?: number };
 
 async function requestAnswer(query: string, messages: Message[]): Promise<GroundedAnswerResponse> {
-  const response = await fetch(`${config.apiBaseUrl}/api/v1/answers`, {
+  const response = await fetch("/api/v1/answers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, messages: messages.slice(-6) }),

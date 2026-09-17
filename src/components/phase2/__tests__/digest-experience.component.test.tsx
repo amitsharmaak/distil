@@ -5,8 +5,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { DigestExperience } from "../digest-experience";
 import type { DigestRun, PersonalPreferences } from "@/lib/digests/types";
 
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
-
 const preferences: PersonalPreferences = {
   digestEnabled: true,
   digestTimezone: "Asia/Kolkata",
@@ -93,7 +91,7 @@ describe("DigestExperience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable in-app digests" }));
     expect(await screen.findByText("Digest preferences saved")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/preferences",
+      "/api/v1/preferences",
       expect.objectContaining({ method: "PUT" })
     );
   });
@@ -162,7 +160,7 @@ describe("DigestExperience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss item" }));
     expect(await screen.findByText("No items remain in this digest.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/digests/run",
+      "/api/v1/digests/run",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ action: "dismiss_item", digestId: "digest-1", itemId: "item-1" }),
@@ -171,7 +169,7 @@ describe("DigestExperience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss digest" }));
     expect(await screen.findByText("Digest dismissed")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://distil.test/api/v1/digests/run",
+      "/api/v1/digests/run",
       expect.objectContaining({ method: "POST" })
     );
   });
