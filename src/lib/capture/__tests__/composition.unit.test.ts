@@ -2,7 +2,12 @@ jest.mock("@/lib/database", () => ({
   getTenantRepositories: jest.fn(),
   getCaptureTokenIdentityResolver: jest.fn(),
 }));
-jest.mock("@/lib/queue/dispatchers", () => ({ createVercelCaptureDispatcher: jest.fn() }));
+jest.mock("@/lib/queue/dispatchers", () => ({
+  createVercelCaptureDispatcher: jest.fn(),
+  InlineCaptureDispatcher: jest.fn(),
+}));
+jest.mock("@/lib/queue/capture-consumer", () => ({ consumeCaptureMessage: jest.fn() }));
+jest.mock("@/lib/config", () => ({ config: { captureDispatch: "queue" } }));
 jest.mock("@/lib/auth", () => ({ resolveCapturePrincipal: jest.fn() }));
 jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
 jest.mock("@/lib/auth/environment", () => ({
@@ -16,7 +21,9 @@ jest.mock("@/lib/auth/origin", () => {
 import { resolveCapturePrincipal } from "@/lib/auth";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { getCaptureTokenIdentityResolver, getTenantRepositories } from "@/lib/database";
-import { createVercelCaptureDispatcher } from "@/lib/queue/dispatchers";
+import { config } from "@/lib/config";
+import { consumeCaptureMessage } from "@/lib/queue/capture-consumer";
+import { createVercelCaptureDispatcher, InlineCaptureDispatcher } from "@/lib/queue/dispatchers";
 import { composeCaptureRoutes } from "../composition";
 import { context } from "./fixtures";
 
@@ -28,6 +35,26 @@ describe("capture route composition", () => {
     });
     jest.mocked(createVercelCaptureDispatcher).mockResolvedValue({ dispatch: jest.fn() } as never);
     jest.mocked(getTenantRepositories).mockResolvedValue({ captures: {} } as never);
+  });
+
+  it("uses the Vercel queue dispatcher by default", async () => {
+    await composeCaptureRoutes();
+    expect(createVercelCaptureDispatcher).toHaveBeenCalledTimes(1);
+    expect(InlineCaptureDispatcher).not.toHaveBeenCalled();
+  });
+
+  it("runs captures in-process when DISTIL_CAPTURE_DISPATCH is inline", async () => {
+    (config as { captureDispatch: string }).captureDispatch = "inline";
+    try {
+      await composeCaptureRoutes();
+      expect(createVercelCaptureDispatcher).not.toHaveBeenCalled();
+      expect(InlineCaptureDispatcher).toHaveBeenCalledWith(
+        consumeCaptureMessage,
+        expect.any(Function)
+      );
+    } finally {
+      (config as { captureDispatch: string }).captureDispatch = "queue";
+    }
   });
 
   it("opens tenant repositories only after authentication supplies AuthContext", async () => {

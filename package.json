@@ -9,6 +9,10 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "next dev",
+    "dev:local": "docker compose up -d --wait postgres && next dev",
+    "db:local:reset": "docker compose up -d --wait postgres && tsx --env-file=.env.local scripts/local-db-reset.ts",
+    "db:local:down": "docker compose down",
+    "local:secrets": "tsx scripts/local-secrets.ts",
     "build": "tsx scripts/check-phase3-auth-activation.ts --if-enabled && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",

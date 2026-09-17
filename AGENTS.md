@@ -108,6 +108,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
 
 ```bash
 npm run dev                  # Next.js dev server
+npm run dev:local            # Docker Postgres + next dev (docs/runbooks/local-development.md)
+npm run db:local:reset       # wipe and re-provision the local Postgres; loopback hosts only
+npm run local:secrets -- <pw> # print DISTIL_LEGACY_USER_ID / SESSION_SECRET / PASSWORD_HASH
 npm run typecheck            # tsc --noEmit
 npm run lint                 # eslint + prettier check of files changed vs origin/main
 npm run format               # prettier --write .
@@ -126,9 +129,9 @@ npm run db:migrate | db:tenant:migrate | db:tenant:verify
 npm run eval                 # offline AI quality evals (evals/)
 ```
 
-`npm run setup` and `scripts/setup.sh` are stale (they copy a `.env.example` that no longer
-exists and assume SQLite); do not rely on them. The variable table in `docs/vercel-deployment.md`
-is the current reference for environment names.
+`npm run setup` and `scripts/setup.sh` are stale (they assume SQLite); do not rely on them. For
+local work copy `.env.local.example` and follow `docs/runbooks/local-development.md`. The variable
+table in `docs/vercel-deployment.md` is the reference for hosted environment names.
 
 ## 5. Testing conventions
 
