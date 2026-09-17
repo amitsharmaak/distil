@@ -18,7 +18,7 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0 and P1 merged and released 2026-09-17; P2–P7 not started):** the
+- **Performance overhaul (P0 and P1 merged and released 2026-09-17; P2 implemented and locally verified on `claude/perf-db-roundtrips`, PR open, awaiting Amit's merge; P3–P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -30,7 +30,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   runs P4 in parallel on its own branch (owns `src/components/**`, `src/app/layout.tsx`,
   `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
   the route counts in `docs/authorization-matrix.json`); it must branch from or merge `main` at
-  `f2e4155` or later. Next Claude phase: P2 (`claude/perf-db-roundtrips`).
+  `f2e4155` or later. P2 (`claude/perf-db-roundtrips`, commit `43f0cb4`): one shared pool, one
+  tenant transaction per request with the verification folded into one statement, summary
+  projections and keyset neighbours; see the checkpoint "Performance P2: database round-trip
+  diet — 2026-09-17" below. Claude is the integration owner while Codex's P4 is open. Next
+  Claude phase after P2 merges: P3 (`claude/perf-client-network`).
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -153,9 +157,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: P1 is released. Pick the next unstarted Claude phase, P2
-     (`claude/perf-db-roundtrips`), from the checkpoint "Performance analysis and phased plan —
-     2026-09-16" (P4 is Codex's, in parallel). Each phase is a separate task on its own branch
+  3. Performance overhaul: P1 is released; P2 is implemented and locally verified on
+     `claude/perf-db-roundtrips` and waits for Amit to merge (then Vercel auto-deploys and the
+     Production `Server-Timing` before/after for the feed, collections and state routes should
+     be read and recorded). Next unstarted Claude phase: P3 (`claude/perf-client-network`), from
+     the checkpoint "Performance analysis and phased plan — 2026-09-16" (P4 is Codex's, in
+     parallel). Each phase is a separate task on its own branch
      (`claude/perf-client-network`, `claude/perf-bundle`, `claude/perf-server-render`,
      `claude/perf-ai`, `claude/perf-indexes`), re-verifies the file:line references it touches
      against current `main` before editing, passes `npm run check` (plus `npm run
@@ -169,6 +176,189 @@ test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated c
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P2: database round-trip diet — 2026-09-17
+
+Phase P2 of the performance plan, branch `claude/perf-db-roundtrips` (Claude Code worktree
+`.claude/worktrees/perf-db-roundtrips-2118ba`, based on `origin/main` at `53edd84`, the P1
+release record). Implementation commit `43f0cb4`; this state-file update follows on the same
+branch. Executed with three Claude Code sub-agents on disjoint file sets (infrastructure, data
+layer, adoption) and verified as one tree afterwards. Every file:line reference in the P2 brief was
+re-checked against `53edd84` before editing: the chunk-metadata query cited at
+`repositories.ts:1117` was still `listForContentVersion` at that line, the claims N+1 at
+`repositories.ts:1434`, the preferences advisory lock at `postgres-store.ts:88`, and the reader's
+library scan at `page.tsx:185`; P1 had already introduced `getPostgresClient()` in `database.ts`
+and the auth-only adapter in `repository-runtime.ts`, so the "five separate pools" finding was
+already down to two (runtime, control plane). No open PR touched the feed, feed-query or types
+files when the branch started (`gh pr list` empty). Nothing was deployed; no environment
+variable, migration or Production resource changed; no migration was added (the P7 index
+migration stays a separate approval). Amit's decisions stand: no cross-tenant article cache; the
+tenant verification invariant (set_config then current_setting proving the bound user) is kept,
+folded into one round trip.
+
+**What changed**
+
+- `src/lib/postgres/client.ts`: `getSharedPostgresClient(url, options?)` memoises one
+  postgres.js client per URL in a `Map` on `globalThis` (`Symbol.for("distil.postgres.clients")`)
+  so the pool survives dev-server module reloads; `createPostgresClient` and
+  `closePostgresClient` are unchanged for scripts. `src/lib/database.ts` drops its module-level
+  client promise and resolves the runtime client (`DATABASE_URL`) and the control-plane client
+  (`DATABASE_CONTROL_PLANE_URL`, still separate) through it; it also exports
+  `withTenantRepositories(context, operation)`. `src/lib/auth/repository-runtime.ts` keeps
+  building only the auth adapter on `getPostgresClient()` (now the globalThis memo).
+- `src/lib/postgres/tenant-repositories.ts`: the tenant transaction now sends ONE statement,
+  `WITH applied AS (SELECT set_config('app.user_id', …, true) …, set_config('search_path', …,
+true)) SELECT nullif(current_setting('app.user_id', true), '') AS user_id, … FROM applied`,
+  and the outer SELECT reads back only through `current_setting`, so the six-way mismatch check
+  and the "Failed to establish transaction-local tenant context" failure are unchanged (set_config
+  is volatile, so the CTE is materialised before the outer SELECT; the PostgreSQL integration
+  suites prove it). New `withTenantRepositories(sql, context, operation)` opens one tenant
+  transaction, binds `createPostgresRepositories` once on the proxied transaction, and keeps
+  nested `begin` calls (advisory-locked writers) as savepoints; exposed on
+  `PostgresRepositoryAccess`. `getTenantRepositories` (one transaction per call) is unchanged for
+  every other caller. `bindRepositorySet` enumerates repository keys from a per-client cached
+  unbound set instead of rebuilding 30 objects per call.
+- Projection diet (`src/lib/types.ts`, `src/lib/postgres/mappers.ts`, new
+  `src/lib/postgres/item-columns.ts`, `src/lib/postgres/repositories.ts`,
+  `src/lib/feed/feed-query.ts`, `src/lib/repositories/ports.ts`): additive
+  `ContentItemSummary` (`ContentItem` without `fullContent`, `extractedLinks`, `detectedMedia`,
+  `contentClassification`, `thumbnailUrl`) and `mapItemSummary`; every items query now names its
+  columns (no `i.*`, never `search_vector`); `items.listSummaries(filters)`;
+  `items.findNeighbours(itemId, { unreadOnly })` as two keyset `LIMIT 1` queries on
+  `(created_at, id)` over ready items; `list()` remains and defaults to 200 rows instead of
+  1,000,000; `FeedItem = ContentItemSummary & { rank }`, so `/api/v1/feed` payloads no longer
+  carry article bodies (`/` fell from 509 to 458 kB transferred, `/feed` from 477 to 452 kB).
+  `src/components/**` were not edited: the Today and library components read only fields that
+  remain on `FeedItem` (verified by `tsc`).
+- `src/lib/digests/postgres-store.ts`: `getPreferences` is a plain `SELECT`; only the first-ever
+  read for a user (no row) enters the existing advisory-locked insert path. Writers still lock.
+- `src/lib/postgres/repositories.ts`: chunk queries use an explicit column list without
+  `search_vector`; new `contentChunks.listMetadataForContentVersion` (neither `content` nor
+  `search_vector`; `ContentChunkMetadata` added to `src/lib/knowledge/types.ts`) feeds the
+  intelligence envelope, which never needed chunk text; `claims.listForArtifact` fetches all
+  evidence in one `WHERE claim_id = ANY($1)` statement and groups in memory (zero claims → no
+  evidence query).
+- Adoption: `GET /api/v1/feed` runs preferences and the feed page inside one
+  `withTenantRepositories` transaction; `/feed/[id]` loads `findById`, then `Promise.all` of
+  summaries, feedback and `findNeighbours(item.id, { unreadOnly: filter !== "all" })` in one
+  transaction, replacing the full-library scan and in-memory prev/next;
+  `getItemIntelligence` runs its independent reads in two parallel waves;
+  `reader-service.ts` parallelises the independent reads in `putNote`, `createAnnotation`,
+  `annotationForItem` and `addCollectionItem` (item 404 still wins; `updateItemState` stays
+  sequential). The `/api/v1/items/[id]/intelligence` route and the seven reader routes were not
+  edited (outside the P2 ownership list); they benefit from the one-statement verification only.
+- Tests: `tenant-repositories.unit` (combined statement in `queries[0]`, fail-closed mismatch,
+  one `begin` for three reads, nested savepoint, mismatch through the access object),
+  `client.unit` (per-URL memo survives `jest.resetModules()`), `database.unit`
+  (`getSharedPostgresClient` mock, `withTenantRepositories` delegation), `repositories.unit` and
+  `repositories.integration` (`listSummaries` without `fullContent`, `findNeighbours` newer/older,
+  `unreadOnly`, missing id → nulls, `LIMIT 1` twice), `mappers.unit`, `feed-query.unit` (issued
+  SQL contains no `full_content`, `extracted_links`, `detected_media`, `content_classification`,
+  `thumbnail_url` or `search_vector`; items lack `fullContent`), `postgres-store.unit` (present
+  row = one statement, no lock, no `begin`), `page.component` (uses `findNeighbours`, asserts the
+  `unreadOnly` flag per filter and that ids reach navigation and the action bar),
+  `service.unit` (metadata method used, first-wave reads in flight together),
+  `reader-service.unit` (concurrent reads, 404 precedence), `route.contract` (feed route calls
+  `withTenantRepositories` once), `phase2-reader-api.security.unit` (mock gains
+  `withTenantRepositories`), `jobs.unit` (typed fake gains the new chunk method).
+  `tests/security/phase3-boundaries.integration.test.ts` needed no change: its fakes record the
+  set_config values and answer the current_setting read on the same combined statement.
+  `tests/security/phase3-rls.integration.test.ts` is unchanged and remains the real RLS proof.
+- `tests/perf/round-trips.unit.test.ts` lowered: `GET /api/v1/feed` is one transaction and
+  three statements (verification, preferences, feed) with the tenant verification asserted to be
+  a single statement containing both `set_config('app.user_id'` and
+  `current_setting('app.user_id'`; a personalization-off case pins `q=2 tx=1`; the proxy fence
+  stays `calls=1 q=1`. The test's `sqlDouble` is now lazy like postgres.js (a tagged template
+  counts only when awaited) and stubs `sql.unsafe`, so spliced fragments are not miscounted.
+
+**Deviations from the brief, deliberate**
+
+- `listForContentVersion` keeps `content` (the intelligence runtime reads chunk text for
+  summaries and claims); only `search_vector` was dropped there, and the metadata-only shape the
+  brief wanted for the envelope is the new `listMetadataForContentVersion`.
+- Static column lists are spliced with `sql.unsafe(...)` from module-owned constants
+  (`item-columns.ts`), never from caller input; the alternative of listing 24 columns inline in
+  every template was rejected for drift risk. `user_id` is not in the item column lists because no
+  mapper reads it and the legacy repository integration harness has no such column.
+- Files outside the P2 ownership list that changed, all additive: `src/lib/repositories/ports.ts`
+  (three interface members), `src/lib/knowledge/types.ts` (one type),
+  `src/lib/digests/postgres-store.ts` (named by the brief), `src/lib/knowledge/__tests__/jobs.unit.test.ts`
+  (typed fake). `docs/authorization-matrix.json` is unchanged (no route added or removed).
+
+**Before → after: request cost (`tests/perf/round-trips.unit.test.ts`, Neon Auth path)**
+
+| Request                                        | Provider calls | Auth queries | Transactions | Statements |
+| ---------------------------------------------- | -------------- | ------------ | ------------ | ---------- |
+| Proxy, authenticated GET (any path)            | 1              | 1            | 0            | 1          |
+| `GET /api/v1/feed` route (personalization on)  | 0              | 0            | 2 → **1**    | 7 → **3**  |
+| `GET /api/v1/feed` route (personalization off) | 0              | 0            | **1**        | **2**      |
+| Total per `/api/v1/feed` request               | 1              | 1            | 2 → **1**    | 8 → **4**  |
+
+**Server-Timing under `next start` (`perf:vitals`, legacy session bridge, local PostgreSQL, so
+`auth` is cookie verification on both sides; P0 → P1 → P2)**
+
+| Request                        | P0                            | P1                            | P2                                        |
+| ------------------------------ | ----------------------------- | ----------------------------- | ----------------------------------------- |
+| `GET /api/v1/feed`             | `db;dur=21.9;desc="q=7 tx=2"` | `db;dur=20.3;desc="q=7 tx=2"` | `db;dur=16.1;desc="q=3 tx=1"` (2nd: 11.9) |
+| `GET /api/v1/collections`      | `db≈7.5ms q=3 tx=1`           | not recorded                  | `db;dur=5.5;desc="q=2 tx=1"` (2nd: 6.8)   |
+| `GET /api/v1/items/[id]/state` | `db≈9ms q=3 tx=1`             | not recorded                  | `db;dur=8.5;desc="q=2 tx=1"`              |
+
+For comparison, the live P1 numbers on Production (Neon, `sin1`) were `db;dur=45.9;desc="q=7
+tx=2"` for the feed and `db;dur=18.0;desc="q=3 tx=1"` for collections; P2 removes one full
+round trip from every tenant transaction and one transaction plus three statements from the feed
+route, which matters more on Neon's ~5-10 ms round trips than on the local socket measured here.
+The Production before/after can only be read after Amit releases this phase.
+
+**Note for P7 (`distil_resolve_auth_identity`, about 130 ms live per the P1 release
+checkpoint):** P2 does not change it. The proxy still costs exactly one auth query
+(`proxy-auth-db;desc="q=1"` in the fence), it runs outside any tenant transaction, and it already
+used the shared runtime client since P1; the only P2 effect is that the pool behind it now
+survives module reloads. Its latency is dominated by the function itself and the Neon round
+trip, so P7 should look at the function's plan and indexes on `auth_identities`/`users`, not at
+transaction shape.
+
+**Client JavaScript (`npm run perf:bundle`, Turbopack production build of `43f0cb4`)**: zero gzip
+delta on every route against `docs/perf/route-bundle-stats.baseline.json`.
+
+**Page-load medians (`npm run perf:vitals`, 5 runs, 12 seeded items, Chromium 1440×900, build with
+`NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100`, Docker `postgres:16-alpine`, legacy bridge;
+P1 → P2)**
+
+| Page         | TTFB     | FCP        | LCP          | Requests | Transferred      |
+| ------------ | -------- | ---------- | ------------ | -------- | ---------------- |
+| `/`          | 8 → 8 ms | 28 → 28 ms | 100 → 100 ms | 43 → 43  | 510 → **458 kB** |
+| `/feed`      | 4 → 3 ms | 24 → 24 ms | 100 → 92 ms  | 47 → 47  | 478 → **452 kB** |
+| `/feed/[id]` | 8 → 8 ms | 32 → 32 ms | 32 → 32 ms   | 40 → 40  | 569 → 569 kB     |
+| `/settings`  | 3 → 3 ms | 28 → 24 ms | 28 → 28 ms   | 29 → 29  | 426 → 426 kB     |
+
+Timings are within run-to-run noise on the local socket; the transferred-byte drop on `/` and
+`/feed` is the summary projection.
+
+**Verification (all locally verified 2026-09-17 on `43f0cb4`)**
+
+- `npm run check`: ESLint 0 errors / 10 baseline warnings, Prettier clean, `tsc --noEmit` clean,
+  Jest 205 suites / 1506 tests passed (P1: 205 / 1486).
+- `npm run test:integration` (Docker PostgreSQL via Testcontainers): 12 suites / 45 tests passed
+  (P1: 44; the new case is `findNeighbours`/`listSummaries`).
+- `npm run build` (default env) succeeded; `npm run perf:bundle` zero delta. Second build with
+  `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100` succeeded; `npm run perf:vitals` completed, all
+  four pages 200 without redirecting.
+- Not run locally: E2E and extension Playwright (CI "Full gate" runs them on the `full-ci` label
+  the PR carries, as the plan requires for P2).
+- Previously recorded external state, not re-checked: Production serving `f2e4155`, the release
+  pin `unpinned`, Neon branches, the nightly Full gate.
+
+**Risks and rollback**: per-file revert; the projection is additive while `list()` remains, and
+`getTenantRepositories` still exists for every caller that was not moved. If a Production request
+ever fails with "Failed to establish transaction-local tenant context", the combined statement did
+not apply the settings before reading them back (it would fail closed, never leak); revert
+`tenant-repositories.ts` alone to restore the two-statement form.
+
+**Restart steps**: `git fetch origin && git switch claude/perf-db-roundtrips` in its worktree;
+`npm ci`; `npm run check`; `npm run test:integration` (Docker); for numbers `npm run build && npm
+run perf:bundle` and `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 npm run build && npm run
+perf:vitals` (free port 3100). If Codex's P4 merges first: `git merge origin/main` (never rebase)
+and rerun `npm run check`; the `neon-proxy.ts` CSRF digest is untouched by P2.
 
 ### Performance P1 released — 2026-09-17
 
