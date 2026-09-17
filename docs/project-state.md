@@ -18,10 +18,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0, P1, P4, P2 and P6 merged and released 2026-09-17, in that
-  order; P3 merged 2026-09-17 as PR [#32](https://github.com/amitsharmaak/distil/pull/32)
-  (`b815e6d`) and auto-deploying; P7 implemented on Claude and synced onto P3; P5 not
-  started):** the
+- **Performance overhaul (P0, P1, P4, P2, P6, P3 and P7 merged and released 2026-09-17, in
+  that order; P5 not started; P7's Production migration stage not yet run):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -58,11 +56,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `tests/e2e/**`; Claude owned the PostgreSQL migration, schema, feed-query, scripts and
   harness/security test paths) are integrated by Claude as integration owner. No ownership split
   is in force once P7 merges.
-- **Branch / worktree:** `main` at `637d923` (squash merge of PR
-  [#30](https://github.com/amitsharmaak/distil/pull/30), P6) on 2026-09-17, after `eb557a7`
-  (#29, P2 release record), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689`
-  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). PR #32 is the only
-  open PR.
+- **Branch / worktree:** `main` at `1cc670e` (squash merge of PR
+  [#34](https://github.com/amitsharmaak/distil/pull/34), the jsdom runtime fix) on 2026-09-17,
+  after `16c4c31` (#33, P7), `b815e6d` (#32, P3), `58a4a9c` (#31), `637d923` (#30, P6),
+  `eb557a7` (#29), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689` (#27, local loop),
+  `9f0caf6` (#25) and `f295124` (#24, P4). No PR is open.
   Every merged task branch and worktree is deleted; the main checkout
   (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
   the one that wrote this checkpoint is `.claude/worktrees/jabra-evolve-mic-test-7167d1`
@@ -70,8 +68,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   to Distil work; left for Amit to remove). Task branches follow the parallel-session routine in
   `AGENTS.md` §7.1 (one session per branch, branch from `origin/main`, merge not rebase,
   `/start-task` and `/finish-task`).
-  Production serves release `a06d0d7` (P2) as GitHub deployment `6499150136` on `distilai.app`
-  (status `success`, `/api/health` 200 with `cache-control: no-store`, checked 2026-09-17).
+  Production serves release `1cc670e` (jsdom fix, on top of P3 and P7) as GitHub deployment
+  `6508492409` on `distilai.app` (status `success`, `/api/health` 200, checked 2026-09-17); the
+  P3 (`b815e6d`) and P7 (`16c4c31`, deployment `6506943120`) merges auto-deployed before it.
+  The Production library holds one item, captured by Claude from Amit's session on 2026-09-17
+  ("How to Do Great Work", `261ff287-d316-4db9-bc5d-0771b881f90c`); archive or keep it.
   Release pin `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase):
   every push to `main` auto-deploys to Production through Vercel's Git integration; the P4
   (`6498811802`), local-loop (`6499086682`) and P2 deployments all arrived that way. The legacy
@@ -186,36 +187,96 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. Amit: sign in on `https://distilai.app`, look at Today, Feed, the reader and Settings at
-     phone width and desktop (first release of the simplified shell; not yet seen by a person on
-     Production), make one deliberate browser-extension capture, then confirm extraction, summary
-     and search. Record the result as a dated checkpoint here. Update the iPhone Shortcut API
+  1. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
+     live capture and the jsdom runtime fix — 2026-09-17") extracted and indexed correctly, but
+     the P6 brief summary was skipped with `AIProviderError AI_AUTHENTICATION`: the Gemini API
+     key in Vercel's Production environment is rejected by the provider. Replace
+     `GEMINI_API_KEY` in Vercel (Production) with a valid key, redeploy (or push any commit), then
+     open the reader for the existing item and request a brief summary; expect a summary and no
+     `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
+     secrets. Until then every capture lands without a generated summary (extractive brief only)
+     and on-demand summaries fail the same way.
+  2. **Amit: run the P7 migration stage on Production** from a shell that has the Production
+     `DATABASE_MIGRATION_URL` (for example `npx vercel env pull --environment=production
+.env.production.local` in the main checkout, which is gitignored, then delete it):
+     `DATABASE_MIGRATION_URL=... npm run db:tenant:migrate -- --stage perf-indexes
+--amit-user-id <the owner UUID already in the distil_tenant_migrations ledger>`. Record the
+     ledger row and the Neon branch id as a checkpoint. Claude's attempt to pull the secret was
+     blocked by the auto-mode permission classifier, which is the intended boundary. Until it
+     runs, `ai_summaries.content_hash` does not exist in Production and nothing may write it.
+  3. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
+     simplified shell and P3's same-origin client have now been exercised by Claude through the
+     in-app browser but not seen by a person), and make one browser-extension capture (the
+     in-app `/save` path is verified; the extension path is not). Update the iPhone Shortcut API
      base to the apex before its next capture.
-  2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
+  4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: P6 is released but its capture-summary path has not been exercised
-     against a live provider. First: Amit makes one deliberate extension capture on Production
-     (this is also handoff step 1), then confirm the item reaches `ready`, a generated `brief`
-     summary appears in the reader, and Vercel runtime logs show no `capture_summary_skipped`;
-     with that item id, read `Server-Timing` on `GET /api/v1/items/<id>/state` (expected `q=2
-tx=1`) and note both in a dated checkpoint. P3 is merged (`b815e6d`); confirm its automatic
-     Production deployment and, on the next signed-in session, that `/feed` and `/` make only
-     same-origin requests. The only unstarted phase is P5 (`claude/perf-server-render`), its own
-     task from fresh `origin/main` with a dated checkpoint and before/after numbers. P7 state:
-     PR [#33](https://github.com/amitsharmaak/distil/pull/33) on `claude/perf-indexes`, synced
-     onto P3, waits for the Full gate and merge; after the merge, running the `perf-indexes`
-     stage on the Production Neon branch is a separate approval (`npm run db:tenant:migrate --
-     --stage perf-indexes --amit-user-id <uuid>` with `DATABASE_MIGRATION_URL`, recorded with
-     the ledger row and the branch id). Until it runs, the `content_hash` column does not exist
-     in Production and nothing may write it. The live P1 numbers show `proxy-auth-db` at about
-     130 ms per request on Neon; P7 did not touch `distil_resolve_auth_identity` (it is a
-     SECURITY DEFINER lookup on `auth_identities`, outside the RLS finding below) and it remains
-     the largest fixed per-request cost.
-  4. Other engineering candidates, each as its own short-lived branch with a state update: the
+  5. Performance overhaul: the only unstarted phase is P5 (`claude/perf-server-render`), its
+     own task from fresh `origin/main` with a dated checkpoint and before/after numbers. The
+     live numbers show `proxy-auth-db` at about 124 ms per request on Neon
+     (`distil_resolve_auth_identity`, a SECURITY DEFINER lookup on `auth_identities`, outside
+     P7's RLS finding); it remains the largest fixed per-request cost and is the next
+     measurable target after P5. Amit's decision is still open on the two P7 indexes the RLS
+     planner cannot use (checkpoint "Performance P7: indexes — 2026-09-17"); adding them anyway
+     is a one-file `0011` stage.
+  6. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### First live capture and the jsdom runtime fix — 2026-09-17
+
+At Amit's "go ahead and do what's needed", Claude made the first deliberate Production capture
+from Amit's signed-in in-app browser session (`/save`, `https://paulgraham.com/greatwork.html`)
+to exercise P6's per-capture summary and P3's same-origin client.
+
+**It failed.** The capture receipt reported `Failed to load external module jsdom-…:
+Error [ERR_REQUIRE_ESM]: require() of ES Module …/@exodus/bytes/encoding-lite.js from
+…/jsdom/node_modules/html-encoding-sniffer/lib/html-encoding-sniffer.js not supported`. Every
+Production capture had been failing this way since 2026-09-07, when the dependency-security
+commit `5ae4215` raised `jsdom` from `22.1.0` to `30.0.1` — the same day two earlier commits
+(`e553002`, `ab85d28`) had backed jsdom down from 28 to 27 to 22.1.0 for exactly this reason.
+The library was empty from the 2026-09-10 reset onward, so no capture had been attempted since.
+
+**Root cause, measured rather than inferred.** A temporary Preview-only probe on `/api/health`
+(branch `claude/capture-jsdom-runtime`) reported the Lambda as Node `24.19.0` with
+`process.execArgv` containing `--no-experimental-require-module` and
+`--no-experimental-detect-module` and `process.features.require_module === false`, and a real
+`require("jsdom")` from `/var/task` reproduced the error. Vercel starts Next.js functions with
+`require(esm)` disabled, so any CommonJS package that requires an ES module fails on every Node
+version. jsdom ≥ 23 depends on ESM-only `parse5@8`; jsdom ≥ 27.4 also on `@exodus/bytes`.
+Locally the same failure reproduces with `node --no-experimental-require-module -e
+"require('jsdom')"`.
+
+**Fix — PR [#34](https://github.com/amitsharmaak/distil/pull/34), merged as `1cc670e`, deployed
+as `6508492409`:** `jsdom` pinned to `22.1.0` (the last all-CommonJS runtime graph; its
+`form-data` resolves to the patched `4.0.6`, so the 09-07 advisory does not return and
+`npm audit --omit=dev` is unchanged from `main`), `@types/jsdom` `^21.1.7`,
+`docs/security-audit.md` corrected. New `tests/harness/vercel-runtime-externals.unit.test.ts`
+loads `jsdom`, `@mozilla/readability`, `postgres`, `pino` and `better-sqlite3` in a child Node
+under Vercel's two flags and fails on jsdom 30. `/api/health` reports `runtime.node` and
+`requireModule` on Preview deployments only; the Production body is unchanged. Gates: `npm run
+check` 207 suites / 1,486 tests; Full gate green on the PR.
+
+**Second capture, on `1cc670e`: works.** Receipt `queued → ready` in under ten seconds; item
+`261ff287-d316-4db9-bc5d-0771b881f90c`, title "How to Do Great Work", `sourceType: manual`,
+reader page 200 with the extracted article. Live numbers from the same session:
+
+| Request                                 | Result                                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `GET /api/v1/feed?sort=recent` (1 item) | 774 bytes on the wire, no `fullContent` on the row (P2 projection); `db` 43.0 ms `q=3 tx=1` |
+| `GET /api/v1/items/<id>/state`          | `db` 21.6 ms **`q=2 tx=1`** (P2 target, previously unmeasurable on an empty library)        |
+| `GET /feed/<id>` (reader, warm)         | proxy 216–218 ms (`calls=1 q=1`); the first cold read showed `proxy-auth-db q=2` 631 ms     |
+| P3 client                               | all requests same-origin `/api/...`; the feed made no status polls (no processing rows)     |
+
+**P6 on a live provider: the safety net worked, the summary did not.** The queue worker logged
+`capture_summary_skipped` with `AIProviderError` code `AI_AUTHENTICATION` and the capture stayed
+`ready` (extractive brief only; the summaries endpoint returns 404 for the item). The Gemini
+credential in Vercel's Production environment is rejected by the provider; the 2026-09-10
+checkpoint had already noted that "the separate Production provider credential … was not read or
+changed". Claude did not read, rotate or replace it (secrets stay with Amit); handoff step 1 is
+that replacement. Nothing else was deployed or changed; no migration ran (handoff step 2).
 
 ### Performance P7: indexes — 2026-09-17
 
