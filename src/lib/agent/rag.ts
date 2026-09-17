@@ -79,12 +79,6 @@ Question: {QUESTION}
 
 Provide a helpful, cited response:`;
 
-const CONVERSATIONAL_PROMPT = `You are Distil, a friendly personal information assistant. Respond naturally to the user's message. Keep it brief. If the user seems to be transitioning to a question about their content, invite them to ask.
-
-User: {QUESTION}
-
-Response:`;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Intent classification
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,27 +203,13 @@ export async function ragQuery(
 
   // ── Conversational: respond directly, no retrieval ──
   if (intent === "conversational") {
-    const prompt = CONVERSATIONAL_PROMPT.replace("{QUESTION}", filteredQuery);
-    try {
-      const answer = await createTenantAIRouter(context, repositories).generateText(
-        prompt,
-        "research-synthesize"
-      );
-      return {
-        answer,
-        citations: [],
-        chunksUsed: 0,
-        totalTokensEstimate: Math.ceil(prompt.length / 4),
-      };
-    } catch {
-      return {
-        answer:
-          "Hey! I'm Distil, your information assistant. Ask me anything about your saved content.",
-        citations: [],
-        chunksUsed: 0,
-        totalTokensEstimate: 0,
-      };
-    }
+    return {
+      answer:
+        "Hey! I'm Distil, your information assistant. Ask me anything about your saved content.",
+      citations: [],
+      chunksUsed: 0,
+      totalTokensEstimate: 0,
+    };
   }
 
   // ── Specific or General: retrieve context ──

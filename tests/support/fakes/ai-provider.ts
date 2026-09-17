@@ -1,4 +1,9 @@
-import type { AIProvider, GenerateOptions, GeminiProvider } from "@/lib/ai/providers";
+import type {
+  AIProvider,
+  GenerateOptions,
+  GeminiProvider,
+  ProviderResult,
+} from "@/lib/ai/providers";
 import type { ProviderName } from "@/lib/ai/ai-config";
 
 export interface FakeAICall {
@@ -41,19 +46,30 @@ export class FakeAIProvider implements AIProvider, GeminiProvider {
     return this;
   }
 
-  async generateText(prompt: string, model: string, options?: GenerateOptions): Promise<string> {
+  async generateText(
+    prompt: string,
+    model: string,
+    options?: GenerateOptions
+  ): Promise<ProviderResult<string>> {
     this.calls.push({ operation: "text", prompt, model, options });
-    return this.consume<string>(this.textResults, "text");
+    const value = this.consume<string>(this.textResults, "text");
+    return { value, usage: this.usage(prompt, value) };
   }
 
-  async generateJSON<T>(prompt: string, model: string, options?: GenerateOptions): Promise<T> {
+  async generateJSON<T>(
+    prompt: string,
+    model: string,
+    options?: GenerateOptions
+  ): Promise<ProviderResult<T>> {
     this.calls.push({ operation: "json", prompt, model, options });
-    return this.consume<T>(this.jsonResults, "JSON");
+    const value = this.consume<T>(this.jsonResults, "JSON");
+    return { value, usage: this.usage(prompt, JSON.stringify(value)) };
   }
 
-  async generateTextWithSearch(prompt: string): Promise<string> {
+  async generateTextWithSearch(prompt: string): Promise<ProviderResult<string>> {
     this.calls.push({ operation: "search", prompt });
-    return this.consume<string>(this.searchResults, "search");
+    const value = this.consume<string>(this.searchResults, "search");
+    return { value, usage: this.usage(prompt, value) };
   }
 
   reset(): void {
@@ -72,5 +88,12 @@ export class FakeAIProvider implements AIProvider, GeminiProvider {
       throw result.error;
     }
     return result.value as T;
+  }
+
+  private usage(prompt: string, output: string) {
+    return {
+      inputTokens: Math.ceil(prompt.length / 4),
+      outputTokens: Math.ceil(output.length / 4),
+    };
   }
 }

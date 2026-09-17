@@ -309,9 +309,9 @@ describe("PostgresTenantLifecycleRepository", () => {
   it("returns the current counter without mutation when monthly quota is exhausted", async () => {
     const database = createLifecycleSqlDouble();
     database.respond(
-      [],
       [{ quota_key: "ai.requests", period: "month", hard_limit: 10 }],
-      [{ count: "10" }],
+      [{ count: "10", current_count: "10" }],
+      [],
       [usageRow({ request_count: "10" })]
     );
     const repository = new PostgresTenantLifecycleRepository(database.sql, context);
@@ -328,10 +328,14 @@ describe("PostgresTenantLifecycleRepository", () => {
       counter: expect.objectContaining({ requestCount: 10 }),
       quota: { quotaKey: "ai.requests", period: "month", hardLimit: 10 },
     });
-    expect(database.queries[2].values).toEqual(["ai.requests", "2026-09-01", "2026-09-08"]);
-    expect(database.queries.every(({ text }) => !text.startsWith("UPDATE usage_counters"))).toBe(
-      true
-    );
+    expect(database.queries[1].values).toEqual([
+      "2026-09-08",
+      "openai",
+      "ai.requests",
+      "2026-09-01",
+      "2026-09-08",
+    ]);
+    expect(database.queries[2].text).toContain("ON CONFLICT");
     database.assertExhausted();
   });
 
@@ -339,13 +343,10 @@ describe("PostgresTenantLifecycleRepository", () => {
     const database = createLifecycleSqlDouble();
     database.respond(
       [],
-      [],
-      [{ count: 0 }],
-      [],
+      [{ count: 0, current_count: 0 }],
       [usageRow({ request_count: 1 })],
       [],
-      [],
-      [{ count: 1 }],
+      [{ count: 1, current_count: 1 }],
       [usageRow({ request_count: 3 })]
     );
     const repository = new PostgresTenantLifecycleRepository(database.sql, context);
@@ -369,9 +370,7 @@ describe("PostgresTenantLifecycleRepository", () => {
     expect(database.queries.some(({ text }) => text.startsWith("INSERT INTO usage_counters"))).toBe(
       true
     );
-    expect(
-      database.queries.filter(({ text }) => text.startsWith("UPDATE usage_counters"))
-    ).toHaveLength(2);
+    expect(database.queries.filter(({ text }) => text.includes("ON CONFLICT"))).toHaveLength(2);
     database.assertExhausted();
   });
 });

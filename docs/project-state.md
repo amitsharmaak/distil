@@ -19,7 +19,7 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Performance overhaul (P0, P1, P4 and P2 merged and released 2026-09-17, in that order;
-  P3 and P5–P7 not started; Amit's next pick is P6 on Codex):** the
+  P6 implementation complete on Codex; P3, P5 and P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -37,12 +37,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (`a06d0d7`) and is live on Production; see the checkpoints "Performance P2: database
   round-trip diet — 2026-09-17" (design and local before/after), "PR review, merges and
   cleanup — 2026-09-17" (integration, gates, release) and "Performance P2 released —
-  2026-09-17" (live Production numbers) below. Next phase by Amit's decision (chat, 2026-09-17):
-  P6 (`codex/perf-ai`) on Codex; P3, P5 and P7 remain unstarted for later tasks.
+  2026-09-17" (live Production numbers) below. P6 (`codex/perf-ai`) is locally verified at
+  implementation commit `2979d1a` and awaits PR review/merge; P3, P5 and P7 remain unstarted for
+  later tasks.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
   merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
-  force; the next task (P6, Codex) starts alone from `origin/main`.
+  force; P6 ran alone from `origin/main` with no ownership split.
 - **Branch / worktree:** `main` at `a06d0d7` (squash merge of PR
   [#26](https://github.com/amitsharmaak/distil/pull/26), P2) on 2026-09-17, after `0d5e689`
   (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). No PR is open.
@@ -63,6 +64,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still points at the P1
   release `f2e4155` and was not re-aliased today. No manual deploy, migration or
   environment-variable change was made today.
+- **Performance P6 branch / worktree (Codex, implementation complete and locally verified):**
+  `codex/perf-ai` in `/Users/amitsharma/Projects/distil-codex-perf-ai`, started from `origin/main`
+  `c85f336` and merged current `origin/main` `eb557a7` (never rebased); implementation commit
+  `2979d1a`. PR [#30](https://github.com/amitsharmaak/distil/pull/30) is open with the `full-ci`
+  label; it is not merged or deployed. No migration, environment-variable change, release-pin
+  change or cloud mutation was performed.
 - **Local iteration loop (merged 2026-09-17, PR
   [#27](https://github.com/amitsharmaak/distil/pull/27), `0d5e689`):** Amit captures articles
   into a laptop-only PostgreSQL (Docker, in-process capture worker, legacy password login) and
@@ -176,22 +183,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul, next task: **P6 — AI cost and latency on Codex**, branch
-     `codex/perf-ai` from `origin/main` at `a06d0d7` or later, brief "#### P6" in the checkpoint
-     "Performance analysis and phased plan — 2026-09-16". Pointer drift since that brief was
-     written, re-verified on `a06d0d7`: the per-capture brief hook is no longer in
-     `src/app/api/queue/capture-requests/route.ts`; it is the `enqueueEnrichment` callback in
-     `consumeCaptureMessage` (`src/lib/queue/capture-consumer.ts:33`, after
-     `indexCapturedItem`), shared by the Vercel queue route and the local inline dispatcher (see
-     the "Local development loop" checkpoint). `src/lib/ai/search.ts:51` still calls
-     `generateEmbedding`; `rag.ts` reaches it through `hybridSearch` (`rag.ts:169`), and the
-     30-day `listRecent` is `src/lib/ai/embeddings.ts:93` / `src/lib/postgres/repositories.ts:964`.
-     `src/lib/ai/router.ts` audit inserts and `consumeUsage` calls are at lines 267/278 and
-     397/408 (admission `checkBudget` at 179). P4 deleted `src/lib/ai/client.ts`,
-     `circuit-breaker.ts` and `tagger.ts`; do not recreate them. P2 changed `items.list()` to a
-     200-row default and added `withTenantRepositories`; the queue consumer still uses
-     `getTenantRepositories`. Gate: `npm run check`, `npm run test:integration`, the `full-ci`
-     label. Afterwards the unstarted Claude phases are P3 (`claude/perf-client-network`), P5
+  3. Review Performance P6 PR on `codex/perf-ai`; wait for the Quick gate and every `full-ci` job,
+     then merge/release only on Amit's instruction. Afterwards the unstarted Claude phases are P3
+     (`claude/perf-client-network`), P5
      (`claude/perf-server-render`) and P7 (`claude/perf-indexes`; Production migration run is a
      separate approval), each as its own task with a dated checkpoint and before/after numbers.
      The P2 Production reading is recorded ("Performance P2 released — 2026-09-17"); the
@@ -203,6 +197,59 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P6: AI cost and latency — 2026-09-17
+
+Codex implemented P6 on branch `codex/perf-ai` in worktree
+`/Users/amitsharma/Projects/distil-codex-perf-ai`, started from `origin/main` `c85f336` and synced
+with `origin/main` `eb557a7` by merge, never rebase. Implementation commit: `2979d1a`. The PR is not
+merged or deployed. PR [#30](https://github.com/amitsharmaak/distil/pull/30) is open with the
+`full-ci` label. Production, Neon, Vercel, environment variables, release pin and migrations were
+not touched.
+
+- **Capture summary:** the shared `consumeCaptureMessage` enrichment hook now indexes first and
+  then requests one tenant-budget-admitted `brief` summary. This is identical for Vercel Queue and
+  `DISTIL_CAPTURE_DISPATCH=inline`. `FEATURE_CAPTURE_SUMMARY` is on unless its normalized value is
+  exactly `false`; summary/provider failures log `capture_summary_skipped` without failing an
+  accepted capture. Existing summary cache hits and normalized-URL dedupe perform no model call.
+- **Model-call and retrieval diet:** semantic search checks tenant embedding count before asking a
+  provider for a query embedding and reads at most 500 recent embeddings. Legacy RAG greetings are
+  deterministic and model-free. Grounded `/api/v1/answers` caches a validated answer for 24 hours
+  by tenant user id, normalized question and ordered passage-id hash; the cache is bounded to 512
+  process-local entries and never shares across tenants. No cross-tenant article cache was added.
+- **Latency and accounting:** tenant AI calls still perform one budget admission before the model,
+  then return without awaiting audit-log and `ai.usage` persistence; Next `after()` keeps both
+  writes alive after the response. Direct tests and the long-lived local inline worker use a safe
+  microtask fallback outside a Next request scope. Usage counters now use a lock-free
+  `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` with the quota limit in the conflict predicate;
+  the concurrent PostgreSQL quota proof remains green.
+- **Provider and summary bounds:** Gemini text generation now always supplies a 15-second default
+  timeout and 4,096-token output ceiling; all providers return their measured input/output usage
+  to the router. Sonnet requests place `cache_control: { type: "ephemeral" }` on their stable system
+  preamble (verified against the installed Anthropic SDK types and current official prompt-cache
+  documentation because the requested `claude-api` skill was not installed). Long summaries use
+  `p-limit(3)` plus `Promise.all`; forced regeneration observes a persisted 60-second per-item and
+  prompt-length cooldown. P7's content-hash column does not exist yet, so P6 does not key on it.
+
+Before/after numbers (deterministic local evidence, not hosted-provider timing):
+
+| Surface                                    | Before                                                  | After                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| New capture, normal provider path          | 0 generated brief calls                                 | 1 flash-lite brief call; cache/replay/dedupe 0; provider fallback can add one bounded retry |
+| Conversational legacy RAG answer           | 1 model call                                            | 0 model calls                                                                               |
+| Grounded answer                            | 1 call per request                                      | 1 on cache miss, 0 on a same-tenant 24-hour cache hit                                       |
+| Semantic query with zero stored embeddings | 1 embedding-provider call attempted                     | 0 provider calls after one count query                                                      |
+| Post-model critical path                   | 2 awaited durable writes in sequence (audit then usage) | 0 awaited durable writes; both run in parallel under `after()`                              |
+| Token accounting proof fixture             | estimated from characters (2 input / 2 output)          | provider-returned 123 input / 45 output; estimate is only a missing-metadata fallback       |
+| Long-summary chunk concurrency             | 1 serial call                                           | maximum 3 concurrent calls                                                                  |
+
+- **Locally verified:** `npm run check` passed with lint 0 errors / 6 pre-existing warnings,
+  Prettier clean, TypeScript clean, and 204 suites / 1,465 tests passed. `npm run test:integration`
+  passed against Docker PostgreSQL 29.7.2: 12 suites / 45 tests. Focused P6 run: 12 suites / 162
+  tests before the full gate. No live provider, hosted latency, deployment or Production smoke was
+  run, so implementation is complete and locally verified but not deployed.
+- **Unfinished / restart:** wait for the Quick gate, Vercel and every `full-ci` job on PR #30.
+  Review, merge and release wait for Amit's instruction.
 
 ### Performance P2 released — 2026-09-17
 

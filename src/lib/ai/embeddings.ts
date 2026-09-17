@@ -90,7 +90,7 @@ export async function findSimilarItems(
   embedding: number[],
   threshold = 0.85
 ): Promise<Array<{ itemId: string; similarity: number }>> {
-  const rows = await repositories.embeddings.listRecent(30);
+  const rows = await repositories.embeddings.listRecent(30, 500);
   const results: Array<{ itemId: string; similarity: number }> = [];
 
   for (const row of rows) {

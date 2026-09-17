@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { createTenantAIRouter } from "./router";
 import { SchemaType, type ResponseSchema } from "@google/generative-ai";
 import { z } from "zod";
+import pLimit from "p-limit";
 import { AIProviderError } from "./errors";
 import type { AITask } from "./ai-config";
 import {
@@ -42,6 +43,8 @@ const responseSchema: ResponseSchema = {
   },
   required: ["overview", "keyPoints"],
 };
+
+const FORCE_COOLDOWN_MS = 60_000;
 
 /** Estimate token count as ~4 chars per token. */
 function estimateTokens(text: string): number {
@@ -140,11 +143,17 @@ export async function generateSummary(
   const options = maybeOptions;
   const length = options.length ?? "brief";
 
-  if (!options.force) {
-    const existing = await repositories.summaries.find(itemId, length);
-    if (existing) {
-      return { summary: existing.summary, cached: true };
-    }
+  const existing = await repositories.summaries.find(itemId, length);
+  if (!options.force && existing) {
+    return { summary: existing.summary, cached: true };
+  }
+  const now = Date.now();
+  if (
+    options.force &&
+    existing &&
+    now - new Date(existing.createdAt).getTime() < FORCE_COOLDOWN_MS
+  ) {
+    return { summary: existing.summary, cached: true };
   }
 
   const item = await repositories.items.findById(itemId);
@@ -175,12 +184,12 @@ export async function generateSummary(
     const CHUNK_TARGET = 4000;
     const chunks = splitIntoChunks(content, CHUNK_TARGET);
 
-    const chunkOutputs: SummaryOutput[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const prompt = chunkSummarizePrompt(chunks[i], i, chunks.length);
-      const chunkOutput = await generate(prompt, "summarize");
-      chunkOutputs.push(chunkOutput);
-    }
+    const limit = pLimit(3);
+    const chunkOutputs = await Promise.all(
+      chunks.map((chunk, index) =>
+        limit(() => generate(chunkSummarizePrompt(chunk, index, chunks.length), "summarize"))
+      )
+    );
 
     const chunkSummaries = chunkOutputs.map((o) => JSON.stringify(o, null, 2));
     const synthesizePrompt = synthesizeChunkSummariesPrompt(chunkSummaries, item);
@@ -203,6 +212,5 @@ export async function generateSummary(
     model,
     promptType: length,
   });
-
   return { summary, cached: false };
 }

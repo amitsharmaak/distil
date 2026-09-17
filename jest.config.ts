@@ -51,7 +51,7 @@ const config: Config = {
   // narrow dependency graph so the CommonJS Jest harness tests the same current
   // sanitizer build used in production.
   transformIgnorePatterns: [
-    "/node_modules/(?!(?:sanitize-html/node_modules/)?(?:htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)/)",
+    "/node_modules/(?!(?:sanitize-html/node_modules/)?(?:htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)|p-limit|yocto-queue)/",
   ],
 
   // Only pick up files in __tests__ directories or with .test.ts(x) suffix.

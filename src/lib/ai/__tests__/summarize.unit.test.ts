@@ -195,7 +195,7 @@ describe("generateSummary — cache behaviour", () => {
       summary: "Old brief summary that should be ignored.",
       model: "gemini-2.5-flash",
       prompt_type: "brief",
-      created_at: new Date().toISOString(),
+      createdAt: new Date(Date.now() - 61_000).toISOString(),
     });
 
     const result = await generateSummary(context, repositories, techCrunchItem.id, {
@@ -206,6 +206,35 @@ describe("generateSummary — cache behaviour", () => {
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
     expect(result.cached).toBe(false);
     expect(result.summary).toBe(mockBriefSummary);
+  });
+
+  it("serves the cached value during the 60-second force cooldown", async () => {
+    mockGetAISummary
+      .mockReturnValueOnce({
+        id: "sum-cooldown-old",
+        itemId: "cooldown-item",
+        summary: "Old cached summary",
+        model: "gemini-2.5-flash",
+        promptType: "brief",
+        createdAt: new Date(Date.now() - 61_000).toISOString(),
+      })
+      .mockReturnValueOnce({
+        id: "sum-cooldown-new",
+        itemId: "cooldown-item",
+        summary: "Cached cooldown summary",
+        model: "gemini-2.5-flash",
+        promptType: "brief",
+        createdAt: new Date().toISOString(),
+      });
+
+    await generateSummary(context, repositories, "cooldown-item", { length: "brief", force: true });
+    const second = await generateSummary(context, repositories, "cooldown-item", {
+      length: "brief",
+      force: true,
+    });
+
+    expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
+    expect(second).toEqual({ summary: "Cached cooldown summary", cached: true });
   });
 
   it("bypasses cache when the cached prompt_type does not match the requested length", async () => {
@@ -236,6 +265,28 @@ describe("generateSummary — cache behaviour", () => {
 // ── Generation ────────────────────────────────────────────────────────────────
 
 describe("generateSummary — generation", () => {
+  it("limits long-document chunk generation to three concurrent calls", async () => {
+    const paragraph = "Long-form source material. ".repeat(500);
+    mockGetItemById.mockReturnValue({
+      ...techCrunchItem,
+      id: "long-item",
+      fullContent: Array.from({ length: 12 }, () => paragraph).join("\n\n"),
+    });
+    let active = 0;
+    let peak = 0;
+    mockGenerateJSON.mockImplementation(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active -= 1;
+      return mockBriefOutput;
+    });
+
+    await generateSummary(context, repositories, "long-item", { length: "brief" });
+
+    expect(peak).toBe(3);
+    expect(mockGenerateJSON.mock.calls.length).toBeGreaterThan(3);
+  });
   it("stores the generated summary in the DB cache", async () => {
     await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 

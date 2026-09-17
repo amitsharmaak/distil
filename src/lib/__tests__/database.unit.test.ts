@@ -35,7 +35,7 @@ const methodNames: Record<string, string[]> = {
   ],
   settings: ["get", "set"],
   notifications: ["insert", "list", "unreadCount", "markRead", "markAllRead"],
-  embeddings: ["find", "upsert", "listRecent"],
+  embeddings: ["find", "upsert", "count", "listRecent"],
   rawContent: ["insert", "attachItem"],
   publisherQueue: ["enqueue", "listPending", "markFetched", "markFailed", "getStats"],
   jobs: ["enqueue", "dequeue", "complete", "getStats"],

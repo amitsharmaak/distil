@@ -6,7 +6,7 @@
 
 import { randomUUID } from "crypto";
 import { toAIProviderError } from "./errors";
-import type { AIProvider, GenerateOptions } from "./providers";
+import type { AIProvider, GenerateOptions, ProviderResult, ProviderUsage } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider } from "./providers";
 import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
@@ -15,6 +15,7 @@ import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import { scheduleAIAfterResponse } from "./after-response";
 
 /** Per-call metrics for AI usage. */
 export interface UsageMetrics {
@@ -37,6 +38,13 @@ function estimateCost(model: string, tokensIn: number, tokensOut: number): numbe
   const inputCost = (tokensIn / 1_000_000) * costs.input;
   const outputCost = (tokensOut / 1_000_000) * costs.output;
   return inputCost + outputCost;
+}
+
+function measuredUsage(usage: ProviderUsage, prompt: string, output: string): ProviderUsage {
+  return {
+    inputTokens: usage.inputTokens || estimateTokens(prompt),
+    outputTokens: usage.outputTokens || estimateTokens(output),
+  };
 }
 
 // Applied only when DISTIL_DAILY_AI_BUDGET env var is set. In-process only —
@@ -199,7 +207,6 @@ class AIRouter {
   async generateText(prompt: string, task: AITask, options?: GenerateOptions): Promise<string> {
     const { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
-    const tokensIn = estimateTokens(prompt);
     const start = Date.now();
 
     this.checkBudget();
@@ -208,7 +215,11 @@ class AIRouter {
     const result = await p.generateText(prompt, model, options);
 
     const latencyMs = Date.now() - start;
-    const tokensOut = estimateTokens(result);
+    const { inputTokens: tokensIn, outputTokens: tokensOut } = measuredUsage(
+      result.usage,
+      prompt,
+      result.value
+    );
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
     await this.persistUsage(
@@ -239,7 +250,7 @@ class AIRouter {
       "AI call completed"
     );
 
-    return result;
+    return result.value;
   }
 
   async generateTenantText(
@@ -252,44 +263,47 @@ class AIRouter {
     const tenant = parseAuthContext(context);
     await assertTenantAIBudget(repositories);
     const { provider, model } = this.getEffectiveModel(task);
-    const tokensIn = estimateTokens(prompt);
     const start = Date.now();
     const result = await this.getProvider(provider).generateText(prompt, model, options);
+    const usage = measuredUsage(result.usage, prompt, result.value);
     const metrics: UsageMetrics = {
       task,
       provider,
       model,
-      tokens_in: tokensIn,
-      tokens_out: estimateTokens(result),
+      tokens_in: usage.inputTokens,
+      tokens_out: usage.outputTokens,
       latency_ms: Date.now() - start,
-      cost_estimate: estimateCost(model, tokensIn, estimateTokens(result)),
+      cost_estimate: estimateCost(model, usage.inputTokens, usage.outputTokens),
     };
-    await repositories.agent.insertAuditLog({
-      id: randomUUID(),
-      action: `ai:${task}`,
-      model,
-      provider,
-      tokensIn: metrics.tokens_in,
-      tokensOut: metrics.tokens_out,
-      cost: metrics.cost_estimate,
-      latencyMs: metrics.latency_ms,
-      traceId: tenant.requestId,
+    scheduleAIAfterResponse(async () => {
+      await Promise.all([
+        repositories.agent.insertAuditLog({
+          id: randomUUID(),
+          action: `ai:${task}`,
+          model,
+          provider,
+          tokensIn: metrics.tokens_in,
+          tokensOut: metrics.tokens_out,
+          cost: metrics.cost_estimate,
+          latencyMs: metrics.latency_ms,
+          traceId: tenant.requestId,
+        }),
+        repositories.lifecycle.consumeUsage({
+          date: new Date().toISOString().slice(0, 10),
+          operation: "ai.usage",
+          provider,
+          inputTokens: metrics.tokens_in,
+          outputTokens: metrics.tokens_out,
+          costMicrousd: Math.round(metrics.cost_estimate * 1_000_000),
+        }),
+      ]);
     });
-    await repositories.lifecycle.consumeUsage({
-      date: new Date().toISOString().slice(0, 10),
-      operation: "ai.usage",
-      provider,
-      inputTokens: metrics.tokens_in,
-      outputTokens: metrics.tokens_out,
-      costMicrousd: Math.round(metrics.cost_estimate * 1_000_000),
-    });
-    return result;
+    return result.value;
   }
 
   async generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions): Promise<T> {
     const { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
-    const tokensIn = estimateTokens(prompt);
     const start = Date.now();
 
     this.checkBudget();
@@ -298,8 +312,12 @@ class AIRouter {
     const result = await p.generateJSON<T>(prompt, model, options);
 
     const latencyMs = Date.now() - start;
-    const resultStr = JSON.stringify(result);
-    const tokensOut = estimateTokens(resultStr);
+    const resultStr = JSON.stringify(result.value);
+    const { inputTokens: tokensIn, outputTokens: tokensOut } = measuredUsage(
+      result.usage,
+      prompt,
+      resultStr
+    );
     const costEstimate = estimateCost(model, tokensIn, tokensOut);
 
     await this.persistUsage(
@@ -330,7 +348,7 @@ class AIRouter {
       "AI call completed"
     );
 
-    return result;
+    return result.value;
   }
 
   async generateTenantJSON<T>(
@@ -357,9 +375,8 @@ class AIRouter {
     const assignment = this.getEffectiveModel(task);
     const provider = assignment.provider;
     let model = assignment.model;
-    const tokensIn = estimateTokens(prompt);
     const start = Date.now();
-    let result: T;
+    let result: ProviderResult<T>;
     try {
       result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
     } catch (error) {
@@ -392,28 +409,34 @@ class AIRouter {
         throw toAIProviderError(fallbackError, provider, model);
       }
     }
-    const output = JSON.stringify(result);
-    const tokensOut = estimateTokens(output);
-    await repositories.agent.insertAuditLog({
-      id: randomUUID(),
-      action: `ai:${task}`,
-      model,
-      provider,
-      tokensIn,
-      tokensOut,
-      cost: estimateCost(model, tokensIn, tokensOut),
-      latencyMs: Date.now() - start,
-      traceId: tenant.requestId,
+    const output = JSON.stringify(result.value);
+    const usage = measuredUsage(result.usage, prompt, output);
+    const cost = estimateCost(model, usage.inputTokens, usage.outputTokens);
+    const latencyMs = Date.now() - start;
+    scheduleAIAfterResponse(async () => {
+      await Promise.all([
+        repositories.agent.insertAuditLog({
+          id: randomUUID(),
+          action: `ai:${task}`,
+          model,
+          provider,
+          tokensIn: usage.inputTokens,
+          tokensOut: usage.outputTokens,
+          cost,
+          latencyMs,
+          traceId: tenant.requestId,
+        }),
+        repositories.lifecycle.consumeUsage({
+          date: new Date().toISOString().slice(0, 10),
+          operation: "ai.usage",
+          provider,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          costMicrousd: Math.round(cost * 1_000_000),
+        }),
+      ]);
     });
-    await repositories.lifecycle.consumeUsage({
-      date: new Date().toISOString().slice(0, 10),
-      operation: "ai.usage",
-      provider,
-      inputTokens: tokensIn,
-      outputTokens: tokensOut,
-      costMicrousd: Math.round(estimateCost(model, tokensIn, tokensOut) * 1_000_000),
-    });
-    return { value: result, model, provider };
+    return { value: result.value, model, provider };
   }
 
   async generateTextWithSearch(prompt: string): Promise<string> {
@@ -426,7 +449,6 @@ class AIRouter {
           : PROVIDER_FALLBACK_MODELS.gemini[task];
       const provider: ProviderName = "gemini";
       const traceId = getTraceId();
-      const tokensIn = estimateTokens(prompt);
       const start = Date.now();
 
       this.checkBudget();
@@ -434,15 +456,17 @@ class AIRouter {
       const result = await (gemini as GeminiProvider).generateTextWithSearch(prompt);
 
       const latencyMs = Date.now() - start;
-      const tokensOut = estimateTokens(result);
-      const costEstimate = estimateCost(model, tokensIn, tokensOut);
+      const usage = measuredUsage(result.usage, prompt, result.value);
+      const tokensOut = usage.outputTokens;
+      const measuredTokensIn = usage.inputTokens;
+      const costEstimate = estimateCost(model, measuredTokensIn, tokensOut);
 
       await this.persistUsage(
         {
           task,
           provider,
           model,
-          tokens_in: tokensIn,
+          tokens_in: measuredTokensIn,
           tokens_out: tokensOut,
           latency_ms: latencyMs,
           cost_estimate: costEstimate,
@@ -457,7 +481,7 @@ class AIRouter {
           task,
           provider,
           model,
-          tokensIn,
+          tokensIn: measuredTokensIn,
           tokensOut,
           latencyMs,
           costEstimate: costEstimate.toFixed(6),
@@ -465,7 +489,7 @@ class AIRouter {
         "AI call completed"
       );
 
-      return result;
+      return result.value;
     }
     return this.generateText(prompt, "research-search");
   }

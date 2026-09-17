@@ -450,10 +450,12 @@ describe("default capture processor", () => {
     const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
     const existing = { id: "existing-item" };
     const items = { findByNormalizedUrl: jest.fn().mockResolvedValue(existing), insert: jest.fn() };
+    const enqueueEnrichment = jest.fn();
     const processor = createDefaultCaptureProcessor({
       context,
       items: items as never,
       rawContent: rawContent as never,
+      enqueueEnrichment,
       fetchOptions,
     });
 
@@ -465,6 +467,7 @@ describe("default capture processor", () => {
       expect.objectContaining({ sourceType: "browser-extension" })
     );
     expect(items.insert).not.toHaveBeenCalled();
+    expect(enqueueEnrichment).not.toHaveBeenCalled();
   });
 
   it("uses the pipeline result when it returns an item and fails closed when it does not", async () => {

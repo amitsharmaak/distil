@@ -4,6 +4,9 @@ import { createDefaultCaptureProcessor, CaptureWorker } from "@/lib/capture/work
 import { getTenantRepositories } from "@/lib/database";
 import { indexCapturedItem } from "@/lib/knowledge/capture-index";
 import { createCaptureQueueConsumer } from "@/lib/queue/consumer";
+import { generateSummary } from "@/lib/ai/summarize";
+import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+import { aiLogger, sanitizeLogError } from "@/lib/logger";
 
 export const CAPTURE_QUEUE_ACTOR_ID = "00000000-0000-4000-8000-000000000002";
 
@@ -31,6 +34,19 @@ export async function consumeCaptureMessage(message: CaptureQueueMessageV2): Pro
       rawContent: repositories.rawContent,
       enqueueEnrichment: async (itemId) => {
         await indexCapturedItem({ context, repositories, itemId });
+        if (!readPhase2FeatureFlags().captureSummary) return;
+        try {
+          await generateSummary(context, repositories, itemId, { length: "brief" });
+        } catch (error) {
+          aiLogger.warn(
+            {
+              event: "capture_summary_skipped",
+              traceId: context.requestId,
+              err: sanitizeLogError(error),
+            },
+            "Capture summary generation skipped"
+          );
+        }
       },
     }),
     audit: async ({ action, traceId }) => {

@@ -455,10 +455,13 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     });
     await expect(r.embeddings.find("missing")).resolves.toBeUndefined();
     await r.embeddings.upsert("item-1", [0.2], "embed-2");
+    respond({ count: 1 });
+    await expect(r.embeddings.count()).resolves.toBe(1);
     respond({ item_id: "item-1", embedding: [0.2] });
     await expect(r.embeddings.listRecent()).resolves.toEqual([
       { itemId: "item-1", embedding: [0.2] },
     ]);
+    expect(fake.queries.at(-1)).toContain("LIMIT");
 
     await r.rawContent.insert({
       id: "raw",

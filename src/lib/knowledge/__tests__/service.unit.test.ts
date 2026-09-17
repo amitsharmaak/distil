@@ -5,10 +5,13 @@ import {
   answerFromKnowledge,
   assertDateRange,
   classifyAnswerIntent,
+  clearAnswerCacheForTests,
   enqueueSummaryRegeneration,
   getItemIntelligence,
   validateGeneratedCitations,
 } from "../service";
+
+beforeEach(() => clearAnswerCacheForTests());
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
@@ -162,6 +165,28 @@ describe("grounded answer service", () => {
       passagesUsed: 1,
       citations: [expect.objectContaining({ id: "citation-1" })],
     });
+  });
+
+  it("reuses a grounded answer for the same tenant, normalized question, and passages", async () => {
+    const generator = jest.fn().mockResolvedValue({
+      answer: "The queue persists work.",
+      citations: [{ itemId: "item-1", chunkId: "chunk-1", exactExcerpt: "persists accepted work" }],
+    });
+    const repository = store([passage()]);
+    const first = await answerFromKnowledge({
+      context,
+      request: { query: "How does the queue work?", messages: [] },
+      store: repository,
+      generator,
+    });
+    const second = await answerFromKnowledge({
+      context,
+      request: { query: "  HOW   does the queue work? ", messages: [] },
+      store: repository,
+      generator,
+    });
+    expect(first).toEqual(second);
+    expect(generator).toHaveBeenCalledTimes(1);
   });
 
   it("falls back deterministically for malformed or failed generation", async () => {

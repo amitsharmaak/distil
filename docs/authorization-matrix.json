@@ -1050,7 +1050,7 @@
       "currentAuth": "vercel_queue_signature_without_tenant",
       "requiredPrincipal": "queue_service",
       "scope": "service",
-      "resources": ["capture_requests", "items"],
+      "resources": ["capture_requests", "items", "ai_summaries", "usage_counters", "audit_log"],
       "testProfile": "service"
     },
     {
@@ -1729,7 +1729,7 @@
       "source": "src/app/api/queue/capture-requests/route.ts",
       "currentTenant": "absent",
       "requiredTenant": "signed queue envelope userId plus captureId; worker revalidates capture owner",
-      "resources": ["capture_requests", "items"]
+      "resources": ["capture_requests", "items", "ai_summaries", "usage_counters", "audit_log"]
     },
     {
       "id": "account-lifecycle-queue-callback",

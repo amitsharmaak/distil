@@ -366,16 +366,34 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
     if (Object.values(delta).some((value) => !Number.isSafeInteger(value) || value < 0)) {
       throw new Error("Usage deltas must be nonnegative safe integers");
     }
-    await this
-      .sql`SELECT pg_advisory_xact_lock(hashtext(${`usage:${this.context.userId}:${input.operation}`}))`;
     const quotas = await this.listQuotas();
     const quota = quotas.find(({ quotaKey }) => quotaKey === input.operation);
     const from = quota?.period === "month" ? `${input.date.slice(0, 7)}-01` : input.date;
-    const [aggregate] = await this.sql<Array<{ count: number }>>`
-      SELECT coalesce(sum(request_count),0)::bigint AS count FROM usage_counters
+    const [aggregate] = await this.sql<Array<{ count: number; current_count: number }>>`
+      SELECT coalesce(sum(request_count),0)::bigint AS count,
+        coalesce(sum(request_count) FILTER (
+          WHERE billing_date=${input.date}::date AND provider=${provider}
+        ),0)::bigint AS current_count
+      FROM usage_counters
       WHERE operation=${input.operation} AND billing_date>=${from}::date AND billing_date<=${input.date}::date`;
-    const allowed = !quota || Number(aggregate?.count ?? 0) + delta.requestCount <= quota.hardLimit;
-    if (!allowed) {
+    const otherUsage = Number(aggregate?.count ?? 0) - Number(aggregate?.current_count ?? 0);
+    const counterLimit = quota ? Math.max(0, quota.hardLimit - otherUsage) : null;
+    const rows = await this.sql<Row[]>`
+      INSERT INTO usage_counters
+        (user_id,billing_date,operation,provider,request_count,input_tokens,output_tokens,cost_microusd,updated_at)
+      SELECT ${this.context.userId}::uuid,${input.date}::date,${input.operation},${provider},
+        ${delta.requestCount},${delta.inputTokens},${delta.outputTokens},${delta.costMicrousd},now()
+      WHERE ${counterLimit}::bigint IS NULL OR ${delta.requestCount}::bigint<=${counterLimit}::bigint
+      ON CONFLICT (user_id,billing_date,operation,provider) DO UPDATE SET
+        request_count=usage_counters.request_count+EXCLUDED.request_count,
+        input_tokens=usage_counters.input_tokens+EXCLUDED.input_tokens,
+        output_tokens=usage_counters.output_tokens+EXCLUDED.output_tokens,
+        cost_microusd=usage_counters.cost_microusd+EXCLUDED.cost_microusd,
+        updated_at=now()
+      WHERE ${counterLimit}::bigint IS NULL
+        OR usage_counters.request_count+EXCLUDED.request_count<=${counterLimit}::bigint
+      RETURNING *`;
+    if (!rows[0]) {
       const current = (
         await this.sql<
           Row[]
@@ -396,20 +414,6 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
             },
         quota,
       };
-    }
-    let rows = await this.sql<Row[]>`
-      UPDATE usage_counters SET request_count=request_count+${delta.requestCount},
-        input_tokens=input_tokens+${delta.inputTokens},output_tokens=output_tokens+${delta.outputTokens},
-        cost_microusd=cost_microusd+${delta.costMicrousd},updated_at=now()
-      WHERE billing_date=${input.date}::date AND operation=${input.operation} AND provider=${provider}
-      RETURNING *`;
-    if (!rows[0]) {
-      rows = await this.sql<Row[]>`
-        INSERT INTO usage_counters
-          (user_id,billing_date,operation,provider,request_count,input_tokens,output_tokens,cost_microusd,updated_at)
-        VALUES (${this.context.userId}::uuid,${input.date}::date,${input.operation},${provider},
-          ${delta.requestCount},${delta.inputTokens},${delta.outputTokens},${delta.costMicrousd},now())
-        RETURNING *`;
     }
     return { allowed: true, counter: mapUsage(rows[0]), ...(quota ? { quota } : {}) };
   }

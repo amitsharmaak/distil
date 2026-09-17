@@ -3,6 +3,7 @@ import { readPhase2FeatureFlags } from "../feature-flags";
 describe("Phase 2 server feature flags", () => {
   it("defaults every incomplete Phase 2 feature to disabled", () => {
     expect(readPhase2FeatureFlags({})).toEqual({
+      captureSummary: true,
       knowledgeUi: false,
       search: false,
       answers: false,
@@ -14,6 +15,7 @@ describe("Phase 2 server feature flags", () => {
   it("only accepts an explicit true value", () => {
     expect(
       readPhase2FeatureFlags({
+        FEATURE_CAPTURE_SUMMARY: " false ",
         FEATURE_KNOWLEDGE_UI: "true",
         FEATURE_SEARCH: "TRUE",
         FEATURE_ANSWERS: "1",
@@ -21,6 +23,7 @@ describe("Phase 2 server feature flags", () => {
         FEATURE_DIGESTS: " true ",
       })
     ).toEqual({
+      captureSummary: false,
       knowledgeUi: true,
       search: true,
       answers: false,

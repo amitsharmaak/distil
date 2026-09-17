@@ -1,13 +1,38 @@
 const mockGenerateContent = jest.fn();
 const mockGetModel = jest.fn(() => ({ generateContent: mockGenerateContent }));
+const mockAnthropicCreate = jest.fn();
 jest.mock("@google/generative-ai", () => ({
   GoogleGenerativeAI: jest.fn(() => ({ getGenerativeModel: mockGetModel })),
 }));
-import { GeminiProviderImpl } from "../providers";
+jest.mock("@anthropic-ai/sdk", () => ({
+  __esModule: true,
+  default: jest.fn(() => ({ messages: { create: mockAnthropicCreate } })),
+}));
+import { AnthropicProviderImpl, GeminiProviderImpl } from "../providers";
 import { AIProviderError, classifyProviderFailure } from "../errors";
 import { sanitizeLogError } from "@/lib/logger";
 beforeEach(() => {
   jest.clearAllMocks();
+});
+it("marks the stable Sonnet system preamble as ephemeral cache content", async () => {
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "answer" }],
+    usage: {
+      input_tokens: 10,
+      cache_creation_input_tokens: 20,
+      cache_read_input_tokens: 30,
+      output_tokens: 4,
+    },
+  });
+  await expect(
+    new AnthropicProviderImpl("key").generateText("question", "claude-sonnet-4-6")
+  ).resolves.toEqual({ value: "answer", usage: { inputTokens: 60, outputTokens: 4 } });
+  expect(mockAnthropicCreate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      system: [expect.objectContaining({ cache_control: { type: "ephemeral" } })],
+    }),
+    { timeout: 15_000 }
+  );
 });
 it("requests native JSON with a finite timeout and the supplied schema", async () => {
   mockGenerateContent.mockResolvedValue({ response: { text: () => '{"ok":true}' } });
@@ -16,7 +41,7 @@ it("requests native JSON with a finite timeout and the supplied schema", async (
     provider.generateJSON("synthetic", "synthetic-model", {
       responseSchema: { type: "OBJECT", properties: { ok: { type: "BOOLEAN" } } } as never,
     })
-  ).resolves.toEqual({ ok: true });
+  ).resolves.toEqual({ value: { ok: true }, usage: { inputTokens: 0, outputTokens: 0 } });
   expect(mockGetModel).toHaveBeenCalledWith(
     expect.objectContaining({
       generationConfig: expect.objectContaining({
@@ -50,7 +75,8 @@ it("retries one transient provider failure", async () => {
     .mockRejectedValueOnce(Object.assign(new Error("temporary"), { status: 503 }))
     .mockResolvedValueOnce({ response: { text: () => '{"ok":true}' } });
   await expect(new GeminiProviderImpl("key").generateJSON("synthetic", "model")).resolves.toEqual({
-    ok: true,
+    value: { ok: true },
+    usage: { inputTokens: 0, outputTokens: 0 },
   });
   expect(mockGenerateContent).toHaveBeenCalledTimes(2);
 });
