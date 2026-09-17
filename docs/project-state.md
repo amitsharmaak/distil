@@ -18,8 +18,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0, P1, P4 and P2 merged and released 2026-09-17, in that order;
-  P6 implementation complete on Codex; P3, P5 and P7 not started):** the
+- **Performance overhaul (P0, P1, P4, P2 and P6 merged and released 2026-09-17, in that
+  order; P3, P5 and P7 not started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -37,15 +37,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (`a06d0d7`) and is live on Production; see the checkpoints "Performance P2: database
   round-trip diet — 2026-09-17" (design and local before/after), "PR review, merges and
   cleanup — 2026-09-17" (integration, gates, release) and "Performance P2 released —
-  2026-09-17" (live Production numbers) below. P6 (`codex/perf-ai`) is locally verified at
-  implementation commit `2979d1a` and awaits PR review/merge; P3, P5 and P7 remain unstarted for
-  later tasks.
+  2026-09-17" (live Production numbers) below. P6 (AI cost and latency: per-capture brief
+  summary, accounting off the critical path, answer cache, provider bounds) merged as PR
+  [#30](https://github.com/amitsharmaak/distil/pull/30) (`637d923`) and is live on Production;
+  see "Performance P6: AI cost and latency — 2026-09-17" (design and local evidence) and
+  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3, P5 and
+  P7 remain unstarted for later tasks.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
   merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
   force; P6 ran alone from `origin/main` with no ownership split.
-- **Branch / worktree:** `main` at `a06d0d7` (squash merge of PR
-  [#26](https://github.com/amitsharmaak/distil/pull/26), P2) on 2026-09-17, after `0d5e689`
+- **Branch / worktree:** `main` at `637d923` (squash merge of PR
+  [#30](https://github.com/amitsharmaak/distil/pull/30), P6) on 2026-09-17, after `eb557a7`
+  (#29, P2 release record), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689`
   (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). No PR is open.
   Every merged task branch and worktree is deleted; the main checkout
   (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
@@ -64,12 +68,6 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still points at the P1
   release `f2e4155` and was not re-aliased today. No manual deploy, migration or
   environment-variable change was made today.
-- **Performance P6 branch / worktree (Codex, implementation complete and locally verified):**
-  `codex/perf-ai` in `/Users/amitsharma/Projects/distil-codex-perf-ai`, started from `origin/main`
-  `c85f336` and merged current `origin/main` `eb557a7` (never rebased); implementation commit
-  `2979d1a`. PR [#30](https://github.com/amitsharmaak/distil/pull/30) is open with the `full-ci`
-  label; it is not merged or deployed. No migration, environment-variable change, release-pin
-  change or cloud mutation was performed.
 - **Local iteration loop (merged 2026-09-17, PR
   [#27](https://github.com/amitsharmaak/distil/pull/27), `0d5e689`):** Amit captures articles
   into a laptop-only PostgreSQL (Docker, in-process capture worker, legacy password login) and
@@ -183,13 +181,16 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Review Performance P6 PR on `codex/perf-ai`; wait for the Quick gate and every `full-ci` job,
-     then merge/release only on Amit's instruction. Afterwards the unstarted Claude phases are P3
-     (`claude/perf-client-network`), P5
-     (`claude/perf-server-render`) and P7 (`claude/perf-indexes`; Production migration run is a
-     separate approval), each as its own task with a dated checkpoint and before/after numbers.
-     The P2 Production reading is recorded ("Performance P2 released — 2026-09-17"); the
-     item-state route stays unmeasured until the library has an item. The live P1 numbers
+  3. Performance overhaul: P6 is released but its capture-summary path has not been exercised
+     against a live provider. First: Amit makes one deliberate extension capture on Production
+     (this is also handoff step 1), then confirm the item reaches `ready`, a generated `brief`
+     summary appears in the reader, and Vercel runtime logs show no `capture_summary_skipped`;
+     with that item id, read `Server-Timing` on `GET /api/v1/items/<id>/state` (expected `q=2
+tx=1`) and note both in a dated checkpoint. Then the unstarted phases are P3
+     (`claude/perf-client-network`), P5 (`claude/perf-server-render`) and P7
+     (`claude/perf-indexes`; Production migration run is a separate approval; adds the
+     `ai_summaries.content_hash` column P6 left un-keyed), each as its own task from fresh
+     `origin/main` with a dated checkpoint and before/after numbers. The live P1 numbers
      show `proxy-auth-db` at about 130 ms per request on Neon, so P7 should look at the
      `distil_resolve_auth_identity` lookup as well as the tenant transactions.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
@@ -197,6 +198,28 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P6 released — 2026-09-17
+
+Amit squash-merged PR [#30](https://github.com/amitsharmaak/distil/pull/30) (`codex/perf-ai`,
+head `b992bed`) as `637d923` at 14:51 UTC, after the Quick gate and every `full-ci` Full gate
+job passed on that head; the post-merge Quick gate on `main` also passed. With the release pin
+`unpinned`, Vercel deployed it automatically as GitHub deployment `6505511035` (`success`);
+`https://distilai.app/api/health` returned 200. Codex's worktree
+`/Users/amitsharma/Projects/distil-codex-perf-ai` and the branch are gone; no PR is open. No
+migration, environment-variable, release-pin or Neon change; the legacy alias
+`distil-pv-1850.vercel.app` still points at the P1 release. This checkpoint corrects the P6
+checkpoint below, which was written while the PR was still open.
+
+**Not yet verified on Production:** P6 is the first release that makes a model call on every
+capture (`FEATURE_CAPTURE_SUMMARY`, on by default; no Production variable was set). The
+Production library is still empty, so the live capture-summary path, the `after()` accounting
+writes under Vercel's request lifetime, and the Gemini timeout/ceiling have only Codex's local
+and deterministic evidence. Handoff next step 3 names the single capture that closes this.
+
+**Rollback:** set `FEATURE_CAPTURE_SUMMARY=false` in Vercel (kill switch, no redeploy of code
+needed beyond the env change) to stop per-capture summaries; or revert `637d923` on `main`
+(auto-deploys) / promote deployment `6505192777` (`eb557a7`). No schema changed.
 
 ### Performance P6: AI cost and latency — 2026-09-17
 
