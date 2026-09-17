@@ -23,8 +23,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   analysis and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its
   own `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) is complete on
   branch `claude/perf-baseline-627eff` (worktree `.claude/worktrees/perf-baseline-627eff`) and
-  awaits Amit's review and merge; see the checkpoint "Performance baseline (P0) — 2026-09-17"
-  below for the baseline numbers every later phase compares against. Not deployed.
+  awaits Amit's review and merge as PR [#21](https://github.com/amitsharmaak/distil/pull/21);
+  see the checkpoint "Performance baseline (P0) — 2026-09-17" below for the baseline numbers
+  every later phase compares against. Not deployed.
 - **Owner:** Amit decides direction. Claude Code (this checkpoint) and Codex work from repository
   files only. Nominate the integration owner per task in this section when both agents are active;
   default is the agent that opens the PR.
@@ -146,7 +147,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
      base to the apex before its next capture.
   2. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  3. Performance overhaul: merge the P0 PR (branch `claude/perf-baseline-627eff`) after review,
+  3. Performance overhaul: merge the P0 PR
+     ([#21](https://github.com/amitsharmaak/distil/pull/21), branch
+     `claude/perf-baseline-627eff`) after review,
      then pick the next unstarted phase (P1, `claude/perf-auth-handoff`) from the checkpoint
      "Performance analysis and phased plan — 2026-09-16" in order P0 → P7. Each phase is a
      separate task on its own
@@ -167,7 +170,7 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
 
 Phase P0 of the performance plan, branch `claude/perf-baseline-627eff` (Claude Code worktree
 `.claude/worktrees/perf-baseline-627eff`, based on `origin/main` at `fa7dda5`). Implementation
-commit `8d8de85`; the PR link is recorded in the handoff bullet once opened. No behaviour change:
+commit `8d8de85`, PR [#21](https://github.com/amitsharmaak/distil/pull/21). No behaviour change:
 the same provider calls, queries and transactions run as before; they are now counted and timed.
 Every file:line reference in the P0 brief was re-checked against `fa7dda5` before editing and none
 had moved. Nothing was deployed; no environment variable, migration or Production resource changed.
