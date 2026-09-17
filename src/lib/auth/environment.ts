@@ -1,6 +1,11 @@
 export interface AuthEnvironment {
   passwordHash: string;
   sessionSecret: string;
+  /**
+   * Secret behind the proxy-to-route identity token: the Neon Auth cookie
+   * secret when hosted auth is configured, else the legacy session secret.
+   */
+  identityTokenSecret: string;
   allowedOrigins: ReadonlySet<string>;
   legacyCaptureToken?: string;
 }
@@ -30,6 +35,7 @@ export function readAuthEnvironment(env: NodeJS.ProcessEnv = process.env): AuthE
   return Object.freeze({
     passwordHash: env.DISTIL_WEB_PASSWORD_HASH ?? "",
     sessionSecret: env.DISTIL_SESSION_SECRET ?? "",
+    identityTokenSecret: env.NEON_AUTH_COOKIE_SECRET || env.DISTIL_SESSION_SECRET || "",
     allowedOrigins,
     legacyCaptureToken: env.DISTIL_API_TOKEN || undefined,
   });

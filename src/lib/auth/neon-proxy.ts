@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessDeniedError } from "@/lib/auth/account";
+import { AuthError } from "@/lib/auth/errors";
+import { createIdentityToken, IDENTITY_HEADER } from "@/lib/auth/identity-token";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import {
   resolveNeonAuthRequest,
   resolveNeonLifecycleRecoveryRequest,
-  type ProviderIdentityPort,
+  type ProviderSessionResult,
 } from "@/lib/auth/request-context";
 
 const PUBLIC_PATHS = new Set([
@@ -30,9 +32,17 @@ const PROTECTED_AUTH_PREFIXES = [
   "/api/auth/slack",
 ] as const;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const LOGIN_PATH = "/sign-in";
 
-export interface NeonProxyProvider extends ProviderIdentityPort {
-  middleware(config: { loginUrl: string }): (request: NextRequest) => Promise<NextResponse>;
+/** One uncached provider verification: the session and the provider's refreshed cookies. */
+export interface VerifiedProviderSession {
+  session: ProviderSessionResult;
+  /** `Set-Cookie` headers the provider wants forwarded to the browser. */
+  headers: Headers;
+}
+
+export interface NeonProxyProvider {
+  verifySession(request: NextRequest): Promise<VerifiedProviderSession>;
 }
 
 export function isPublicNeonPath(pathname: string): boolean {
@@ -72,13 +82,43 @@ export function isLifecycleRecoveryRequest(pathname: string, method: string): bo
   return pathname === "/api/v1/account/deletion" && (method === "GET" || method === "DELETE");
 }
 
+function deniedResponse(request: NextRequest, error: unknown): NextResponse {
+  const unauthenticated = error instanceof AccessDeniedError && error.reason === "unauthenticated";
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const status = unauthenticated ? 401 : 403;
+    return NextResponse.json(
+      {
+        error: {
+          code: status === 401 ? "UNAUTHORIZED" : "ACCESS_DENIED",
+          message: "Unable to continue",
+        },
+      },
+      { status }
+    );
+  }
+  // Pages: no session goes to sign-in; a session without an active internal
+  // account goes to the explanation page.
+  return NextResponse.redirect(
+    new URL(unauthenticated ? LOGIN_PATH : "/access-denied", request.url)
+  );
+}
+
+/**
+ * Authorize one request with exactly one uncached provider check and one
+ * account lookup, then hand the identity to the application as a signed,
+ * trace-bound `x-distil-identity` token. The caller strips every inbound
+ * `x-distil-*` header before calling, so the returned headers are the only
+ * source of that token. The repositories are loaded lazily so public paths
+ * never open the database.
+ */
 export async function authorizeNeonProxy(
   request: NextRequest,
   requestId: string,
   dependencies: {
     provider: NeonProxyProvider;
-    repositories: AuthRepositoryPort;
+    repositories: () => Promise<AuthRepositoryPort>;
     allowedOrigins: ReadonlySet<string>;
+    identityTokenSecret: string;
   }
 ): Promise<{ response?: NextResponse; requestHeaders?: Headers; providerHeaders?: Headers }> {
   if (
@@ -88,62 +128,53 @@ export async function authorizeNeonProxy(
     return { requestHeaders: new Headers(request.headers) };
   }
 
-  // Force the SDK middleware past its signed session-data cookie so a
-  // provider-side revocation takes effect on this request. Use a verification
-  // request rather than mutating the URL that continues to the application.
-  const verificationUrl = request.nextUrl.clone();
-  verificationUrl.searchParams.set("disableCookieCache", "true");
-  const verificationRequest = new NextRequest(verificationUrl, {
-    method: "GET",
-    headers: request.headers,
-  });
-  const providerResponse = await dependencies.provider.middleware({ loginUrl: "/sign-in" })(
-    verificationRequest
-  );
-  if (providerResponse.headers.get("x-middleware-next") !== "1") {
-    const location = providerResponse.headers.get("location");
-    if (location) {
-      const sanitizedLocation = new URL(location, request.url);
-      sanitizedLocation.searchParams.delete("disableCookieCache");
-      providerResponse.headers.set("location", sanitizedLocation.toString());
-    }
-    return { response: providerResponse };
-  }
-
+  let providerHeaders: Headers | undefined;
   try {
     if (requiresNeonSessionOrigin(request.method)) {
       requireAllowedOrigin(request, dependencies.allowedOrigins);
     }
+    // The single provider round trip for this request. Its session feeds the
+    // unchanged resolver through a one-shot adapter; nothing may call the
+    // provider again.
+    const verified = await dependencies.provider.verifySession(request);
+    providerHeaders = verified.headers;
+    if (!verified.session.data?.user || !verified.session.data.session) {
+      // No session: deny before the repositories are ever loaded. The resolver
+      // below re-applies this and the remaining identity checks.
+      throw new AccessDeniedError("unauthenticated");
+    }
+    const oneShotProvider = { getSession: async () => verified.session };
     const resolveRequest = isLifecycleRecoveryRequest(request.nextUrl.pathname, request.method)
       ? resolveNeonLifecycleRecoveryRequest
       : resolveNeonAuthRequest;
     const resolved = await resolveRequest(
-      dependencies.provider,
-      dependencies.repositories,
+      oneShotProvider,
+      await dependencies.repositories(),
       requestId
     );
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-distil-user-id", resolved.context.userId);
-    requestHeaders.set("x-distil-actor-id", resolved.context.actorId);
-    requestHeaders.set("x-distil-actor-kind", resolved.context.actorKind);
-    requestHeaders.set("x-distil-fresh-auth", resolved.freshAuth.isFresh ? "1" : "0");
-    return { requestHeaders, providerHeaders: providerResponse.headers };
+    requestHeaders.set(
+      IDENTITY_HEADER,
+      await createIdentityToken(
+        {
+          userId: resolved.context.userId,
+          actorKind: resolved.context.actorKind,
+          sessionId: resolved.context.sessionId,
+          fresh: resolved.freshAuth.isFresh,
+          traceId: requestId,
+        },
+        dependencies.identityTokenSecret
+      )
+    );
+    return { requestHeaders, providerHeaders };
   } catch (error) {
-    if (request.nextUrl.pathname.startsWith("/api/")) {
-      const status =
-        error instanceof AccessDeniedError && error.reason === "unauthenticated" ? 401 : 403;
-      return {
-        response: NextResponse.json(
-          {
-            error: {
-              code: status === 401 ? "UNAUTHORIZED" : "ACCESS_DENIED",
-              message: "Unable to continue",
-            },
-          },
-          { status }
-        ),
-      };
-    }
-    return { response: NextResponse.redirect(new URL("/access-denied", request.url)) };
+    // Only authorization outcomes become denials; a provider or database
+    // failure propagates so the proxy answers 503 instead of a false 403.
+    if (!(error instanceof AccessDeniedError || error instanceof AuthError)) throw error;
+    const response = deniedResponse(request, error);
+    providerHeaders?.forEach((value, key) => {
+      if (key.toLowerCase() === "set-cookie") response.headers.append(key, value);
+    });
+    return { response };
   }
 }

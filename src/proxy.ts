@@ -1,8 +1,8 @@
 /**
  * Next.js proxy — runs on every matching request.
  *
- * Applies: trace IDs, auth, rate limiting, CORS.
- * Only runs on /api/* routes.
+ * Applies: header sanitizing, trace IDs, rate limiting, auth, CORS.
+ * Runs on pages and API routes alike (see the matcher below).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,7 +10,7 @@ import { checkAuth } from "@/lib/middleware/auth";
 import { checkRateLimit } from "@/lib/middleware/rate-limit";
 import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
-import { getNeonAuthServer } from "@/lib/auth/neon-server";
+import { getNeonProxyProvider } from "@/lib/auth/neon-server";
 import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
@@ -31,6 +31,10 @@ const CONNECTOR_API_PREFIXES = [
   "/api/publishers",
 ] as const;
 
+/** Headers only this proxy may set; anything inbound under them is dropped. */
+const INTERNAL_HEADER_PREFIX = "x-distil-";
+const TRACE_HEADER = "x-trace-id";
+
 function connectorsDisabled(pathname: string): boolean {
   return (
     process.env.FEATURE_CONNECTORS === "false" &&
@@ -40,11 +44,25 @@ function connectorsDisabled(pathname: string): boolean {
   );
 }
 
+/**
+ * Drop every inbound `x-distil-*` and `x-trace-id` header before any branch
+ * runs, so the identity token, the trace id and the timing handoff can only
+ * originate here. Returns a request whose headers are the sanitized set.
+ */
+function sanitizeInboundRequest(inbound: NextRequest): NextRequest {
+  const headers = new Headers(inbound.headers);
+  for (const name of [...headers.keys()]) {
+    if (name.startsWith(INTERNAL_HEADER_PREFIX) || name === TRACE_HEADER) headers.delete(name);
+  }
+  return new NextRequest(inbound.url, { method: inbound.method, headers });
+}
+
 export function proxy(request: NextRequest): Promise<NextResponse> {
   return runWithRequestMetrics((metrics) => handleProxy(request, metrics));
 }
 
-async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
+async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
+  const request = sanitizeInboundRequest(inbound);
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
   const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
@@ -71,6 +89,10 @@ async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
   const preflightResponse = isApi ? handlePreflight(request) : null;
   if (preflightResponse) return finish(preflightResponse);
 
+  // Rate limiting runs before the expensive authentication work.
+  const rateLimitError = isApi && !isInfrastructure ? checkRateLimit(request) : null;
+  if (rateLimitError) return finish(rateLimitError);
+
   const traceId = crypto.randomUUID();
   let requestHeaders = new Headers(request.headers);
   let providerHeaders: Headers | undefined;
@@ -84,16 +106,18 @@ async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
   } else {
     try {
       const dependencies = instrumentNeonProxyDependencies({
-        provider: getNeonAuthServer(),
-        repositories: await getAuthRepositoryPort(),
+        provider: getNeonProxyProvider(),
+        // Lazy: public and specialized paths never open the database.
+        repositories: getAuthRepositoryPort,
       });
       const authorization = await authorizeNeonProxy(request, traceId, {
         provider: dependencies.provider,
         repositories: dependencies.repositories,
         allowedOrigins: readAuthEnvironment().allowedOrigins,
+        identityTokenSecret: readAuthEnvironment().identityTokenSecret,
       });
       if (authorization.response) {
-        authorization.response.headers.set("x-trace-id", traceId);
+        authorization.response.headers.set(TRACE_HEADER, traceId);
         return finish(authorization.response);
       }
       requestHeaders = authorization.requestHeaders ?? requestHeaders;
@@ -103,17 +127,13 @@ async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
         { error: { code: "AUTH_UNAVAILABLE", message: "Authentication is unavailable" } },
         { status: 503 }
       );
-      unavailable.headers.set("x-trace-id", traceId);
+      unavailable.headers.set(TRACE_HEADER, traceId);
       return finish(unavailable);
     }
   }
 
-  // Rate limiting
-  const rateLimitError = isApi && !isInfrastructure ? checkRateLimit(request) : null;
-  if (rateLimitError) return finish(rateLimitError);
-
   // Add trace ID header for downstream use (Edge runtime uses Web Crypto API)
-  requestHeaders.set("x-trace-id", traceId);
+  requestHeaders.set(TRACE_HEADER, traceId);
   // Never trust a client-supplied value; set or clear it here on every request.
   if (isApi) requestHeaders.set(PROXY_TIMING_HEADER, serverTimingHeader(metrics, "proxy"));
   else requestHeaders.delete(PROXY_TIMING_HEADER);
@@ -123,7 +143,7 @@ async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
   });
 
   // Set trace ID on response too
-  response.headers.set("x-trace-id", traceId);
+  response.headers.set(TRACE_HEADER, traceId);
   providerHeaders?.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") response.headers.append(key, value);
   });
@@ -133,5 +153,9 @@ async function handleProxy(request: NextRequest, metrics: RequestMetrics) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/).*)"],
+  // Static assets are excluded; RSC prefetches stay covered because they carry
+  // tenant data.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|robots.txt|sitemap.xml|logo.png|sw.js|.*\\.svg).*)",
+  ],
 };

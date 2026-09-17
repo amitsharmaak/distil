@@ -1,4 +1,4 @@
-import { getRepositorySet } from "@/lib/database";
+import { getPostgresClient } from "@/lib/database";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 
 export class AuthRepositoryUnavailableError extends Error {
@@ -8,13 +8,24 @@ export class AuthRepositoryUnavailableError extends Error {
   }
 }
 
+let authRepositoryPromise: Promise<AuthRepositoryPort> | undefined;
+
 /**
- * Integration seam for the schema workstream. Feature-off deployments never
- * read this property. Feature-on deployments fail closed until the concrete
- * PostgreSQL adapter is present as RepositorySet.auth.
+ * The proxy's account lookup adapter. Feature-off deployments never read this.
+ * Feature-on deployments fail closed when PostgreSQL is not configured. Only
+ * the auth adapter is constructed, on the shared client, so the proxy never
+ * loads the full repository set.
  */
 export async function getAuthRepositoryPort(): Promise<AuthRepositoryPort> {
-  const repositories = (await getRepositorySet()) as unknown as { auth?: AuthRepositoryPort };
-  if (!repositories.auth) throw new AuthRepositoryUnavailableError();
-  return repositories.auth;
+  authRepositoryPromise ??= Promise.all([
+    getPostgresClient(),
+    import("@/lib/postgres/auth-repository"),
+  ]).then(
+    ([sql, adapter]) => new adapter.PostgresAuthRepository(sql),
+    () => {
+      authRepositoryPromise = undefined;
+      throw new AuthRepositoryUnavailableError();
+    }
+  );
+  return authRepositoryPromise;
 }
