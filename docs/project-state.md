@@ -42,21 +42,23 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   [#30](https://github.com/amitsharmaak/distil/pull/30) (`637d923`) and is live on Production;
   see "Performance P6: AI cost and latency — 2026-09-17" (design and local evidence) and
   "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3 is
-  implementation-complete on `codex/perf-client-network` at `8627ab3`, locally verified, and
-  awaiting PR review/merge; its dated checkpoint is directly below this handoff. P5 and P7 remain
-  unstarted for later tasks.
+  implementation-complete on `codex/perf-client-network`, locally verified, and open as PR
+  [#32](https://github.com/amitsharmaak/distil/pull/32) with `full-ci`; its dated checkpoint is
+  directly below this handoff. P5 and P7 remain unstarted for later tasks.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
   merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
   force; P6 ran alone from `origin/main` with no ownership split.
 - **Performance P3 task:** Codex owns `codex/perf-client-network` in
   `/Users/amitsharma/Projects/distil-codex-perf-client-network`, based on `origin/main` `58a4a9c`.
-  Implementation commit `8627ab3`; no ownership split is in force. The implementation and local
-  gates are complete; PR creation with the `full-ci` label is the only remaining task action.
+  Implementation commit `8627ab3`; verified PR-opening head `25d5a01`. No ownership split is in
+  force. Implementation and local gates are complete; PR #32 is open with `full-ci` for Amit's
+  review and merge decision.
 - **Branch / worktree:** `main` at `637d923` (squash merge of PR
   [#30](https://github.com/amitsharmaak/distil/pull/30), P6) on 2026-09-17, after `eb557a7`
   (#29, P2 release record), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689`
-  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). No PR is open.
+  (#27, local loop), `9f0caf6` (#25, P4 release record) and `f295124` (#24, P4). PR #32 is the only
+  open PR.
   Every merged task branch and worktree is deleted; the main checkout
   (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
   the one that wrote this checkpoint is `.claude/worktrees/jabra-evolve-mic-test-7167d1`
@@ -210,10 +212,11 @@ tx=1`) and note both in a dated checkpoint. P3 is complete locally and awaits Am
 Codex implemented P3 on branch `codex/perf-client-network` in worktree
 `/Users/amitsharma/Projects/distil-codex-perf-client-network`, based on fresh `origin/main`
 `58a4a9c` (later than the requested floor because it records the P6 release). Implementation commit
-`8627ab3`; this checkpoint follows on the same branch. The PR is not yet open at this checkpoint.
-Nothing was merged or deployed; Production, Neon, Vercel, migrations, environment variables and
-the release pin were not touched. The P6 capture path, `src/lib/ai/**`, `src/proxy.ts` and
-`src/lib/auth/neon-proxy.ts` were not edited.
+`8627ab3`; verified PR-opening head `25d5a01`. PR
+[#32](https://github.com/amitsharmaak/distil/pull/32) is open against `main` with the `full-ci`
+label. Nothing was merged or deployed; Production, Neon, Vercel, migrations, environment
+variables and the release pin were not touched. The P6 capture path, `src/lib/ai/**`,
+`src/proxy.ts` and `src/lib/auth/neon-proxy.ts` were not edited.
 
 **What changed**
 
@@ -280,9 +283,10 @@ remains negative for every extant route; the no-growth command exited 0.
   `npm run perf:vitals` both passed. Deterministic tests and measurements used local resources and
   contacted no hosted service.
 
-**Unfinished / exact restart:** push this branch, open the PR against `main`, add `full-ci`, record
-the PR/head here, and stop. Amit decides merge and release. After a later merge, re-check Quick and
-Full gates plus the resulting Vercel deployment before calling P3 deployed.
+**Unfinished / exact restart:** PR #32 is open with `full-ci`; its Quick gate and Vercel check had
+started when this checkpoint closed. Amit decides merge and release. Inspect the PR checks, review
+the diff and merge only on Amit's instruction. After a later merge, re-check the resulting `main`
+Quick/Full gates and Vercel deployment before calling P3 deployed.
 
 ### Performance P6 released — 2026-09-17
 
