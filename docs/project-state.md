@@ -51,8 +51,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
   P4 is on `codex/perf-bundle` in `/private/tmp/distil-perf-bundle`, based on `origin/main` at
-  `53edd84`; implementation commit `5578b7b` and the documentation commit below are pushed for
-  review. No deployment or environment change was made.
+  `53edd84`; implementation commit `5578b7b` and documentation checkpoint `83c8b03` are in PR
+  [#24](https://github.com/amitsharmaak/distil/pull/24), labeled `full-ci`. No deployment or
+  environment change was made.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -182,8 +183,10 @@ test:integration` and the `full-ci` label for P2, P6, P7), and appends a dated c
 
 Phase P4 is implementation-complete on branch `codex/perf-bundle`, worktree
 `/private/tmp/distil-perf-bundle`, based on `origin/main` at `53edd84` (P1 included).
-Implementation commit `5578b7b`; PR pending at the time of this checkpoint. Nothing was deployed,
-no migration ran, no environment variable changed and no Production resource was touched.
+Implementation commit `5578b7b`, documentation checkpoint `83c8b03`, PR
+[#24](https://github.com/amitsharmaak/distil/pull/24) with the `full-ci` label. Nothing was
+deployed, no migration ran, no environment variable changed and no Production resource was
+touched.
 
 **What changed**
 
