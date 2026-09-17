@@ -52,8 +52,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 distil-pv-1850.vercel.app`) whenever it should match `distilai.app`.
   P4 is on `codex/perf-bundle` in `/private/tmp/distil-perf-bundle`, based on `origin/main` at
   `53edd84`; implementation commit `5578b7b` and documentation checkpoint `83c8b03` are in PR
-  [#24](https://github.com/amitsharmaak/distil/pull/24), labeled `full-ci`. No deployment or
-  environment change was made.
+  [#24](https://github.com/amitsharmaak/distil/pull/24), labeled `full-ci`. No Production
+  deployment or environment change was made; opening the PR created the normal automatic Vercel
+  Preview deployment only.
 - **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
   deployed):**
   - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
@@ -185,8 +186,9 @@ Phase P4 is implementation-complete on branch `codex/perf-bundle`, worktree
 `/private/tmp/distil-perf-bundle`, based on `origin/main` at `53edd84` (P1 included).
 Implementation commit `5578b7b`, documentation checkpoint `83c8b03`, PR
 [#24](https://github.com/amitsharmaak/distil/pull/24) with the `full-ci` label. Nothing was
-deployed, no migration ran, no environment variable changed and no Production resource was
-touched.
+deployed to Production, no migration ran, no environment variable changed and no Production
+resource was touched. The PR integration created automatic Vercel Preview deployment
+`6498702959` after the branch was pushed.
 
 **What changed**
 
@@ -254,8 +256,11 @@ prefetch and inline-CSS behavior and are recorded without claiming an improvemen
 - `npm run perf:vitals`: all four measured pages returned 200 without redirects; output
   `.perf/web-vitals-2026-09-17T08-18-04-743Z.json`. Deterministic tests used fakes/local resources
   and did not contact hosted services.
-- Previously recorded external state, not re-checked: Production at P1 release `f2e4155`, release
-  pin `unpinned`, Neon resources and nightly CI. P4 is not deployed.
+- Externally verified after opening the PR: Quick gate and every Full gate job passed on
+  `d3e5a24` (deterministic tests, PostgreSQL integration, production build, coverage, web/mobile
+  E2E and extension E2E); Vercel Preview deployment `6498702959` passed. Previously recorded and
+  not re-checked: Production at P1 release `f2e4155`, release pin `unpinned`, Neon resources and
+  nightly CI. P4 is not merged or deployed to Production.
 
 **Deviations and restart:** besides the shared-size exception above, deletion-dependent security
 tests and frozen route-inventory expectations were removed or count-adjusted so the required
