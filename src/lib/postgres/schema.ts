@@ -479,6 +479,7 @@ export const itemEvents = pgTable(
     }).onDelete("cascade"),
     index("item_events_item_idx").on(t.itemId, t.occurredAt.desc()),
     index("item_events_type_idx").on(t.eventType, t.occurredAt.desc()),
+    index("item_events_user_type_occurred_idx").on(t.userId, t.eventType, t.occurredAt.desc()),
     check(
       "item_events_type_check",
       sql`${t.eventType} in ('opened','marked_read','marked_unread','completed','archived','restored','collection_added','collection_removed','feedback_recorded','citation_clicked','resurfaced','resurfacing_dismissed')`
@@ -967,6 +968,7 @@ export const aiSummaries = pgTable(
     model: text().notNull(),
     promptType: text("prompt_type").notNull(),
     createdAt: time("created_at").notNull(),
+    contentHash: text("content_hash"),
   },
   (t) => [uniqueIndex("ai_summaries_user_item_prompt_idx").on(t.userId, t.itemId, t.promptType)]
 );

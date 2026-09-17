@@ -19,7 +19,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Performance overhaul (P0, P1, P4, P2 and P6 merged and released 2026-09-17, in that
-  order; P3 implementation complete and locally verified; P5 and P7 not started):** the
+  order; P3 merged 2026-09-17 as PR [#32](https://github.com/amitsharmaak/distil/pull/32)
+  (`b815e6d`) and auto-deploying; P7 implemented on Claude and synced onto P3; P5 not
+  started):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -41,19 +43,21 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   summary, accounting off the critical path, answer cache, provider bounds) merged as PR
   [#30](https://github.com/amitsharmaak/distil/pull/30) (`637d923`) and is live on Production;
   see "Performance P6: AI cost and latency — 2026-09-17" (design and local evidence) and
-  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3 is
-  implementation-complete on `codex/perf-client-network`, locally verified, and open as PR
-  [#32](https://github.com/amitsharmaak/distil/pull/32) with `full-ci`; its dated checkpoint is
-  directly below this handoff. P5 and P7 remain unstarted for later tasks.
+  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3
+  (`codex/perf-client-network`, Codex) merged as PR
+  [#32](https://github.com/amitsharmaak/distil/pull/32) (`b815e6d`) after its Quick and Full
+  gates passed; Claude reviewed and merged it as integration owner at Amit's request; see
+  "Performance P3: client payload and network — 2026-09-17" below. P7 (`claude/perf-indexes`)
+  is implemented, locally verified and merged with `main` at `b815e6d` (code merged cleanly; only
+  this file conflicted); see "Performance P7: indexes — 2026-09-17" below for the RLS planner
+  finding that reduced it to one index plus the `content_hash` column, and for the Production
+  migration run that still needs Amit's separate approval. P5 remains unstarted.
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
-  The concurrent P2/P4 pair is fully integrated (Amit merged P4; Claude, as integration owner,
-  merged #25, #27 and #26 on 2026-09-17 at Amit's request). No concurrent ownership split is in
-  force; P6 ran alone from `origin/main` with no ownership split.
-- **Performance P3 task:** Codex owns `codex/perf-client-network` in
-  `/Users/amitsharma/Projects/distil-codex-perf-client-network`, based on `origin/main` `58a4a9c`.
-  Implementation commit `8627ab3`; verified PR-opening head `25d5a01`. No ownership split is in
-  force. Implementation and local gates are complete; PR #32 is open with `full-ci` for Amit's
-  review and merge decision.
+  The concurrent P2/P4 pair and the concurrent P3/P7 pair (Codex owned `src/components/**`,
+  `src/app/**`, `src/lib/public-config.ts`, `next.config.ts`, `docs/authorization-matrix.json`,
+  `tests/e2e/**`; Claude owned the PostgreSQL migration, schema, feed-query, scripts and
+  harness/security test paths) are integrated by Claude as integration owner. No ownership split
+  is in force once P7 merges.
 - **Branch / worktree:** `main` at `637d923` (squash merge of PR
   [#30](https://github.com/amitsharmaak/distil/pull/30), P6) on 2026-09-17, after `eb557a7`
   (#29, P2 release record), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689`
@@ -194,18 +198,97 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      (this is also handoff step 1), then confirm the item reaches `ready`, a generated `brief`
      summary appears in the reader, and Vercel runtime logs show no `capture_summary_skipped`;
      with that item id, read `Server-Timing` on `GET /api/v1/items/<id>/state` (expected `q=2
-tx=1`) and note both in a dated checkpoint. P3 is complete locally and awaits Amit's merge; the
-     unstarted phases are P5 (`claude/perf-server-render`) and P7
-     (`claude/perf-indexes`; Production migration run is a separate approval; adds the
-     `ai_summaries.content_hash` column P6 left un-keyed), each as its own task from fresh
-     `origin/main` with a dated checkpoint and before/after numbers. The live P1 numbers
-     show `proxy-auth-db` at about 130 ms per request on Neon, so P7 should look at the
-     `distil_resolve_auth_identity` lookup as well as the tenant transactions.
+tx=1`) and note both in a dated checkpoint. P3 is merged (`b815e6d`); confirm its automatic
+     Production deployment and, on the next signed-in session, that `/feed` and `/` make only
+     same-origin requests. The only unstarted phase is P5 (`claude/perf-server-render`), its own
+     task from fresh `origin/main` with a dated checkpoint and before/after numbers. P7 state:
+     PR [#33](https://github.com/amitsharmaak/distil/pull/33) on `claude/perf-indexes`, synced
+     onto P3, waits for the Full gate and merge; after the merge, running the `perf-indexes`
+     stage on the Production Neon branch is a separate approval (`npm run db:tenant:migrate --
+     --stage perf-indexes --amit-user-id <uuid>` with `DATABASE_MIGRATION_URL`, recorded with
+     the ledger row and the branch id). Until it runs, the `content_hash` column does not exist
+     in Production and nothing may write it. The live P1 numbers show `proxy-auth-db` at about
+     130 ms per request on Neon; P7 did not touch `distil_resolve_auth_identity` (it is a
+     SECURITY DEFINER lookup on `auth_identities`, outside the RLS finding below) and it remains
+     the largest fixed per-request cost.
   4. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P7: indexes — 2026-09-17
+
+Branch `claude/perf-indexes` (worktree `.claude/worktrees/perf-indexes`, from `origin/main`
+`58a4a9c`), implementation commit `d43dd54`, run concurrently with Codex's P3 under the
+ownership split in the handoff. Nothing deployed; no migration run anywhere but local Docker.
+
+**Finding that changed the brief.** The brief asked for three indexes. `EXPLAIN` through the
+restricted runtime role (`tests/security/phase3-wave4-query-plans.integration.test.ts`, two
+tenants, 2,000 items each) showed that forced row-level security makes PostgreSQL plan every
+tenant table as a security-barrier subquery in isolation (`Subquery Scan on i` → `Result` with a
+one-time RLS filter → index scan on the tenant index). Consequences, each verified with
+`enable_sort`/`enable_seqscan` toggles and an owner-role control plan:
+
+- An ordered index `items(user_id, created_at DESC, id DESC)` can never serve the feed's outer
+  `ORDER BY created_at DESC, id DESC LIMIT n`: the subquery is planned without the outer sort
+  keys, its ordered path is pruned, and a top-N heapsort over the tenant's candidate rows always
+  remains. The owner role (no RLS) uses the same index with no Sort, which proves the shape is
+  right and the barrier is the cause. The partial predicate in the brief (`processing_status =
+'ready' AND archived_at IS NULL`) would also not have matched the feed's `<> 'rejected'`
+  filter or `list()`'s missing archive filter.
+- A GIN index on `items(topics)` is unreachable for the runtime role: `?|` (topic facet) and `?`
+  (affinity overlap) are not leakproof, so they are evaluated above the barrier (`Subquery Scan
+… Filter: (i.topics ?| …)`, 2,000 rows read to keep 3). `jsonb_path_ops`, as written in the
+  brief, would not have served `?|` even without RLS. The same applies today to the existing FTS
+  `items_search_idx` (`@@` is not leakproof; the search plan filters above the barrier).
+- Equality, `= ANY`, `<>` and `IS NULL` predicates are leakproof and are pushed inside the
+  barrier, so tenant-leading btree indexes do work as index conditions.
+
+Decision (Claude, recorded for Amit to overrule): create only what the planner can use.
+
+**What changed**
+
+- `src/lib/postgres/tenant-migrations/0010_perf_indexes.sql`, new tenant stage `perf-indexes`
+  (after `returning-auth`; `TENANT_MIGRATION_STAGES`, the ledger `CHECK`, `scripts/migrate-tenant.ts`
+  usage, `scripts/local-db-reset.ts`, `scripts/perf/measure-web-vitals.ts`, `AGENTS.md` §3 and
+  the backup runbook updated): `item_events(user_id, event_type, occurred_at DESC)` as
+  `item_events_user_type_occurred_idx`, and `ai_summaries.content_hash text` (nullable, unused
+  until the AI cache keys on it). Plain `CREATE INDEX IF NOT EXISTS` inside the ledger
+  transaction (`CONCURRENTLY` cannot run there; the library is tiny). Both mirrored in
+  `src/lib/postgres/schema.ts`. Rollback is `DROP INDEX` / `DROP COLUMN`.
+- `src/lib/feed/feed-query.ts`: the explicit-signal affinity is a `LEFT JOIN LATERAL (...)
+affinity_signal ON TRUE` computed once per candidate row; the SELECT list, the keyset cursor
+  predicate and `ORDER BY` all read `COALESCE(affinity_signal.score, 0)` instead of repeating a
+  correlated subquery (three to five evaluations per row before). Personalization off or
+  non-`for_you` sorts add no join. `explainFeedRank` and the cursor contract are unchanged.
+- Tests: `tenant-migrator.unit` (stage order), `tests/harness/migration-invariants.unit` (the
+  migration is additive, has no `ON items`/GIN statement, no `CONCURRENTLY`, no grants),
+  `feed-query.unit` (exactly one `LEFT JOIN LATERAL` and one `FROM item_events` per personalized
+  statement, none otherwise), `feed-query.integration` (a one-day-old `completed` signal gives
+  `3·2^(−1/60)` affinity to items sharing source, content type or topic and 0 to one sharing none,
+  and every row's PostgreSQL score equals `explainFeedRank`), `phase3-wave4-query-plans.integration`
+  (`P7-IDX-001`: the signal scan enters through a tenant `item_events` index with
+  `Index Cond: (user_id =` and no global scan; the feed keeps its `Subquery Scan` + `Sort`; the
+  topic facet filters above the barrier — the last two are asserted so a change is noticed).
+
+**Verification (local, `d43dd54`)**: `npm run check` — lint 0 errors / 6 baseline warnings,
+Prettier clean, `tsc` clean, 204 suites / 1,468 tests; `npm run test:integration` (Docker,
+PostgreSQL 16.15) 12 suites / 47 tests. Before/after: the personalized feed statement issues
+the affinity subquery once per row instead of 3–5 times (unit-asserted); on a 3-item fixture the
+ranking is identical. No hosted measurement: the Production library is empty and the migration
+has not run there.
+
+**Follow-ups, not started**: (1) if feed ordering must scale past a few thousand items per
+tenant, the ORDER BY has to be evaluated inside the RLS barrier — a `SECURITY DEFINER` feed
+function or a policy-free read path — which is an architecture decision, not an index; (2) the
+`ai_summaries.content_hash` cache key (P6's deferred item) can now be wired once the Production
+stage has run; (3) the affinity `LATERAL` is still O(items × signals) per page — an
+`item_events` pre-aggregation per tenant would be the next step if `for_you` gets slow.
+
+**Synced 2026-09-17** onto `origin/main` `b815e6d` (P3) with `git merge`; `feed-query.ts` (P3's
+`resurface=stale` conditions, P7's LATERAL) and `scripts/perf/measure-web-vitals.ts` merged
+automatically; only this file conflicted. Re-gated after the merge (numbers in the PR).
 
 ### Performance P3: client payload and network — 2026-09-17
 

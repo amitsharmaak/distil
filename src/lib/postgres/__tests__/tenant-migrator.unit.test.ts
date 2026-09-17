@@ -108,4 +108,32 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+
+  it("applies the perf-indexes stage only after the returning-auth ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "perf-indexes", ownerId })
+    ).rejects.toThrow("perf-indexes requires the returning-auth stage first");
+    fake.applied.push({
+      stage: "returning-auth",
+      name: "0009_phase3_returning_auth.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "perf-indexes", ownerId })
+    ).resolves.toMatchObject({
+      stage: "perf-indexes",
+      file: "0010_perf_indexes.sql",
+      alreadyApplied: false,
+    });
+  });
 });

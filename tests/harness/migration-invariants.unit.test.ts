@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tenantMigrationManifest } from "@/lib/postgres/tenant-migration/manifest";
 import {
@@ -65,5 +66,41 @@ describe("tenant migration evidence", () => {
         }),
       ])
     );
+  });
+});
+
+describe("P7 performance index migration", () => {
+  // Statements only: the header comments explain the CONCURRENTLY and jsonb_path_ops choices.
+  const migration = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0010_perf_indexes.sql"),
+    "utf8"
+  )
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  it("adds only the additive, idempotent, tenant-leading signal index and the summary hash column", () => {
+    expect(migration).toContain(
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes'))"
+    );
+    expect(migration).toMatch(
+      /CREATE INDEX IF NOT EXISTS item_events_user_type_occurred_idx\s+ON item_events\(user_id, event_type, occurred_at DESC\)/
+    );
+    // Unreachable under forced RLS for the runtime role (see the migration header); an index
+    // the planner cannot use is write cost only.
+    expect(migration).not.toContain("ON items");
+    expect(migration).not.toContain("gin(");
+    expect(migration).toContain(
+      "ALTER TABLE ai_summaries\n  ADD COLUMN IF NOT EXISTS content_hash text"
+    );
+    for (const forbidden of [
+      "CONCURRENTLY",
+      "DROP TABLE",
+      "DROP COLUMN",
+      "DISABLE ROW LEVEL",
+      "GRANT ",
+    ]) {
+      expect(migration).not.toContain(forbidden);
+    }
   });
 });
