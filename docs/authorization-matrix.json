@@ -1513,7 +1513,7 @@
       "source": "src/app/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "dataPath": "/api/v1/feed with owner-scoped priority and stale resurfacing projections",
+      "dataPath": "server render: direct tenant repositories (one withTenantRepositories transaction) for the owner-scoped priority and stale resurfacing projections; client fallback to /api/v1/feed when no server-side user or PostgreSQL",
       "testProfile": "owner"
     },
     {
@@ -1573,7 +1573,7 @@
       "source": "src/app/feed/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "dataPath": "/api/v1/feed, /api/v1/collections and bounded /api/v1/items/status polling",
+      "dataPath": "server render: direct tenant repositories (one withTenantRepositories transaction) for the first feed page and collection names; client island uses /api/v1/feed?cursor= for load-more, bounded /api/v1/items/status polling, and /api/v1/feed plus /api/v1/collections as fallback when no server-side user or PostgreSQL",
       "testProfile": "owner"
     },
     {

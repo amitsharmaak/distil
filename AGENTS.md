@@ -97,7 +97,10 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
   `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_SEARCH`,
-  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`.
+  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Two kill switches default
+  on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary) and
+  `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`
+  restores the client-fetch pages).
 - **Deployment:** `docs/vercel-deployment.md` (topology and variable mapping) and
   `docs/runbooks/` (auth activation, backup/restore, account export/deletion, tenant-isolation
   incidents). `npm run build` runs the Phase 3 activation preflight, which requires

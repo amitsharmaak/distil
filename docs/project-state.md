@@ -18,8 +18,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0, P1, P4, P2, P6, P3 and P7 merged and released 2026-09-17, in
-  that order; P5 not started; P7's Production migration stage not yet run):** the
+- **Performance overhaul (P0, P1, P4, P2, P6, P3 and P7 merged and released 2026-09-17;
+  P5 implemented and locally verified 2026-09-18 on `claude/perf-server-render`, PR open;
+  P7's Production migration stage not yet run):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -211,8 +212,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      base to the apex before its next capture.
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  5. Performance overhaul: the only unstarted phase is P5 (`claude/perf-server-render`), its
-     own task from fresh `origin/main` with a dated checkpoint and before/after numbers. The
+  5. Performance overhaul: P5 (`claude/perf-server-render`) is implemented and locally
+     verified — see "Performance P5: server-render `/` and `/feed` — 2026-09-18" below for the
+     React reveal-throttle finding that changed the design; review and merge on Amit's word,
+     then read `Server-Timing`/LCP on Production once more with a signed-in session. After P5
+     every phase of the plan is done; the remaining perf work is the RLS/ordering architecture
+     question from P7 and the `proxy-auth-db` lookup. The
      live numbers show `proxy-auth-db` at about 124 ms per request on Neon
      (`distil_resolve_auth_identity`, a SECURITY DEFINER lookup on `auth_identities`, outside
      P7's RLS finding); it remains the largest fixed per-request cost and is the next
@@ -277,6 +282,99 @@ credential in Vercel's Production environment is rejected by the provider; the 2
 checkpoint had already noted that "the separate Production provider credential … was not read or
 changed". Claude did not read, rotate or replace it (secrets stay with Amit); handoff step 1 is
 that replacement. Nothing else was deployed or changed; no migration ran (handoff step 2).
+
+### Performance P5: server-render `/` and `/feed` — 2026-09-18
+
+Branch `claude/perf-server-render` (worktree `.claude/worktrees/perf-server-render`, from
+`origin/main` `1115133`), commits `2d76172` (implementation) and `f8be846` (measurement-driven
+corrections). Nothing deployed.
+
+**What changed**
+
+- `src/lib/feed/feed-params.ts`: the one feed query contract — `feedQuerySchema`,
+  `parseFeedQuery`, `feedListQuery`, `loadFeedPage` (preferences → page → optional stale
+  resurfacing, on an already-bound repository set) and `todayFeedParams`. `GET /api/v1/feed` is
+  refactored onto it (contract tests unchanged). `src/lib/feed/feed-url.ts` holds the
+  client-safe URL helpers (`feedFilterState`, `feedRequestSearch`, `feedFilterKey`,
+  `dateQueryValue`); `src/lib/feed/today-selection.ts` the presentation mapping. Both are
+  deliberately zod-free because the client island imports them.
+- `src/lib/server-render/page-data.ts`: `loadPageData(route, operation)` reads `headers()`
+  first (so the route is always dynamic; see below), resolves the user through the proxy's
+  identity handoff, runs `operation` in one `withTenantRepositories` transaction, and returns
+  `null` — meaning "render the island and let it fetch" — without PostgreSQL, with
+  `FEATURE_SERVER_RENDER=false` (the one-release escape hatch, read `!== "false"`), when the
+  request has no resolvable user (`AccessDeniedError`; only reachable where the proxy has let an
+  anonymous request through, i.e. test mode), or on a data failure (logged).
+- `/feed` (`src/app/feed/page.tsx`) is an async server component: it parses `searchParams`
+  through the shared schema, runs the feed page and `collections.list()` in one transaction
+  and renders `<FeedList initialPage>` (`src/components/feed/feed-list.tsx`). The island treats
+  the URL as the single source of truth: every filter change is
+  `router.replace(url, { scroll: false })` inside a transition (the server renders the next
+  page; the current list stays visible, dimmed), load-more uses `/api/v1/feed?cursor=`, the
+  bounded `/api/v1/items/status` poll is unchanged, and `?q=` search still uses `/api/items`
+  client-side. A server page whose key does not match the URL is ignored.
+- `/` (`src/app/page.tsx`) runs Today's selection (six priority items plus the stale strip)
+  server-side; `TodayExperience` takes `initial` and is presentational, keeping the API fetch
+  only as the fallback. `force-dynamic` is gone from both pages.
+- Deleted `src/app/loading.tsx` and `src/app/feed/loading.tsx` (see the finding).
+- Tests: server-page tests for `/` and `/feed` with fake repositories (one `loadPageData`
+  call, exact `feed.list` arguments, island props, search and invalid-URL bypasses), loader unit
+  tests (headers before env checks, `AccessDeniedError` → null, other errors rethrown, data
+  failure logged), island tests (server-page mode makes no request, key mismatch refetches,
+  load-more appends, each filter change is a `router.replace` URL; the old client-fetch
+  contract is retained), flag test, matrix `pageLoaders` entries for `/` and `/feed`. A stale
+  `spyOn(global, "clearInterval")` in the old page test was leaking into later tests and is now
+  restored. `tests/e2e` mocks are untouched: the suite runs without a session, so it exercises
+  the fallback island exactly as before (9 passed / 1 flag-skipped locally).
+- `scripts/perf/measure-web-vitals.ts` now records every LCP candidate element and size,
+  browser console errors, and with `--dump-html` writes each route's document to `.perf/`.
+
+**Finding that changed the brief: streaming made it slower.** The first build followed the
+brief (page data behind the existing `loading.tsx` Suspense boundaries). `perf:vitals`
+(production build, Docker PostgreSQL, legacy session, 5 runs) showed `/feed` LCP going from
+96 ms (client fetch) to **340 ms**, with the LCP element — the first article summary — present
+in the HTML at ~50 ms but painted at 344 ms. The dumped document shows why: React 19's Fizz
+runtime emits `requestAnimationFrame(() => $RT = performance.now())` after the shell and its
+`$RC` reveal script schedules every later boundary reveal at `$RT + 300 ms`. A boundary that
+resolves 15 ms after the shell is deliberately held until ~340 ms. A single boundary is not
+exempt (the shell's own paint sets `$RT`). The reader page `/feed/[id]` had been paying the
+same 300 ms since P2 without anyone noticing, because its LCP candidate lives in the shell.
+Two further corrections from the same measurements: (1) the first version was **statically
+prerendered** at build time because the `DATABASE_URL` guard ran before `headers()`, so
+Production would have served the fallback to everyone — `loadPageData` now reads the request
+first and the unit test pins it; (2) the island's import of the schema module pulled zod into
+the client bundle (+87 KB chunk), hence the `feed-url.ts` split.
+
+Decision (Claude, recorded for Amit): the page data blocks the document instead of streaming.
+`app/loading.tsx` and `app/feed/loading.tsx` are removed; client navigations keep the
+previous page until the next one is ready (and `FeedList` shows the pending state during
+filter transitions), which for a 15–50 ms read is better than a skeleton flash plus a 300 ms
+throttled reveal. The `cacheComponents: true` spike was run and not adopted: the build fails on
+the `runtime`/`dynamic` segment exports of four routes before the Suspense requirement is even
+reached, and that requirement would reintroduce exactly this throttle around every per-user
+read.
+
+**Before → after** (`perf:vitals`, identical instrumentation on `origin/main` `1115133` and
+`f8be846`, medians of 5):
+
+| Page         | LCP          | TTFB      | Requests | API calls | Bundle (gzip) |
+| ------------ | ------------ | --------- | -------- | --------- | ------------- |
+| `/`          | 100 → 40 ms  | 8 → 17 ms | 40 → 37  | 2 → 0     | +140 B        |
+| `/feed`      | 96 → 52 ms   | 5 → 18 ms | 45 → 46  | 2 → 0     | +110 B        |
+| `/feed/[id]` | 36 → 44 ms\* | 9 → 17 ms | 40 → 38  | —         | 0             |
+
+\* The reader's LCP candidate is a shell element; its article body, previously revealed at
+~340 ms by the same throttle, now appears with the document (~45 ms). Server-side the page
+reads cost `headers` 0 ms, auth 3 ms (handoff, zero I/O), data 9–15 ms locally; on Neon expect
+about +50 ms TTFB against −300 ms to content.
+
+**Verification (local, `f8be846`)**: `npm run check` 210 suites / 1,499 tests, lint 0 errors /
+5 baseline warnings, Prettier and `tsc` clean; `npm run test:e2e` desktop-chromium 9 passed / 1
+skipped; `npm run build` with `/` and `/feed` both `ƒ (Dynamic)`; `npm run perf:bundle` against
+a fresh `main` baseline as above; `perf:vitals` as above.
+
+**Not verified**: Production numbers (needs a signed-in session after the merge); the mobile
+Playwright projects were not run locally (Full gate runs them).
 
 ### Performance P7: indexes — 2026-09-17
 

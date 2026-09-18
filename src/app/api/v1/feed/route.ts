@@ -1,38 +1,10 @@
-import { z } from "zod";
-
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { loadFeedPage, parseFeedQuery } from "@/lib/feed/feed-params";
 import { FeedQueryError } from "@/lib/feed/feed-query";
 import { withTenantRepositories } from "@/lib/database";
 import { apiLogger } from "@/lib/logger";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
-
-const querySchema = z.object({
-  read: z.enum(["true", "false"]).optional(),
-  archive: z.enum(["exclude", "only", "include"]).optional(),
-  topic: z.array(z.string().trim().min(1).max(120)).max(25).optional(),
-  source: z.array(z.string().trim().min(1).max(80)).max(25).optional(),
-  contentType: z.array(z.string().trim().min(1).max(80)).max(25).optional(),
-  priority: z
-    .array(z.enum(["high", "medium", "low"]))
-    .max(3)
-    .optional(),
-  collection: z.array(z.string().trim().min(1).max(160)).max(25).optional(),
-  dateFrom: z.string().datetime().optional(),
-  dateTo: z.string().datetime().optional(),
-  sort: z.enum(["recent", "priority", "for_you"]).default("for_you"),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  cursor: z.string().min(1).max(1024).optional(),
-  resurface: z.enum(["stale"]).optional(),
-});
-
-function multi(searchParams: URLSearchParams, name: string): string[] | undefined {
-  const values = searchParams
-    .getAll(name)
-    .flatMap((value) => value.split(","))
-    .filter(Boolean);
-  return values.length ? values : undefined;
-}
 
 export const GET = withRequestMetrics(async (request: Request): Promise<Response> => {
   try {
@@ -44,76 +16,27 @@ export const GET = withRequestMetrics(async (request: Request): Promise<Response
       );
     }
 
-    const params = new URL(request.url).searchParams;
-    const parsed = querySchema.safeParse({
-      read: params.get("read") ?? undefined,
-      archive: params.get("archive") ?? undefined,
-      topic: multi(params, "topic"),
-      source: multi(params, "source"),
-      contentType: multi(params, "contentType"),
-      priority: multi(params, "priority"),
-      collection: multi(params, "collection"),
-      dateFrom: params.get("dateFrom") ?? undefined,
-      dateTo: params.get("dateTo") ?? undefined,
-      sort: params.get("sort") ?? undefined,
-      limit: params.get("limit") ?? undefined,
-      cursor: params.get("cursor") ?? undefined,
-      resurface: params.get("resurface") ?? undefined,
-    });
-    if (!parsed.success) {
+    const parsed = parseFeedQuery(new URL(request.url).searchParams);
+    if (!parsed.ok) {
       return Response.json(
         {
           error: {
             code: "INVALID_REQUEST",
-            message: "Invalid feed query",
-            details: parsed.error.issues,
+            message: parsed.message,
+            ...(parsed.issues ? { details: parsed.issues } : {}),
           },
         },
-        { status: 400 }
-      );
-    }
-    if (parsed.data.dateFrom && parsed.data.dateTo && parsed.data.dateFrom > parsed.data.dateTo) {
-      return Response.json(
-        { error: { code: "INVALID_REQUEST", message: "dateFrom must not be after dateTo" } },
         { status: 400 }
       );
     }
 
     const flags = readPhase2FeatureFlags();
     // One tenant transaction for the whole read: the preferences lookup (when
-    // personalization is on) and the feed page share the verified context.
-    const page = await withTenantRepositories(context, async (repositories) => {
-      const preferences = flags.personalization
-        ? await repositories.digestExperience.getPreferences()
-        : undefined;
-      const page = await repositories.feed.list({
-        read: parsed.data.read === undefined ? undefined : parsed.data.read === "true",
-        archive: parsed.data.archive,
-        topics: parsed.data.topic,
-        sources: parsed.data.source,
-        contentTypes: parsed.data.contentType,
-        priorities: parsed.data.priority,
-        collectionIds: parsed.data.collection,
-        dateFrom: parsed.data.dateFrom,
-        dateTo: parsed.data.dateTo,
-        sort: parsed.data.sort,
-        limit: parsed.data.limit,
-        cursor: parsed.data.cursor,
-        personalizationEnabled: Boolean(
-          flags.personalization && preferences?.personalizationEnabled
-        ),
-      });
-      if (parsed.data.resurface !== "stale") return page;
-      const resurfaced = await repositories.feed.list({
-        read: false,
-        archive: "exclude",
-        sort: "recent",
-        limit: 3,
-        resurface: "stale",
-        personalizationEnabled: false,
-      });
-      return { ...page, resurfacedItems: resurfaced.items };
-    });
+    // personalization is on), the feed page and any resurfacing strip share
+    // the verified context. The server-rendered /feed page runs the same read.
+    const page = await withTenantRepositories(context, (repositories) =>
+      loadFeedPage(repositories, parsed.data, { personalization: flags.personalization })
+    );
     return Response.json(page);
   } catch (error) {
     if (error instanceof FeedQueryError) {
