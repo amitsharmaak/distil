@@ -19,8 +19,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
-  [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18); P7's
-  Production migration stage not yet run):** the
+  [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
+  `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
+  Production — 2026-09-18"):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -199,14 +200,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
      secrets. Until then every capture lands without a generated summary (extractive brief only)
      and on-demand summaries fail the same way.
-  2. **Amit: run the P7 migration stage on Production** from a shell that has the Production
-     `DATABASE_MIGRATION_URL` (for example `npx vercel env pull --environment=production
-.env.production.local` in the main checkout, which is gitignored, then delete it):
-     `DATABASE_MIGRATION_URL=... npm run db:tenant:migrate -- --stage perf-indexes
---amit-user-id <the owner UUID already in the distil_tenant_migrations ledger>`. Record the
-     ledger row and the Neon branch id as a checkpoint. Claude's attempt to pull the secret was
-     blocked by the auto-mode permission classifier, which is the intended boundary. Until it
-     runs, `ai_summaries.content_hash` does not exist in Production and nothing may write it.
+  2. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
+     migration applied to Production — 2026-09-18" below). `ai_summaries.content_hash` now exists
+     there; wiring it into the summary cache key is P6's deferred item and a small follow-up.
   3. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
      simplified shell and P3's same-origin client have now been exercised by Claude through the
      in-app browser but not seen by a person), and make one browser-extension capture (the
@@ -284,6 +280,28 @@ credential in Vercel's Production environment is rejected by the provider; the 2
 checkpoint had already noted that "the separate Production provider credential … was not read or
 changed". Claude did not read, rotate or replace it (secrets stay with Amit); handoff step 1 is
 that replacement. Nothing else was deployed or changed; no migration ran (handoff step 2).
+
+### P7 migration applied to Production — 2026-09-18
+
+Amit ran the stage from his own terminal; the connection string never passed through Claude.
+`vercel env pull` could not be used because `DATABASE_MIGRATION_URL` is a Sensitive variable in
+Vercel (the CLI writes `[SENSITIVE]` placeholders), so Claude drove the Neon console through
+the Chrome extension to the `distil-production` branch's Connect dialog (role `neondb_owner`,
+database `neondb`, pooling off, host `ep-delicate-frog-b3g28rqu.c-4.ap-southeast-1.aws.neon.tech`)
+and Amit copied the URL from there into `DATABASE_MIGRATION_URL="$(pbpaste)"` for each command.
+The temporary `.env.production.local` was deleted.
+
+Ledger before: expand, backfill, contract, lifecycle (2026-09-09) and returning-auth
+(2026-09-10), all owner `3844a094-2018-4118-83f4-874e7081568d`. Command:
+`npm run db:tenant:migrate -- --stage perf-indexes --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+→ `Applied perf-indexes: 0010_perf_indexes.sql` (one benign `NOTICE` from the migrator's
+`CREATE TABLE IF NOT EXISTS`). Verified afterwards with read-only queries on the same
+connection: ledger row `perf-indexes` / `0010_perf_indexes.sql` applied `2026-09-18T10:56:57Z`;
+`pg_indexes` contains `item_events_user_type_occurred_idx`; `information_schema.columns`
+contains `ai_summaries.content_hash text`. Neon project `floral-river-70536503`, branch
+`br-damp-wildflower-b3kw15cu`. No application code, deployment or environment variable changed.
+Rollback remains `DROP INDEX item_events_user_type_occurred_idx; ALTER TABLE ai_summaries DROP
+COLUMN content_hash;` plus deleting the ledger row.
 
 ### Performance P5 released — 2026-09-18
 
