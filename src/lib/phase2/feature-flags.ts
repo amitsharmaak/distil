@@ -4,6 +4,8 @@
  */
 export interface Phase2FeatureFlags {
   captureSummary: boolean;
+  /** Server-render `/` and `/feed` with their data; `false` restores the client-fetch pages. */
+  serverRender: boolean;
   knowledgeUi: boolean;
   search: boolean;
   answers: boolean;
@@ -18,6 +20,7 @@ export function readPhase2FeatureFlags(
 ): Phase2FeatureFlags {
   return Object.freeze({
     captureSummary: environment.FEATURE_CAPTURE_SUMMARY?.trim().toLowerCase() !== "false",
+    serverRender: environment.FEATURE_SERVER_RENDER?.trim().toLowerCase() !== "false",
     knowledgeUi: enabled(environment.FEATURE_KNOWLEDGE_UI),
     search: enabled(environment.FEATURE_SEARCH),
     answers: enabled(environment.FEATURE_ANSWERS),

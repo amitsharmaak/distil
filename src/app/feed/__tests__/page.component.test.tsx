@@ -1,348 +1,96 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment node
  */
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+
+const loadPageData = jest.fn();
+jest.mock("@/lib/server-render/page-data", () => ({
+  loadPageData: (...args: unknown[]) => loadPageData(...args),
+}));
+jest.mock("@/lib/phase2/feature-flags", () => ({
+  readPhase2FeatureFlags: () => ({ personalization: true, serverRender: true }),
+}));
+jest.mock("@/components/feed/feed-list", () => ({
+  FeedList: (props: unknown) => ({ type: "FeedList", props }),
+}));
+
 import FeedPage from "../page";
-import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
 
-let mockSearch = "";
+type IslandElement = ReactElement<{ initialPage: unknown }>;
 
-jest.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(mockSearch),
-}));
-
-jest.mock("@/components/feed/content-card", () => ({
-  ContentCard: ({
-    item,
-    compact,
-    filter,
-    onMarkRead,
-  }: {
-    item: ContentItem;
-    compact: boolean;
-    filter: string;
-    onMarkRead: (id: string, read: boolean) => void;
-  }) => (
-    <article
-      data-testid={`item-${item.id}`}
-      data-compact={String(compact)}
-      data-filter={filter}
-      data-read={String(item.isRead)}
-    >
-      <span>{item.title}</span>
-      <button type="button" onClick={() => onMarkRead(item.id, true)}>
-        Mark {item.title} read
-      </button>
-    </article>
-  ),
-}));
-
-jest.mock("@/components/feed/feed-filters", () => ({
-  FeedFilters: ({
-    viewMode,
-    onViewModeChange,
-    selectedSources,
-    onSourcesChange,
-    selectedTypes,
-    onTypesChange,
-    selectedPriorities,
-    onPrioritiesChange,
-    showRead,
-    onShowReadChange,
-    onArchiveChange,
-    onSortChange,
-    onTopicsChange,
-    onCollectionsChange,
-    onDateFromChange,
-    onDateToChange,
-  }: {
-    viewMode: "card" | "compact";
-    onViewModeChange: (mode: "card" | "compact") => void;
-    selectedSources: SourceType[];
-    onSourcesChange: (sources: SourceType[]) => void;
-    selectedTypes: ContentType[];
-    onTypesChange: (types: ContentType[]) => void;
-    selectedPriorities: Priority[];
-    onPrioritiesChange: (priorities: Priority[]) => void;
-    showRead: boolean;
-    onShowReadChange: (showRead: boolean) => void;
-    onArchiveChange: (archive: "exclude" | "only" | "include") => void;
-    onSortChange: (sort: "for_you" | "recent" | "priority") => void;
-    onTopicsChange: (topics: string[]) => void;
-    onCollectionsChange: (collections: string[]) => void;
-    onDateFromChange: (date: string) => void;
-    onDateToChange: (date: string) => void;
-  }) => (
-    <div data-testid="filters">
-      <output>
-        {viewMode}|{selectedSources.join(",")}|{selectedTypes.join(",")}|
-        {selectedPriorities.join(",")}|{String(showRead)}
-      </output>
-      <button type="button" onClick={() => onViewModeChange("compact")}>
-        Compact view
-      </button>
-      <button type="button" onClick={() => onSourcesChange(["gmail"])}>
-        Gmail only
-      </button>
-      <button type="button" onClick={() => onSourcesChange([])}>
-        All sources
-      </button>
-      <button type="button" onClick={() => onTypesChange(["video"])}>
-        Videos only
-      </button>
-      <button type="button" onClick={() => onTypesChange([])}>
-        All types
-      </button>
-      <button type="button" onClick={() => onPrioritiesChange(["high"])}>
-        High only
-      </button>
-      <button type="button" onClick={() => onPrioritiesChange([])}>
-        All priorities
-      </button>
-      <button type="button" onClick={() => onShowReadChange(!showRead)}>
-        Toggle read
-      </button>
-      <button type="button" onClick={() => onArchiveChange("include")}>
-        Include archive
-      </button>
-      <button type="button" onClick={() => onSortChange("recent")}>
-        Sort recent
-      </button>
-      <button type="button" onClick={() => onTopicsChange(["Testing"])}>
-        Testing topic
-      </button>
-      <button type="button" onClick={() => onCollectionsChange(["collection-1"])}>
-        Collection one
-      </button>
-      <button type="button" onClick={() => onDateFromChange("2026-01-01")}>
-        From date
-      </button>
-      <button type="button" onClick={() => onDateToChange("2026-01-03")}>
-        To date
-      </button>
-    </div>
-  ),
-}));
-
-function makeItem(overrides: Partial<ContentItem> = {}): ContentItem {
+function fakeRepositories(items: Array<{ id: string; title: string }>) {
   return {
-    id: "item-1",
-    title: "Unread article",
-    summary: "Summary",
-    sourceType: "manual",
-    contentType: "article",
-    topics: ["Testing"],
-    url: "https://example.test/article",
-    priority: "high",
-    isRead: false,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    processingStatus: "ready",
-    ...overrides,
+    feed: {
+      list: jest.fn().mockResolvedValue({ items, nextCursor: "cursor-2" }),
+    },
+    digestExperience: {
+      getPreferences: jest.fn().mockResolvedValue({ personalizationEnabled: true }),
+    },
+    collections: {
+      list: jest.fn().mockResolvedValue([
+        { id: "c1", name: "Reading list", createdAt: "", updatedAt: "" },
+        { id: "c2", name: "Later", createdAt: "", updatedAt: "" },
+      ]),
+    },
   };
 }
 
-function itemsResponse(items: ContentItem[]): Response {
-  return { ok: true, json: jest.fn().mockResolvedValue({ items }) } as unknown as Response;
-}
+describe("server-rendered /feed page", () => {
+  afterEach(() => jest.clearAllMocks());
 
-function errorResponse(message: string): Response {
-  return {
-    ok: false,
-    status: 401,
-    json: jest.fn().mockResolvedValue({ error: { message } }),
-  } as unknown as Response;
-}
-
-async function settleInitialFetch() {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
-
-describe("FeedPage", () => {
-  let fetchMock: jest.MockedFunction<typeof fetch>;
-
-  beforeEach(() => {
-    cleanup();
-    mockSearch = "";
-    fetchMock = jest.mocked(global.fetch);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-    jest.clearAllMocks();
-  });
-
-  it("trusts server filtering, keeps the rejected guard, and marks an item read optimistically", async () => {
-    fetchMock.mockResolvedValue(
-      itemsResponse([
-        makeItem(),
-        makeItem({ id: "item-2", title: "Read video", isRead: true, contentType: "video" }),
-        makeItem({ id: "item-3", title: "Rejected", processingStatus: "rejected" }),
-      ])
+  it("runs the feed and collection reads on one tenant repository set and hands them to the island", async () => {
+    const repositories = fakeRepositories([{ id: "item-1", title: "First" }]);
+    loadPageData.mockImplementation(async (_route: string, operation: (r: unknown) => unknown) =>
+      operation(repositories)
     );
 
-    render(<FeedPage />);
+    const element = (await FeedPage({
+      searchParams: Promise.resolve({ source: "gmail", priority: ["high", "low"] }),
+    })) as IslandElement;
 
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
-    expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(screen.getByText("Read video")).toBeInTheDocument();
-    expect(screen.queryByText("Rejected")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false"
+    expect(loadPageData).toHaveBeenCalledWith("/feed", expect.any(Function));
+    expect(repositories.digestExperience.getPreferences).toHaveBeenCalledTimes(1);
+    expect(repositories.feed.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        read: false,
+        sources: ["gmail"],
+        priorities: ["high", "low"],
+        sort: "for_you",
+        limit: 100,
+        personalizationEnabled: true,
+      })
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Mark Unread article read" }));
-    expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-read", "true");
-    expect(screen.getByText("Read video")).toBeInTheDocument();
-  });
-
-  it("sends source, type, priority, and read filters to the server", async () => {
-    fetchMock.mockResolvedValue(
-      itemsResponse([
-        makeItem({ id: "manual", title: "Manual high article" }),
-        makeItem({
-          id: "gmail-video",
-          title: "Gmail high video",
-          sourceType: "gmail",
-          contentType: "video",
-        }),
-        makeItem({
-          id: "gmail-low",
-          title: "Gmail low video",
-          sourceType: "gmail",
-          contentType: "video",
-          priority: "low",
-        }),
-        makeItem({ id: "read", title: "Read item", isRead: true }),
-      ])
-    );
-    render(<FeedPage />);
-    expect(await screen.findByText("Gmail high video")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("source=gmail"))
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Videos only" }));
-    fireEvent.click(screen.getByRole("button", { name: "High only" }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("priority=high"))
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "All sources" }));
-    fireEvent.click(screen.getByRole("button", { name: "All types" }));
-    fireEvent.click(screen.getByRole("button", { name: "All priorities" }));
-    fireEvent.click(screen.getByRole("button", { name: "Toggle read" }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(expect.not.stringContaining("read=false"))
-    );
-    expect(screen.getByTestId("item-read")).toHaveAttribute("data-filter", "all");
-
-    fireEvent.click(screen.getByRole("button", { name: "Compact view" }));
-    expect(screen.getByTestId("item-manual")).toHaveAttribute("data-compact", "true");
-  });
-
-  it("forwards a search query and shows read search results", async () => {
-    mockSearch = "q=durable+queues";
-    fetchMock.mockResolvedValue(itemsResponse([makeItem({ isRead: true })]));
-
-    render(<FeedPage />);
-
-    expect(screen.getByText('Search results for "durable queues"')).toBeInTheDocument();
-    expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/items?includeProcessing=true&q=durable+queues");
-  });
-
-  it("initializes the read filter from the URL", async () => {
-    mockSearch = "showRead=true";
-    fetchMock.mockResolvedValue(itemsResponse([makeItem({ isRead: true })]));
-
-    render(<FeedPage />);
-
-    expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-filter", "all");
-  });
-
-  it.each([{ search: "" }, { search: "q=missing" }])(
-    "settles a failed $search request into an error card rather than a misleading empty state",
-    async ({ search }) => {
-      mockSearch = search;
-      fetchMock.mockRejectedValue(new Error("offline"));
-
-      render(<FeedPage />);
-
-      const alert = await screen.findByRole("alert");
-      expect(alert).toHaveTextContent("Feed is unavailable");
-      expect(alert).toHaveTextContent("offline");
-      expect(screen.queryByText("No items match your filters.")).not.toBeInTheDocument();
-    }
-  );
-
-  it("polls while an item is processing and stops its timer on unmount", async () => {
-    jest.useFakeTimers();
-    fetchMock.mockImplementation((input) => {
-      const url = String(input);
-      if (url.startsWith("/api/v1/items/status")) {
-        return Promise.resolve(
-          itemsResponse([makeItem({ processingStatus: "ready", title: "Processing item" })])
-        );
-      }
-      if (url === "/api/v1/collections") {
-        return Promise.resolve({
-          ok: true,
-          json: jest.fn().mockResolvedValue({ collections: [] }),
-        } as unknown as Response);
-      }
-      return Promise.resolve(
-        itemsResponse([makeItem({ processingStatus: "processing", title: "Processing item" })])
-      );
+    expect(element.props.initialPage).toEqual({
+      key: "archive=exclude&sort=for_you&limit=100&read=false&source=gmail&priority=high&priority=low",
+      items: [{ id: "item-1", title: "First" }],
+      nextCursor: "cursor-2",
+      collections: [
+        { id: "c1", name: "Reading list" },
+        { id: "c2", name: "Later" },
+      ],
     });
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval");
-    const { unmount } = render(<FeedPage />);
-    await settleInitialFetch();
-    expect(screen.getByText("Processing item")).toBeInTheDocument();
-    const initialFeedCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input).startsWith("/api/v1/feed?")
-    ).length;
-
-    await act(async () => {
-      jest.advanceTimersByTime(3_000);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/items/status?ids=item-1");
-    expect(
-      fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/feed?")).length
-    ).toBe(initialFeedCalls);
-    unmount();
-    expect(clearIntervalSpy).toHaveBeenCalled();
   });
 
-  it("shows an error card instead of crashing when the API rejects the request", async () => {
-    fetchMock.mockResolvedValue(errorResponse("Sign in to load your feed."));
+  it("renders the island without data for search results and when no server data is available", async () => {
+    loadPageData.mockResolvedValue(null);
 
-    render(<FeedPage />);
-    await settleInitialFetch();
+    const search = (await FeedPage({
+      searchParams: Promise.resolve({ q: "durable queues" }),
+    })) as IslandElement;
+    expect(search.props.initialPage).toBeNull();
+    expect(loadPageData).not.toHaveBeenCalled();
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Feed is unavailable");
-    expect(screen.getByRole("alert")).toHaveTextContent("Sign in to load your feed.");
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    const fallback = (await FeedPage({ searchParams: Promise.resolve({}) })) as IslandElement;
+    expect(fallback.props.initialPage).toBeNull();
+    expect(loadPageData).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to an empty list when a successful response carries no items", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({}),
-    } as unknown as Response);
-
-    render(<FeedPage />);
-    await settleInitialFetch();
-
-    expect(screen.getByText("No items match your filters.")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  it("does not query for an invalid URL; the island reports the API's validation error", async () => {
+    const invalid = (await FeedPage({
+      searchParams: Promise.resolve({ sort: "sideways" }),
+    })) as IslandElement;
+    expect(invalid.props.initialPage).toBeNull();
+    expect(loadPageData).not.toHaveBeenCalled();
   });
 });
