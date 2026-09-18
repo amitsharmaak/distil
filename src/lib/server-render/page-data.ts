@@ -23,11 +23,17 @@ export async function loadPageData<T>(
   route: string,
   operation: (repositories: RepositorySet, context: AuthContext) => Promise<T>
 ): Promise<T | null> {
+  // Read the request first, before any environment check: a page whose only
+  // request-bound call sits behind an env guard is prerendered at build time
+  // (where DATABASE_URL is unset) with the fallback baked in, and every
+  // visitor then gets the client-fetch page. `headers()` opts the route into
+  // per-request rendering unconditionally.
+  const requestHeaders = await headers();
   if (!readPhase2FeatureFlags().serverRender || !process.env.DATABASE_URL) return null;
   let context: AuthContext;
   try {
     context = await resolveRequestAuthContext(
-      new Request(`http://distil.local${route}`, { headers: await headers() })
+      new Request(`http://distil.local${route}`, { headers: requestHeaders })
     );
   } catch (error) {
     if (error instanceof AccessDeniedError) return null;

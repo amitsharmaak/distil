@@ -54,13 +54,16 @@ describe("loadPageData", () => {
     expect(operation).toHaveBeenCalledWith({ feed: "repositories" }, context);
   });
 
-  it("returns null without touching auth when the flag is off or PostgreSQL is absent", async () => {
+  it("returns null without touching auth when the flag is off or PostgreSQL is absent, but always reads the request", async () => {
     readPhase2FeatureFlags.mockReturnValue({ serverRender: false });
     await expect(loadPageData("/", jest.fn())).resolves.toBeNull();
     readPhase2FeatureFlags.mockReturnValue({ serverRender: true });
     delete process.env.DATABASE_URL;
     await expect(loadPageData("/", jest.fn())).resolves.toBeNull();
     expect(resolveRequestAuthContext).not.toHaveBeenCalled();
+    // The request read is what keeps the page dynamic; a build without
+    // DATABASE_URL must not be able to prerender the fallback.
+    expect(headers).toHaveBeenCalledTimes(2);
   });
 
   it("returns null for a request without a resolvable user and rethrows other auth failures", async () => {

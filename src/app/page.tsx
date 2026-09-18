@@ -10,8 +10,8 @@
  */
 
 import { TodayExperience } from "@/components/phase2/today-experience";
-import { loadFeedPage } from "@/lib/feed/feed-params";
-import { todayFeedParams, todaySections, type TodaySections } from "@/lib/feed/today-selection";
+import { loadFeedPage, todayFeedParams } from "@/lib/feed/feed-params";
+import { todaySections, type TodaySections } from "@/lib/feed/today-selection";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { loadPageData } from "@/lib/server-render/page-data";
 

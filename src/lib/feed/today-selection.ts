@@ -2,13 +2,11 @@ import { toPlainText } from "@/lib/format";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import type { KnowledgeItem } from "@/components/phase2/types";
 
-import { feedQuerySchema, type FeedQueryParams } from "./feed-params";
-
 /**
  * Today's selection is one feed read: the six highest-priority unread items,
  * plus the stale-resurfacing strip. Server (page) and client (fallback) ask
  * for exactly this; the mapping to the presentation shape lives here so both
- * render identically.
+ * render identically. Client-safe: no zod or other server-only imports.
  */
 export const TODAY_FEED_QUERY = {
   sort: "priority",
@@ -16,10 +14,6 @@ export const TODAY_FEED_QUERY = {
   limit: "6",
   resurface: "stale",
 } as const;
-
-export function todayFeedParams(): FeedQueryParams {
-  return feedQuerySchema.parse(TODAY_FEED_QUERY);
-}
 
 export const REVISIT_REASON = "Unopened for two weeks · worth another look";
 

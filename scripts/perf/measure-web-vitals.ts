@@ -46,6 +46,7 @@ import type { ContentItem } from "../../src/lib/types";
 declare global {
   interface Window {
     __lcp?: number;
+    __lcpEntries?: Array<{ startTime: number; size: number; element: string }>;
   }
 }
 
@@ -62,9 +63,23 @@ interface Sample {
   redirected: boolean;
   /** `Server-Timing` values by request path (document and API responses). */
   serverTimings: Record<string, string>;
+  /** Every largest-contentful-paint candidate, in order; the last one is `lcp`. */
+  lcpEntries: Array<{ startTime: number; size: number; element: string }>;
+  /** Raw document HTML, only with `--dump-html`; written to `.perf/`, never to the JSON. */
+  documentHtml?: string;
+  /** Browser console errors and uncaught exceptions during the load (hydration mismatches show here). */
+  consoleErrors: string[];
 }
 
-type SampleMetric = Exclude<keyof Sample, "documentStatus" | "redirected" | "serverTimings">;
+type SampleMetric = Exclude<
+  keyof Sample,
+  | "documentStatus"
+  | "redirected"
+  | "serverTimings"
+  | "lcpEntries"
+  | "documentHtml"
+  | "consoleErrors"
+>;
 const SAMPLE_METRICS: SampleMetric[] = [
   "ttfb",
   "fcp",
@@ -93,6 +108,8 @@ const option = (name: string, fallback: string): string => {
 const runs = Number(option("runs", "5"));
 const itemCount = Number(option("items", "12"));
 const keepServer = args.includes("--keep-server");
+/** `--dump-html` also writes each route's first document to `.perf/<label>.html`. */
+const dumpHtml = args.includes("--dump-html");
 
 const host = process.env.DISTIL_E2E_HOST ?? "127.0.0.1";
 const port = Number(process.env.DISTIL_E2E_PORT ?? 3100);
@@ -255,13 +272,32 @@ async function measurePage(
   const page = await context.newPage();
   await page.addInitScript(() => {
     window.__lcp = 0;
+    window.__lcpEntries = [];
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) window.__lcp = entry.startTime;
+      for (const entry of list.getEntries()) {
+        window.__lcp = entry.startTime;
+        // Which element each candidate was: the difference between "the
+        // shell painted" and "the content painted" is invisible otherwise.
+        const element = (entry as PerformanceEntry & { element?: Element | null }).element;
+        window.__lcpEntries?.push({
+          startTime: Math.round(entry.startTime),
+          size: (entry as PerformanceEntry & { size?: number }).size ?? 0,
+          element: element
+            ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""} "${(element.textContent ?? "").trim().slice(0, 40)}"`
+            : "",
+        });
+      }
     }).observe({ type: "largest-contentful-paint", buffered: true });
   });
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text().slice(0, 200));
+  });
+  page.on("pageerror", (error) => consoleErrors.push(`pageerror: ${error.message.slice(0, 200)}`));
   let requestCount = 0;
   let transferredBytes = 0;
   let documentStatus = 0;
+  let documentHtml: Promise<string> | undefined;
   const serverTimings: Record<string, string> = {};
   const pendingSizes: Promise<void>[] = [];
   page.on("response", (response) => {
@@ -269,6 +305,7 @@ async function measurePage(
     const resourceType = response.request().resourceType();
     if (resourceType === "document" && documentStatus === 0) {
       documentStatus = response.status();
+      if (dumpHtml) documentHtml = response.text().catch(() => "");
     }
     if (resourceType === "document" || resourceType === "fetch") {
       pendingSizes.push(
@@ -311,13 +348,17 @@ async function measurePage(
       ttfb: navigation ? navigation.responseStart : 0,
       fcp: fcp ? fcp.startTime : 0,
       lcp: window.__lcp ?? 0,
+      lcpEntries: window.__lcpEntries ?? [],
       domContentLoaded: navigation ? navigation.domContentLoadedEventEnd : 0,
       load: navigation ? navigation.loadEventEnd : 0,
     };
   });
+  const html = documentHtml ? await documentHtml : undefined;
   await context.close();
   return {
     ...vitals,
+    ...(html !== undefined ? { documentHtml: html } : {}),
+    consoleErrors,
     requestCount,
     transferredBytes,
     documentStatus,
@@ -357,6 +398,13 @@ async function main(): Promise<void> {
       await measurePage(browser, cookie, path, settleMs);
       for (let run = 0; run < runs; run += 1)
         samples.push(await measurePage(browser, cookie, path, settleMs));
+      if (dumpHtml && samples[0]?.documentHtml !== undefined) {
+        const directory = resolve(root, ".perf");
+        mkdirSync(directory, { recursive: true });
+        const file = `${label.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "root"}.html`;
+        writeFileSync(resolve(directory, file), samples[0].documentHtml);
+        for (const sample of samples) delete sample.documentHtml;
+      }
       results[label] = {
         runs: samples.length,
         redirected: samples.some((sample) => sample.redirected),

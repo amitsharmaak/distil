@@ -26,7 +26,7 @@ import {
   feedFilterState,
   feedRequestSearch,
   type FeedFilterState,
-} from "@/lib/feed/feed-params";
+} from "@/lib/feed/feed-url";
 import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
 import type { ContentItemSummary, ContentType, Priority, SourceType } from "@/lib/types";
 
