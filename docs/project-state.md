@@ -210,18 +210,13 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      base to the apex before its next capture.
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  5. Performance overhaul: done. P5 is live (`715c06f`); on the next signed-in session read
-     LCP/TTFB for `/` and `/feed` on Production (expect content in the first HTML, TTFB about
-     +50 ms on Neon, no `/api/v1/feed` request on load) and note it in a checkpoint. The
-     remaining performance work is not in the plan: the RLS/ordering architecture question from
-     P7 (ordered index scans cannot cross the security barrier) and the ~124 ms
-     `proxy-auth-db` lookup, each a separate decision. The
-     live numbers show `proxy-auth-db` at about 124 ms per request on Neon
-     (`distil_resolve_auth_identity`, a SECURITY DEFINER lookup on `auth_identities`, outside
-     P7's RLS finding); it remains the largest fixed per-request cost and is the next
-     measurable target after P5. Amit's decision is still open on the two P7 indexes the RLS
-     planner cannot use (checkpoint "Performance P7: indexes — 2026-09-17"); adding them anyway
-     is a one-file `0011` stage.
+  5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
+     2026-09-18"). The remaining performance work is not in the plan, each a separate
+     decision: the RLS/ordering architecture question from P7 (ordered index scans cannot cross
+     the security barrier; adding the two unused indexes anyway would be a one-file `0011`
+     stage), the ~130 ms `proxy-auth-db` lookup (`distil_resolve_auth_identity`, a SECURITY
+     DEFINER lookup on `auth_identities`, the largest fixed per-request cost), and the
+     multi-second Vercel + Neon cold start on the first request of a session.
   6. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
@@ -280,6 +275,31 @@ credential in Vercel's Production environment is rejected by the provider; the 2
 checkpoint had already noted that "the separate Production provider credential … was not read or
 changed". Claude did not read, rotate or replace it (secrets stay with Amit); handoff step 1 is
 that replacement. Nothing else was deployed or changed; no migration ran (handoff step 2).
+
+### Performance P5 live numbers — 2026-09-18
+
+Read from Amit's signed-in session in the in-app browser against Production `0c15e4b` (same
+application code as `715c06f`), three navigations per page after one warm-up, Navigation
+Timing plus a buffered `largest-contentful-paint` observer:
+
+| Page    | Headers (`responseStart`) | Document complete (`responseEnd`) | FCP = LCP      | API calls on load |
+| ------- | ------------------------- | --------------------------------- | -------------- | ----------------- |
+| `/`     | 62–68 ms                  | 510–545 ms                        | **516–540 ms** | 0                 |
+| `/feed` | 58–63 ms                  | 541–711 ms                        | **568–760 ms** | 0                 |
+
+Every document carried the item title in the first HTML, no "Loading…" text, no streamed
+`<div hidden id="S:…">` segment and no `$RC` reveal script; the LCP element is the article
+summary paragraph, painted at first contentful paint. The document's `Server-Timing` shows the
+proxy at 212–285 ms (`proxy-auth-provider` 80–150 ms, `proxy-auth-db` 130 ms, one call and one
+query each), so the page's own auth handoff plus tenant transaction plus render accounts for
+roughly 250–450 ms of the remainder on Neon. Before P5 the same content needed the document,
+the client bundle and a `/api/v1/feed` round trip (about 260 ms of proxy plus `db` per the P2
+release reading), i.e. roughly 0.8–1.0 s to content; this is the "about +50 ms TTFB against
+−300 ms to content" the P5 checkpoint predicted, seen live as headers unchanged and content
+about 300–450 ms earlier. Two outliers were excluded and are worth knowing: the first `/`
+request of the session took 12 s and one later `/` took 3.4 s (`proxy-auth-db` 669 ms, `q=2`)
+— Vercel function and Neon compute cold starts, pre-existing and independent of P5. This
+closes the last open measurement of the performance plan.
 
 ### P7 migration applied to Production — 2026-09-18
 
