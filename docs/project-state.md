@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-17
+## Current handoff — 2026-09-18
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -50,16 +50,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   "Performance P3: client payload and network — 2026-09-17" below. P7 (`claude/perf-indexes`)
   is implemented, locally verified and merged with `main` at `b815e6d` (code merged cleanly; only
   this file conflicted); see "Performance P7: indexes — 2026-09-17" below for the RLS planner
-  finding that reduced it to one index plus the `content_hash` column, and for the Production
-  migration run that still needs Amit's separate approval. P5 remains unstarted.
+  finding that reduced it to one index plus the `content_hash` column; its `perf-indexes`
+  migration was applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
+  Production — 2026-09-18"). P5 merged as PR [#36](https://github.com/amitsharmaak/distil/pull/36)
+  and its live numbers are in "Performance P5 live numbers — 2026-09-18".
 - **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
   The concurrent P2/P4 pair and the concurrent P3/P7 pair (Codex owned `src/components/**`,
   `src/app/**`, `src/lib/public-config.ts`, `next.config.ts`, `docs/authorization-matrix.json`,
   `tests/e2e/**`; Claude owned the PostgreSQL migration, schema, feed-query, scripts and
   harness/security test paths) are integrated by Claude as integration owner. No ownership split
   is in force once P7 merges.
-- **Branch / worktree:** `main` at `715c06f` (squash merge of PR
-  [#36](https://github.com/amitsharmaak/distil/pull/36), P5) on 2026-09-18, after `1115133`
+- **Branch / worktree:** `main` at `6446972` (#39, P5 live numbers) on 2026-09-18, after
+  `0c15e4b` (#38, P7 migration record), `022a41f` (#37, P5 release record), `715c06f` (squash
+  merge of PR [#36](https://github.com/amitsharmaak/distil/pull/36), P5) and `1115133`
   (#35) and `1cc670e` (#34, the jsdom runtime fix) on 2026-09-17,
   after `16c4c31` (#33, P7), `b815e6d` (#32, P3), `58a4a9c` (#31), `637d923` (#30, P6),
   `eb557a7` (#29), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689` (#27, local loop),
@@ -71,8 +74,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   to Distil work; left for Amit to remove). Task branches follow the parallel-session routine in
   `AGENTS.md` §7.1 (one session per branch, branch from `origin/main`, merge not rebase,
   `/start-task` and `/finish-task`).
-  Production serves release `715c06f` (P5) as GitHub deployment `6518568715` on
-  `distilai.app` (status `success`, `/api/health` 200, checked 2026-09-18); before it
+  Production serves `6446972` (docs-only on top of release `715c06f`, P5) on `distilai.app`
+  (Vercel Production deployment created 2026-09-18T11:49Z, status `success`, Quick gate green,
+  `/api/health` 200, checked 2026-09-18); `715c06f` was deployment `6518568715`; before it
   `1cc670e` (jsdom fix, deployment `6508492409`); the
   P3 (`b815e6d`) and P7 (`16c4c31`, deployment `6506943120`) merges auto-deployed before it.
   The Production library holds one item, captured by Claude from Amit's session on 2026-09-17
