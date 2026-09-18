@@ -18,9 +18,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Performance overhaul (P0, P1, P4, P2, P6, P3 and P7 merged and released 2026-09-17;
-  P5 implemented and locally verified 2026-09-18 on `claude/perf-server-render`, PR open;
-  P7's Production migration stage not yet run):** the
+- **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
+  [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18); P7's
+  Production migration stage not yet run):** the
   checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
   and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
   `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
@@ -57,8 +57,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `tests/e2e/**`; Claude owned the PostgreSQL migration, schema, feed-query, scripts and
   harness/security test paths) are integrated by Claude as integration owner. No ownership split
   is in force once P7 merges.
-- **Branch / worktree:** `main` at `1cc670e` (squash merge of PR
-  [#34](https://github.com/amitsharmaak/distil/pull/34), the jsdom runtime fix) on 2026-09-17,
+- **Branch / worktree:** `main` at `715c06f` (squash merge of PR
+  [#36](https://github.com/amitsharmaak/distil/pull/36), P5) on 2026-09-18, after `1115133`
+  (#35) and `1cc670e` (#34, the jsdom runtime fix) on 2026-09-17,
   after `16c4c31` (#33, P7), `b815e6d` (#32, P3), `58a4a9c` (#31), `637d923` (#30, P6),
   `eb557a7` (#29), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689` (#27, local loop),
   `9f0caf6` (#25) and `f295124` (#24, P4). No PR is open.
@@ -69,8 +70,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   to Distil work; left for Amit to remove). Task branches follow the parallel-session routine in
   `AGENTS.md` §7.1 (one session per branch, branch from `origin/main`, merge not rebase,
   `/start-task` and `/finish-task`).
-  Production serves release `1cc670e` (jsdom fix, on top of P3 and P7) as GitHub deployment
-  `6508492409` on `distilai.app` (status `success`, `/api/health` 200, checked 2026-09-17); the
+  Production serves release `715c06f` (P5) as GitHub deployment `6518568715` on
+  `distilai.app` (status `success`, `/api/health` 200, checked 2026-09-18); before it
+  `1cc670e` (jsdom fix, deployment `6508492409`); the
   P3 (`b815e6d`) and P7 (`16c4c31`, deployment `6506943120`) merges auto-deployed before it.
   The Production library holds one item, captured by Claude from Amit's session on 2026-09-17
   ("How to Do Great Work", `261ff287-d316-4db9-bc5d-0771b881f90c`); archive or keep it.
@@ -212,12 +214,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      base to the apex before its next capture.
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  5. Performance overhaul: P5 (`claude/perf-server-render`) is implemented and locally
-     verified — see "Performance P5: server-render `/` and `/feed` — 2026-09-18" below for the
-     React reveal-throttle finding that changed the design; review and merge on Amit's word,
-     then read `Server-Timing`/LCP on Production once more with a signed-in session. After P5
-     every phase of the plan is done; the remaining perf work is the RLS/ordering architecture
-     question from P7 and the `proxy-auth-db` lookup. The
+  5. Performance overhaul: done. P5 is live (`715c06f`); on the next signed-in session read
+     LCP/TTFB for `/` and `/feed` on Production (expect content in the first HTML, TTFB about
+     +50 ms on Neon, no `/api/v1/feed` request on load) and note it in a checkpoint. The
+     remaining performance work is not in the plan: the RLS/ordering architecture question from
+     P7 (ordered index scans cannot cross the security barrier) and the ~124 ms
+     `proxy-auth-db` lookup, each a separate decision. The
      live numbers show `proxy-auth-db` at about 124 ms per request on Neon
      (`distil_resolve_auth_identity`, a SECURITY DEFINER lookup on `auth_identities`, outside
      P7's RLS finding); it remains the largest fixed per-request cost and is the next
@@ -282,6 +284,18 @@ credential in Vercel's Production environment is rejected by the provider; the 2
 checkpoint had already noted that "the separate Production provider credential … was not read or
 changed". Claude did not read, rotate or replace it (secrets stay with Amit); handoff step 1 is
 that replacement. Nothing else was deployed or changed; no migration ran (handoff step 2).
+
+### Performance P5 released — 2026-09-18
+
+Claude reviewed PR [#36](https://github.com/amitsharmaak/distil/pull/36) as a second pass over
+its own work (fallback never bypasses API authentication; the page's auth path is the reader
+page's live pattern; server/island key agreement is test-pinned; the CI e2e job exercises the
+no-session fallback on the production build) and merged it at Amit's request as `715c06f`
+after the Quick gate and every Full gate job, including the mobile Playwright projects, passed.
+Auto-deployed as GitHub deployment `6518568715` (`success`); `/api/health` 200. No migration,
+environment-variable, release-pin or Neon change; the legacy alias still points at the P1
+release. This closes the eight-phase performance plan; the Production LCP/TTFB reading for
+`/` and `/feed` is the one number still to take (handoff step 5).
 
 ### Performance P5: server-render `/` and `/feed` — 2026-09-18
 
