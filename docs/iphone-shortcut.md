@@ -20,7 +20,8 @@ In Apple's Shortcuts app, create a shortcut named **Save to Distil**:
 3. Add **Get Item from List**, select **First Item**. This extracts the first HTTP(S) URL when an app shares both a title and a link.
 4. Add **If** and verify the selected item has a value. In the Otherwise branch, show the notification `No web link found` and stop the shortcut.
 5. Add **Get Contents of URL** with:
-   - URL: `https://YOUR-DISTIL-HOST/api/v1/captures`
+   - URL: `https://distilai.app/api/v1/captures` (the Production apex; an older `*.vercel.app`
+     origin points at a stale deployment or the Preview database)
    - Method: `POST`
    - Headers: `Authorization` = `Bearer YOUR_CAPTURE_TOKEN`
    - Request body: JSON
@@ -42,6 +43,23 @@ exists; configure the action to continue when possible and use the final fallbac
 that path.
 
 The Shortcut should not open Distil on success. A successful response means the capture has been durably queued; extraction may finish moments later.
+
+## Update the token or URL
+
+Both live in the **Get Contents of URL** action. To rotate the token or move the Shortcut to a
+different origin:
+
+1. Sign in at `https://distilai.app` in Safari, open **Settings → Capture**, create a replacement
+   token named `iPhone Shortcut`, copy it, and revoke the old one.
+2. In Shortcuts, long-press **Save to Distil**, tap **Edit**, and expand the **Get Contents of
+   URL** action with **Show More**.
+3. Set **URL** to `https://distilai.app/api/v1/captures` and the `Authorization` header to
+   `Bearer <new token>` — keep the `Bearer ` prefix and no trailing space.
+4. Tap **Done** and share one article. `Saved to Distil` within a couple of seconds means the
+   capture reached Production. A long spin followed by nothing usually means the action still
+   targets an old `*.vercel.app` origin (cold deployment, Preview database). An authorization
+   failure notification means the header value is wrong or the token belongs to another
+   environment.
 
 ## Add Distil to the Home Screen
 
