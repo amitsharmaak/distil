@@ -82,6 +82,13 @@ export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
 
   /**
+   * YouTube Data API v3 key (public data only). Used for video metadata when
+   * YouTube refuses the unofficial endpoints from the server's egress IP.
+   * Optional; obtain from Google Cloud → APIs → YouTube Data API v3.
+   */
+  youtubeApiKey: process.env.YOUTUBE_API_KEY ?? "",
+
+  /**
    * OpenAI API key for GPT models.
    * Obtain from https://platform.openai.com/api-keys
    * NEVER commit real values — store in .env.local only.

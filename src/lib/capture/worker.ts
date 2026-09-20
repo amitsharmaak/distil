@@ -11,8 +11,11 @@ import {
   isYouTubeUrl,
   parseYouTubeWatchPage,
   renderYouTubeContent,
+  type InnertubeAttempt,
   type YouTubeVideoDetails,
 } from "@/lib/youtube";
+import { config } from "@/lib/config";
+import { apiLogger } from "@/lib/logger";
 import type {
   CaptureRecord,
   CaptureRepository,
@@ -256,9 +259,20 @@ export function createDefaultCaptureProcessor(
       // the innertube API. The item is a video with the transcript as its body.
       if (!extracted && isYouTubeUrl(article.url)) {
         const videoId = extractYouTubeId(article.url) as string;
+        const fromPage = parseYouTubeWatchPage(article.body);
+        const attempts: InnertubeAttempt[] = [];
         const video =
-          parseYouTubeWatchPage(article.body) ??
-          (await (dependencies.fetchVideoDetails ?? fetchYouTubeVideoDetails)(videoId));
+          fromPage ??
+          (await (dependencies.fetchVideoDetails
+            ? dependencies.fetchVideoDetails(videoId)
+            : fetchYouTubeVideoDetails(videoId, { apiKey: config.youtubeApiKey, attempts })));
+        if (!fromPage) {
+          // Which source answered is only learnable per egress; keep it in the logs.
+          apiLogger.info(
+            { event: "youtube_details_fallback", videoId, attempts, resolved: Boolean(video) },
+            "YouTube watch page had no player response"
+          );
+        }
         if (!video) {
           return {
             status: "rejected",
@@ -272,7 +286,8 @@ export function createDefaultCaptureProcessor(
         const description = video.description.replace(/\s+/g, " ").trim();
         const item = await dependencies.items.insert({
           id: capture.id,
-          title: capture.title ?? video.title,
+          // The source's title beats the browser tab title ("… - YouTube").
+          title: video.title || capture.title || article.url,
           summary:
             capture.notes ??
             (description

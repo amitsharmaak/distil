@@ -3,6 +3,7 @@ import {
   fetchYouTubeTranscript,
   fetchYouTubeVideoDetails,
   formatDuration,
+  parseIsoDuration,
   parseTimedText,
   parseYouTubeWatchPage,
   renderYouTubeContent,
@@ -181,7 +182,7 @@ describe("fetchYouTubeVideoDetails", () => {
         )
     );
     await expect(
-      fetchYouTubeVideoDetails("abc", fetchImpl as unknown as typeof fetch)
+      fetchYouTubeVideoDetails("abc", { fetchImpl: fetchImpl as unknown as typeof fetch })
     ).resolves.toEqual({
       videoId: "abc",
       title: "Jev",
@@ -204,7 +205,7 @@ describe("fetchYouTubeVideoDetails", () => {
       return new Response("", { status: 404 });
     });
     await expect(
-      fetchYouTubeVideoDetails("abc", fetchImpl as unknown as typeof fetch)
+      fetchYouTubeVideoDetails("abc", { fetchImpl: fetchImpl as unknown as typeof fetch })
     ).resolves.toMatchObject({
       title: "Jev",
       author: "Greg",
@@ -213,7 +214,82 @@ describe("fetchYouTubeVideoDetails", () => {
     });
     const down = jest.fn(async () => new Response("", { status: 500 }));
     await expect(
-      fetchYouTubeVideoDetails("abc", down as unknown as typeof fetch)
+      fetchYouTubeVideoDetails("abc", { fetchImpl: down as unknown as typeof fetch })
     ).resolves.toBeNull();
+  });
+});
+
+describe("innertube client fallback and the Data API", () => {
+  it("tries the next client when the first is refused and records the attempts", async () => {
+    let calls = 0;
+    const fetchImpl = jest.fn(async (input: RequestInfo | URL) => {
+      if (!String(input).includes("/youtubei/")) return new Response("", { status: 404 });
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 403 });
+      if (calls === 2)
+        return new Response(JSON.stringify({ playabilityStatus: { status: "LOGIN_REQUIRED" } }));
+      return new Response(
+        JSON.stringify({ videoDetails: { videoId: "abc", title: "Third time" } })
+      );
+    });
+    const attempts: { client: string; outcome: string }[] = [];
+    await expect(
+      fetchYouTubeVideoDetails("abc", { fetchImpl: fetchImpl as unknown as typeof fetch, attempts })
+    ).resolves.toMatchObject({ title: "Third time" });
+    expect(attempts).toEqual([
+      { client: "ANDROID", outcome: "http 403" },
+      { client: "IOS", outcome: "LOGIN_REQUIRED" },
+      { client: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", outcome: "ok" },
+    ]);
+  });
+
+  it("prefers the Data API when a key is configured", async () => {
+    const fetchImpl = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toContain("googleapis.com/youtube/v3/videos");
+      expect(url).toContain("key=k");
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              snippet: {
+                title: "Official",
+                description: "Desc",
+                channelTitle: "Greg",
+                publishedAt: "2026-09-15T00:00:00Z",
+                thumbnails: {
+                  default: { url: "d.jpg", width: 120 },
+                  maxres: { url: "m.jpg", width: 1280 },
+                },
+              },
+              contentDetails: { duration: "PT28M24S" },
+            },
+          ],
+        })
+      );
+    });
+    await expect(
+      fetchYouTubeVideoDetails("abc", {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        apiKey: "k",
+      })
+    ).resolves.toEqual({
+      videoId: "abc",
+      title: "Official",
+      author: "Greg",
+      description: "Desc",
+      lengthSeconds: 1704,
+      thumbnailUrl: "m.jpg",
+      publishDate: "2026-09-15T00:00:00Z",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("parses ISO 8601 durations", () => {
+    expect(parseIsoDuration("PT28M24S")).toBe(1704);
+    expect(parseIsoDuration("PT1H2M5S")).toBe(3725);
+    expect(parseIsoDuration("P1DT1S")).toBe(86401);
+    expect(parseIsoDuration("PT0S")).toBeNull();
+    expect(parseIsoDuration(undefined)).toBeNull();
   });
 });

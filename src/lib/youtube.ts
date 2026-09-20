@@ -93,14 +93,55 @@ export interface TranscriptSegment {
 }
 
 const INNERTUBE_PLAYER = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-const INNERTUBE_CLIENT = {
-  clientName: "ANDROID",
-  clientVersion: "20.10.38",
-  androidSdkVersion: 30,
-  hl: "en",
-};
+
+/**
+ * Innertube clients tried in order. YouTube answers different clients
+ * differently per source IP: a laptop gets everything from ANDROID, while a
+ * datacenter egress may be refused by some and served by others.
+ */
+const INNERTUBE_CLIENTS: Array<{
+  name: string;
+  context: Record<string, unknown>;
+  headers?: Record<string, string>;
+}> = [
+  {
+    name: "ANDROID",
+    context: { clientName: "ANDROID", clientVersion: "20.10.38", androidSdkVersion: 30, hl: "en" },
+    headers: { "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip" },
+  },
+  {
+    name: "IOS",
+    context: {
+      clientName: "IOS",
+      clientVersion: "20.10.4",
+      deviceMake: "Apple",
+      deviceModel: "iPhone16,2",
+      osName: "iPhone",
+      osVersion: "18.3.2.22D82",
+      hl: "en",
+    },
+    headers: {
+      "User-Agent": "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+    },
+  },
+  {
+    name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+    context: { clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", clientVersion: "2.0", hl: "en" },
+  },
+  {
+    name: "WEB",
+    context: { clientName: "WEB", clientVersion: "2.20250312.04.00", hl: "en" },
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+      "X-YouTube-Client-Name": "1",
+      "X-YouTube-Client-Version": "2.20250312.04.00",
+    },
+  },
+];
 
 interface InnertubePlayerResponse extends Record<string, unknown> {
+  playabilityStatus?: { status?: string; reason?: string };
   captions?: {
     playerCaptionsTracklistRenderer?: {
       captionTracks?: Array<{ baseUrl?: string; languageCode?: string; kind?: string }>;
@@ -108,24 +149,114 @@ interface InnertubePlayerResponse extends Record<string, unknown> {
   };
 }
 
-/** Calls the innertube player endpoint; null when YouTube declines. */
+export interface InnertubeAttempt {
+  client: string;
+  outcome: string;
+}
+
+/**
+ * Calls the innertube player endpoint with each client until one returns a
+ * response that satisfies `accept`. `attempts` collects what each client said,
+ * for the caller to log — Production behaviour per client is only learnable
+ * from real captures.
+ */
 async function fetchInnertubePlayer(
   videoId: string,
   fetchImpl: typeof fetch,
-  timeoutMs: number
+  timeoutMs: number,
+  accept: (payload: InnertubePlayerResponse) => boolean,
+  attempts: InnertubeAttempt[] = []
 ): Promise<InnertubePlayerResponse | null> {
+  for (const client of INNERTUBE_CLIENTS) {
+    try {
+      const response = await fetchImpl(INNERTUBE_PLAYER, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...client.headers },
+        body: JSON.stringify({ videoId, context: { client: client.context } }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        attempts.push({ client: client.name, outcome: `http ${response.status}` });
+        continue;
+      }
+      const payload = (await response.json()) as InnertubePlayerResponse;
+      if (accept(payload)) {
+        attempts.push({ client: client.name, outcome: "ok" });
+        return payload;
+      }
+      attempts.push({
+        client: client.name,
+        outcome: payload.playabilityStatus?.status ?? "no usable payload",
+      });
+    } catch (error) {
+      attempts.push({
+        client: client.name,
+        outcome: error instanceof Error ? error.name : "error",
+      });
+    }
+  }
+  return null;
+}
+
+const hasVideoDetails = (payload: InnertubePlayerResponse) =>
+  detailsFromPlayerResponse(payload) !== null;
+const hasCaptions = (payload: InnertubePlayerResponse) =>
+  (payload.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0) > 0;
+
+/** Official Data API v3 — reliable from any egress, needs an API key. */
+async function fetchDataApiDetails(
+  videoId: string,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<YouTubeVideoDetails | null> {
   try {
-    const response = await fetchImpl(INNERTUBE_PLAYER, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
-      body: JSON.stringify({ videoId, context: { client: INNERTUBE_CLIENT } }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+    url.searchParams.set("part", "snippet,contentDetails");
+    url.searchParams.set("id", videoId);
+    url.searchParams.set("key", apiKey);
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) return null;
-    return (await response.json()) as InnertubePlayerResponse;
+    const data = (await response.json()) as {
+      items?: Array<{
+        snippet?: {
+          title?: string;
+          description?: string;
+          channelTitle?: string;
+          publishedAt?: string;
+          thumbnails?: Record<string, { url?: string; width?: number }>;
+        };
+        contentDetails?: { duration?: string };
+      }>;
+    };
+    const item = data.items?.[0];
+    if (!item?.snippet?.title) return null;
+    const thumbnails = Object.values(item.snippet.thumbnails ?? {});
+    const largest = thumbnails.reduce<{ url?: string; width?: number } | undefined>(
+      (best, thumb) => ((thumb.width ?? 0) > (best?.width ?? -1) ? thumb : best),
+      undefined
+    );
+    return {
+      videoId,
+      title: item.snippet.title,
+      author: item.snippet.channelTitle ?? null,
+      description: item.snippet.description ?? "",
+      lengthSeconds: parseIsoDuration(item.contentDetails?.duration),
+      thumbnailUrl: largest?.url ?? null,
+      publishDate: item.snippet.publishedAt ?? null,
+    };
   } catch {
     return null;
   }
+}
+
+/** ISO 8601 duration ("PT28M24S") to seconds. */
+export function parseIsoDuration(value: string | undefined): number | null {
+  const match = value?.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return null;
+  const [, days, hours, minutes, seconds] = match.map((part) => Number(part ?? 0));
+  const total = days * 86400 + hours * 3600 + minutes * 60 + seconds;
+  return total > 0 ? total : null;
 }
 
 /**
@@ -135,10 +266,28 @@ async function fetchInnertubePlayer(
  */
 export async function fetchYouTubeVideoDetails(
   videoId: string,
-  fetchImpl: typeof fetch = fetch,
-  timeoutMs = 10_000
+  options: {
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+    apiKey?: string;
+    attempts?: InnertubeAttempt[];
+  } = {}
 ): Promise<YouTubeVideoDetails | null> {
-  const player = await fetchInnertubePlayer(videoId, fetchImpl, timeoutMs);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const attempts = options.attempts ?? [];
+  if (options.apiKey) {
+    const fromApi = await fetchDataApiDetails(videoId, options.apiKey, fetchImpl, timeoutMs);
+    attempts.push({ client: "data-api", outcome: fromApi ? "ok" : "no result" });
+    if (fromApi) return fromApi;
+  }
+  const player = await fetchInnertubePlayer(
+    videoId,
+    fetchImpl,
+    timeoutMs,
+    hasVideoDetails,
+    attempts
+  );
   const fromPlayer = player ? detailsFromPlayerResponse(player) : null;
   if (fromPlayer) return fromPlayer;
   try {
@@ -152,6 +301,7 @@ export async function fetchYouTubeVideoDetails(
       author_name?: string;
       thumbnail_url?: string;
     };
+    attempts.push({ client: "oembed", outcome: data.title ? "ok" : "no result" });
     if (!data.title) return null;
     return {
       videoId,
@@ -163,6 +313,7 @@ export async function fetchYouTubeVideoDetails(
       publishDate: null,
     };
   } catch {
+    attempts.push({ client: "oembed", outcome: "error" });
     return null;
   }
 }
@@ -175,10 +326,17 @@ export async function fetchYouTubeVideoDetails(
 export async function fetchYouTubeTranscript(
   videoId: string,
   fetchImpl: typeof fetch = fetch,
-  timeoutMs = 10_000
+  timeoutMs = 10_000,
+  attempts: InnertubeAttempt[] = []
 ): Promise<TranscriptSegment[]> {
   try {
-    const payload = await fetchInnertubePlayer(videoId, fetchImpl, timeoutMs);
+    const payload = await fetchInnertubePlayer(
+      videoId,
+      fetchImpl,
+      timeoutMs,
+      hasCaptions,
+      attempts
+    );
     if (!payload) return [];
     const tracks = payload.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
     const track =
