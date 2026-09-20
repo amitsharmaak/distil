@@ -50,7 +50,11 @@ export function parseYouTubeWatchPage(html: string): YouTubeVideoDetails | null 
   const start = html.indexOf(marker);
   if (start < 0) return null;
   const payload = readJsonObjectAt(html, start + marker.length);
-  if (!payload) return null;
+  return payload ? detailsFromPlayerResponse(payload) : null;
+}
+
+/** Video details from a player response (watch page blob or innertube reply). */
+function detailsFromPlayerResponse(payload: Record<string, unknown>): YouTubeVideoDetails | null {
   const details = payload.videoDetails as
     | {
         videoId?: string;
@@ -96,6 +100,73 @@ const INNERTUBE_CLIENT = {
   hl: "en",
 };
 
+interface InnertubePlayerResponse extends Record<string, unknown> {
+  captions?: {
+    playerCaptionsTracklistRenderer?: {
+      captionTracks?: Array<{ baseUrl?: string; languageCode?: string; kind?: string }>;
+    };
+  };
+}
+
+/** Calls the innertube player endpoint; null when YouTube declines. */
+async function fetchInnertubePlayer(
+  videoId: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<InnertubePlayerResponse | null> {
+  try {
+    const response = await fetchImpl(INNERTUBE_PLAYER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
+      body: JSON.stringify({ videoId, context: { client: INNERTUBE_CLIENT } }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as InnertubePlayerResponse;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Video details when the watch page did not carry them (datacenter egress
+ * gets a consent or bot interstitial): innertube first, then oEmbed, which
+ * only knows title, channel and thumbnail.
+ */
+export async function fetchYouTubeVideoDetails(
+  videoId: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 10_000
+): Promise<YouTubeVideoDetails | null> {
+  const player = await fetchInnertubePlayer(videoId, fetchImpl, timeoutMs);
+  const fromPlayer = player ? detailsFromPlayerResponse(player) : null;
+  if (fromPlayer) return fromPlayer;
+  try {
+    const response = await fetchImpl(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
+      { signal: AbortSignal.timeout(timeoutMs) }
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    if (!data.title) return null;
+    return {
+      videoId,
+      title: data.title,
+      author: data.author_name ?? null,
+      description: "",
+      lengthSeconds: null,
+      thumbnailUrl: data.thumbnail_url ?? null,
+      publishDate: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetches the video's caption track as timed segments. Prefers a human
  * English track over auto-generated, then any English, then the first track.
@@ -107,20 +178,8 @@ export async function fetchYouTubeTranscript(
   timeoutMs = 10_000
 ): Promise<TranscriptSegment[]> {
   try {
-    const player = await fetchImpl(INNERTUBE_PLAYER, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
-      body: JSON.stringify({ videoId, context: { client: INNERTUBE_CLIENT } }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!player.ok) return [];
-    const payload = (await player.json()) as {
-      captions?: {
-        playerCaptionsTracklistRenderer?: {
-          captionTracks?: Array<{ baseUrl?: string; languageCode?: string; kind?: string }>;
-        };
-      };
-    };
+    const payload = await fetchInnertubePlayer(videoId, fetchImpl, timeoutMs);
+    if (!payload) return [];
     const tracks = payload.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
     const track =
       tracks.find((item) => item.languageCode?.startsWith("en") && item.kind !== "asr") ??

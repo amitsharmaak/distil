@@ -232,6 +232,19 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### YouTube on Vercel: details fallback — 2026-09-20
+
+First Production captures of the two YouTube test videos (extension, after PR #42) were
+`rejected` with "Distil could not read this video's details from YouTube": the watch page
+YouTube serves to Vercel's datacenter egress has no `ytInitialPlayerResponse` (consent/bot
+interstitial), while a laptop gets the normal page. `fetchYouTubeVideoDetails`
+(`src/lib/youtube.ts`) now supplies the details when the page lacks them — innertube `player`
+(ANDROID client; the same call captions use) returns full `videoDetails`, then oEmbed as a
+last resort (title, channel, thumbnail only). Both verified from the laptop; whether innertube
+answers from Vercel is exactly what the next Production capture will show — if it does not,
+the item still saves via oEmbed with no description or transcript. The two pre-#42 X receipts
+in Production (`failed`, NUL-byte error, 5 attempts) are non-retryable; re-save the URLs.
+
 ### Release: PR #42 to Production — 2026-09-20
 
 `claude/browser-extension-url-save-6101e3` merged as PR

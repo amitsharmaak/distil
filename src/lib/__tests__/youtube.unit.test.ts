@@ -1,6 +1,7 @@
 import {
   extractYouTubeId,
   fetchYouTubeTranscript,
+  fetchYouTubeVideoDetails,
   formatDuration,
   parseTimedText,
   parseYouTubeWatchPage,
@@ -160,4 +161,59 @@ it("formats durations", () => {
   expect(formatDuration(1650)).toBe("27:30");
   expect(formatDuration(3725)).toBe("1:02:05");
   expect(formatDuration(5)).toBe("0:05");
+});
+
+describe("fetchYouTubeVideoDetails", () => {
+  it("uses innertube's videoDetails when the watch page had none", async () => {
+    const fetchImpl = jest.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            videoDetails: {
+              videoId: "abc",
+              title: "Jev",
+              author: "Greg",
+              lengthSeconds: "1704",
+              shortDescription: "About",
+              thumbnail: { thumbnails: [{ url: "t.jpg", width: 1280 }] },
+            },
+          })
+        )
+    );
+    await expect(
+      fetchYouTubeVideoDetails("abc", fetchImpl as unknown as typeof fetch)
+    ).resolves.toEqual({
+      videoId: "abc",
+      title: "Jev",
+      author: "Greg",
+      description: "About",
+      lengthSeconds: 1704,
+      thumbnailUrl: "t.jpg",
+      publishDate: null,
+    });
+  });
+
+  it("falls back to oEmbed, then gives up", async () => {
+    const fetchImpl = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/youtubei/")) return new Response("", { status: 403 });
+      if (url.includes("/oembed"))
+        return new Response(
+          JSON.stringify({ title: "Jev", author_name: "Greg", thumbnail_url: "o.jpg" })
+        );
+      return new Response("", { status: 404 });
+    });
+    await expect(
+      fetchYouTubeVideoDetails("abc", fetchImpl as unknown as typeof fetch)
+    ).resolves.toMatchObject({
+      title: "Jev",
+      author: "Greg",
+      thumbnailUrl: "o.jpg",
+      description: "",
+    });
+    const down = jest.fn(async () => new Response("", { status: 500 }));
+    await expect(
+      fetchYouTubeVideoDetails("abc", down as unknown as typeof fetch)
+    ).resolves.toBeNull();
+  });
 });
