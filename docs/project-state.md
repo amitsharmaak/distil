@@ -184,8 +184,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
   legacy SQLite path and is not representative of Production; Postgres integration tests need
   Docker or `DISTIL_TEST_POSTGRES_URL`.
 - **Previously recorded external state (not re-checked today):** Production library
-  intentionally empty; one user and one capture token; Neon Auth project `distil-preview-db`
-  with the single existing user.
+  holds the 2026-09-17 capture plus the 2026-09-19 Shortcut capture; one user and two capture
+  tokens (browser extension and `iPhone Shortcut`, the latter created 2026-09-19); Neon Auth
+  project `distil-preview-db` with the single existing user.
 - **Optional password-login check (deferred by Amit on 2026-09-16):** sign in at
   `https://distilai.app/sign-in`, confirm the Today page loads, change the password once from
   `/account`, and confirm "Email me a magic link instead" still works. If the emailed reset link
@@ -210,11 +211,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
   3. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
      simplified shell and P3's same-origin client have now been exercised by Claude through the
      in-app browser but not seen by a person), and make one browser-extension capture (the
-     in-app `/save` path is verified; the extension path is not). Update the iPhone Shortcut API
-     base to the apex before its next capture. The 2026-09-19 extension capture of an X post
+     in-app `/save` path is verified; the extension path is not). Done 2026-09-19: the iPhone
+     Shortcut is re-pointed at the apex with a Production token and its capture verified
+     (checkpoint "iPhone Shortcut re-pointed at Production — 2026-09-19" below). The 2026-09-19 extension capture of an X post
      reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
-     the durable worker — 2026-09-19"); the fix is on
-     `claude/browser-extension-url-save-6101e3`, awaiting review and release.
+     the durable worker — 2026-09-19"); the fix, with the rest of that branch's work, is being
+     released from `claude/browser-extension-url-save-6101e3` on 2026-09-20.
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
   5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
@@ -380,10 +382,29 @@ several times this session; when a server-side or CSS change does not take, stop
 `rm -rf .next/dev`, restart. Duplicate detection means re-saving a URL after a code change needs
 `npm run db:local:reset` (or a different URL).
 
-**Verification.** `npm run check` 215 suites / 1,540 tests green; `npm run build` succeeds (0 lint errors, 5 baseline
-warnings). Not deployed — release needs Amit's go-ahead. Note for other worktrees: this
+**Verification.** `npm run check` 215 suites / 1,538 tests green; `npm run build` succeeds (0 lint errors,
+5 baseline warnings). Release authorised by Amit on 2026-09-20. Note for other worktrees: this
 worktree's `node_modules` held jsdom 30 from before PR #34, which fails
 `tests/harness/vercel-runtime-externals.unit.test.ts`; `npm ci` fixed it.
+
+### iPhone Shortcut re-pointed at Production — 2026-09-19
+
+Amit reported that **Save to Distil** spun for a long time on a TechCrunch article and nothing
+appeared in Distil. Claude checked the apex first: `POST /api/v1/captures` on `distilai.app`
+answers an invalid token with `401` in ~0.4 s, so the hang was not the Production route. The cause
+was the open handoff item above: the Shortcut still carried its Phase 1 configuration — the
+Preview origin `https://distil-preview-pv-1850.vercel.app` and the token `dst_cap_ceWsAhyB…`
+created in the Preview database (Phase 1 "Task 5 — Provision and accept independent capture clients" below). A capture through that
+path waits on a cold, rarely-hit deployment and, when it succeeds, lands in Preview rather than
+Production; the Preview token can never authenticate against Production.
+
+Fix, done by Amit on the phone: created a Production capture token named `iPhone Shortcut` in
+**Settings → Capture** on `https://distilai.app`, then in the Shortcut's **Get Contents of URL**
+action changed the URL to `https://distilai.app/api/v1/captures` and the `Authorization` header
+to the new bearer token. The next share returned `Saved to Distil` and the item appeared in the
+Production feed. The old Preview token is unused; revoke it there if the Preview environment is
+ever exercised again. `docs/iphone-shortcut.md` now names the apex URL explicitly and has an
+"Update the token or URL" section for the next rotation. No code changed; nothing was deployed.
 
 ### First live capture and the jsdom runtime fix — 2026-09-17
 
