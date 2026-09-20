@@ -111,5 +111,6 @@
   "PUT /api/v1/collections/:id/items/:itemId",
   "PUT /api/v1/items/:id/note",
   "PUT /api/v1/preferences",
-  "DELETE /api/v1/account/sessions/:id"
+  "DELETE /api/v1/account/sessions/:id",
+  "POST /api/v1/items/:id/transcript"
 ]

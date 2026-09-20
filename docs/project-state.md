@@ -213,7 +213,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      in-app browser but not seen by a person), and make one browser-extension capture (the
      in-app `/save` path is verified; the extension path is not). Done 2026-09-19: the iPhone
      Shortcut is re-pointed at the apex with a Production token and its capture verified
-     (checkpoint "iPhone Shortcut re-pointed at Production — 2026-09-19" below).
+     (checkpoint "iPhone Shortcut re-pointed at Production — 2026-09-19" below). The 2026-09-19 extension capture of an X post
+     reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
+     the durable worker — 2026-09-19"); the fix, with the rest of that branch's work, is being
+     released from `claude/browser-extension-url-save-6101e3` on 2026-09-20.
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
   5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
@@ -228,6 +231,161 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### X/Twitter captures rejected by the durable worker — 2026-09-19
+
+Amit saved `https://x.com/0xCodila/status/2101064040332054741` from the Chrome extension. The
+extension reported "Saved to Distil." (the API answered `202 Accepted`, which is correct: the
+receipt is queued for the worker) but nothing appeared in the Feed.
+
+**Cause (read from the code; deterministic, not environment-specific).** The durable capture
+processor (`createDefaultCaptureProcessor` in `src/lib/capture/worker.ts`) fetches the page with
+the pinned fetcher and runs `extractContentFromHtml`, which returns `null` for `x.com` /
+`twitter.com` on purpose (`isUnextractable`: X serves a JavaScript shell with no readable body).
+The processor treated `null` exactly like "not enough readable text" and moved the receipt to
+`rejected` ("Distil could not identify enough readable article content on this page"). The
+tweet-aware path (fxtwitter via `fetchOG` in `src/lib/og.ts`) lived only in the legacy
+`intelligence/extractor` pipeline, which the queue consumer does not use. So every X/Twitter URL
+saved through `/api/v1/captures` — extension, `/save`, Shortcut — has been rejected since the
+durable worker shipped; the receipt is visible with that reason at `/api/v1/captures` (session
+GET) and via `CaptureReceipt` on `/save`.
+
+**Fix (branch `claude/browser-extension-url-save-6101e3`).** When Readability is skipped and the
+URL is an X/Twitter post, the processor now resolves the post through `fetchOG` (fxtwitter, a
+fixed public host, plus X's crawler OG fallback) and inserts the item directly: `summary` and
+`fullContent` = post text (the reader's tweet renderer reads `summary`; X Articles over 200
+characters fall through to the article renderer as before), `title` = capture title or
+"<author> on X", `author`, `publication` "X", `thumbnailUrl`, and `detectedMedia` with the
+`twitter` video when present. If no text can be resolved the receipt is rejected with "Distil
+could not read the text of this post". `isTwitterUrl` is now exported from `src/lib/og.ts`; the
+processor takes an injectable `fetchSocialMetadata` for tests. Two unit tests added in
+`src/lib/capture/__tests__/worker.unit.test.ts`. `fxtwitter` returns the post in question
+(author codila, 1,814 characters, no video), so after release retrying that receipt — or saving
+the URL again — should produce a Feed item.
+
+**Local iteration session (same day, same branch).** Amit switched to the local loop
+(`docs/runbooks/local-development.md`; this worktree's `.env.local` rebuilt from the example,
+old Neon-era file kept as `.env.local.neon-backup`) and drove URLs through `/save` one by one
+with Claude verifying in the in-app browser. Findings and fixes, all locally verified end to end:
+
+1. **NUL bytes in fetched HTML.** x.com's shell embeds `0x00`; PostgreSQL `text` rejects it
+   (`invalid byte sequence for encoding "UTF8"`). `fetchArticle` now strips NULs from every body.
+2. **Inline dispatcher stranded transient failures.** `InlineCaptureDispatcher` never redelivered
+   on `CaptureRetryScheduledError`, so a local receipt stayed `queued` forever and blocked
+   re-saving the URL. It now retries after 2 s, bounded by the worker's `MAX_CAPTURE_ATTEMPTS`.
+3. **Summaries refused for long X posts.** `/api/ai/summarize` hard-refused every X URL, while
+   the capture worker generated the brief directly — so long posts showed a brief and then
+   "Detailed"/"Regenerate" errored. New shared `isLongFormXPost` (`src/lib/utils.ts`, >200
+   characters) gates both the reader's article treatment and the API; short tweets still refuse.
+4. **X Articles (`x.com/i/article/…`) lost.** fxtwitter returns the full article as Draft.js
+   blocks, but `fetchFxTwitter` only used it when `tweet.text` was empty (it is the article URL),
+   and `fetchTwitterMetadata`'s merge dropped `videoUrl` (pre-existing: tweet videos never got
+   through). New `src/lib/x-article.ts` renders blocks → HTML (headings, lists, quotes, bold /
+   italic / code, links, fenced code from MARKDOWN entities, embedded tweets as linked quotes,
+   images from `media_entities`) plus plain text and links; `OGData` gained `html` and `links`;
+   the worker stores the HTML as `fullContent`, an excerpt as `summary`, and the links as
+   `extractedLinks`. Verified on `x.com/mvanhorn/status/2100784142850097482` (9 sections, 7 code
+   blocks, 55 links).
+5. **Retired Gemini fallback models.** With only `GEMINI_API_KEY` configured, `summarize-complex`
+   (content ≥ 2,000 tokens) fell back to `gemini-2.5-flash`, which Google now returns 404 for
+   ("no longer available to new users"), surfacing as `AI_INVALID_REQUEST`. This is the likely
+   cause of Amit's "summary works for some articles, errors for others" in Production too (short
+   articles used the still-live `gemini-3.5-flash-lite`). `PROVIDER_FALLBACK_MODELS.gemini` now
+   uses `gemini-3.5-flash` / `gemini-3.5-flash-lite` (both verified callable with the key);
+   `MODEL_COSTS["gemini-3.5-flash"]` is an estimate pending a checked price sheet.
+6. **Dead `prose-*` classes.** `@tailwindcss/typography` is not installed, so the article body's
+   `prose` classes did nothing: every HTML article rendered with unstyled headings, lists, code
+   and quotes. `.distil-reader` in `globals.css` now styles h2–h4, ul/ol, blockquote, a, code,
+   pre, img and hr; the dead classes are removed from `ai-summary-content.tsx`.
+
+7. **Reading typography (2026-09-20, Amit: "minimal formatting … fonts a little small").**
+   The Today card flattened the Markdown brief into one small muted paragraph. New
+   `toSummaryDigest` (`src/lib/format.ts`) splits a `## TL;DR` / `## Key Points` summary into a
+   lead and up to four points; `today-selection.ts` now passes the raw summary and the card
+   renders the digest in serif reading type (`.distil-card-digest`). Reader body raised from
+   17 px to 19 px (18 px under 640 px) with foreground colour; AI-summary section labels 11 px.
+   Feed cards: serif 15 px excerpt clamped to three lines (article `summaryMaxChars` 200 → 300),
+   title `text-lg`, and the stored AI summary is shown whenever it exists (the tweet strategy's
+   `generateAISummary` flag no longer hides it for long X posts). Dead `prose-*` classes removed
+   from `ai-summary-content.tsx` too.
+
+8. **Reader footer simplified (Amit: "way too verbose and prominent … don't need reading
+   progress … note is way too big").** `reader-knowledge-controls.tsx` is now one quiet strip
+   under the article: an uppercase label + borderless note field (one row until it has text;
+   Save/Delete appear only when there is something to save or delete), collection toggle chips
+   (section hidden when there are no collections), and an inline row with Archive and a
+   Priority select. Removed from the UI: the reading-progress 0/25/50/75/100 buttons (the
+   `readingProgress` field, API and schema are untouched) and the Mark read/unread button (the
+   fixed action bar already has it). `reader-annotations.tsx` Highlights header matched to the
+   same label style, explainer trimmed to the empty-state line, dashed empty box removed.
+   TechCrunch `ai-safety-conversations-have-gotten-unbelievable` ingested as the article
+   baseline: 16/16 body paragraphs, 9 links, hero image stored, no sidebar leakage; open UI
+   questions raised to Amit — show the hero image in the reader, and strip the
+   "| TechCrunch" suffix from titles.
+
+9. **YouTube captures (2026-09-20).** `youtube.com/watch?v=mUAsaprJ66s` was rejected the same
+   way X was (JS shell → no readable body). New `src/lib/youtube.ts`: `parseYouTubeWatchPage`
+   reads `ytInitialPlayerResponse` from the already-fetched (DNS-pinned) page for title,
+   channel, description, length and the largest thumbnail; `fetchYouTubeTranscript` calls the
+   innertube `player` endpoint with the ANDROID client (the caption URLs on the watch page
+   itself return empty bodies server-side; ANDROID's do not) and parses srv3/srv1 timedtext,
+   dropping "[music]"-style tags and breaking paragraphs on ">>" speaker changes;
+   `renderYouTubeContent` builds a Description + timestamped Transcript body (each timestamp
+   links to `&t=`). The worker inserts a `contentType: "video"` item with `duration`,
+   `detectedMedia: [{youtube, videoId}]` and the description as the body, and enqueues the
+   brief summary only when the description is ≥ 200 characters.
+   **Transcript is on demand (Amit: "too expensive and unnecessary for every video … make
+   it an action"):** `POST /api/v1/items/:id/transcript` (`src/lib/phase2/video-transcript.ts`)
+   fetches the captions, rewrites the body as Description + Transcript, marks
+   `detectedMedia[].transcript = true`, deletes the description-based summaries and regenerates
+   the brief from the transcript (best effort). The reader shows a "Load transcript" button
+   under the player until then; `content-extractor.isUnextractable` now includes YouTube hosts;
+   the YouTube strategy turns on `generateAISummary`, `showAISummary` and `showReaderContent`.
+   **Player was blocked** ("This content is blocked"): `next.config.ts` CSP had
+   `frame-src 'none'`; now `frame-src https://www.youtube-nocookie.com https://www.youtube.com`
+   plus `media-src 'self' https:` (X post `<video>` from twimg.com was blocked by
+   `default-src 'self'` too); the embed uses `youtube-nocookie.com`. `summarize-complex`
+   calls now get 40 s (thinking models on ~8k-token transcripts timed out at 15 s) and the
+   summarize + transcript routes export `maxDuration = 60`. Verified locally: 27:30 video,
+   player renders, description-based brief at capture, Load transcript → 78 paragraphs in
+   11.5 s with the brief regenerated from the transcript. Risk: innertube is unofficial; a
+   failure returns "This video has no captions to load" and the description-only item stands.
+   The new route is registered in `docs/authorization-matrix.json` (owner mutation, origin
+   check via `requireAllowedOrigin`; `expectedApiRouteFileCount` 82 → 83) and in
+   `tests/fixtures/phase3/phase2-wave0-route-surfaces.json`; the frozen counts in
+   `tests/harness/*` moved with it (routes 113 → 114, sources 82 → 83, owner mutations
+   48 → 49).
+
+10. **X posts with video, Granola notes, and the test-link registry (2026-09-20).**
+    `x.com/gregisenberg/status/2099938794363293703` carries the Instinct AI episode as a native
+    X video plus a YouTube link. The worker now records both in `detectedMedia` (`twitter`
+    embedUrl for playback; `youtube` videoId with `linked: true`); the reader renders the
+    native `<video>` above either renderer and shows "Load transcript" whenever
+    `linkedYouTubeId(item)` resolves (own URL or linked), so a short post is promoted to
+    long-form with a transcript-based summary. `notes.granola.ai/d/<id>` share pages embed the
+    note as a ProseMirror document in the RSC payload: new `src/lib/granola.ts`
+    (`parseGranolaPage`, `renderProseMirror` — headings, nested lists, quotes, code, rules,
+    bold/italic/links) and a worker branch storing an article with `publication: "Granola"`
+    and the owner as author. `src/lib/embedded-json.ts` holds the balanced-JSON reader both
+    YouTube and Granola use. `docs/test-links/links.json` (+ README) is the registry of every
+    URL tested so far, by category; `npm run links:import -- --origin <url> --token <capture
+token>` bulk-posts them to `/api/v1/captures` (`scripts/import-test-links.ts`;
+    `--category`, `--dry-run`). Amit authorised the release of this branch to Production in
+    this session ("create a PR and merge all changes to production and deploy").
+
+Also done by Amit this session: `GEMINI_API_KEY` in Vercel Production replaced with the key
+that works locally (`npx vercel env add`, stored as Secret); the redeploy still had to be run
+(`npx vercel redeploy <current production deployment url>` or the dashboard).
+
+Local-loop notes: Next's persistent dev cache (`.next/dev`) served stale route handlers and CSS
+several times this session; when a server-side or CSS change does not take, stop the server,
+`rm -rf .next/dev`, restart. Duplicate detection means re-saving a URL after a code change needs
+`npm run db:local:reset` (or a different URL).
+
+**Verification.** `npm run check` 215 suites / 1,538 tests green; `npm run build` succeeds (0 lint errors,
+5 baseline warnings). Release authorised by Amit on 2026-09-20. Note for other worktrees: this
+worktree's `node_modules` held jsdom 30 from before PR #34, which fails
+`tests/harness/vercel-runtime-externals.unit.test.ts`; `npm ci` fixed it.
 
 ### iPhone Shortcut re-pointed at Production — 2026-09-19
 

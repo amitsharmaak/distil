@@ -365,6 +365,204 @@ describe("default capture processor", () => {
     expect(rawContent.attachItem).not.toHaveBeenCalled();
   });
 
+  it("saves an X/Twitter post from fxtwitter metadata when Readability is skipped", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const tweet = captureRecord({
+      url: "https://x.com/someone/status/2101064040332054741",
+      normalizedUrl: "https://x.com/someone/status/2101064040332054741",
+      source: "browser-extension",
+    });
+    const fetchSocialMetadata = jest.fn().mockResolvedValue({
+      title: "Someone on X",
+      description: "Short post.",
+      image: "https://pbs.twimg.com/media/1.jpg",
+      author: "Someone",
+      siteName: "X",
+      videoUrl: "https://video.twimg.com/1.mp4",
+    });
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchSocialMetadata,
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response("<html><body></body></html>")),
+      },
+    });
+
+    await expect(processor(tweet)).resolves.toEqual({ status: "ready", itemId: tweet.id });
+    expect(fetchSocialMetadata).toHaveBeenCalledWith(tweet.url);
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: tweet.id,
+        title: "Someone on X",
+        summary: "Short post.",
+        fullContent: "Short post.",
+        author: "Someone",
+        publication: "X",
+        sourceType: "browser-extension",
+        thumbnailUrl: "https://pbs.twimg.com/media/1.jpg",
+        detectedMedia: [
+          { type: "video", platform: "twitter", embedUrl: "https://video.twimg.com/1.mp4" },
+        ],
+        processingStatus: "ready",
+      })
+    );
+    expect(rawContent.attachItem).toHaveBeenCalledWith(tweet.id, tweet.id);
+  });
+
+  it("saves a YouTube video from the watch page and summarises its description", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const enqueueEnrichment = jest.fn().mockResolvedValue(undefined);
+    const video = captureRecord({
+      url: "https://www.youtube.com/watch?v=mUAsaprJ66s",
+      normalizedUrl: "https://youtube.com/watch?v=mUAsaprJ66s",
+    });
+    const description = "About the video. ".repeat(20).trim();
+    const page = `<html><script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"mUAsaprJ66s","title":"Instinct AI","author":"Greg","lengthSeconds":"1650","shortDescription":${JSON.stringify(description)},"thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/vi/x/max.jpg","width":1280}]}}};</script></html>`;
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      enqueueEnrichment,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchOptions: { resolve: publicDns, fetch: jest.fn().mockResolvedValue(new Response(page)) },
+    });
+
+    await expect(processor(video)).resolves.toEqual({ status: "ready", itemId: video.id });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Instinct AI",
+        summary: `${description.slice(0, 277)}...`,
+        contentType: "video",
+        author: "Greg",
+        publication: "YouTube",
+        duration: "27:30",
+        thumbnailUrl: "https://i.ytimg.com/vi/x/max.jpg",
+        detectedMedia: [{ type: "video", platform: "youtube", videoId: "mUAsaprJ66s" }],
+        fullContent: expect.stringContaining("<h2>Description</h2>"),
+      })
+    );
+    expect(items.insert.mock.calls[0][0].fullContent).not.toContain("Transcript");
+    expect(enqueueEnrichment).toHaveBeenCalledWith(video.id);
+  });
+
+  it("saves a YouTube video with a short description and skips the summary call", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const enqueueEnrichment = jest.fn();
+    const page =
+      '<script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"mUAsaprJ66s","title":"Silent"}};</script>';
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      enqueueEnrichment,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchOptions: { resolve: publicDns, fetch: jest.fn().mockResolvedValue(new Response(page)) },
+    });
+    await expect(
+      processor(captureRecord({ url: "https://youtu.be/mUAsaprJ66s" }))
+    ).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Silent", summary: "Silent", fullContent: undefined })
+    );
+    expect(enqueueEnrichment).not.toHaveBeenCalled();
+  });
+
+  it("saves a Granola note rendered from the page payload", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const enqueueEnrichment = jest.fn().mockResolvedValue(undefined);
+    const payload = JSON.stringify({
+      documentPanel: {
+        document: {
+          title: "Weekly sync",
+          created_at: "2026-09-17T08:32:23.135Z",
+          owner: { name: "Sumit" },
+        },
+        panel: {
+          content: {
+            type: "doc",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Decided to ship." }] }],
+          },
+        },
+      },
+    });
+    const html = `<script>self.__next_f.push([1,${JSON.stringify(payload)}])</script>`;
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      enqueueEnrichment,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchOptions: { resolve: publicDns, fetch: jest.fn().mockResolvedValue(new Response(html)) },
+    });
+    const note = captureRecord({ url: "https://notes.granola.ai/d/abc" });
+    await expect(processor(note)).resolves.toEqual({ status: "ready", itemId: note.id });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Weekly sync",
+        author: "Sumit",
+        publication: "Granola",
+        summary: "Decided to ship.",
+        fullContent: "<p>Decided to ship.</p>",
+      })
+    );
+    expect(enqueueEnrichment).toHaveBeenCalledWith(note.id);
+  });
+
+  it("rejects an X/Twitter post whose text cannot be resolved", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn(),
+    };
+    const tweet = captureRecord({
+      url: "https://x.com/someone/status/1",
+      normalizedUrl: "https://x.com/someone/status/1",
+    });
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchSocialMetadata: jest.fn().mockResolvedValue({
+        title: null,
+        description: null,
+        image: null,
+        author: null,
+        siteName: null,
+      }),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response("<html><body></body></html>")),
+      },
+    });
+
+    await expect(processor(tweet)).resolves.toEqual({
+      status: "rejected",
+      reason: "Distil could not read the text of this post",
+    });
+    expect(items.insert).not.toHaveBeenCalled();
+  });
+
   it("preserves capture overrides and falls back to extracted metadata", async () => {
     const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
     const items = {

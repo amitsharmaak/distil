@@ -34,7 +34,7 @@ describe("ReaderKnowledgeControls", () => {
     render(<ReaderKnowledgeControls itemId="item-1" />);
     const note = await screen.findByLabelText("Item note");
     expect(note).toHaveValue("Keep this");
-    expect(screen.getByText("Reading progress: 25%")).toBeInTheDocument();
+    expect(screen.queryByText(/Reading progress/)).not.toBeInTheDocument();
     fireEvent.change(note, { target: { value: "Updated note" } });
     fireEvent.click(screen.getByRole("button", { name: "Save note" }));
     expect(await screen.findByText("Note saved")).toBeInTheDocument();
@@ -91,12 +91,9 @@ describe("ReaderKnowledgeControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore item" }));
     expect(await screen.findByRole("button", { name: "Archive item" })).toBeInTheDocument();
     await screen.findByText("Item restored");
-    fireEvent.click(screen.getByRole("button", { name: "Mark unread" }));
-    await screen.findByText("Marked unread");
+    expect(screen.queryByRole("button", { name: /Mark (un)?read/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Manual priority"), { target: { value: "low" } });
     await screen.findByText("Priority updated");
-    fireEvent.click(screen.getByRole("button", { name: "100%" }));
-    await screen.findByText("Progress set to 100%");
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/items/item-1/state",
       expect.objectContaining({ method: "PATCH" })

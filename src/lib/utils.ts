@@ -18,6 +18,18 @@ export function isTwitterUrl(url: string): boolean {
   }
 }
 
+/**
+ * X posts longer than this are treated as long-form articles: the reader uses
+ * the article renderer and AI summaries are allowed. Shorter posts render as
+ * tweets and are not summarised.
+ */
+export const X_LONG_FORM_MIN_CHARACTERS = 200;
+
+/** Returns true when an X/Twitter item is a long-form post worth summarising. */
+export function isLongFormXPost(url: string, fullContent: string | null | undefined): boolean {
+  return isTwitterUrl(url) && (fullContent?.length ?? 0) > X_LONG_FORM_MIN_CHARACTERS;
+}
+
 const TRACKING_PARAMS = new Set([
   "utm_source",
   "utm_medium",

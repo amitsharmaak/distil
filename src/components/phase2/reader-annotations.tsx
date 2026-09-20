@@ -289,18 +289,19 @@ export function ReaderAnnotations({
         {children}
       </div>
 
-      <section className="mt-8 border-t pt-6" aria-labelledby="highlights-heading">
+      <section className="mt-10 border-t pt-6" aria-labelledby="highlights-heading">
         <div className="flex items-center gap-2">
-          <Highlighter className="h-5 w-5 text-primary" />
-          <h2 id="highlights-heading" className="font-serif text-xl font-semibold">
+          <Highlighter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          <h2
+            id="highlights-heading"
+            className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground"
+          >
             Highlights
           </h2>
-          {!loading && <span className="text-xs text-muted-foreground">{activeCount} active</span>}
+          {!loading && activeCount > 0 && (
+            <span className="text-xs text-muted-foreground">{activeCount} active</span>
+          )}
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Select text above to save an anchored highlight. Anchors include nearby context so a
-          changed source can be re-anchored later.
-        </p>
 
         {selection && (
           <div
@@ -438,8 +439,8 @@ export function ReaderAnnotations({
             ))}
           </ul>
         ) : (
-          <p className="mt-4 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No highlights yet.
+          <p className="mt-2 text-sm text-muted-foreground">
+            No highlights yet. Select text above to save one.
           </p>
         )}
         {(error || notice) && (

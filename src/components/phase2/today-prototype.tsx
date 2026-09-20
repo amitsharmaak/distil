@@ -2,7 +2,28 @@
 
 import Link from "next/link";
 import { Bookmark, Clock3 } from "lucide-react";
+import { toSummaryDigest } from "@/lib/format";
 import type { KnowledgeItem } from "./types";
+
+/** Lead paragraph plus key points, in reading type, for a card that links onward. */
+function SummaryDigest({ summary }: { summary: string }) {
+  const digest = toSummaryDigest(summary, 4);
+  if (!digest.lead && digest.points.length === 0) {
+    return <p className="mt-3 text-sm text-muted-foreground">No summary is available yet.</p>;
+  }
+  return (
+    <div className="distil-card-digest mt-3">
+      {digest.lead && <p>{digest.lead}</p>}
+      {digest.points.length > 0 && (
+        <ul>
+          {digest.points.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 type TodayPrototypeProps = {
   priority: KnowledgeItem[];
@@ -14,12 +35,12 @@ function TodayItem({ item }: { item: KnowledgeItem }) {
     <li>
       <Link
         href={item.href}
-        className="block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-muted-foreground">{item.source}</p>
-            <h3 className="mt-1 font-serif text-lg font-semibold leading-snug">{item.title}</h3>
+            <h3 className="mt-1 font-serif text-xl font-semibold leading-snug">{item.title}</h3>
           </div>
           {!item.isRead && (
             <span
@@ -28,8 +49,8 @@ function TodayItem({ item }: { item: KnowledgeItem }) {
             />
           )}
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
-        <p className="mt-3 text-xs text-muted-foreground">Why now: {item.reason}</p>
+        <SummaryDigest summary={item.summary} />
+        <p className="mt-4 text-xs text-muted-foreground">Why now: {item.reason}</p>
       </Link>
     </li>
   );

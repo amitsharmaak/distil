@@ -211,7 +211,8 @@ export async function fetchArticle(
         "rejected"
       );
     }
-    return { url: safeUrl.toString(), body, contentType };
+    // PostgreSQL text columns reject NUL bytes; some sites (x.com) embed them.
+    return { url: safeUrl.toString(), body: body.replaceAll("\u0000", ""), contentType };
   }
 
   throw new CaptureProcessingError(

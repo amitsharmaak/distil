@@ -1,4 +1,3 @@
-import { toPlainText } from "@/lib/format";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import type { KnowledgeItem } from "@/components/phase2/types";
 
@@ -25,7 +24,8 @@ export function toKnowledgeItem(item: FeedItem): KnowledgeItem {
   return {
     id: item.id,
     title: item.title || "Untitled",
-    summary: toPlainText(item.aiSummary || item.summary) || "No summary is available yet.",
+    // Raw Markdown/HTML; the card renders it as a digest (lead + key points).
+    summary: item.aiSummary || item.summary || "",
     source: sourceName(item),
     href: `/feed/${item.id}`,
     isRead: item.isRead,

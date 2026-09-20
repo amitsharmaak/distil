@@ -3,7 +3,7 @@ import type { ContentStrategy, EnrichedMetadata } from "./types";
 export const YouTubeStrategy: ContentStrategy = {
   contentType: "video",
   extractContent: false,
-  generateAISummary: false,
+  generateAISummary: true,
   enrichMetadata: async (url: string): Promise<EnrichedMetadata> => {
     try {
       const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
@@ -21,11 +21,11 @@ export const YouTubeStrategy: ContentStrategy = {
       return {};
     }
   },
-  card: { showPlayOverlay: true, summaryMaxChars: 150 },
+  card: { showPlayOverlay: true, summaryMaxChars: 300 },
   detail: {
     showEmbedPlayer: true,
-    showAISummary: false,
-    showReaderContent: false,
+    showAISummary: true,
+    showReaderContent: true,
     showTweetRenderer: false,
   },
 };

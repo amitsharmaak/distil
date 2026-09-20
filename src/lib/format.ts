@@ -108,3 +108,38 @@ export function toPlainText(value: string | null | undefined): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+export interface SummaryDigest {
+  /** The TL;DR paragraph (or the whole summary when it has no sections). */
+  lead: string;
+  /** Key points, one plain-text sentence each. */
+  points: string[];
+}
+
+/**
+ * Splits a stored AI summary ("## TL;DR" / "## Key Points" Markdown) into a
+ * lead paragraph and bullet points for card surfaces that cannot render
+ * Markdown. Unstructured summaries become the lead with no points.
+ */
+export function toSummaryDigest(value: string | null | undefined, maxPoints = 4): SummaryDigest {
+  if (!value) return { lead: "", points: [] };
+  const sections = new Map<string, string>();
+  let current = "lead";
+  for (const line of value.split("\n")) {
+    const heading = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*$/);
+    if (heading) {
+      current = heading[1].toLowerCase().replace(/[^a-z]/g, "");
+      continue;
+    }
+    sections.set(current, `${sections.get(current) ?? ""}${line}\n`);
+  }
+  const leadSource = sections.get("tldr") ?? sections.get("lead") ?? "";
+  const points = (sections.get("keypoints") ?? "")
+    .split("\n")
+    .filter((line) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(line))
+    .map((line) => toPlainText(line))
+    .filter(Boolean)
+    .slice(0, maxPoints);
+  const lead = toPlainText(leadSource) || (points.length === 0 ? toPlainText(value) : "");
+  return { lead, points };
+}

@@ -8,6 +8,7 @@ import {
   VercelCaptureDispatcher,
   VercelTenantJobDispatcher,
 } from "../dispatchers";
+import { CaptureRetryScheduledError } from "@/lib/capture/errors";
 import {
   createCaptureQueueMessageV2,
   createTenantJobEnvelopeV1,
@@ -51,6 +52,19 @@ describe("capture dispatchers", () => {
     ).resolves.toBeUndefined();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onError).toHaveBeenCalledWith(failure);
+  });
+
+  it("redelivers the inline message when the worker schedules a retry", async () => {
+    const onError = jest.fn();
+    const consume = jest
+      .fn<Promise<void>, [CaptureQueueMessageV2]>()
+      .mockRejectedValueOnce(new CaptureRetryScheduledError(message.captureId))
+      .mockResolvedValueOnce(undefined);
+    const dispatcher = new InlineCaptureDispatcher(consume, onError, 1);
+    await dispatcher.dispatch(message, { idempotencyKey: message.captureId });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(consume).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("deduplicates fake and local messages by idempotency key", async () => {

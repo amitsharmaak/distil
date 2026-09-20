@@ -13,7 +13,10 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "base-uri 'self'",
               "object-src 'none'",
-              "frame-src 'none'",
+              // Embedded players: YouTube (privacy-enhanced domain) only.
+              "frame-src https://www.youtube-nocookie.com https://www.youtube.com",
+              // Direct video files (X/Twitter posts) play from their CDN.
+              "media-src 'self' https:",
               "form-action 'self'",
               process.env.NODE_ENV === "development"
                 ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"

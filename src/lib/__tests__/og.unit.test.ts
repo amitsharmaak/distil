@@ -206,4 +206,59 @@ describe("fetchOG", () => {
       siteName: null,
     });
   });
+
+  // ── X / Twitter ────────────────────────────────────────────────────────────
+
+  it("renders an X Article from fxtwitter even when the tweet text is the article URL", async () => {
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://api.fxtwitter.com/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            tweet: {
+              text: "https://x.com/i/article/1",
+              author: { name: "Matt" },
+              media: { videos: [{ url: "https://video.twimg.com/v.mp4" }] },
+              article: {
+                title: "WTF Is Jev?",
+                preview_text: "preview",
+                cover_media: { media_info: { original_img_url: "https://pbs.twimg.com/c.jpg" } },
+                content: {
+                  blocks: [
+                    { type: "header-two", text: "Intro", inlineStyleRanges: [], entityRanges: [] },
+                    {
+                      type: "unstyled",
+                      text: "See docs",
+                      inlineStyleRanges: [],
+                      entityRanges: [{ offset: 4, length: 4, key: 0 }],
+                    },
+                  ],
+                  entityMap: [
+                    { key: "0", value: { type: "LINK", data: { url: "https://d.example/" } } },
+                  ],
+                },
+              },
+            },
+          }),
+        } as unknown as Response;
+      }
+      return mockResponse(buildHtml({ ogDescription: "truncated…" }));
+    });
+
+    const result = await fetchOG("https://x.com/mvanhorn/status/1");
+
+    expect(result).toMatchObject({
+      title: "WTF Is Jev?",
+      description: "Intro\n\nSee docs",
+      image: "https://pbs.twimg.com/c.jpg",
+      author: "Matt",
+      siteName: "X",
+      videoUrl: "https://video.twimg.com/v.mp4",
+      isXArticle: true,
+      html: '<h2>Intro</h2>\n<p>See <a href="https://d.example/">docs</a></p>',
+      links: [{ text: "docs", url: "https://d.example/" }],
+    });
+  });
 });

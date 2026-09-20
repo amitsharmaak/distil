@@ -15,12 +15,12 @@ function getYouTubeEmbedUrl(url: string): string | null {
     // Standard: youtube.com/watch?v=VIDEO_ID
     if (u.hostname.includes("youtube.com") && u.pathname === "/watch") {
       const id = u.searchParams.get("v");
-      if (id) return `https://www.youtube.com/embed/${id}`;
+      if (id) return `https://www.youtube-nocookie.com/embed/${id}`;
     }
     // Short: youtu.be/VIDEO_ID
     if (u.hostname === "youtu.be") {
       const id = u.pathname.slice(1);
-      if (id) return `https://www.youtube.com/embed/${id}`;
+      if (id) return `https://www.youtube-nocookie.com/embed/${id}`;
     }
   } catch {
     return null;

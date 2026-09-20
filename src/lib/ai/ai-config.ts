@@ -47,6 +47,8 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
  */
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
+  // Estimate pending a checked price sheet; only used for budget accounting.
+  "gemini-3.5-flash": { input: 0.5, output: 3.0 },
   "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
   "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
@@ -68,18 +70,20 @@ export const GEMINI_SEARCH_MODEL = "gemini-3-flash-preview";
 
 /** Best model for each task when only ONE provider is available. */
 export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, string>> = {
+  // gemini-2.5-* is retired ("no longer available to new users", HTTP 404 as of
+  // 2026-09-19); every fallback here must be a model the key can still call.
   gemini: {
     summarize: "gemini-3.5-flash-lite",
     "knowledge-answer": "gemini-3.5-flash-lite",
-    "summarize-complex": "gemini-2.5-flash",
-    prioritize: "gemini-2.5-flash",
-    "research-plan": "gemini-2.5-flash",
-    "research-search": "gemini-2.5-flash",
-    "research-synthesize": "gemini-2.5-flash",
-    "research-gaps": "gemini-2.5-flash",
-    "preference-analysis": "gemini-2.5-flash-lite",
-    "auto-tag": "gemini-2.5-flash-lite",
-    "dedup-check": "gemini-2.5-flash-lite",
+    "summarize-complex": "gemini-3.5-flash",
+    prioritize: "gemini-3.5-flash",
+    "research-plan": "gemini-3.5-flash",
+    "research-search": "gemini-3.5-flash",
+    "research-synthesize": "gemini-3.5-flash",
+    "research-gaps": "gemini-3.5-flash",
+    "preference-analysis": "gemini-3.5-flash-lite",
+    "auto-tag": "gemini-3.5-flash-lite",
+    "dedup-check": "gemini-3.5-flash-lite",
   },
   openai: {
     summarize: "gpt-4o-mini",

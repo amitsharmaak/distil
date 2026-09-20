@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Archive, ArchiveRestore, BookmarkPlus, NotebookPen, Save, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, ArchiveRestore, BookmarkPlus, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Priority } from "@/lib/types";
@@ -78,7 +78,6 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
   }, [itemId]);
 
   const dirty = note !== savedNote;
-  const progressLabel = useMemo(() => (state?.readingProgress ?? 0) * 100, [state]);
 
   async function updateState(patch: Partial<ReaderState>, label: string) {
     if (!state || saving) return;
@@ -177,101 +176,131 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
 
   if (loading)
     return (
-      <aside className="mt-8 rounded-xl border p-4 text-sm text-muted-foreground" role="status">
+      <aside className="mt-10 border-t pt-4 text-sm text-muted-foreground" role="status">
         Loading your reader controls…
       </aside>
     );
   if (!state)
     return (
-      <aside className="mt-8 rounded-xl border border-destructive/40 p-4 text-sm" role="alert">
+      <aside className="mt-10 border-t pt-4 text-sm text-destructive" role="alert">
         {error || "Reader controls are unavailable."}
       </aside>
     );
 
+  const labelClass = "text-[11px] font-medium uppercase tracking-widest text-muted-foreground";
+  const showNoteActions = dirty || Boolean(savedNote);
+
   return (
-    <aside
-      className="mt-8 grid gap-4 border-t pt-6 lg:grid-cols-2"
-      aria-label="Reader knowledge controls"
-    >
-      <section className="rounded-xl border bg-card p-4" aria-labelledby="reader-note-heading">
-        <div className="flex items-center gap-2">
-          <NotebookPen className="h-5 w-5 text-primary" />
-          <h2 id="reader-note-heading" className="font-serif text-lg font-semibold">
-            Your note
-          </h2>
-        </div>
+    <aside className="mt-10 space-y-6 border-t pt-6" aria-label="Reader knowledge controls">
+      {/* Note — one quiet field; actions appear only once there is something to save or delete. */}
+      <section aria-labelledby="reader-note-heading">
+        <h2 id="reader-note-heading" className={labelClass}>
+          Your note
+        </h2>
         <textarea
           aria-label="Item note"
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          className="mt-3 min-h-28 w-full rounded-md border bg-background p-2 text-base"
-          placeholder="Add a thought you want to remember"
+          rows={dirty || savedNote ? 3 : 1}
+          className="mt-2 w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 font-serif text-base leading-relaxed placeholder:text-muted-foreground/70 focus:border-border focus:bg-background focus:px-2 focus:outline-none"
+          placeholder="Add a thought you want to remember…"
           disabled={Boolean(saving)}
         />
-        <div className="mt-3 flex gap-2">
-          <Button
-            type="button"
-            onClick={saveNote}
-            disabled={!dirty || Boolean(saving)}
-            className="min-h-11 gap-2"
-          >
-            <Save className="h-4 w-4" />
-            Save note
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={deleteNote}
-            disabled={!savedNote || Boolean(saving)}
-            className="min-h-11 gap-2"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </Button>
-        </div>
+        {showNoteActions && (
+          <div className="mt-1 flex items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              onClick={saveNote}
+              disabled={!dirty || Boolean(saving)}
+              className="h-8 gap-1.5"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save note
+            </Button>
+            {savedNote && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={deleteNote}
+                disabled={Boolean(saving)}
+                className="h-8 gap-1.5 text-muted-foreground"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </Button>
+            )}
+          </div>
+        )}
       </section>
-      <section className="rounded-xl border bg-card p-4" aria-labelledby="reader-library-heading">
-        <h2 id="reader-library-heading" className="font-serif text-lg font-semibold">
+
+      {/* Collections as toggle chips; hidden entirely when there are none. */}
+      {collections.length > 0 && (
+        <section aria-labelledby="reader-collections-heading">
+          <h2 id="reader-collections-heading" className={labelClass}>
+            Collections
+          </h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {collections.map((collection) => {
+              const selected = memberIds.has(collection.id);
+              return (
+                <label
+                  key={collection.id}
+                  className={
+                    selected
+                      ? "flex h-8 cursor-pointer items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 text-sm text-foreground"
+                      : "flex h-8 cursor-pointer items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground hover:text-foreground"
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={Boolean(saving)}
+                    onChange={() => void toggleMembership(collection.id)}
+                    className="sr-only"
+                  />
+                  <BookmarkPlus className="h-3.5 w-3.5" aria-hidden />
+                  {collection.name}
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Archive and priority: the action bar already covers read/unread. */}
+      <section
+        className="flex flex-wrap items-center gap-x-5 gap-y-2"
+        aria-labelledby="reader-library-heading"
+      >
+        <h2 id="reader-library-heading" className="sr-only">
           Reading controls
         </h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11 gap-2"
-            disabled={Boolean(saving)}
-            onClick={() =>
-              void updateState(
-                { archived: !state.archived },
-                state.archived ? "Item restored" : "Item archived"
-              )
-            }
-          >
-            {state.archived ? (
-              <ArchiveRestore className="h-4 w-4" />
-            ) : (
-              <Archive className="h-4 w-4" />
-            )}
-            {state.archived ? "Restore item" : "Archive item"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            disabled={Boolean(saving)}
-            onClick={() =>
-              void updateState(
-                { isRead: !state.isRead },
-                state.isRead ? "Marked unread" : "Marked read"
-              )
-            }
-          >
-            {state.isRead ? "Mark unread" : "Mark read"}
-          </Button>
-        </div>
-        <label className="mt-4 block text-sm font-medium">
-          Manual priority
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+          disabled={Boolean(saving)}
+          onClick={() =>
+            void updateState(
+              { archived: !state.archived },
+              state.archived ? "Item restored" : "Item archived"
+            )
+          }
+        >
+          {state.archived ? (
+            <ArchiveRestore className="h-3.5 w-3.5" />
+          ) : (
+            <Archive className="h-3.5 w-3.5" />
+          )}
+          {state.archived ? "Restore item" : "Archive item"}
+        </Button>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          Priority
           <select
+            aria-label="Manual priority"
             value={state.manualPriority ?? ""}
             onChange={(event) =>
               void updateState(
@@ -280,87 +309,23 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
               )
             }
             disabled={Boolean(saving)}
-            className="mt-1 min-h-11 w-full rounded-md border bg-background px-2 text-base"
+            className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
           >
-            <option value="">Use feed ranking</option>
+            <option value="">Feed ranking</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
         </label>
-        <fieldset className="mt-4">
-          <legend className="text-sm font-medium">Reading progress: {progressLabel}%</legend>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {[0, 0.25, 0.5, 0.75, 1].map((milestone) => (
-              <Button
-                key={milestone}
-                type="button"
-                variant={state.readingProgress === milestone ? "secondary" : "outline"}
-                size="sm"
-                className="min-h-11"
-                disabled={Boolean(saving)}
-                onClick={() =>
-                  void updateState(
-                    { readingProgress: milestone },
-                    `Progress set to ${milestone * 100}%`
-                  )
-                }
-              >
-                {milestone * 100}%
-              </Button>
-            ))}
-          </div>
-        </fieldset>
-      </section>
-      <section
-        className="rounded-xl border bg-card p-4 lg:col-span-2"
-        aria-labelledby="reader-collections-heading"
-      >
-        <div className="flex items-center gap-2">
-          <BookmarkPlus className="h-5 w-5 text-primary" />
-          <h2 id="reader-collections-heading" className="font-serif text-lg font-semibold">
-            Collections
-          </h2>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Keep this source with a deliberate reading thread.
-        </p>
-        {collections.length ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {collections.map((collection) => (
-              <label
-                key={collection.id}
-                className="flex min-h-11 items-center gap-3 rounded-md border px-3 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={memberIds.has(collection.id)}
-                  disabled={Boolean(saving)}
-                  onChange={() => void toggleMembership(collection.id)}
-                  className="h-4 w-4"
-                />
-                {collection.name}
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Create a collection from the Collections page to organize this item.
+        {(error || notice || saving) && (
+          <p
+            className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
+            role={error ? "alert" : "status"}
+          >
+            {error || saving || notice}
           </p>
         )}
       </section>
-      {(error || notice || saving) && (
-        <p
-          className={
-            error
-              ? "text-sm text-destructive lg:col-span-2"
-              : "text-sm text-muted-foreground lg:col-span-2"
-          }
-          role={error ? "alert" : "status"}
-        >
-          {error || saving || notice}
-        </p>
-      )}
     </aside>
   );
 }

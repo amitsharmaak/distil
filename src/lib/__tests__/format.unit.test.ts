@@ -1,4 +1,4 @@
-import { toPlainText } from "../format";
+import { toPlainText, toSummaryDigest } from "../format";
 
 describe("toPlainText", () => {
   it("returns an empty string for missing values", () => {
@@ -47,5 +47,27 @@ describe("toPlainText", () => {
     expect(toPlainText("## Why\n\n<p>**It**   matters &amp; more</p>\n\n")).toBe(
       "Why It matters & more"
     );
+  });
+});
+
+describe("toSummaryDigest", () => {
+  it("splits a structured summary into lead and key points", () => {
+    const summary =
+      "## TL;DR\n\nJev is a **decision** model.\n\n## Key Points\n\n- Fast and cheap.\n- Three primitives: `Choice`, `Score`, `Noul`.\n- Unused point.\n\n## Why it matters\n\nBecause.";
+    expect(toSummaryDigest(summary, 2)).toEqual({
+      lead: "Jev is a decision model.",
+      points: ["Fast and cheap.", "Three primitives: Choice, Score, Noul."],
+    });
+  });
+
+  it("treats an unstructured summary as the lead", () => {
+    expect(toSummaryDigest("Plain <b>text</b> summary.")).toEqual({
+      lead: "Plain text summary.",
+      points: [],
+    });
+  });
+
+  it("returns an empty digest for missing input", () => {
+    expect(toSummaryDigest(undefined)).toEqual({ lead: "", points: [] });
   });
 });

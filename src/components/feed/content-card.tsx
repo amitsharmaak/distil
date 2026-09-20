@@ -38,10 +38,10 @@ export function ContentCard({
   const filterSuffix = filter ? `?filter=${filter}` : "";
   const isProcessing = item.processingStatus === "processing";
 
-  const displaySummary =
-    item.aiSummary && strategy.generateAISummary
-      ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
-      : (item.summary ?? "").slice(0, strategy.card.summaryMaxChars);
+  // A stored AI summary always beats the raw excerpt (long X posts get one too).
+  const displaySummary = item.aiSummary
+    ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
+    : (item.summary ?? "").slice(0, strategy.card.summaryMaxChars);
 
   if (compact) {
     const compactContent = (
@@ -139,7 +139,7 @@ export function ContentCard({
       {/* Title */}
       <h3
         className={cn(
-          "font-serif text-base font-semibold leading-snug tracking-tight line-clamp-2",
+          "font-serif text-lg font-semibold leading-snug tracking-tight line-clamp-2",
           item.isRead && "text-muted-foreground"
         )}
       >
@@ -154,7 +154,7 @@ export function ContentCard({
           <Skeleton className="h-3 w-[75%]" />
         </div>
       ) : (
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground line-clamp-2">
+        <p className="mt-2 font-serif text-[15px] leading-relaxed text-foreground/80 line-clamp-3">
           {displaySummary}
         </p>
       )}

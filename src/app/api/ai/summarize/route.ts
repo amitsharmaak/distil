@@ -4,8 +4,11 @@ import { generateSummary } from "@/lib/ai/summarize";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { AIProviderError } from "@/lib/ai/errors";
 import { AIQuotaExceededError } from "@/lib/ai/router";
-import { isTwitterUrl } from "@/lib/utils";
+import { isLongFormXPost, isTwitterUrl } from "@/lib/utils";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
+
+/** Summaries of long content can exceed the default function duration. */
+export const maxDuration = 60;
 
 /** POST /api/ai/summarize — Generate an AI summary for a content item. */
 export const POST = withRequestMetrics(async (req: NextRequest) => {
@@ -27,9 +30,10 @@ export const POST = withRequestMetrics(async (req: NextRequest) => {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    if (isTwitterUrl(item.url)) {
+    // Short tweets are shown verbatim; long-form X posts are summarised like articles.
+    if (isTwitterUrl(item.url) && !isLongFormXPost(item.url, item.fullContent)) {
       return NextResponse.json(
-        { error: "AI summaries are not available for Twitter/X posts" },
+        { error: "AI summaries are not available for short X posts" },
         { status: 400 }
       );
     }

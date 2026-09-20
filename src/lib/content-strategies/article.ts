@@ -5,7 +5,7 @@ export const ArticleStrategy: ContentStrategy = {
   extractContent: true,
   generateAISummary: true,
   enrichMetadata: async () => ({}),
-  card: { showPlayOverlay: false, summaryMaxChars: 200 },
+  card: { showPlayOverlay: false, summaryMaxChars: 300 },
   detail: {
     showEmbedPlayer: false,
     showAISummary: true,

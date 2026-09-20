@@ -21,7 +21,14 @@ const BROWSER_USER_AGENT =
 function isUnextractable(url: string): boolean {
   try {
     const host = new URL(url).hostname.replace("www.", "");
-    return host === "twitter.com" || host === "x.com";
+    return (
+      host === "twitter.com" ||
+      host === "x.com" ||
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "youtu.be" ||
+      host === "notes.granola.ai"
+    );
   } catch {
     return false;
   }
