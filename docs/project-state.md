@@ -369,7 +369,7 @@ with Claude verifying in the in-app browser. Findings and fixes, all locally ver
     and the owner as author. `src/lib/embedded-json.ts` holds the balanced-JSON reader both
     YouTube and Granola use. `docs/test-links/links.json` (+ README) is the registry of every
     URL tested so far, by category; `npm run links:import -- --origin <url> --token <capture
-    token>` bulk-posts them to `/api/v1/captures` (`scripts/import-test-links.ts`;
+token>` bulk-posts them to `/api/v1/captures` (`scripts/import-test-links.ts`;
     `--category`, `--dry-run`). Amit authorised the release of this branch to Production in
     this session ("create a PR and merge all changes to production and deploy").
 
