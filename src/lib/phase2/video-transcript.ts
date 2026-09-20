@@ -4,9 +4,11 @@ import {
   extractYouTubeId,
   fetchYouTubeTranscript,
   renderYouTubeContent,
+  type InnertubeAttempt,
   type TranscriptSegment,
   type YouTubeVideoDetails,
 } from "@/lib/youtube";
+import { apiLogger } from "@/lib/logger";
 
 export const TRANSCRIPT_MEDIA_KEY = "transcript";
 
@@ -57,7 +59,14 @@ export async function loadVideoTranscript(
   }
   if (hasTranscript(item)) return { paragraphs: 0 };
 
-  const segments = await (dependencies.fetchTranscript ?? fetchYouTubeTranscript)(videoId);
+  const attempts: InnertubeAttempt[] = [];
+  const segments = dependencies.fetchTranscript
+    ? await dependencies.fetchTranscript(videoId)
+    : await fetchYouTubeTranscript(videoId, fetch, 10_000, attempts);
+  apiLogger.info(
+    { event: "youtube_transcript_fetch", videoId, attempts, segments: segments.length },
+    "YouTube transcript fetch"
+  );
   if (segments.length === 0) {
     throw new ReaderError("TRANSCRIPT_UNAVAILABLE", 404, "This video has no captions to load");
   }

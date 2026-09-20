@@ -484,7 +484,12 @@ describe("default capture processor", () => {
       },
     });
     await expect(
-      processor(captureRecord({ url: "https://www.youtube.com/watch?v=mUAsaprJ66s" }))
+      processor(
+        captureRecord({
+          url: "https://www.youtube.com/watch?v=mUAsaprJ66s",
+          title: "From innertube - YouTube",
+        })
+      )
     ).resolves.toMatchObject({ status: "ready" });
     expect(fetchVideoDetails).toHaveBeenCalledWith("mUAsaprJ66s");
     expect(items.insert).toHaveBeenCalledWith(

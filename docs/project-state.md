@@ -245,6 +245,30 @@ answers from Vercel is exactly what the next Production capture will show — if
 the item still saves via oEmbed with no description or transcript. The two pre-#42 X receipts
 in Production (`failed`, NUL-byte error, 5 attempts) are non-retryable; re-save the URLs.
 
+### YouTube on Vercel, second pass: only oEmbed answers — 2026-09-20
+
+With PR #44 live, both videos saved on Production but with title/channel/thumbnail only (no
+duration, description or summary): innertube ANDROID is refused from Vercel's egress as well,
+so oEmbed was the source. Captions come from the same endpoint, so "Load transcript" cannot
+work there yet. Two changes on `claude/youtube-innertube-clients`:
+
+- `fetchInnertubePlayer` now tries clients in order — ANDROID, IOS, TVHTML5_SIMPLY_EMBEDDED_PLAYER,
+  WEB — until one satisfies the caller (details or captions), and returns the per-client
+  outcome; the worker logs `youtube_details_fallback` and the transcript route logs
+  `youtube_transcript_fetch` with those attempts. From a laptop ANDROID and IOS both serve
+  details and captions, TV errors, WEB gives details only. **The first Production capture
+  after this deploys tells us which client, if any, YouTube serves from Vercel** — read the
+  runtime log for those two events.
+- Official **YouTube Data API v3** for metadata when `YOUTUBE_API_KEY` is set (Google Cloud →
+  APIs → YouTube Data API v3; public-data key, generous free quota): title, channel,
+  description, ISO duration, thumbnails, publish date. Reliable from any IP. Tried first when
+  configured. Amit needs to create the key and add it to Vercel Production (not a Claude
+  action). Captions are not available through the Data API without channel-owner OAuth, so
+  transcripts on Production depend on an innertube client passing; if none does, the next
+  option is a transcript provider or a non-datacenter fetch path — a separate decision.
+- Videos now keep the source title; the extension's tab title ("… - YouTube") no longer
+  overrides it.
+
 ### Release: PR #42 to Production — 2026-09-20
 
 `claude/browser-extension-url-save-6101e3` merged as PR
