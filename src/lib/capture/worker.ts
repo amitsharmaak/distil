@@ -6,10 +6,12 @@ import { extractOGFromHtml, isTwitterUrl, type OGData } from "@/lib/og";
 import { isGranolaUrl, parseGranolaPage, renderProseMirror } from "@/lib/granola";
 import {
   extractYouTubeId,
+  fetchYouTubeVideoDetails,
   formatDuration,
   isYouTubeUrl,
   parseYouTubeWatchPage,
   renderYouTubeContent,
+  type YouTubeVideoDetails,
 } from "@/lib/youtube";
 import type {
   CaptureRecord,
@@ -155,6 +157,8 @@ export interface DefaultCaptureProcessorDependencies {
   extractContent?: (html: string, url: string) => ExtractedContent | null;
   /** Resolves post text for social URLs that Readability cannot parse (X/Twitter via fxtwitter). */
   fetchSocialMetadata?: (url: string) => Promise<OGData>;
+  /** YouTube details when the watch page lacks them; defaults to innertube then oEmbed. */
+  fetchVideoDetails?: (videoId: string) => Promise<YouTubeVideoDetails | null>;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
   enqueueEnrichment?: (itemId: string) => Promise<void>;
   now?: () => Date;
@@ -251,7 +255,10 @@ export function createDefaultCaptureProcessor(
       // YouTube: the watch page embeds the video's metadata; captions come from
       // the innertube API. The item is a video with the transcript as its body.
       if (!extracted && isYouTubeUrl(article.url)) {
-        const video = parseYouTubeWatchPage(article.body);
+        const videoId = extractYouTubeId(article.url) as string;
+        const video =
+          parseYouTubeWatchPage(article.body) ??
+          (await (dependencies.fetchVideoDetails ?? fetchYouTubeVideoDetails)(videoId));
         if (!video) {
           return {
             status: "rejected",

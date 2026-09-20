@@ -457,6 +457,41 @@ describe("default capture processor", () => {
     expect(enqueueEnrichment).toHaveBeenCalledWith(video.id);
   });
 
+  it("falls back to fetched video details when YouTube serves an interstitial page", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const fetchVideoDetails = jest.fn().mockResolvedValue({
+      videoId: "mUAsaprJ66s",
+      title: "From innertube",
+      author: "Greg",
+      description: "",
+      lengthSeconds: 90,
+      thumbnailUrl: null,
+      publishDate: null,
+    });
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchVideoDetails,
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response("<html>Before you continue</html>")),
+      },
+    });
+    await expect(
+      processor(captureRecord({ url: "https://www.youtube.com/watch?v=mUAsaprJ66s" }))
+    ).resolves.toMatchObject({ status: "ready" });
+    expect(fetchVideoDetails).toHaveBeenCalledWith("mUAsaprJ66s");
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "From innertube", duration: "1:30", contentType: "video" })
+    );
+  });
+
   it("saves a YouTube video with a short description and skips the summary call", async () => {
     const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
     const items = {
