@@ -245,6 +245,21 @@ answers from Vercel is exactly what the next Production capture will show — if
 the item still saves via oEmbed with no description or transcript. The two pre-#42 X receipts
 in Production (`failed`, NUL-byte error, 5 attempts) are non-retryable; re-save the URLs.
 
+### YouTube on Vercel: the finding — 2026-09-20
+
+With PRs #45–#47 live (multi-client innertube, diagnostics through the logger's allowlisted
+fields — first attempt was dropped for non-allowlisted fields, second for non-identifier
+characters), a "Load transcript" on Production logged
+`ANDROID:LOGIN_REQUIRED.IOS:LOGIN_REQUIRED.TVHTML5_SIMPLY_EMBEDDED_PLAYER:ERROR.WEB:LOGIN_REQUIRED`.
+`LOGIN_REQUIRED` is YouTube's "sign in to confirm you're not a bot" gate, applied to every
+client from Vercel's datacenter egress; only oEmbed (title, channel, thumbnail) answers. The
+same code from a laptop gets everything. Conclusion: no unofficial YouTube endpoint is usable
+from Vercel. Decisions for Amit: (1) `YOUTUBE_API_KEY` in Vercel Production for metadata via
+the official Data API (code deployed, key missing); (2) transcripts either fetched by the
+browser extension from the user's own IP on "Load transcript" (recommended) or bought from a
+transcript API service. Until then Production video items are oEmbed-only and "Load
+transcript" answers "This video has no captions to load".
+
 ### YouTube on Vercel, second pass: only oEmbed answers — 2026-09-20
 
 With PR #44 live, both videos saved on Production but with title/channel/thumbnail only (no
