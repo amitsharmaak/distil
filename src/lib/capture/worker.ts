@@ -272,7 +272,12 @@ export function createDefaultCaptureProcessor(
             {
               event: "youtube_details_fallback",
               code: videoId,
-              status: attempts.map((entry) => `${entry.client}=${entry.outcome}`).join(";"),
+              status: attempts
+                .map(
+                  (entry) => `${entry.client}:${entry.outcome.replace(/[^A-Za-z0-9_.-]+/g, "_")}`
+                )
+                .join(".")
+                .slice(0, 160),
               retryable: Boolean(video),
             },
             "YouTube watch page had no player response"

@@ -68,7 +68,10 @@ export async function loadVideoTranscript(
     {
       event: "youtube_transcript_fetch",
       code: videoId,
-      status: attempts.map((entry) => `${entry.client}=${entry.outcome}`).join(";"),
+      status: attempts
+        .map((entry) => `${entry.client}:${entry.outcome.replace(/[^A-Za-z0-9_.-]+/g, "_")}`)
+        .join(".")
+        .slice(0, 160),
       count: segments.length,
     },
     "YouTube transcript fetch"
