@@ -215,8 +215,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      Shortcut is re-pointed at the apex with a Production token and its capture verified
      (checkpoint "iPhone Shortcut re-pointed at Production — 2026-09-19" below). The 2026-09-19 extension capture of an X post
      reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
-     the durable worker — 2026-09-19"); the fix, with the rest of that branch's work, is being
-     released from `claude/browser-extension-url-save-6101e3` on 2026-09-20.
+     the durable worker — 2026-09-19"); fixed and released as PR #42 on 2026-09-20 (checkpoint
+     "Release: PR #42 to Production — 2026-09-20").
   4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
   5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
@@ -231,6 +231,21 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Release: PR #42 to Production — 2026-09-20
+
+`claude/browser-extension-url-save-6101e3` merged as PR
+[#42](https://github.com/amitsharmaak/distil/pull/42) (`5ff6928`) with Amit's in-session
+authorisation; Vercel Production deployment `5eecHUTEefNEhPPAbgaCAXRXvvvk` succeeded,
+`/api/health` 200, and `distilai.app` serves the new CSP (`frame-src` allows YouTube), which
+confirms the build. Quick gate green; the Full gate runs nightly. Contents: the ten items in the
+checkpoint below (X posts/Articles/video, YouTube with on-demand transcript, Granola notes, NUL
+stripping, retired Gemini fallbacks, CSP, reader typography and footer, Today digest, test-link
+registry). **Not yet done on Production:** the bulk import of `docs/test-links/links.json`
+needs a Production capture token (Settings → Capture) —
+`npm run links:import -- --origin https://distilai.app --token <token>`; and first real
+captures of a YouTube video and an X post there will show whether fxtwitter and innertube
+answer from Vercel's egress.
 
 ### X/Twitter captures rejected by the durable worker — 2026-09-19
 
