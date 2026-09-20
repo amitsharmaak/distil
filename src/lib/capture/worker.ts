@@ -269,7 +269,12 @@ export function createDefaultCaptureProcessor(
         if (!fromPage) {
           // Which source answered is only learnable per egress; keep it in the logs.
           apiLogger.info(
-            { event: "youtube_details_fallback", videoId, attempts, resolved: Boolean(video) },
+            {
+              event: "youtube_details_fallback",
+              code: videoId,
+              status: attempts.map((entry) => `${entry.client}=${entry.outcome}`).join(";"),
+              retryable: Boolean(video),
+            },
             "YouTube watch page had no player response"
           );
         }

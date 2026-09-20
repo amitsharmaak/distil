@@ -63,8 +63,14 @@ export async function loadVideoTranscript(
   const segments = dependencies.fetchTranscript
     ? await dependencies.fetchTranscript(videoId)
     : await fetchYouTubeTranscript(videoId, fetch, 10_000, attempts);
+  // The logger allowlists fields; fold the per-client outcomes into `status`.
   apiLogger.info(
-    { event: "youtube_transcript_fetch", videoId, attempts, segments: segments.length },
+    {
+      event: "youtube_transcript_fetch",
+      code: videoId,
+      status: attempts.map((entry) => `${entry.client}=${entry.outcome}`).join(";"),
+      count: segments.length,
+    },
     "YouTube transcript fetch"
   );
   if (segments.length === 0) {
