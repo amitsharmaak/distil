@@ -2,7 +2,15 @@ import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 import type { ExtractedContent } from "@/lib/content-extractor";
 import type { ProcessingResult, RawContent } from "@/lib/intelligence/types";
-import { extractOGFromHtml } from "@/lib/og";
+import { extractOGFromHtml, isTwitterUrl, type OGData } from "@/lib/og";
+import { isGranolaUrl, parseGranolaPage, renderProseMirror } from "@/lib/granola";
+import {
+  extractYouTubeId,
+  formatDuration,
+  isYouTubeUrl,
+  parseYouTubeWatchPage,
+  renderYouTubeContent,
+} from "@/lib/youtube";
 import type {
   CaptureRecord,
   CaptureRepository,
@@ -17,6 +25,7 @@ import { normalizeCaptureUrl } from "./url-safety";
 export const MAX_CAPTURE_ATTEMPTS = 5;
 export const CAPTURE_PROCESSING_STALE_MS = 6 * 60 * 1000;
 const MIN_READABLE_TEXT_CHARACTERS = 80;
+const MIN_VIDEO_DESCRIPTION_FOR_SUMMARY = 200;
 
 export interface CaptureProcessorResult {
   status: "ready" | "rejected";
@@ -144,6 +153,8 @@ export interface DefaultCaptureProcessorDependencies {
   rawContent?: RawContentRepository;
   fetchOptions?: SafeFetchOptions;
   extractContent?: (html: string, url: string) => ExtractedContent | null;
+  /** Resolves post text for social URLs that Readability cannot parse (X/Twitter via fxtwitter). */
+  fetchSocialMetadata?: (url: string) => Promise<OGData>;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
   enqueueEnrichment?: (itemId: string) => Promise<void>;
   now?: () => Date;
@@ -202,6 +213,145 @@ export function createDefaultCaptureProcessor(
         dependencies.extractContent ??
         (await import("@/lib/content-extractor")).extractContentFromHtml;
       const extracted = extractContent(article.body, article.url);
+
+      // Granola: the shared note ships as a ProseMirror document in the page payload.
+      if (!extracted && isGranolaUrl(article.url)) {
+        const note = parseGranolaPage(article.body);
+        if (!note) {
+          return {
+            status: "rejected",
+            reason: "Distil could not read this Granola note; is the share link public?",
+          };
+        }
+        const rendered = renderProseMirror(note.doc);
+        const excerpt = rendered.text.replace(/\s+/g, " ").trim();
+        const item = await dependencies.items.insert({
+          id: capture.id,
+          title: capture.title ?? note.title,
+          summary: capture.notes ?? `${excerpt.slice(0, 277)}${excerpt.length > 277 ? "..." : ""}`,
+          fullContent: rendered.html,
+          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+          contentType: "article",
+          topics: capture.topics,
+          author: note.owner ?? undefined,
+          publication: "Granola",
+          url: article.url,
+          priority: capture.priority,
+          isRead: false,
+          createdAt: fetchedAt,
+          extractedLinks: [],
+          contentExtractedAt: fetchedAt,
+          processingStatus: "ready",
+        });
+        await rawContent.attachItem(capture.id, item.id);
+        await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
+        return { status: "ready", itemId: item.id };
+      }
+
+      // YouTube: the watch page embeds the video's metadata; captions come from
+      // the innertube API. The item is a video with the transcript as its body.
+      if (!extracted && isYouTubeUrl(article.url)) {
+        const video = parseYouTubeWatchPage(article.body);
+        if (!video) {
+          return {
+            status: "rejected",
+            reason: "Distil could not read this video's details from YouTube",
+          };
+        }
+        // Capture stores the description only; the transcript is loaded on demand
+        // from the reader (POST /api/v1/items/:id/transcript) since most videos
+        // never need one.
+        const rendered = renderYouTubeContent(video, []);
+        const description = video.description.replace(/\s+/g, " ").trim();
+        const item = await dependencies.items.insert({
+          id: capture.id,
+          title: capture.title ?? video.title,
+          summary:
+            capture.notes ??
+            (description
+              ? `${description.slice(0, 277)}${description.length > 277 ? "..." : ""}`
+              : video.title),
+          fullContent: rendered.html || undefined,
+          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+          contentType: "video",
+          topics: capture.topics,
+          author: video.author ?? undefined,
+          publication: "YouTube",
+          url: article.url,
+          priority: capture.priority,
+          isRead: false,
+          createdAt: fetchedAt,
+          thumbnailUrl: video.thumbnailUrl ?? undefined,
+          duration: video.lengthSeconds ? formatDuration(video.lengthSeconds) : undefined,
+          extractedLinks: [],
+          contentExtractedAt: fetchedAt,
+          processingStatus: "ready",
+          detectedMedia: [{ type: "video", platform: "youtube", videoId: video.videoId }],
+        });
+        await rawContent.attachItem(capture.id, item.id);
+        // A short summary from the description; a one-liner is not worth a call.
+        if (description.length >= MIN_VIDEO_DESCRIPTION_FOR_SUMMARY) {
+          await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
+        }
+        return { status: "ready", itemId: item.id };
+      }
+
+      // X/Twitter serves a JavaScript shell with no readable body, so Readability
+      // is skipped for it by design. Build the item from the post metadata instead
+      // (fxtwitter, a fixed public host) rather than rejecting every saved tweet.
+      if (!extracted && isTwitterUrl(article.url)) {
+        const fetchSocialMetadata =
+          dependencies.fetchSocialMetadata ?? (await import("@/lib/og")).fetchOG;
+        const post = await fetchSocialMetadata(article.url);
+        const postText = post.description?.trim() ?? "";
+        // Native X video plays inline; a linked YouTube video lets the reader
+        // load that video's transcript for a summary.
+        const linkedYouTube = postText
+          .match(/https?:\/\/\S+/g)
+          ?.map((link) => extractYouTubeId(link))
+          .find((id): id is string => Boolean(id));
+        const postMedia = [
+          ...(post.videoUrl
+            ? [{ type: "video", platform: "twitter", embedUrl: post.videoUrl }]
+            : []),
+          ...(linkedYouTube
+            ? [{ type: "video", platform: "youtube", videoId: linkedYouTube, linked: true }]
+            : []),
+        ];
+        if (!postText) {
+          return {
+            status: "rejected",
+            reason: "Distil could not read the text of this post",
+          };
+        }
+        const item = await dependencies.items.insert({
+          id: capture.id,
+          title: capture.title ?? post.title ?? new URL(article.url).hostname,
+          // Short posts render from `summary`; long-form articles get an excerpt.
+          summary: post.isXArticle
+            ? `${postText.slice(0, 277)}${postText.length > 277 ? "..." : ""}`
+            : postText,
+          fullContent: post.html || postText,
+          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+          contentType: "article",
+          topics: capture.topics,
+          author: post.author ?? undefined,
+          publication: post.siteName ?? "X",
+          url: article.url,
+          priority: capture.priority,
+          isRead: false,
+          createdAt: fetchedAt,
+          thumbnailUrl: post.image ?? undefined,
+          extractedLinks: post.links ?? [],
+          contentExtractedAt: fetchedAt,
+          processingStatus: "ready",
+          ...(postMedia.length > 0 ? { detectedMedia: postMedia } : {}),
+        });
+        await rawContent.attachItem(capture.id, item.id);
+        await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
+        return { status: "ready", itemId: item.id };
+      }
+
       const readableText = extracted?.textContent.replace(/\s+/g, " ").trim() ?? "";
       if (!extracted?.content || readableText.length < MIN_READABLE_TEXT_CHARACTERS) {
         return {

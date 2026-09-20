@@ -110,6 +110,7 @@ export class ReaderError extends Error {
       | "ITEM_NOT_FOUND"
       | "ANNOTATION_NOT_FOUND"
       | "COLLECTION_NOT_FOUND"
+      | "TRANSCRIPT_UNAVAILABLE"
       | "CONFLICT",
     readonly status: 400 | 404 | 409,
     message: string

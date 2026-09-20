@@ -1329,6 +1329,16 @@
       "testProfile": "owner"
     },
     {
+      "path": "/api/v1/items/:id/transcript",
+      "source": "src/app/api/v1/items/[id]/transcript/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "ai_summaries"],
+      "testProfile": "owner"
+    },
+    {
       "path": "/api/v1/items/:id/state",
       "source": "src/app/api/v1/items/[id]/state/route.ts",
       "methods": ["GET", "PATCH"],
@@ -2334,7 +2344,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 82,
+    "expectedApiRouteFileCount": 83,
     "expectedPageFileCount": 18,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

@@ -1,0 +1,53 @@
+{
+  "$comment": "Registry of the URLs Amit tests ingestion with, one per content shape. Bulk-import with `npm run links:import -- --origin <url> --token <capture token>`; see docs/test-links/README.md.",
+  "links": [
+    {
+      "url": "https://x.com/0xCodila/status/2101064040332054741",
+      "category": "x-long-post",
+      "label": "Long X post (1.8k chars, no media) — long-form treatment, AI summary allowed",
+      "added": "2026-09-19"
+    },
+    {
+      "url": "https://x.com/mvanhorn/status/2100784142850097482",
+      "category": "x-article",
+      "label": "X Article link (Draft.js blocks: headings, lists, code, embedded posts)",
+      "added": "2026-09-19"
+    },
+    {
+      "url": "https://x.com/gregisenberg/status/2099938794363293703",
+      "category": "x-video",
+      "label": "Short X post with native video and a YouTube link — inline playback, transcript on demand",
+      "added": "2026-09-20"
+    },
+    {
+      "url": "https://techcrunch.com/2026/09/19/ai-safety-conversations-have-gotten-unbelievable/",
+      "category": "article",
+      "label": "Standard news article (TechCrunch): paragraphs, links, hero image, sidebar noise",
+      "added": "2026-09-20"
+    },
+    {
+      "url": "https://techcrunch.com/2026/08/24/hugging-face-reportedly-in-talks-to-be-acquired-for-13b/",
+      "category": "article",
+      "label": "Short news article (TechCrunch) — under the 2k-token summary threshold",
+      "added": "2026-09-19"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=mUAsaprJ66s",
+      "category": "youtube",
+      "label": "YouTube video, 27 min, long description, auto captions",
+      "added": "2026-09-20"
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=4mTLpuQpB80",
+      "category": "youtube",
+      "label": "YouTube video, 28 min, long description",
+      "added": "2026-09-20"
+    },
+    {
+      "url": "https://notes.granola.ai/d/c6ad42f5-d43d-4adc-8780-a638bd16ba99",
+      "category": "meeting-notes",
+      "label": "Granola shared meeting note (ProseMirror payload: headings, nested bullets)",
+      "added": "2026-09-20"
+    }
+  ]
+}

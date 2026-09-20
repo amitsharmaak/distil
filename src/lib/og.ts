@@ -30,13 +30,19 @@ export interface OGData {
   videoUrl?: string | null;
   /** True when the X URL is an X Article (long-form), not a regular tweet. */
   isXArticle?: boolean;
+  /** Reader HTML for an X Article, rendered from its Draft.js blocks. */
+  html?: string | null;
+  /** Links referenced by an X Article's body. */
+  links?: Array<{ text: string; url: string }>;
 }
+
+import { renderXArticle, type XArticleInput } from "@/lib/x-article";
 
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 /** Checks whether a URL points to a Twitter/X post. */
-function isTwitterUrl(url: string): boolean {
+export function isTwitterUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname.replace("www.", "");
     return host === "twitter.com" || host === "x.com";
@@ -106,7 +112,10 @@ async function fetchTwitterMetadata(url: string): Promise<OGData> {
     image: fxResult.image ?? ogFallback.image,
     author: fxResult.author ?? ogFallback.author,
     siteName: fxResult.siteName ?? ogFallback.siteName ?? "X",
+    videoUrl: fxResult.videoUrl ?? null,
     isXArticle: fxResult.isXArticle,
+    html: fxResult.html ?? null,
+    links: fxResult.links ?? [],
   };
 }
 
@@ -135,14 +144,9 @@ async function fetchFxTwitter(tweetId: string): Promise<OGData> {
           photos?: Array<{ url?: string }>;
           videos?: Array<{ url?: string; type?: string }>;
         };
-        article?: {
-          title?: string;
-          preview_text?: string;
+        article?: XArticleInput & {
           cover_media?: {
             media_info?: { original_img_url?: string };
-          };
-          content?: {
-            blocks?: Array<{ text?: string }>;
           };
         };
       };
@@ -155,22 +159,21 @@ async function fetchFxTwitter(tweetId: string): Promise<OGData> {
     // Prefer the highest-quality MP4 (fxtwitter lists videos best-quality-first)
     const videoUrl = tweet.media?.videos?.[0]?.url ?? null;
 
-    // X Articles: tweet.text is empty and content lives in tweet.article
-    if (!tweet.text && tweet.article) {
+    // X Articles: the content lives in tweet.article; tweet.text is empty or
+    // just the article's own URL.
+    if (tweet.article?.content?.blocks?.length) {
       const article = tweet.article;
-      const blocks = article.content?.blocks ?? [];
-      const articleText = blocks
-        .map((b) => b.text)
-        .filter(Boolean)
-        .join("\n\n");
+      const rendered = renderXArticle(article);
       return {
         title: article.title ?? (authorName ? `${authorName} on X` : null),
-        description: articleText || article.preview_text || null,
+        description: rendered?.text || article.preview_text || null,
         image: article.cover_media?.media_info?.original_img_url ?? null,
         author: authorName,
         siteName: "X",
         videoUrl,
         isXArticle: true,
+        html: rendered?.html ?? null,
+        links: rendered?.links ?? [],
       };
     }
 

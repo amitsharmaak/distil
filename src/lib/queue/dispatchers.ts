@@ -1,5 +1,6 @@
 import type { CaptureDispatcher } from "@/lib/contracts/capture";
 import type { CaptureQueueMessageV2, TenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
+import { CaptureRetryScheduledError } from "@/lib/capture/errors";
 
 export const CAPTURE_QUEUE_TOPIC = "capture-requests";
 export const ACCOUNT_LIFECYCLE_QUEUE_TOPIC = "account-lifecycle";
@@ -44,7 +45,8 @@ export class LocalCaptureDispatcher extends FakeCaptureDispatcher {
 export class InlineCaptureDispatcher implements CaptureDispatcher {
   constructor(
     private readonly consume: (message: CaptureQueueMessageV2) => Promise<void>,
-    private readonly onError: (error: unknown) => void = () => undefined
+    private readonly onError: (error: unknown) => void = () => undefined,
+    private readonly retryDelayMs = 2_000
   ) {}
 
   async dispatch(
@@ -52,9 +54,20 @@ export class InlineCaptureDispatcher implements CaptureDispatcher {
     _options: { idempotencyKey: string }
   ): Promise<void> {
     const copy = structuredClone(message);
-    setTimeout(() => {
-      this.consume(copy).catch(this.onError);
-    }, 0);
+    setTimeout(() => this.run(copy), 0);
+  }
+
+  // The hosted queue redelivers a message when the worker throws
+  // CaptureRetryScheduledError; without this the local receipt would stay
+  // `queued` forever after a transient failure. The worker bounds attempts.
+  private run(message: CaptureQueueMessageV2): void {
+    this.consume(message).catch((error: unknown) => {
+      if (error instanceof CaptureRetryScheduledError) {
+        setTimeout(() => this.run(message), this.retryDelayMs);
+        return;
+      }
+      this.onError(error);
+    });
   }
 }
 

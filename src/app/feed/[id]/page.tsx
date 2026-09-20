@@ -25,6 +25,9 @@ import { ReaderKnowledgeControls } from "@/components/phase2/reader-knowledge-co
 import { ReaderAnnotations } from "@/components/phase2/reader-annotations";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { sanitizeArticleHtml } from "@/lib/content-sanitizer";
+import { isLongFormXPost } from "@/lib/utils";
+import { hasTranscript, linkedYouTubeId } from "@/lib/phase2/video-transcript";
+import { VideoTranscriptButton } from "@/components/feed/video-transcript-button";
 
 /* ── Constants ── */
 
@@ -183,7 +186,7 @@ export default async function ItemDetailPage({
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
   const isXArticle =
-    baseStrategy.detail.showTweetRenderer && !!item.fullContent && item.fullContent.length > 200;
+    baseStrategy.detail.showTweetRenderer && isLongFormXPost(item.url, item.fullContent);
   const strategy = isXArticle
     ? {
         ...baseStrategy,
@@ -191,6 +194,9 @@ export default async function ItemDetailPage({
       }
     : baseStrategy;
   const displayTitle = getDisplayTitle(item.title, item.summary);
+  const twitterVideo = (
+    item.detectedMedia as Array<{ type: string; platform?: string; embedUrl?: string }> | undefined
+  )?.find((media) => media.type === "video" && media.platform === "twitter");
   const fullContentIsHtml =
     !!item.fullContent && /<[a-z][\s\S]*>/i.test(item.fullContent.slice(0, 500));
   const sanitizedFullContent = item.fullContent ? sanitizeArticleHtml(item.fullContent) : undefined;
@@ -293,24 +299,25 @@ export default async function ItemDetailPage({
             </div>
           )}
 
+          {/* Native X video: shown for short posts and for posts promoted to long-form. */}
+          {twitterVideo?.embedUrl && (
+            <video
+              src={twitterVideo.embedUrl}
+              poster={item.thumbnailUrl ?? undefined}
+              controls
+              preload="metadata"
+              className="mb-6 w-full rounded-xl border border-border bg-black"
+              style={{ maxHeight: 480 }}
+            />
+          )}
+
+          {linkedYouTubeId(item) && !hasTranscript(item) && (
+            <VideoTranscriptButton itemId={item.id} />
+          )}
+
           {strategy.detail.showTweetRenderer ? (
-            /* Tweet — rendered directly in reader typography, with inline video if present */
+            /* Tweet — rendered directly in reader typography */
             <div className="space-y-5">
-              {(() => {
-                const twitterVideo = (
-                  item.detectedMedia as
-                    | Array<{ type: string; platform?: string; embedUrl?: string }>
-                    | undefined
-                )?.find((m) => m.type === "video" && m.platform === "twitter");
-                return twitterVideo?.embedUrl ? (
-                  <video
-                    src={twitterVideo.embedUrl}
-                    controls
-                    className="w-full rounded-xl border border-border"
-                    style={{ maxHeight: 480 }}
-                  />
-                ) : null;
-              })()}
               <div className="distil-reader space-y-4">
                 {item.summary.split(/\n\n+/).map((para, i) => (
                   <p key={i} className="whitespace-pre-line">

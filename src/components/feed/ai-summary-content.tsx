@@ -41,8 +41,8 @@ function parseSummarySections(content: string): { title: string; body: string; k
 function StructuredSummaryMarkdown({ content }: { content: string }) {
   const sections = useMemo(() => parseSummarySections(content), [content]);
 
-  const baseProse =
-    "prose dark:prose-invert max-w-none prose-strong:text-foreground prose-a:text-primary prose-a:no-underline hover:prose-a:underline";
+  // Element styling comes from `.distil-reader` in globals.css.
+  const baseProse = "max-w-none";
 
   return (
     <div className="distil-reader space-y-5">
@@ -61,7 +61,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
           return (
             <div key={key}>
               {title && (
-                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-3">
+                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-3">
                   {title}
                 </p>
               )}
@@ -86,11 +86,11 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
           return (
             <div key={key} className="border-l-2 border-primary/50 pl-4 py-0.5">
               {title && (
-                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-2">
+                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-2">
                   {title}
                 </p>
               )}
-              <div className={`${baseProse} prose-p:my-1`}>
+              <div className={`${baseProse} [&_p]:my-1`}>
                 <Markdown>{body}</Markdown>
               </div>
             </div>
@@ -101,7 +101,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
           return (
             <div key={key}>
               {title && (
-                <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-3">
+                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-3">
                   {title}
                 </p>
               )}
@@ -124,7 +124,7 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
         return (
           <div key={key} className={baseProse}>
             {title && (
-              <p className="text-[10px] tracking-widest uppercase text-muted-foreground mb-2">
+              <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-2">
                 {title}
               </p>
             )}
@@ -322,7 +322,7 @@ export function AISummary({
         <div>
           {fullContent && fullContentIsHtml ? (
             <div
-              className="distil-reader prose dark:prose-invert max-w-none prose-p:my-[1.15em] prose-headings:mt-6 prose-headings:mb-3 prose-li:my-1 prose-blockquote:my-4 prose-img:rounded-lg prose-img:my-6 prose-pre:my-4 prose-hr:my-6 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
+              className="distil-reader max-w-none"
               dangerouslySetInnerHTML={{ __html: fullContent }}
             />
           ) : fullContent ? (

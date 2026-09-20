@@ -56,7 +56,8 @@
     "account:verify-purge": "tsx scripts/verify-account-purge.ts",
     "rehearse:preview-clone": "tsx scripts/rehearse-preview-clone.ts",
     "perf:bundle": "node scripts/perf/bundle-diff.mjs",
-    "perf:vitals": "tsx scripts/perf/measure-web-vitals.ts"
+    "perf:vitals": "tsx scripts/perf/measure-web-vitals.ts",
+    "links:import": "tsx scripts/import-test-links.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

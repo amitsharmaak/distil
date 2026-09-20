@@ -20,6 +20,13 @@ describe("safe article fetch", () => {
     );
   });
 
+  it("strips NUL bytes so the body can be stored in PostgreSQL text columns", async () => {
+    const fetch = jest.fn().mockResolvedValue(response("<p>a\u0000b</p>\u0000"));
+    await expect(
+      fetchArticle("https://example.com/a", { fetch, resolve: publicDns })
+    ).resolves.toMatchObject({ body: "<p>ab</p>" });
+  });
+
   it("validates every redirect and blocks public-to-private redirects", async () => {
     const fetch = jest
       .fn()

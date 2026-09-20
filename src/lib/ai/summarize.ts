@@ -170,7 +170,9 @@ export async function generateSummary(
   async function generate(prompt: string, task: AITask): Promise<SummaryOutput> {
     const result = await ai.generateJSONWithMetadata<SummaryOutput>(prompt, task, {
       responseSchema,
-      timeoutMs: 15_000,
+      // Long inputs on thinking models (video transcripts) need more than the
+      // default; the calling routes allow up to 60 s.
+      timeoutMs: task === "summarize-complex" ? 40_000 : 15_000,
       maxAttempts: 1,
     });
     const parsed = summarySchema.safeParse(result.value);

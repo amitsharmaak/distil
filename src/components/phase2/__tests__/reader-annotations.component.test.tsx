@@ -43,7 +43,7 @@ describe("ReaderAnnotations", () => {
         <p>An anchored sentence follows.</p>
       </ReaderAnnotations>
     );
-    await screen.findByText("No highlights yet.");
+    await screen.findByText(/No highlights yet/);
 
     const paragraph = screen.getByText("An anchored sentence follows.");
     const textNode = paragraph.firstChild;
