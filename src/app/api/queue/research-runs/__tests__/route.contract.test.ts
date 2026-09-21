@@ -5,7 +5,14 @@ jest.mock("@vercel/queue", () => ({
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { handleCallback } from "@vercel/queue";
-import { createResearchQueueMessageHandler, maxDuration, preferredRegion, runtime } from "../route";
+import { ResearchStageRetryError } from "@/lib/ai/research";
+import {
+  createResearchQueueMessageHandler,
+  maxDuration,
+  preferredRegion,
+  researchQueueRetry,
+  runtime,
+} from "../route";
 
 const reportId = "a1b2c3d4-e5f6-4789-a123-456789abcdef";
 const userId = "10000000-0000-4000-8000-000000000010";
@@ -26,7 +33,15 @@ describe("research-runs queue callback", () => {
     expect(preferredRegion).toBe("sin1");
     expect(handleCallback).toHaveBeenCalledWith(expect.any(Function), {
       visibilityTimeoutSeconds: 60,
+      retry: researchQueueRetry,
     });
+  });
+
+  it("reschedules a retryable stage after 60 s and leaves other failures to the platform", () => {
+    expect(
+      researchQueueRetry(new ResearchStageRetryError("search:1", 1, new Error("503")))
+    ).toEqual({ afterSeconds: 60 });
+    expect(researchQueueRetry(new Error("parse failure"))).toBeUndefined();
   });
 
   it("registers the research topic trigger in Vercel configuration", () => {
