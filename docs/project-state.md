@@ -31,10 +31,20 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   fixes (real web grounding is the separate phase brief below the checkpoint); on mobile the
   four-tab bar stays and Research is reached from Settings → Account → Library. Next steps: open
   the PR to `main` with the `full-ci` label (auth surfaces changed), merge after the gates; Amit
-  decides the release. Known limit on Vercel: a run is 6–10 model calls and took 77 s locally,
-  so the Hobby 60 s `maxDuration` can kill the `after()` task; the stale guard then marks the
-  report failed after 15 min. The durable tenant-scoped job in the authorization-matrix note is
-  the fix and is not started.
+  decides the release. **Status on 2026-09-21: works locally (third run completed in 77 s with a
+  summary and 48 sources); expected to fail on Production as is.** Two reasons: (1) a run is
+  6–10 sequential model calls and the project is on Vercel Hobby, whose 60 s cap also bounds
+  `after()`, so a 77 s run is killed mid-way and the stale guard marks it failed after 15 min —
+  the UI does not hang, but no report arrives; (2) the search steps call the tenant router's
+  plain `generateText`, which never reaches Gemini's search-grounded path, so sources come from
+  model memory (true locally too). Ordered plan, each its own task: **Step 1** move the run onto
+  a Vercel Queue consumer (`research-runs` topic, one resumable stage per message — plan, each
+  search, gaps, synthesis — persisting to `research_reports.progress`, same pattern as
+  `src/app/api/queue/capture-requests/route.ts`; this is the durable tenant-scoped job the
+  authorization-matrix note asks for); **Step 2** tenant-scoped `generateTextWithSearch` for the
+  search steps (phase brief under the checkpoint). Stopgap instead of Step 1: Vercel Pro raises
+  the cap to 300 s, which fits most runs but keeps one long function with no retry. PR #49 is
+  safe to merge before either step: routes are tenant-scoped and a killed run fails cleanly.
 - **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
   [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
   `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
