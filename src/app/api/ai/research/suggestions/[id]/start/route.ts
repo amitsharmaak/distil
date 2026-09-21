@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
-import { startResearch } from "@/lib/ai/research";
+import { publicResearchProgressString, startResearch } from "@/lib/ai/research";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
-
-/** Research continues after the 202 via `after()`, so allow the Hobby ceiling. */
-export const maxDuration = 60;
 
 /** POST /api/ai/research/suggestions/[id]/start — Approve and start deep research. */
 export const POST = withRequestMetrics(
@@ -32,7 +29,12 @@ export const POST = withRequestMetrics(
       await repositories.research.markSuggestionStarted(id, reportId);
 
       const report = await repositories.research.findReport(reportId);
-      return NextResponse.json({ report }, { status: 202 });
+      return NextResponse.json(
+        {
+          report: report && { ...report, progress: publicResearchProgressString(report.progress) },
+        },
+        { status: 202 }
+      );
     } catch (error) {
       const authFailure = tenantRouteFailureResponse(error);
       if (authFailure.status !== 503) return authFailure;

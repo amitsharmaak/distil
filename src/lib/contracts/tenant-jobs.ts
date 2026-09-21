@@ -73,3 +73,60 @@ export function createTenantJobEnvelopeV1(
 ): TenantJobEnvelopeV1 {
   return parseTenantJobEnvelopeV1({ ...input, version: 1 });
 }
+
+export const RESEARCH_RUN_STEPS = ["plan", "search", "gaps", "deepen", "synthesize"] as const;
+export type ResearchRunStepKind = (typeof RESEARCH_RUN_STEPS)[number];
+
+export const researchReportIdSchema = z.string().uuid().brand<"ResearchReportId">();
+export type ResearchReportId = z.infer<typeof researchReportIdSchema>;
+
+/**
+ * One resumable deep-research stage. The consumer treats the message as a
+ * tick: it runs the first unfinished stage recorded in
+ * `research_reports.progress`, so a redelivered message resumes rather than
+ * restarts. `step` and `index` name the stage the sender expected to run next
+ * and seed the idempotency key.
+ */
+export const researchRunMessageV1Schema = z
+  .object({
+    version: z.literal(1),
+    userId: userIdSchema,
+    reportId: researchReportIdSchema,
+    traceId: traceIdSchema,
+    step: z.enum(RESEARCH_RUN_STEPS),
+    index: z.number().int().min(0).max(1000).optional(),
+  })
+  .strict()
+  .readonly();
+
+export type ResearchRunMessageV1 = z.infer<typeof researchRunMessageV1Schema>;
+
+export interface CreateResearchRunMessageV1Input {
+  readonly userId: string;
+  readonly reportId: string;
+  readonly traceId: string;
+  readonly step: ResearchRunStepKind;
+  readonly index?: number;
+}
+
+export function parseResearchRunMessageV1(value: unknown): ResearchRunMessageV1 {
+  return researchRunMessageV1Schema.parse(value);
+}
+
+export function createResearchRunMessageV1(
+  input: CreateResearchRunMessageV1Input
+): ResearchRunMessageV1 {
+  return parseResearchRunMessageV1({
+    version: 1,
+    userId: input.userId,
+    reportId: input.reportId,
+    traceId: input.traceId,
+    step: input.step,
+    ...(input.index === undefined ? {} : { index: input.index }),
+  });
+}
+
+/** Stable per-stage idempotency key for queue publication. */
+export function researchRunIdempotencyKey(message: ResearchRunMessageV1): string {
+  return `research:${message.reportId}:${message.step}:${message.index ?? 0}`;
+}

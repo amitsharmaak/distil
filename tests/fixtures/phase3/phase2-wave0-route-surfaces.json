@@ -101,6 +101,7 @@
   "POST /api/publishers/:id/sync",
   "POST /api/queue/account-lifecycle",
   "POST /api/queue/capture-requests",
+  "POST /api/queue/research-runs",
   "POST /api/settings/email-intelligence",
   "POST /api/slack/sync",
   "POST /api/v1/account/deletion",

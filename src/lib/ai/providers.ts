@@ -46,7 +46,10 @@ export interface AIProvider {
 
 /** Gemini provider — supports generateTextWithSearch for web grounding. */
 export interface GeminiProvider extends AIProvider {
-  generateTextWithSearch(prompt: string): Promise<ProviderResult<string>>;
+  generateTextWithSearch(
+    prompt: string,
+    options?: GenerateOptions
+  ): Promise<ProviderResult<string>>;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -131,15 +134,34 @@ export class GeminiProviderImpl implements GeminiProvider {
     }
   }
 
-  async generateTextWithSearch(prompt: string): Promise<ProviderResult<string>> {
+  async generateTextWithSearch(
+    prompt: string,
+    options?: GenerateOptions
+  ): Promise<ProviderResult<string>> {
     const m = this.genai.getGenerativeModel({
       model: GEMINI_SEARCH_MODEL,
+      generationConfig: {
+        maxOutputTokens: options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        temperature: options?.temperature,
+      },
       // googleSearch grounding is supported by Gemini 2.x but not yet in SDK types
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: [{ googleSearch: {} } as any],
     });
-    const result = await m.generateContent(prompt, { timeout: DEFAULT_TIMEOUT_MS });
-    return { value: result.response.text(), usage: geminiUsage(result.response) };
+    try {
+      const result = await withRetry(
+        () => m.generateContent(prompt, { timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }),
+        {
+          maxAttempts: options?.maxAttempts ?? 2,
+          baseDelay: 250,
+          maxDelay: 250,
+          shouldRetry: isRetryableProviderFailure,
+        }
+      );
+      return { value: result.response.text(), usage: geminiUsage(result.response) };
+    } catch (error) {
+      throw toAIProviderError(error, this.name, GEMINI_SEARCH_MODEL);
+    }
   }
 }
 

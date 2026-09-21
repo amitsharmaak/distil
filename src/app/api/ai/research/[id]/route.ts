@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
-import { failStaleReport } from "@/lib/ai/research";
+import { failStaleReport, publicResearchProgressString } from "@/lib/ai/research";
 
 /** GET /api/ai/research/[id] — Get research report status and content. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     report: {
       ...report,
       sources: JSON.parse(report.sources),
+      progress: publicResearchProgressString(report.progress),
     },
   });
 }

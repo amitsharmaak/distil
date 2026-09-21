@@ -65,7 +65,10 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
   const request = sanitizeInboundRequest(inbound);
   const pathname = request.nextUrl.pathname;
   const isApi = pathname.startsWith("/api/");
-  const isInfrastructure = pathname === "/api/health" || pathname === "/api/queue/capture-requests";
+  const isInfrastructure =
+    pathname === "/api/health" ||
+    pathname === "/api/queue/capture-requests" ||
+    pathname === "/api/queue/research-runs";
   const finish = (response: NextResponse, passThrough = false) => {
     // Durations and counters only (see request-metrics.ts); visible in DevTools.
     // A header on an API pass-through would replace the route's own

@@ -23,8 +23,9 @@ export const config = {
   databaseControlPlaneUrl: process.env.DATABASE_CONTROL_PLANE_URL ?? "",
 
   /**
-   * How accepted captures reach the worker. `queue` (default) publishes to the
-   * Vercel Queue topic; `inline` runs the worker in-process, for local `next dev`
+   * How accepted captures and deep research stages reach their workers.
+   * `queue` (default) publishes to the Vercel Queue topics (`capture-requests`,
+   * `research-runs`); `inline` runs the workers in-process, for local `next dev`
    * against a local PostgreSQL where no queue credentials exist. Never set
    * `inline` on Vercel: request lifetimes there end before the worker finishes.
    */

@@ -18,6 +18,35 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Deep research on Vercel: Steps 1 and 2 implemented, locally verified, not deployed (PR
+  [#51](https://github.com/amitsharmaak/distil/pull/51), label `full-ci`, branch
+  `claude/deep-research-vercel-ea8b82`, worktree of the same name, from `origin/main` `5483c7c`;
+  checkpoint "Deep research on a queue worker and the search facade — 2026-09-21" below):**
+  deep research (restored in PR [#49](https://github.com/amitsharmaak/distil/pull/49), `dc875da`,
+  live since 2026-09-21) could not finish on Vercel Hobby because one run was 6–10 sequential
+  model calls inside a single 60 s `after()` invocation, and its "search" calls never reached
+  Gemini's search-grounded path. This branch (Step 1) moves a run onto the Vercel Queue topic
+  `research-runs`: `startResearch` publishes one message and the consumer
+  `src/app/api/queue/research-runs/route.ts` runs one resumable stage per message (plan, one
+  search per sub-question, gaps, one deepening question per gap, synthesize), persisting stage
+  state and partial findings in `research_reports.progress`; a redelivered message resumes at the
+  first unfinished stage. Locally the same consumer runs in-process under
+  `DISTIL_CAPTURE_DISPATCH=inline`. (Step 2) adds `generateTextWithSearch` to the tenant router,
+  backed by `generateTenantTextWithSearch` (tenant budget, deferred accounting, Gemini
+  `GEMINI_SEARCH_MODEL` with retry) and used by the search and deepening stages; it degrades to
+  plain `research-search` routing when Gemini is absent or refuses grounding for quota. Finding:
+  the local `GEMINI_API_KEY` project is on the Gemini free tier, where every search-grounded call
+  is refused (429 quota) and plain calls are capped at 20 requests per model per day, so real web
+  grounding could not be exercised locally; one full run completed through all nine stages in
+  57 s with 41 memory-recalled sources. Next steps: (1) Amit merges the PR (label `full-ci`) and,
+  before the first Production run, confirms the `research-runs` queue topic exists in the Vercel
+  project (Storage → Queues; the `experimentalTriggers` entry in `vercel.json` registers the
+  consumer on deploy, exactly as `capture-requests` is registered); no environment variable is
+  needed for the queue itself. (2) For grounded sources, the Production `GEMINI_API_KEY` must
+  belong to a Google AI project with billing enabled (Google Search grounding is not on the free
+  tier); otherwise research keeps working from model memory and logs
+  `research_search_grounding_fallback`. (3) One signed-in run on Production after the merge, then
+  record the outcome.
 - **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
   merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
   Production — 2026-09-21" below):** Amit asked for the deep
@@ -31,7 +60,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   four-tab bar stays and Research is reached from Settings → Account → Library. Next steps: open
   the PR to `main` with the `full-ci` label (auth surfaces changed), merge after the gates; Amit
   decides the release. **Status on 2026-09-21: works locally (third run completed in 77 s with a
-  summary and 48 sources); expected to fail on Production as is.** Two reasons: (1) a run is
+  summary and 48 sources); expected to fail on Production as is. Superseded by the bullet above
+  once its branch merges.** Two reasons: (1) a run is
   6–10 sequential model calls and the project is on Vercel Hobby, whose 60 s cap also bounds
   `after()`, so a 77 s run is killed mid-way and the stale guard marks it failed after 15 min —
   the UI does not hang, but no report arrives; (2) the search steps call the tenant router's
@@ -43,7 +73,7 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   authorization-matrix note asks for); **Step 2** tenant-scoped `generateTextWithSearch` for the
   search steps (phase brief under the checkpoint). Stopgap instead of Step 1: Vercel Pro raises
   the cap to 300 s, which fits most runs but keeps one long function with no retry. Steps 1
-  and 2 are the next task (prompt handed to Amit on 2026-09-21); neither is started.
+  and 2 are implemented on `claude/deep-research-vercel-ea8b82` (bullet above).
 - **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
   [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
   `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
@@ -257,6 +287,142 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research on a queue worker and the search facade — 2026-09-21
+
+**Why.** The handoff bullet "Deep research restored" recorded two reasons a run cannot finish on
+Production: Vercel Hobby's 60 s cap bounds `after()`, and the search steps never reached Gemini's
+search-grounded path. This task is Steps 1 and 2 of that bullet. Branch
+`claude/deep-research-vercel-ea8b82` (worktree of the same name) from `origin/main` `5483c7c`.
+
+**Step 1 — durable, resumable stages on Vercel Queue.**
+
+- Contract: `ResearchRunMessageV1` in `src/lib/contracts/tenant-jobs.ts` (`version: 1`,
+  `userId`, `reportId`, `traceId`, `step` ∈ plan | search | gaps | deepen | synthesize,
+  optional `index`), strict Zod schema, idempotency key `research:<reportId>:<step>:<index>`.
+- Dispatch: `RESEARCH_QUEUE_TOPIC = "research-runs"`, `VercelResearchDispatcher` (topic
+  `research-runs`, region `sin1`), `InlineResearchDispatcher` (in-process, redelivers a thrown
+  stage after 2 s, at most four deliveries) and `FakeResearchDispatcher` in
+  `src/lib/queue/dispatchers.ts`; `src/lib/queue/research-dispatch.ts` picks inline or Vercel from
+  the existing `DISTIL_CAPTURE_DISPATCH` switch (documented in `config.ts`, the runbook table and
+  `.env.local.example`).
+- Consumer: `src/app/api/queue/research-runs/route.ts` (`runtime nodejs`, `maxDuration 60`,
+  `preferredRegion sin1`, `handleCallback(..., { visibilityTimeoutSeconds: 60 })`, message parsed
+  before any repository is opened) → `src/lib/queue/research-consumer.ts`
+  (`consumeResearchRunMessage`: system actor `00000000-0000-4000-8000-000000000006`, tenant
+  repositories for the envelope `userId`, runs one stage, publishes the next). `vercel.json`
+  registers the trigger (`queue/v2beta`, topic `research-runs`, `retryAfterSeconds 60`).
+- `src/lib/ai/research.ts` rewritten around `runResearchStage`: the durable state in
+  `research_reports.progress` holds `version`, `updatedAt`, the UI `view`, `subQuestions`,
+  `findings[]`, `gaps`, `deepening[]` and per-stage `attempts` (`null` slots are stages still to
+  do); `nextResearchStage` returns the first unfinished stage, so a redelivered or duplicated
+  message resumes instead of restarting. Stages run sequentially, one message each (the earlier
+  `p-limit(3)` fan-out is
+  gone: parallel stages would race on the single `progress` column and lose findings). A stage
+  that throws records its attempt and rethrows `ResearchStageRetryError` so the queue redelivers;
+  after `MAX_STAGE_ATTEMPTS` (2) a search or deepening question becomes a placeholder finding, a
+  failed plan becomes the query itself, failed gaps skip deepening, and a failed synthesis marks
+  the report `failed`. Sub-questions are capped at 5 and gaps at 2. Timeouts: plan 30 s, search
+  45 s, gaps 30 s, synthesize 50 s (was 60 s; it must fit inside the 60 s lease together with the
+  report reads and writes); search and deepening answers are capped at 2048 output tokens after a
+  flash model overran 45 s locally at the 4096 default.
+- `startResearch` inserts the report, writes the planning view and publishes the plan stage; if
+  publication fails the report is marked `failed` immediately. The POST routes no longer export
+  `maxDuration`.
+- Read routes (`GET /api/ai/research/[id]`, `/list`, `/[id]/stream`) and both POST routes send
+  only the stage view (`publicResearchProgress`: `{ stage, current, total, question }`), never
+  the partial findings held in the same column. The UI is unchanged.
+- Stale guard: `failStaleReport` now measures the 15-minute window from the state's
+  `updatedAt` (falling back to `createdAt`), so a long multi-stage run is not reaped while it is
+  still writing progress, and a run whose chain died is reaped 15 minutes after its last write.
+- Authorization and fixtures: `/api/queue/research-runs` added to the proxy's infrastructure
+  paths, the legacy middleware's self-authenticating paths and the Neon proxy's public paths
+  (the reviewed CSRF digest in `tests/fixtures/phase3/neon-csrf-boundary.json` was recomputed);
+  `docs/authorization-matrix.json` gains the route (`expectedApiRouteFileCount` 91 → 92), the
+  worker `research-runs-queue-callback`, and updated `deep-research-background` /
+  `deep-research` entries; `phase2-wave0-route-surfaces.json` 122 → 123 with the matching
+  `tests/support/authorization-matrix.ts` policy (system `own`, user `deny`); the harness counts
+  and the legacy-auth and Neon-proxy security tests carry the new path.
+
+**Step 2 — tenant search facade.** `createTenantAIRouter(...).generateTextWithSearch(prompt,
+options)` → `AIRouter.generateTenantTextWithSearch`: same tenant admission
+(`assertTenantAIBudget`) and deferred audit/usage accounting as `generateTenantText` (shared
+`accountTenantText` helper), calling `GeminiProvider.generateTextWithSearch` on
+`GEMINI_SEARCH_MODEL`; `GeminiProviderImpl.generateTextWithSearch` now honours `timeoutMs`,
+`maxTokens` and `maxAttempts` (retry through `withRetry`, retryable failures only) and maps
+errors with `toAIProviderError`. Fallbacks: no Gemini provider → plain
+`generateTenantText(..., "research-search")`; Gemini configured but grounding refused with a
+`quota` failure → the same plain path plus a `research_search_grounding_fallback` warning;
+timeouts and server errors propagate so the stage is retried. The search and deepening stages
+use the facade.
+
+**Tests added** (all deterministic): `src/lib/ai/__tests__/research-stages.unit.test.ts` (13:
+full walk plan → 2 searches → gaps → deepen → synthesize with view and source checks; resume of a
+redelivered message from the first unfinished stage without repeating the plan; durable attempt
+count and `ResearchStageRetryError`; placeholder after exhausted attempts; plan JSON fallback;
+gaps failure skips deepening; synthesis failure marks `failed`; foreign report acknowledged
+without model calls; view projection hides findings; stage ordering; stale guard from
+`updatedAt`), `src/lib/queue/__tests__/research-consumer.unit.test.ts` (3),
+`src/lib/ai/__tests__/router-search.unit.test.ts` (5: grounded path with accounting, no-Gemini
+fallback, quota fallback, timeout propagation, budget refusal), three research cases in
+`dispatchers.unit.test.ts`, and `src/app/api/queue/research-runs/__tests__/route.contract.test.ts`
+(runtime/lease/region, `vercel.json` trigger, validation, redelivery on throw).
+
+**Locally verified (this worktree, 2026-09-21).** `npm run check`: lint 0 errors / 5 warnings
+(the known baseline: four untouched files plus the pre-existing `_options` in
+`InlineCaptureDispatcher`), typecheck clean, Jest 1604 passed / 1 failed — the failure is the
+known `tests/harness/vercel-runtime-externals` jsdom drift (`node_modules` jsdom 30.0.1 against
+the lockfile's 22.1.0), unrelated; a clean `npm ci` is expected to clear it. Local loop: the
+worktree `.env.local` was rebuilt from `.env.local.example` (old file kept as
+`.env.local.neon-backup`), the existing local owner id reused, a throwaway password hash
+generated, `db:local:reset` not run. Six runs of the same query as the memory-only run in the
+"Deep research restored" checkpoint ("What are the main approaches to on-device AI assistants on
+phones in 2026?"), all through the inline stage chain:
+
+1. `2835d2c6` — completed in 31 s through every stage; every grounded search was refused
+   (`AI_QUOTA` in 0.4 s, two attempts each) and recorded as a placeholder, so the report was
+   synthesised with 0 sources. This was before the quota fallback existed.
+2. Probe (throwaway script, key never printed): plain calls succeed; any call carrying the
+   `googleSearch` tool returns 429 on every model, and the plain models report
+   `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, limit 20. Refused grounded attempts
+   still count against `GEMINI_SEARCH_MODEL`'s daily bucket. **The local key is on the Gemini
+   free tier; Google Search grounding needs a billing-enabled Google AI project.**
+3. `152eb635` — failed: `gemini-3.5-flash` (the Gemini-only fallback for every research task)
+   had exhausted its 20/day bucket, synthesis failed twice, report marked `failed` with the
+   provider message. Exercises the terminal-failure path.
+4. `3c7d9efa` — after adding the quota fallback (a dev-server restart was needed: Turbopack did
+   not reload the router for the already-running inline chain),
+   `research_search_grounding_fallback` fired on every search, but the plain path also hit its
+   daily bucket → `failed`.
+5. `0b6a848b` and `513454ca` — with a **temporary, uncommitted** remap of the research models to a
+   sibling model with quota: the first completed (plan/gaps/synthesis fine, searches still
+   placeholders because `research-search`'s preferred Gemini model, not the fallback table, was
+   the exhausted one); in the second, search 0 timed out at 45 s (4096-token answer), which led
+   to the 2048-token cap above; its chain was killed by stopping the server so the stale guard
+   could be observed on it (see below).
+6. `5a9cf55a` — final code plus the temporary remap to `gemini-3.5-flash-lite`: **completed in
+   57 s**, 5 sub-questions, 2 gaps, 2 deepening answers, synthesis, 41 sources (qualcomm.com 5,
+   machinelearning.apple.com 2, security.apple.com 2, developer.android.com 2, ai.meta.com 2,
+   developer.apple.com 2, arxiv.org 2, ai.google.dev 2, arm.com 2, spectrum.ieee.org 2, …) against
+   the memory-only run's 48 (qualcomm.com 8, arxiv.org 5, gartner.com 3, apple.com 3, …). The
+   lists differ, but both are model memory: **grounded sources were not obtained on this key.**
+   The stepper advanced over SSE ("Researching (4/5)…"), and the remap was reverted before the
+   commit (`ai-config.ts` is unchanged in the diff).
+7. Stale guard on the orphaned run `513454ca` (last stage write 06:32:25Z, chain killed): the
+   next signed-in `GET /api/ai/research/513454ca…` after the window, at 06:47:48Z, returned
+   `status: failed`, `progress: null` and "Research timed out before it could finish" — 15
+   minutes after the last write, not after creation.
+
+**Not deployed. Nothing changed in Vercel or Neon.** For Amit, in the Vercel dashboard after the
+merge: (1) Storage → Queues — confirm a `research-runs` topic/consumer appears for the new
+deployment (the `experimentalTriggers` entry in `vercel.json` registers it the same way
+`capture-requests` was registered); create the topic there only if it does not appear; (2) no
+new environment variable is required; (3) for real web grounding, the `GEMINI_API_KEY` used by
+Production must come from a Google AI project with billing enabled, otherwise every search stage
+logs `research_search_grounding_fallback` and answers from model memory, exactly as locally.
+Then one signed-in run on `https://distilai.app/research` and record the outcome here.
+Commit `ffee637`, PR [#51](https://github.com/amitsharmaak/distil/pull/51) opened 2026-09-21
+with the `full-ci` label (auth, queue and tenant boundaries changed).
 
 ### Release: PR #49 to Production — 2026-09-21
 

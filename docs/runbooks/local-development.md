@@ -57,11 +57,16 @@ the Docker volume: `npm run db:local:down && docker volume rm distil-local_disti
 | Database     | Docker `postgres:16` on port 5433            | Neon, pooled runtime URL         |
 | Runtime role | `distil_app`, member of `distil_runtime`     | Neon runtime role                |
 | Capture      | `DISTIL_CAPTURE_DISPATCH=inline`, in-process | Vercel Queue `capture-requests`  |
+| Research     | same switch: stages run in-process, chained  | Vercel Queue `research-runs`     |
 | Auth         | Legacy password login, one owner user        | Hosted Neon Auth                 |
 | Tenant jobs  | Not dispatched (no local consumer)           | Vercel Queue `account-lifecycle` |
 
 Never set `DISTIL_CAPTURE_DISPATCH=inline` on Vercel: serverless request lifetimes end before the
-worker finishes.
+worker finishes. Deep research follows the same switch: locally each stage (plan, one search per
+sub-question, gaps, one deepening question per gap, synthesis) runs in the dev server process
+and schedules the next one; a thrown stage is redelivered after 2 s, at most four times. Google
+Search grounding needs a Gemini key whose project has that quota; without it the search stages
+log `research_search_grounding_fallback` and answer from model memory.
 
 ## Ship a batch
 
