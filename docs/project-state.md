@@ -19,7 +19,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Deep research restored (branch `claude/deep-research-feature-recovery-2d97e1`, 2026-09-21,
-  implemented and locally verified, not merged, not deployed):** Amit asked for the deep
+  implemented and locally verified as `df06c22`, PR
+  [#49](https://github.com/amitsharmaak/distil/pull/49) open, not merged, not deployed):** Amit
+  asked for the deep
   research feature back. It was unlinked from navigation in `509fccc` (#16, UI simplification)
   and deleted as dead routes in `f295124` (#24, P4); the library, prompts, proactive scanner,
   tables and repositories were never removed. This branch restores the eight
@@ -308,7 +310,8 @@ items" with four local items; reader `/feed/<id>` flask button opens the dialog 
 the item title; Settings → Account shows the Research link; unauthenticated `GET /list`,
 `POST /research` and `GET /[id]/stream` return 401. The worktree `.env.local` was rebuilt from
 the example against the existing local database (old file kept as `.env.local.neon-backup`;
-the local owner id reused, a throwaway password hash generated). Not deployed; no PR yet.
+the local owner id reused, a throwaway password hash generated). Commit `df06c22`, PR
+[#49](https://github.com/amitsharmaak/distil/pull/49) opened 2026-09-21. Not deployed.
 
 **Phase brief (not started): real web grounding for research.** `runResearch` calls
 `ai.generateText(..., "research-search")` on the tenant router, which never reaches
