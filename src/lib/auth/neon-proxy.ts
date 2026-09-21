@@ -17,6 +17,7 @@ const PUBLIC_PATHS = new Set([
   "/reset-password",
   "/api/health",
   "/api/queue/capture-requests",
+  "/api/queue/research-runs",
 ]);
 const PUBLIC_AUTH_PATHS = new Set([
   "/api/auth/invitations/request-link",

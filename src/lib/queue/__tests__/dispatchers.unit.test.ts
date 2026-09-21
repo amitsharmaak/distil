@@ -1,18 +1,24 @@
 import {
   createVercelCaptureDispatcher,
+  createVercelResearchDispatcher,
   createVercelTenantJobDispatcher,
   FakeCaptureDispatcher,
   FakeTenantJobDispatcher,
   InlineCaptureDispatcher,
+  InlineResearchDispatcher,
   LocalCaptureDispatcher,
+  type ResearchDispatcher,
   VercelCaptureDispatcher,
+  VercelResearchDispatcher,
   VercelTenantJobDispatcher,
 } from "../dispatchers";
 import { CaptureRetryScheduledError } from "@/lib/capture/errors";
 import {
   createCaptureQueueMessageV2,
+  createResearchRunMessageV1,
   createTenantJobEnvelopeV1,
   type CaptureQueueMessageV2,
+  type ResearchRunMessageV1,
 } from "@/lib/contracts/tenant-jobs";
 
 jest.mock("@vercel/queue", () => ({ send: jest.fn().mockResolvedValue({ messageId: "queue-1" }) }));
@@ -184,5 +190,52 @@ describe("capture dispatchers", () => {
     await expect(
       dispatcher.dispatch(lifecycleMessage, { idempotencyKey: "account-export:one" })
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("research dispatchers", () => {
+  const researchMessage = createResearchRunMessageV1({
+    userId: "10000000-0000-4000-8000-000000000010",
+    reportId: "10000000-0000-4000-8000-000000000013",
+    traceId: "10000000-0000-4000-8000-000000000011",
+    step: "search",
+    index: 0,
+  });
+
+  it("publishes stage messages to the research-runs topic in Singapore", async () => {
+    const sender = jest.fn().mockResolvedValue(undefined);
+    await new VercelResearchDispatcher(sender).dispatch(researchMessage, {
+      idempotencyKey: "research:key",
+    });
+    expect(sender).toHaveBeenCalledWith("research-runs", researchMessage, {
+      idempotencyKey: "research:key",
+      region: "sin1",
+    });
+    const dispatcher = await createVercelResearchDispatcher();
+    expect(dispatcher).toBeInstanceOf(VercelResearchDispatcher);
+  });
+
+  it("runs the inline consumer detached from the dispatch call", async () => {
+    const consume = jest.fn<Promise<void>, [ResearchRunMessageV1]>(async () => undefined);
+    const dispatcher: ResearchDispatcher = new InlineResearchDispatcher(consume);
+    await dispatcher.dispatch(researchMessage, { idempotencyKey: "research:key" });
+    expect(consume).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(consume.mock.calls[0][0]).toEqual(researchMessage);
+    expect(consume.mock.calls[0][0]).not.toBe(researchMessage);
+  });
+
+  it("redelivers a thrown inline stage a bounded number of times, then reports the error", async () => {
+    const failure = new Error("stage failed");
+    const consume = jest.fn<Promise<void>, [ResearchRunMessageV1]>(async () => {
+      throw failure;
+    });
+    const onError = jest.fn();
+    const dispatcher: ResearchDispatcher = new InlineResearchDispatcher(consume, onError, 1, 3);
+    await dispatcher.dispatch(researchMessage, { idempotencyKey: "research:key" });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(consume).toHaveBeenCalledTimes(3);
+    expect(onError).toHaveBeenCalledWith(failure);
   });
 });

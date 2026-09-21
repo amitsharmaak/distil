@@ -3,8 +3,9 @@
  *
  * POST /api/ai/research — Starts an async deep-research task.
  *
- * Research runs in the background using Gemini with Google Search grounding.
- * The response returns immediately with the report record (status: "pending").
+ * Research runs as resumable stages on the `research-runs` queue (inline in
+ * local development). The response returns immediately with the report record
+ * (status: "pending").
  * Poll GET /api/ai/research/[id] or stream GET /api/ai/research/[id]/stream
  * to wait for the result.
  *
@@ -19,12 +20,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { apiLogger } from "@/lib/logger";
-import { startResearch } from "@/lib/ai/research";
+import { publicResearchProgressString, startResearch } from "@/lib/ai/research";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
-
-/** Research continues after the 202 via `after()`, so allow the Hobby ceiling. */
-export const maxDuration = 60;
 
 export const POST = withRequestMetrics(async (req: NextRequest) => {
   try {
@@ -41,7 +39,10 @@ export const POST = withRequestMetrics(async (req: NextRequest) => {
     const reportId = await startResearch(context, repositories, query.trim(), itemId);
     const report = await repositories.research.findReport(reportId);
 
-    return NextResponse.json({ report }, { status: 202 });
+    return NextResponse.json(
+      { report: report && { ...report, progress: publicResearchProgressString(report.progress) } },
+      { status: 202 }
+    );
   } catch (error) {
     const authFailure = tenantRouteFailureResponse(error);
     if (authFailure.status !== 503) return authFailure;

@@ -1,3 +1,4 @@
+import { publicResearchProgressString } from "@/lib/ai/research";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -42,7 +43,7 @@ export async function GET(req: Request, context: RouteContext) {
           return;
         }
 
-        const progressStr = current.progress ?? "";
+        const progressStr = publicResearchProgressString(current.progress) ?? "";
         if (progressStr !== lastProgress) {
           lastProgress = progressStr;
           if (progressStr) {

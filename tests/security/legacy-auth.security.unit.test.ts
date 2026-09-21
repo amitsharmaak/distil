@@ -165,6 +165,7 @@ describe("single-user middleware authentication", () => {
     "/api/auth/session",
     "/api/health",
     "/api/queue/capture-requests",
+    "/api/queue/research-runs",
     "/api/v1/captures",
     "/api/v1/capture-tokens",
   ])("passes %s to its specialized authentication", async (pathname) => {

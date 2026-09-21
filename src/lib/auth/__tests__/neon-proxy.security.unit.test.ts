@@ -351,6 +351,7 @@ describe("composed Neon proxy authorization", () => {
     ["POST", "/api/v1/captures", false],
     ["POST", "/api/items", false],
     ["POST", "/api/queue/capture-requests", false],
+    ["POST", "/api/queue/research-runs", false],
     ["POST", "/api/auth/invitations/request-link", false],
   ] as const)(
     "keeps %s %s on its safe or specialized authentication path",

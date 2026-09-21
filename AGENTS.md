@@ -71,7 +71,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   hashed, revocable capture tokens (`src/lib/auth/capture-tokens.ts`).
 - **Tenancy:** `src/lib/contracts/tenant-context.ts` defines `AuthContext` (`userId`,
   `actorKind`, `actorId`, `sessionId?`, `requestId`) and `SystemContext`. Every repository call,
-  queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`), search, AI context assembly and
+  queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`, `ResearchRunMessageV1`), search,
+  AI context assembly and
   worker must carry the verified user identity. Foreign and missing ids both return 404.
   `docs/authorization-matrix.json` is the machine-readable inventory;
   `docs/tenant-context-contracts.md` and `docs/phase-3-ownership.md` explain the boundary.
@@ -81,7 +82,11 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `queued → processing → ready | rejected | failed`, max 5 attempts. Extraction uses Readability
   with `src/lib/content-sanitizer.ts`; the worker also runs the deterministic knowledge-index
   step (content versions and chunks in `src/lib/knowledge/`). A second topic,
-  `account-lifecycle`, handles export/deletion. Both are registered in `vercel.json`.
+  `account-lifecycle`, handles export/deletion; a third, `research-runs`, runs deep research as
+  resumable stages (`src/app/api/queue/research-runs/route.ts` →
+  `src/lib/queue/research-consumer.ts` → `runResearchStage` in `src/lib/ai/research.ts`, state in
+  `research_reports.progress`). All three are registered in `vercel.json`;
+  `DISTIL_CAPTURE_DISPATCH=inline` runs the capture and research consumers in-process locally.
 - **AI:** `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
   assignment; `router.ts` adds cost accounting, daily/30-day budgets, retries and a circuit
   breaker. Summaries use Gemini with a budget-admitted same-provider fallback model and 15-second

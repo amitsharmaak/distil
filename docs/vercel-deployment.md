@@ -9,6 +9,7 @@ provides PostgreSQL. Hosted connectors and the legacy interval scheduler stay di
 | ------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
 | Next.js application | Vercel `sin1`                                              | `DATABASE_URL` (pooled)                          |
 | Capture worker      | Vercel `sin1`, maximum 60 seconds on Hobby Preview         | Vercel Queue topic `capture-requests`            |
+| Research worker     | Vercel `sin1`, one stage per 60-second invocation          | Vercel Queue topic `research-runs`               |
 | PostgreSQL          | Neon Singapore region, where the selected plan supports it | Pooled URL at runtime; unpooled URL for releases |
 
 The PostgreSQL client uses at most four connections per function instance and sets
@@ -128,6 +129,9 @@ authorization (`AGENTS.md` section 9).
   unauthorized while existing session login remains valid.
 - The queue consumer appears for topic `capture-requests`, has a 60-second Hobby Preview duration, and shows no
   continuously failing deliveries.
+- The queue consumer for topic `research-runs` exists (created in the Vercel dashboard, Storage →
+  Queues, before the first research run); a signed-in deep research run completes through its
+  stages and `research_reports.progress` is cleared on completion.
 - Application, queue, and test logs contain no plaintext capture tokens, database URLs, passwords,
   session secrets, OAuth credentials, or AI keys.
 - Gmail, Slack, publisher synchronization, the local scheduler, and database polling are inactive.

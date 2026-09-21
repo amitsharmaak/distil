@@ -255,7 +255,10 @@ export function createPhase2Wave0AuthorizationMatrix(
         concealCrossTenant: false,
       };
     }
-    if (surface === "POST /api/queue/capture-requests") {
+    if (
+      surface === "POST /api/queue/capture-requests" ||
+      surface === "POST /api/queue/research-runs"
+    ) {
       return {
         id: matrixId(surface),
         surface,

@@ -689,7 +689,7 @@
       "scope": "owner",
       "resources": ["research_reports", "items"],
       "testProfile": "owner",
-      "notes": "Replace process-local fire-and-forget research with a tenant-scoped durable job."
+      "notes": "Creates the report row and publishes the plan stage to the research-runs queue (inline consumer under DISTIL_CAPTURE_DISPATCH=inline)."
     },
     {
       "path": "/api/ai/research/suggestions/:id",
@@ -1197,6 +1197,17 @@
       "scope": "service",
       "resources": ["capture_requests", "items", "ai_summaries", "usage_counters", "audit_log"],
       "testProfile": "service"
+    },
+    {
+      "path": "/api/queue/research-runs",
+      "source": "src/app/api/queue/research-runs/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "vercel_queue_signature_with_strict_research_stage_message",
+      "requiredPrincipal": "queue_service",
+      "scope": "service",
+      "resources": ["research_reports", "items", "usage_counters", "audit_log"],
+      "testProfile": "service",
+      "notes": "One resumable research stage per message; the consumer opens tenant repositories for the envelope userId and resumes from research_reports.progress."
     },
     {
       "path": "/api/queue/account-lifecycle",
@@ -1921,6 +1932,13 @@
       "resources": ["account_exports", "account_deletions", "job_queue", "future_object_store"]
     },
     {
+      "id": "research-runs-queue-callback",
+      "source": "src/app/api/queue/research-runs/route.ts",
+      "currentTenant": "signed queue envelope only",
+      "requiredTenant": "Vercel queue callback plus strict ResearchRunMessageV1; tenant repositories opened for the envelope userId, so a report outside that tenant is not found and the stage is acknowledged without work",
+      "resources": ["research_reports", "items", "usage_counters", "audit_log"]
+    },
+    {
       "id": "capture-worker",
       "source": "src/lib/capture/worker.ts",
       "currentTenant": "absent",
@@ -1937,8 +1955,8 @@
     {
       "id": "deep-research-background",
       "source": "src/lib/ai/research.ts",
-      "currentTenant": "process-local fire-and-forget without owner",
-      "requiredTenant": "durable user-scoped job; each report update checks owner",
+      "currentTenant": "tenant-scoped durable stage on the research-runs queue",
+      "requiredTenant": "durable user-scoped job; each stage reads and updates the report through the envelope tenant's repositories",
       "resources": ["research_reports", "items"]
     },
     {
@@ -2193,8 +2211,8 @@
     {
       "id": "deep-research",
       "source": "src/lib/ai/research.ts",
-      "entryPoints": ["startResearch", "runResearch"],
-      "currentScope": "optional item and report lookup unscoped",
+      "entryPoints": ["startResearch", "runResearchStage"],
+      "currentScope": "tenant-scoped: report, source item and provider accounting through the envelope tenant's repositories; search stages use the tenant search-grounded facade",
       "requiredScope": "tenant-scoped durable job, report updates, source item and provider payload"
     },
     {
@@ -2505,7 +2523,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 91,
+    "expectedApiRouteFileCount": 92,
     "expectedPageFileCount": 20,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

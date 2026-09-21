@@ -1,5 +1,9 @@
 import type { CaptureDispatcher } from "@/lib/contracts/capture";
-import type { CaptureQueueMessageV2, TenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
+import type {
+  CaptureQueueMessageV2,
+  ResearchRunMessageV1,
+  TenantJobEnvelopeV1,
+} from "@/lib/contracts/tenant-jobs";
 import { CaptureRetryScheduledError } from "@/lib/capture/errors";
 
 export const CAPTURE_QUEUE_TOPIC = "capture-requests";
@@ -161,4 +165,81 @@ export class VercelTenantJobDispatcher implements TenantJobDispatcher {
 export async function createVercelTenantJobDispatcher(): Promise<VercelTenantJobDispatcher> {
   const { send } = await import("@vercel/queue");
   return new VercelTenantJobDispatcher(send);
+}
+
+export const RESEARCH_QUEUE_TOPIC = "research-runs";
+
+export interface ResearchDispatcher {
+  dispatch(message: ResearchRunMessageV1, options: { idempotencyKey: string }): Promise<void>;
+}
+
+/** Test-only in-memory dispatcher for research stage messages. */
+export class FakeResearchDispatcher implements ResearchDispatcher {
+  readonly messages: Array<{ message: ResearchRunMessageV1; idempotencyKey: string }> = [];
+  failure?: Error;
+
+  async dispatch(
+    message: ResearchRunMessageV1,
+    options: { idempotencyKey: string }
+  ): Promise<void> {
+    if (this.failure) throw this.failure;
+    if (this.messages.some((queued) => queued.idempotencyKey === options.idempotencyKey)) return;
+    this.messages.push({
+      message: structuredClone(message),
+      idempotencyKey: options.idempotencyKey,
+    });
+  }
+}
+
+/**
+ * Local-development dispatcher for research stages: runs the consumer in the
+ * same process, detached from the request, so `next dev` needs no queue
+ * credentials. A thrown stage is redelivered after a delay, as the hosted
+ * queue would do; redeliveries are bounded here because the stage runner
+ * persists its own attempt count only when the database is reachable.
+ */
+export class InlineResearchDispatcher implements ResearchDispatcher {
+  constructor(
+    private readonly consume: (message: ResearchRunMessageV1) => Promise<void>,
+    private readonly onError: (error: unknown) => void = () => undefined,
+    private readonly retryDelayMs = 2_000,
+    private readonly maxDeliveries = 4
+  ) {}
+
+  async dispatch(message: ResearchRunMessageV1): Promise<void> {
+    const copy = structuredClone(message);
+    setTimeout(() => this.run(copy, 1), 0);
+  }
+
+  private run(message: ResearchRunMessageV1, delivery: number): void {
+    this.consume(message).catch((error: unknown) => {
+      if (delivery < this.maxDeliveries) {
+        setTimeout(() => this.run(message, delivery + 1), this.retryDelayMs);
+        return;
+      }
+      this.onError(error);
+    });
+  }
+}
+
+export class VercelResearchDispatcher implements ResearchDispatcher {
+  constructor(
+    private readonly sender: VercelQueueSender,
+    private readonly region = "sin1"
+  ) {}
+
+  async dispatch(
+    message: ResearchRunMessageV1,
+    options: { idempotencyKey: string }
+  ): Promise<void> {
+    await this.sender(RESEARCH_QUEUE_TOPIC, message, {
+      idempotencyKey: options.idempotencyKey,
+      region: this.region,
+    });
+  }
+}
+
+export async function createVercelResearchDispatcher(): Promise<VercelResearchDispatcher> {
+  const { send } = await import("@vercel/queue");
+  return new VercelResearchDispatcher(send);
 }
