@@ -89,8 +89,10 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` and `/feed/[id]` reader,
   `/search`, `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,
-  `/onboarding`, `/invite`, `/login`. Older `/topics`, `/sources`, `/research` and the agent
-  routes remain but are secondary. Phase 2 surfaces sit behind `FEATURE_*` flags.
+  `/onboarding`, `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop
+  sidebar link, Settings → Library link on mobile, and the flask button in the reader action bar;
+  routes under `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were
+  deleted in P4. Phase 2 surfaces sit behind `FEATURE_*` flags.
 - **Capture clients:** `browser-extension/` (Chrome MV3, posts to `/api/v1/captures`, offline
   replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`. Gmail, Slack and the
   authenticated-publisher framework still exist in code but are disabled in hosted deployments

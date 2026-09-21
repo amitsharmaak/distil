@@ -3,10 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, ExternalLink, ThumbsUp, ThumbsDown, Check } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  FlaskConical,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DeepResearch } from "@/components/feed/deep-research";
 
 export interface DetailActionBarProps {
   itemId: string;
@@ -22,6 +31,7 @@ export interface DetailActionBarProps {
 export function DetailActionBar({
   itemId,
   url,
+  title,
   isRead,
   prevId,
   nextId,
@@ -148,6 +158,12 @@ export function DetailActionBar({
               </TooltipTrigger>
               <TooltipContent side="top">View original</TooltipContent>
             </Tooltip>
+
+            <DeepResearch itemId={itemId} defaultQuery={title}>
+              <Button variant="ghost" size="icon" className={iconBtn} aria-label="Deep research">
+                <FlaskConical className="h-4 w-4" />
+              </Button>
+            </DeepResearch>
 
             <Tooltip>
               <TooltipTrigger asChild>
