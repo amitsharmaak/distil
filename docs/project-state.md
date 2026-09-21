@@ -18,10 +18,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Deep research restored (branch `claude/deep-research-feature-recovery-2d97e1`, 2026-09-21,
-  implemented and locally verified as `df06c22`, PR
-  [#49](https://github.com/amitsharmaak/distil/pull/49) open, not merged, not deployed):** Amit
-  asked for the deep
+- **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
+  merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
+  Production — 2026-09-21" below):** Amit asked for the deep
   research feature back. It was unlinked from navigation in `509fccc` (#16, UI simplification)
   and deleted as dead routes in `f295124` (#24, P4); the library, prompts, proactive scanner,
   tables and repositories were never removed. This branch restores the eight
@@ -43,8 +42,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `src/app/api/queue/capture-requests/route.ts`; this is the durable tenant-scoped job the
   authorization-matrix note asks for); **Step 2** tenant-scoped `generateTextWithSearch` for the
   search steps (phase brief under the checkpoint). Stopgap instead of Step 1: Vercel Pro raises
-  the cap to 300 s, which fits most runs but keeps one long function with no retry. PR #49 is
-  safe to merge before either step: routes are tenant-scoped and a killed run fails cleanly.
+  the cap to 300 s, which fits most runs but keeps one long function with no retry. Steps 1
+  and 2 are the next task (prompt handed to Amit on 2026-09-21); neither is started.
 - **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
   [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
   `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
@@ -258,6 +257,21 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Release: PR #49 to Production — 2026-09-21
+
+Amit authorized the merge in the session that restored the feature. Full gate on the PR (all
+jobs green: lint/typecheck/deterministic tests, PostgreSQL integration, web and mobile E2E,
+extension E2E, production build, quality-gate) at `dd9d2cd`, then `gh pr merge --squash` →
+`main` at `dc875da`. Vercel auto-deployed it (release pin `unpinned`; deployment
+`5rkYh9JnqH6M4gpfduez9cAPHsi6`, status `success` at 2026-09-21T05:55Z). Checked from the
+laptop right after: `https://distilai.app/api/health` 200, `/research` 307 → `/sign-in` for an
+anonymous visitor, `GET /api/ai/research/list` 401. No signed-in run was attempted on
+Production: the handoff bullet records that a run is expected to be killed by the Hobby 60 s
+cap and marked failed by the stale guard; Steps 1 and 2 are the next task. Remote branch
+deleted; the worktree `.claude/worktrees/deep-research-feature-recovery-2d97e1` still exists
+locally (now on this docs branch) and should be removed after this record merges. No Neon,
+environment-variable or alias change; the legacy alias was not re-pointed.
 
 ### Deep research restored — 2026-09-21
 
