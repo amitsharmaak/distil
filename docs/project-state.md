@@ -18,7 +18,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Deep research on Vercel: Steps 1 and 2 implemented, locally verified, not deployed (branch
+- **Deep research on Vercel: Steps 1 and 2 implemented, locally verified, not deployed (PR
+  [#51](https://github.com/amitsharmaak/distil/pull/51), label `full-ci`, branch
   `claude/deep-research-vercel-ea8b82`, worktree of the same name, from `origin/main` `5483c7c`;
   checkpoint "Deep research on a queue worker and the search facade — 2026-09-21" below):**
   deep research (restored in PR [#49](https://github.com/amitsharmaak/distil/pull/49), `dc875da`,
@@ -416,6 +417,8 @@ new environment variable is required; (3) for real web grounding, the `GEMINI_AP
 Production must come from a Google AI project with billing enabled, otherwise every search stage
 logs `research_search_grounding_fallback` and answers from model memory, exactly as locally.
 Then one signed-in run on `https://distilai.app/research` and record the outcome here.
+Commit `ffee637`, PR [#51](https://github.com/amitsharmaak/distil/pull/51) opened 2026-09-21
+with the `full-ci` label (auth, queue and tenant boundaries changed).
 
 ### Release: PR #49 to Production — 2026-09-21
 
