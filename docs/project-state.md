@@ -47,8 +47,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   belong to a Google AI project with billing enabled (Google Search grounding is not on the free
   tier); otherwise research keeps working from model memory and logs
   `research_search_grounding_fallback`. (3) One signed-in run on Production, then record the
-  outcome. Steps (1) and (3) are still open: no dashboard check and no signed-in run has been
-  made since the deploy.
+  outcome. **Both done on 2026-09-21 through Amit's Chrome (checkpoint "Production verification
+  and the retry directive — 2026-09-21"):** the `research-runs` consumer appeared under
+  Observability → Queues on the first message, and a signed-in run completed end to end in 13
+  minutes with 43 sources; the Production Gemini key is also free-tier (every search logged the
+  grounding fallback), and each transient Gemini 503 cost about five minutes because the platform
+  redelivers a thrown callback on its own backoff. Follow-up branch `claude/research-queue-retry`
+  (this record plus PR #52's release record) asks the queue for a 60 s redelivery explicitly.
+  Open decision for Amit: a billing-enabled Google AI project for real web grounding.
 - **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
   merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
   Production — 2026-09-21" below):** Amit asked for the deep
@@ -289,6 +295,37 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Production verification and the retry directive — 2026-09-21
+
+Amit asked for the two open checks to be done through the browser extension (Claude in Chrome,
+signed in as Amit). Vercel: the project's Storage page lists only the Blob store and the Neon
+integration; queues live under Observability → Queues (Production, last 12 hours). Before the run
+only `capture-requests` was listed; after the first research message `research-runs` appeared
+with no manual creation. Final counters for the run: queued 9, received 11, deleted 9,
+redeliveries 2. A 2FA-setup interstitial appeared once on the dashboard and was not acted on.
+
+Signed-in run on `https://distilai.app/research` (report `d92db1bc…`, same query as the local
+runs): started 14:18:36 IST, completed 14:31:41 IST, 4 sub-questions, deepening, synthesis, 43
+sources, stepper advancing over SSE and polling. Function logs (`/api/queue/research-runs`):
+
+- 14:18:36 plan callback → Gemini `503 high demand` on `gemini-3.5-flash` (Production is
+  Gemini-only) → `ResearchStageRetryError` → callback 500. **Redelivered at 14:23:41**, five
+  minutes later: without a `retry` directive the `@vercel/queue` callback leaves the message to
+  the platform's own backoff, not the 60 s `retryAfterSeconds` in `vercel.json`.
+- 14:23:41 plan completed; 14:23:54 search 0 completed (13 s); 14:24:09 search 1 → 503 → 500;
+  redelivered around 14:29; the remaining stages ran back to back and synthesis finished at
+  14:31:41. Two 503s therefore cost about ten of the thirteen minutes.
+- Every search and deepening callback logged `research_search_grounding_fallback` (level 40):
+  the Production `GEMINI_API_KEY` has no Google Search grounding quota either, so the sources
+  are model memory. The queue SDK also prints the thrown error, including the provider URL, to
+  the function log as "Queue callback error"; no secret is in it.
+
+Follow-up in the same branch (`claude/research-queue-retry`, from `origin/main` `60a9438`):
+`src/app/api/queue/research-runs/route.ts` passes `retry: researchQueueRetry` to
+`handleCallback`, returning `{ afterSeconds: 60 }` for `ResearchStageRetryError` (the SDK then
+reschedules through the queue's change-visibility call) and `undefined` for anything else; the
+contract test covers the option and both branches. Not deployed until this branch merges.
 
 ### Release: PR #51 to Production — 2026-09-21
 
