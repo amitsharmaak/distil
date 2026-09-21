@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-19
+## Current handoff — 2026-09-21
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -18,6 +18,21 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Deep research restored (branch `claude/deep-research-feature-recovery-2d97e1`, 2026-09-21,
+  implemented and locally verified, not merged, not deployed):** Amit asked for the deep
+  research feature back. It was unlinked from navigation in `509fccc` (#16, UI simplification)
+  and deleted as dead routes in `f295124` (#24, P4); the library, prompts, proactive scanner,
+  tables and repositories were never removed. This branch restores the eight
+  `/api/ai/research/**` routes, `/research` and `/research/[id]`, the reader's Deep Research
+  dialog and the desktop sidebar link, and fixes the latent bugs found on the way (see the
+  checkpoint "Deep research restored — 2026-09-21"). Decisions taken with Amit: restore plus bug
+  fixes (real web grounding is the separate phase brief below the checkpoint); on mobile the
+  four-tab bar stays and Research is reached from Settings → Account → Library. Next steps: open
+  the PR to `main` with the `full-ci` label (auth surfaces changed), merge after the gates; Amit
+  decides the release. Known limit on Vercel: a run is 6–10 model calls and took 77 s locally,
+  so the Hobby 60 s `maxDuration` can kill the `after()` task; the stale guard then marks the
+  report failed after 15 min. The durable tenant-scoped job in the authorization-matrix note is
+  the fix and is not started.
 - **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
   [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
   `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
@@ -231,6 +246,82 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research restored — 2026-09-21
+
+**What changed and why.** Amit could not find deep research in the app. `509fccc` (#16,
+2026-09-16) removed the `/research` nav entries and `f295124` (#24, 2026-09-17) deleted the
+unreachable pages and routes as dead code; `src/lib/ai/research.ts`, `src/lib/prompts/research.ts`,
+`src/lib/agent/proactive-research.ts`, the `research_reports` / `research_suggestions` tables,
+`ResearchRepository` and the `research-*` routing tasks survived. Branch
+`claude/deep-research-feature-recovery-2d97e1` (worktree of the same name) restores from
+`f295124^`:
+
+- `src/app/api/ai/research/{route,[id]/route,[id]/stream/route,list/route,proactive/route,suggestions/route,suggestions/[id]/route,suggestions/[id]/start/route}.ts`
+  — verbatim plus `maxDuration = 60` and `withRequestMetrics` on the three POST routes.
+- `src/app/research/page.tsx`, `src/app/research/[id]/page.tsx`,
+  `src/components/feed/deep-research.tsx`, and the report-page component test.
+- Desktop sidebar link (`FlaskConical`, after Ask); Settings → Account → Library link
+  (mobile path; the four-tab bar is unchanged); flask button in
+  `src/components/feed/detail-action-bar-content.tsx` after "View original".
+- Fixtures and docs: 8 route and 2 page entries back in `docs/authorization-matrix.json`
+  (`expectedApiRouteFileCount` 83 → 91, `expectedPageFileCount` 18 → 20),
+  `tests/fixtures/phase3/phase2-wave0-route-surfaces.json` (114 → 122),
+  `tests/fixtures/phase3/neon-csrf-boundary.json` (11 → 15 centrally protected surfaces,
+  digest unchanged), harness counts, sidebar test (7 links / 5 with flags off), the
+  tenant-boundary 404 case and the four research mutations in the Neon proxy CSRF test;
+  `AGENTS.md` §3 surface list.
+
+**Latent bugs fixed rather than restored.**
+
+1. Pages used `item_id` / `created_at` / `completed_at`; the repository returns camelCase. The
+   old page showed "Invalid Date" and never rendered the item backlink. Now camelCase.
+2. `startResearch` ran `void runResearch(...)`; on Vercel the invocation ends at the 202 and the
+   report stays `running` forever. It now schedules through `after()` from `next/server` with
+   the same outside-request-scope fallback as `src/lib/ai/after-response.ts`. A stale guard
+   (`failStaleReport`, 15 min) in `GET /api/ai/research/[id]` and `/list` marks lost runs
+   failed so the UI never spins forever (`src/lib/ai/__tests__/research-stale.unit.test.ts`).
+3. The SSE stream polled with no deadline; it now closes at 50 s with a `timeout` event and
+   the page falls back to polling every 3 s on `timeout` or `error` (two new page tests).
+4. Found live: research calls used the provider default 15 s timeout, sized for summaries; the
+   first local run died with "Request aborted" mid-synthesis. `RESEARCH_TIMEOUTS_MS` in
+   `research.ts` now passes 30/45/30/60 s for plan/search/gaps/synthesize (same convention as
+   `summarize-complex` = 40 s).
+5. Report page loads markdown through the lazy `@/components/markdown` wrapper instead of
+   importing `react-markdown` directly.
+
+**Locally verified (this worktree, 2026-09-21).** `npm run lint` clean (five pre-existing
+warnings in untouched files), `npm run typecheck` clean, `npm test` 1569 passed / 1 failed —
+the failure is `tests/harness` "require(jsdom) succeeds with require(esm) disabled", caused by
+`node_modules` holding jsdom 30.0.1 against the lockfile's 22.1.0 (`npm ls jsdom` reports it
+invalid); it does not touch this change and a clean `npm ci` is expected to clear it.
+`npm run build` succeeded; `npm run perf:bundle` against the P0 baseline: `/research`
+163.6 kB gzip, `/research/[id]` 164.7 kB (was 223.7 kB), `/feed/[id]` 154.4 kB (target
+< 170 kB), shared 132.8 kB unchanged. Browser (local Docker Postgres, legacy password login,
+`GEMINI_API_KEY` only): sidebar → Research → list page; Deep Research dialog → `/research/<id>`
+with a real "Started" time; stepper advanced 2/4 over SSE; the stream closed at its 50 s
+deadline and polling took over; run 1 failed on the 15 s abort (fixed, item 4), run 2 failed
+on a Gemini `503 high demand` after the router's retry (upstream), run 3 completed in 77 s with
+an Executive Summary, findings, "Copy as Markdown", "Research Further" and 48 sources; list
+page shows all three with dates and statuses; "Scan for topics" answers "Not enough recent
+items" with four local items; reader `/feed/<id>` flask button opens the dialog prefilled with
+the item title; Settings → Account shows the Research link; unauthenticated `GET /list`,
+`POST /research` and `GET /[id]/stream` return 401. The worktree `.env.local` was rebuilt from
+the example against the existing local database (old file kept as `.env.local.neon-backup`;
+the local owner id reused, a throwaway password hash generated). Not deployed; no PR yet.
+
+**Phase brief (not started): real web grounding for research.** `runResearch` calls
+`ai.generateText(..., "research-search")` on the tenant router, which never reaches
+`GeminiProvider.generateTextWithSearch` (`src/lib/ai/providers.ts`); only the legacy
+non-tenant `generateTextWithSearch` in `router.ts` does, so "search" answers come from model
+memory with URLs the model recalls. Scope: add `generateTextWithSearch(prompt, options)` to
+`createTenantAIRouter` backed by a `generateTenantTextWithSearch` that mirrors
+`generateTenantText`'s budget check and accounting but calls the Gemini search-grounded path
+(`GEMINI_SEARCH_MODEL`), falling back to `generateTenantText(..., "research-search")` when
+Gemini is absent; use it for round-1 and deepening questions; unit-test the facade and the
+fallback; re-run one research locally and compare source lists. Out of scope: the durable
+tenant-scoped research job (separate brief; needed before research is reliable on Vercel
+Hobby's 60 s limit).
 
 ### YouTube on Vercel: details fallback — 2026-09-20
 

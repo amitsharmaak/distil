@@ -41,11 +41,12 @@ describe("Sidebar", () => {
       "/logo.svg"
     );
     expect(screen.getByText("distil")).toBeInTheDocument();
-    expect(screen.getAllByRole("link")).toHaveLength(6);
+    expect(screen.getAllByRole("link")).toHaveLength(7);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
     expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
     expect(screen.getByRole("link", { name: "Ask" })).toHaveAttribute("href", "/ask");
+    expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("href", "/research");
     expect(screen.getByRole("link", { name: "Save" })).toHaveAttribute("href", "/save");
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "false");
@@ -54,7 +55,7 @@ describe("Sidebar", () => {
   it("keeps legacy and library surfaces out of primary navigation", () => {
     render(<Sidebar />);
 
-    for (const name of ["Digests", "Collections", "Archive", "Topics", "Sources", "Research"]) {
+    for (const name of ["Digests", "Collections", "Archive", "Topics", "Sources"]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
     }
   });
@@ -80,7 +81,7 @@ describe("Sidebar", () => {
 
     expect(screen.queryByRole("link", { name: "Ask" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link")).toHaveLength(4);
+    expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
   });
 

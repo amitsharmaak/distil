@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-17",
+  "updatedAt": "2026-09-21",
   "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
   "status": "wave-3-integration-in-progress",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
@@ -472,28 +472,82 @@
     }
   ],
   "repositoryFamilies": [
-    { "name": "ItemRepository", "resources": ["items"] },
-    { "name": "ItemNoteRepository", "resources": ["item_notes", "items"] },
-    { "name": "AnnotationRepository", "resources": ["annotations", "items"] },
-    { "name": "CollectionRepository", "resources": ["collections", "collection_items", "items"] },
-    { "name": "ItemEventRepository", "resources": ["item_events", "items"] },
-    { "name": "DigestRepository", "resources": ["digest_runs", "digest_items", "items"] },
-    { "name": "CaptureRepository", "resources": ["capture_requests"] },
-    { "name": "CaptureTokenRepository", "resources": ["capture_tokens"] },
-    { "name": "RateLimitRepository", "resources": ["rate_limit_windows"] },
-    { "name": "OAuthTokenRepository", "resources": ["oauth_tokens"] },
-    { "name": "SummaryRepository", "resources": ["ai_summaries", "items"] },
-    { "name": "FeedbackRepository", "resources": ["feedback", "items"] },
+    {
+      "name": "ItemRepository",
+      "resources": ["items"]
+    },
+    {
+      "name": "ItemNoteRepository",
+      "resources": ["item_notes", "items"]
+    },
+    {
+      "name": "AnnotationRepository",
+      "resources": ["annotations", "items"]
+    },
+    {
+      "name": "CollectionRepository",
+      "resources": ["collections", "collection_items", "items"]
+    },
+    {
+      "name": "ItemEventRepository",
+      "resources": ["item_events", "items"]
+    },
+    {
+      "name": "DigestRepository",
+      "resources": ["digest_runs", "digest_items", "items"]
+    },
+    {
+      "name": "CaptureRepository",
+      "resources": ["capture_requests"]
+    },
+    {
+      "name": "CaptureTokenRepository",
+      "resources": ["capture_tokens"]
+    },
+    {
+      "name": "RateLimitRepository",
+      "resources": ["rate_limit_windows"]
+    },
+    {
+      "name": "OAuthTokenRepository",
+      "resources": ["oauth_tokens"]
+    },
+    {
+      "name": "SummaryRepository",
+      "resources": ["ai_summaries", "items"]
+    },
+    {
+      "name": "FeedbackRepository",
+      "resources": ["feedback", "items"]
+    },
     {
       "name": "ResearchRepository",
       "resources": ["research_reports", "research_suggestions", "items"]
     },
-    { "name": "SettingsRepository", "resources": ["user_settings"] },
-    { "name": "NotificationRepository", "resources": ["notifications", "items"] },
-    { "name": "EmbeddingRepository", "resources": ["item_embeddings", "items"] },
-    { "name": "RawContentRepository", "resources": ["raw_content", "items"] },
-    { "name": "ContentVersionRepository", "resources": ["item_content_versions", "items"] },
-    { "name": "ContentChunkRepository", "resources": ["content_chunks", "item_content_versions"] },
+    {
+      "name": "SettingsRepository",
+      "resources": ["user_settings"]
+    },
+    {
+      "name": "NotificationRepository",
+      "resources": ["notifications", "items"]
+    },
+    {
+      "name": "EmbeddingRepository",
+      "resources": ["item_embeddings", "items"]
+    },
+    {
+      "name": "RawContentRepository",
+      "resources": ["raw_content", "items"]
+    },
+    {
+      "name": "ContentVersionRepository",
+      "resources": ["item_content_versions", "items"]
+    },
+    {
+      "name": "ContentChunkRepository",
+      "resources": ["content_chunks", "item_content_versions"]
+    },
     {
       "name": "IntelligenceArtifactRepository",
       "resources": ["intelligence_artifacts", "item_content_versions"],
@@ -504,9 +558,18 @@
       "name": "ClaimRepository",
       "resources": ["intelligence_claims", "claim_evidence", "content_chunks"]
     },
-    { "name": "KnowledgeBackfillRepository", "resources": ["knowledge_backfill_checkpoints"] },
-    { "name": "PublisherQueueRepository", "resources": ["publisher_queue"] },
-    { "name": "JobQueueRepository", "resources": ["job_queue"] },
+    {
+      "name": "KnowledgeBackfillRepository",
+      "resources": ["knowledge_backfill_checkpoints"]
+    },
+    {
+      "name": "PublisherQueueRepository",
+      "resources": ["publisher_queue"]
+    },
+    {
+      "name": "JobQueueRepository",
+      "resources": ["job_queue"]
+    },
     {
       "name": "AgentRepository",
       "resources": [
@@ -574,6 +637,88 @@
       "requiredPrincipal": "user_session",
       "scope": "owner",
       "resources": ["items", "feedback", "user_settings"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/:id",
+      "source": "src/app/api/ai/research/[id]/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/:id/stream",
+      "source": "src/app/api/ai/research/[id]/stream/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner",
+      "notes": "Every poll must retain the original TenantContext and stop on session revocation."
+    },
+    {
+      "path": "/api/ai/research/list",
+      "source": "src/app/api/ai/research/list/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/proactive",
+      "source": "src/app/api/ai/research/proactive/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "research_reports", "research_suggestions", "notifications"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research",
+      "source": "src/app/api/ai/research/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_reports", "items"],
+      "testProfile": "owner",
+      "notes": "Replace process-local fire-and-forget research with a tenant-scoped durable job."
+    },
+    {
+      "path": "/api/ai/research/suggestions/:id",
+      "source": "src/app/api/ai/research/suggestions/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/suggestions/:id/start",
+      "source": "src/app/api/ai/research/suggestions/[id]/start/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions", "research_reports", "items"],
+      "testProfile": "owner"
+    },
+    {
+      "path": "/api/ai/research/suggestions",
+      "source": "src/app/api/ai/research/suggestions/route.ts",
+      "methods": ["GET"],
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["research_suggestions"],
       "testProfile": "owner"
     },
     {
@@ -1621,6 +1766,22 @@
       "testProfile": "public"
     },
     {
+      "path": "/research",
+      "source": "src/app/research/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/ai/research and suggestions routes",
+      "testProfile": "owner"
+    },
+    {
+      "path": "/research/:id",
+      "source": "src/app/research/[id]/page.tsx",
+      "currentAuth": "proxy_session",
+      "requiredPrincipal": "user_session",
+      "dataPath": "/api/ai/research/:id and stream",
+      "testProfile": "owner"
+    },
+    {
       "path": "/reset-password",
       "source": "src/app/reset-password/page.tsx",
       "currentAuth": "public-password-recovery",
@@ -2344,8 +2505,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 83,
-    "expectedPageFileCount": 18,
+    "expectedApiRouteFileCount": 91,
+    "expectedPageFileCount": 20,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

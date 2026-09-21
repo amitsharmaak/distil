@@ -19,14 +19,14 @@ describe("Phase 3 durable authorization inventory", () => {
     const inventory = loadPhase3AuthorizationInventory(matrixPath);
     expect(inventory.baselineCommit).toBe("428a0b023e2295b59fe864efeb2b26047b0ed6fa");
     expect(inventory.tables).toHaveLength(49);
-    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 83);
-    expect(inventory.pageLoaders).toHaveLength(18);
+    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 91);
+    expect(inventory.pageLoaders).toHaveLength(20);
     expect(() => assertPhase3AuthorizationInventory(inventory)).not.toThrow();
   });
 
   it("turns every reviewed owner mutation into generated CSRF coverage", () => {
     const surfaces = reviewedOwnerMutationSurfaces(loadPhase3AuthorizationInventory(matrixPath));
-    expect(surfaces).toHaveLength(49);
+    expect(surfaces).toHaveLength(53);
     expect(surfaces).toEqual(
       expect.arrayContaining([
         "DELETE /api/auth/devices/:id",
@@ -44,7 +44,7 @@ describe("Phase 3 durable authorization inventory", () => {
     );
     const boundary = loadNeonCsrfBoundaryReview(csrfBoundaryPath);
     expect(exemptions).toHaveLength(7);
-    expect(boundary.centrallyProtectedSurfaces).toHaveLength(11);
+    expect(boundary.centrallyProtectedSurfaces).toHaveLength(15);
     expect(neonCsrfBoundaryIssues(boundary, inventory)).toEqual([]);
     expect(mutationOriginProtectionIssues(inventory, exemptions, boundary)).toEqual([]);
   });

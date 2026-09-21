@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/search", label: "Search", icon: Search },
   { href: "/ask", label: "Ask", icon: Bot },
+  { href: "/research", label: "Research", icon: FlaskConical },
   { href: "/save", label: "Save", icon: BookmarkPlus },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
