@@ -408,6 +408,10 @@ phones in 2026?"), all through the inline stage chain:
    lists differ, but both are model memory: **grounded sources were not obtained on this key.**
    The stepper advanced over SSE ("Researching (4/5)…"), and the remap was reverted before the
    commit (`ai-config.ts` is unchanged in the diff).
+7. Stale guard on the orphaned run `513454ca` (last stage write 06:32:25Z, chain killed): the
+   next signed-in `GET /api/ai/research/513454ca…` after the window, at 06:47:48Z, returned
+   `status: failed`, `progress: null` and "Research timed out before it could finish" — 15
+   minutes after the last write, not after creation.
 
 **Not deployed. Nothing changed in Vercel or Neon.** For Amit, in the Vercel dashboard after the
 merge: (1) Storage → Queues — confirm a `research-runs` topic/consumer appears for the new
