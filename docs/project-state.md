@@ -52,9 +52,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   Observability → Queues on the first message, and a signed-in run completed end to end in 13
   minutes with 43 sources; the Production Gemini key is also free-tier (every search logged the
   grounding fallback), and each transient Gemini 503 cost about five minutes because the platform
-  redelivers a thrown callback on its own backoff. Follow-up branch `claude/research-queue-retry`
-  (this record plus PR #52's release record) asks the queue for a 60 s redelivery explicitly.
-  Open decision for Amit: a billing-enabled Google AI project for real web grounding.
+  redelivers a thrown callback on its own backoff. The follow-up that asks the queue for a 60 s
+  redelivery explicitly is merged as PR [#53](https://github.com/amitsharmaak/distil/pull/53)
+  (`ef579e6`, live on Production since 2026-09-22; checkpoint "Release: PR #53 to Production —
+  2026-09-22"). Open decision for Amit: a billing-enabled Google AI project for real web
+  grounding. No further step is pending on deep research.
 - **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
   merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
   Production — 2026-09-21" below):** Amit asked for the deep
@@ -295,6 +297,23 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Release: PR #53 to Production — 2026-09-22
+
+Amit authorized waiting for the full gate and merging in the session that verified Production.
+Full gate on PR [#53](https://github.com/amitsharmaak/distil/pull/53) green on every job
+(lint/typecheck/deterministic tests, PostgreSQL integration, web and mobile E2E, extension E2E,
+production build, quality-gate, non-blocking coverage), then `gh pr merge --squash` → `main` at
+`ef579e6`. Vercel auto-deployed it (release pin `unpinned`; GitHub deployment `6585060244`,
+status `success`). Checked anonymously right after (06:51Z): `/api/health` 200, `/research`
+307, `GET /api/ai/research/list` 401, anonymous `POST /api/queue/research-runs` 404. The
+60 s redelivery directive has not yet been exercised by a real Gemini 503 on Production; the
+next research run that hits one will show the second callback about a minute later instead of
+five. Cleanup done: PR #52 closed as superseded and its remote branch deleted; local branches
+`claude/research-queue-retry`, `claude/deep-research-release-record-51` and the stale
+`claude/deep-research-release-record` deleted. The worktree
+`.claude/worktrees/deep-research-vercel-ea8b82` still exists (on this docs branch) and should be
+removed after this record merges. No Neon, environment-variable or alias change.
 
 ### Production verification and the retry directive — 2026-09-21
 
