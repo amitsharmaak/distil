@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-21
+## Current handoff — 2026-09-22
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -18,6 +18,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Model selection: Gemini default, Anthropic optional (branch
+  `claude/model-selection-providers-4ac002`, 2026-09-22; checkpoint "Gemini-default model
+  selection — 2026-09-22"):** every task in `src/lib/ai/ai-config.ts` now prefers Gemini except
+  `summarize-complex` and `research-synthesize`, which prefer Claude Sonnet and fall back to
+  Gemini when `ANTHROPIC_API_KEY` is absent. OpenAI is assigned to nothing. Next steps for Amit:
+  review and merge the branch; before the release, run `npm run audit:ai-models` with the
+  Production keys (or confirm `claude-sonnet-4-6` is enabled on the Production Anthropic
+  project). Optionally remove `OPENAI_API_KEY` from Vercel once the release is live; nothing
+  reads it any more except an OpenAI-only fallback that no longer triggers.
 - **Deep research on Vercel: Steps 1 and 2 merged and live (PR
   [#51](https://github.com/amitsharmaak/distil/pull/51), squash merged as `60a9438` on
   2026-09-21 after the full gate; Production deployed it before 08:43Z — see "Release: PR #51 to
@@ -297,6 +306,38 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Gemini-default model selection — 2026-09-22
+
+Amit asked how model selection was set up and for the minimum-provider recommendation; he
+chose Gemini as the default with Anthropic kept optional. Branch
+`claude/model-selection-providers-4ac002`; implementation complete and locally verified, not
+released.
+
+- **Assignments (`src/lib/ai/ai-config.ts`):** `summarize`, `knowledge-answer`, `prioritize`,
+  `preference-analysis`, `auto-tag` → `gemini-3.5-flash-lite`; `research-plan`, `research-gaps`
+  → `gemini-3.5-flash`; `research-search` → `gemini-3-flash-preview` (grounding); the two
+  long-form tasks `summarize-complex` and `research-synthesize` (the latter also serves RAG chat
+  answers) → `claude-sonnet-4-6` with the existing per-provider Gemini fallback when the key is
+  absent. OpenAI's provider and fallback table remain but no task is assigned to it.
+- **Removed:** the `dedup-check` task (declared, never called; dedup is URL normalisation plus
+  embedding cosine similarity) and stale cost rows for the retired `gemini-2.5-*`,
+  `gemini-3.1-flash-lite-preview`, `claude-sonnet-4-20250514` and `claude-haiku-3-5`.
+- **New guardrails:** `GEMINI_SUMMARY_FALLBACK_MODEL` replaces the hardcoded retry id in
+  `router.ts`; `listConfiguredModels()` enumerates every routable id; `scripts/check-ai-models.ts`
+  (`npm run audit:ai-models`, read-only ListModels per provider) verifies they are callable;
+  `ai-config.unit.test.ts` pins the provider policy, the Gemini fallback coverage and that every
+  id is priced.
+- **Side fixes:** the knowledge intelligence runtime now reports the model the router actually
+  called (`generateJSONWithMetadata`) instead of re-resolving it; embeddings prefer Gemini over
+  OpenAI, matching the provider policy (the table is not populated by the live capture path, so
+  no mixed-dimension rows exist).
+- **Verification:** `tsc --noEmit`, `eslint` (five pre-existing warnings, no errors), 187 unit
+  tests across `src/lib/ai` and `src/lib/knowledge` pass. `npm run audit:ai-models` with the
+  local `.env.local` confirmed all four Gemini ids resolve; the local Anthropic and OpenAI keys
+  are empty, so `claude-sonnet-4-6` and `claude-haiku-4-5` were not checked live.
+- **Docs:** `AGENTS.md` AI bullet, `docs/runbooks/local-development.md` step 4 and the
+  `docs/agent-architecture.md` gaps table updated.
 
 ### Release: PR #53 to Production — 2026-09-22
 

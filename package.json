@@ -34,6 +34,7 @@
     "audit:phase3-dependencies": "node scripts/check-phase3-dependencies.mjs",
     "audit:phase3-security": "tsx scripts/check-phase3-security.ts",
     "audit:phase3-activation": "tsx scripts/check-phase3-auth-activation.ts",
+    "audit:ai-models": "tsx --env-file=.env.local scripts/check-ai-models.ts",
     "test:e2e": "playwright test tests/e2e --project=desktop-chromium --project=mobile-chromium --project=mobile-webkit",
     "test:extension": "playwright test tests/extension --project=extension",
     "test:ci": "npm run check:full",

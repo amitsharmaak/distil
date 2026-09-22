@@ -236,7 +236,7 @@ Output schema enforced via JSON: `{ overview, keyPoints[], whyItMatters?, notabl
 | No agent memory across sessions | Orchestrator re-discovers context every session | Persistent episodic memory store |
 | Regex intent classification | Fragile, misclassifies ambiguous queries | Embedding-based classifier |
 | No eval harness | Can't measure regression between prompt changes | Build golden set + automated scoring |
-| Single-model per task in ai-config | Model IDs like `gemini-3-flash-preview` don't exist yet | Align with actual Gemini model IDs |
+| Single-model per task in ai-config | A retired or mistyped id 404s at call time; the key fallback does not catch it | Run `npm run audit:ai-models` before a release |
 | No retry in job worker | Silent failures leave items un-summarized | Exponential backoff + dead-letter queue |
 | Preference rebuild from scratch | Slow and wasteful as feedback grows | Incremental preference updates |
 

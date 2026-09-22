@@ -13,7 +13,7 @@ process.env.DB_PATH = ":memory:";
 
 jest.mock("../router", () => ({
   createTenantAIRouter: jest.fn(),
-  getEffectiveModel: jest.fn(() => ({ provider: "gemini", model: "gemini-2.5-flash" })),
+  getEffectiveModel: jest.fn(() => ({ provider: "gemini", model: "gemini-3.5-flash-lite" })),
   getAvailableProviders: jest.fn(() => ["gemini"]),
   generateTextWithSearch: jest.fn(),
 }));

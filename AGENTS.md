@@ -89,8 +89,11 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `DISTIL_CAPTURE_DISPATCH=inline` runs the capture and research consumers in-process locally.
 - **AI:** `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
   assignment; `router.ts` adds cost accounting, daily/30-day budgets, retries and a circuit
-  breaker. Summaries use Gemini with a budget-admitted same-provider fallback model and 15-second
-  per-attempt timeouts. Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
+  breaker. Gemini is the default for every task and the only required key; Anthropic is an
+  optional upgrade for `summarize-complex` and `research-synthesize` (Gemini fallback when the
+  key is absent); OpenAI is assigned to nothing. `npm run audit:ai-models` checks that every
+  configured id is callable. Summaries use Gemini with a budget-admitted same-provider fallback
+  model and 15-second per-attempt timeouts. Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` and `/feed/[id]` reader,
   `/search`, `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,

@@ -17,7 +17,7 @@ ready by merging to `main`.
    The password hash is printed with `\$` escapes because Next's env loader expands `$name`
    sequences, even inside quotes. Paste it exactly as printed.
 
-4. Add at least one AI provider key (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
+4. Add `GEMINI_API_KEY` (the only required provider key). `ANTHROPIC_API_KEY` is optional and upgrades complex summaries and research synthesis; `OPENAI_API_KEY` is no longer assigned to any task. Run `npm run audit:ai-models` to confirm the configured ids are callable.
 5. Provision the database:
 
    ```bash

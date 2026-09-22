@@ -12,7 +12,7 @@ process.env.DB_PATH = ":memory:";
 
 jest.mock("../router", () => ({
   createTenantAIRouter: jest.fn(),
-  getEffectiveModel: jest.fn(() => ({ model: "gemini-2.5-flash" })),
+  getEffectiveModel: jest.fn(() => ({ model: "gemini-3.5-flash-lite" })),
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ beforeEach(() => {
       provider: "gemini",
     }),
   });
-  mockGetEffectiveModel.mockReturnValue({ model: "gemini-2.5-flash" });
+  mockGetEffectiveModel.mockReturnValue({ model: "gemini-3.5-flash-lite" });
 
   // Defaults: no cached summary, item found in DB, generateJSON returns brief output.
   // techCrunchItem has ~200 chars in summary → ~50 tokens → uses "summarize" task.
@@ -162,7 +162,7 @@ describe("generateSummary — cache behaviour", () => {
       id: "sum-cached-1",
       item_id: techCrunchItem.id,
       summary: mockBriefSummary,
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       prompt_type: "brief",
       created_at: new Date().toISOString(),
     });
@@ -193,7 +193,7 @@ describe("generateSummary — cache behaviour", () => {
       id: "sum-cached-2",
       item_id: techCrunchItem.id,
       summary: "Old brief summary that should be ignored.",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       prompt_type: "brief",
       createdAt: new Date(Date.now() - 61_000).toISOString(),
     });
@@ -214,7 +214,7 @@ describe("generateSummary — cache behaviour", () => {
         id: "sum-cooldown-old",
         itemId: "cooldown-item",
         summary: "Old cached summary",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash-lite",
         promptType: "brief",
         createdAt: new Date(Date.now() - 61_000).toISOString(),
       })
@@ -222,7 +222,7 @@ describe("generateSummary — cache behaviour", () => {
         id: "sum-cooldown-new",
         itemId: "cooldown-item",
         summary: "Cached cooldown summary",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash-lite",
         promptType: "brief",
         createdAt: new Date().toISOString(),
       });
@@ -242,7 +242,7 @@ describe("generateSummary — cache behaviour", () => {
       id: "sum-cached-3",
       item_id: techCrunchItem.id,
       summary: mockBriefSummary,
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       prompt_type: "brief",
       created_at: new Date().toISOString(),
     };
@@ -296,7 +296,7 @@ describe("generateSummary — generation", () => {
         itemId: techCrunchItem.id,
         summary: mockBriefSummary,
         promptType: "brief",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash-lite",
       })
     );
   });
@@ -305,7 +305,7 @@ describe("generateSummary — generation", () => {
     await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
 
     const call = mockUpsertAISummary.mock.calls[0][0] as { model: string };
-    expect(call.model).toBe("gemini-2.5-flash");
+    expect(call.model).toBe("gemini-3.5-flash-lite");
   });
 
   it("stores a unique id with each upsert", async () => {
@@ -381,7 +381,7 @@ describe("generateSummary — TechCrunch article fixture", () => {
       id: "sum-new-1",
       item_id: techCrunchItem.id,
       summary: mockBriefSummary,
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       prompt_type: "brief",
       created_at: new Date().toISOString(),
     });

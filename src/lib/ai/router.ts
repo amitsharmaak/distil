@@ -13,6 +13,7 @@ import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
 import {
   DEFAULT_MODEL_CONFIG,
   GEMINI_SEARCH_MODEL,
+  GEMINI_SUMMARY_FALLBACK_MODEL,
   PROVIDER_FALLBACK_MODELS,
   MODEL_COSTS,
 } from "./ai-config";
@@ -455,7 +456,7 @@ class AIRouter {
         !["quota", "timeout", "server"].includes(failure.category) ||
         provider !== "gemini" ||
         !["summarize", "summarize-complex"].includes(task) ||
-        model === "gemini-3.1-flash-lite"
+        model === GEMINI_SUMMARY_FALLBACK_MODEL
       ) {
         throw failure;
       }
@@ -471,7 +472,7 @@ class AIRouter {
       );
       // The fallback must pass tenant admission independently.
       await assertTenantAIBudget(repositories);
-      model = "gemini-3.1-flash-lite";
+      model = GEMINI_SUMMARY_FALLBACK_MODEL;
       try {
         result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
       } catch (fallbackError) {
