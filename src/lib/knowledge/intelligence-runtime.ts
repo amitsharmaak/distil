@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-import {
-  AIQuotaExceededError,
-  assertTenantAIBudget,
-  createTenantAIRouter,
-  getEffectiveModel,
-} from "@/lib/ai/router";
+import { AIQuotaExceededError, assertTenantAIBudget, createTenantAIRouter } from "@/lib/ai/router";
 import { aiLogger } from "@/lib/logger";
 import { createClaimEvidence } from "@/lib/knowledge/grounding";
 import { createDegradedSummary } from "@/lib/knowledge/artifacts";
@@ -96,15 +91,12 @@ export function createRouterStructuredSummaryGenerator(
   const router = createTenantAIRouter(context, repositories);
   return {
     async generate(prompt) {
-      const assignment = getEffectiveModel("summarize");
-      return {
-        output: await router.generateJSON<unknown>(prompt, "summarize", {
-          temperature: 0,
-          maxTokens: 4_096,
-        }),
-        provider: assignment.provider,
-        model: assignment.model,
-      };
+      // Report the model the router actually called, including any same-provider retry.
+      const result = await router.generateJSONWithMetadata<unknown>(prompt, "summarize", {
+        temperature: 0,
+        maxTokens: 4_096,
+      });
+      return { output: result.value, provider: result.provider, model: result.model };
     },
   };
 }

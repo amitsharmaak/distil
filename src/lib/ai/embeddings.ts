@@ -14,20 +14,21 @@ const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
 type EmbeddingProvider = "openai" | "gemini";
 
 function getEmbeddingProvider(): EmbeddingProvider | null {
-  if (config.openaiApiKey) return "openai";
   if (config.geminiApiKey) return "gemini";
+  if (config.openaiApiKey) return "openai";
   return null;
 }
 
 /**
  * Generates a text embedding using the best available provider.
- * Prefers OpenAI (text-embedding-3-small), then Gemini (text-embedding-004).
- * Anthropic has no embedding model — falls back to another available provider.
+ * Prefers Gemini (text-embedding-004, 768 dims), then OpenAI (text-embedding-3-small,
+ * 1536 dims). Anthropic has no embedding model. Rows store the model that produced
+ * them; switching providers after rows exist mixes dimensions, so re-embed on a switch.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const provider = getEmbeddingProvider();
   if (!provider) {
-    throw new Error("No embedding provider available. Configure OPENAI_API_KEY or GEMINI_API_KEY.");
+    throw new Error("No embedding provider available. Configure GEMINI_API_KEY or OPENAI_API_KEY.");
   }
 
   const trimmed = text.trim();
