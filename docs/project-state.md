@@ -18,10 +18,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Deep research on Vercel: Steps 1 and 2 implemented, locally verified, not deployed (PR
-  [#51](https://github.com/amitsharmaak/distil/pull/51), label `full-ci`, branch
-  `claude/deep-research-vercel-ea8b82`, worktree of the same name, from `origin/main` `5483c7c`;
-  checkpoint "Deep research on a queue worker and the search facade — 2026-09-21" below):**
+- **Deep research on Vercel: Steps 1 and 2 merged and live (PR
+  [#51](https://github.com/amitsharmaak/distil/pull/51), squash merged as `60a9438` on
+  2026-09-21 after the full gate; Production deployed it before 08:43Z — see "Release: PR #51 to
+  Production — 2026-09-21" and "Deep research on a queue worker and the search facade —
+  2026-09-21" below):**
   deep research (restored in PR [#49](https://github.com/amitsharmaak/distil/pull/49), `dc875da`,
   live since 2026-09-21) could not finish on Vercel Hobby because one run was 6–10 sequential
   model calls inside a single 60 s `after()` invocation, and its "search" calls never reached
@@ -45,8 +46,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   needed for the queue itself. (2) For grounded sources, the Production `GEMINI_API_KEY` must
   belong to a Google AI project with billing enabled (Google Search grounding is not on the free
   tier); otherwise research keeps working from model memory and logs
-  `research_search_grounding_fallback`. (3) One signed-in run on Production after the merge, then
-  record the outcome.
+  `research_search_grounding_fallback`. (3) One signed-in run on Production, then record the
+  outcome. **Both done on 2026-09-21 through Amit's Chrome (checkpoint "Production verification
+  and the retry directive — 2026-09-21"):** the `research-runs` consumer appeared under
+  Observability → Queues on the first message, and a signed-in run completed end to end in 13
+  minutes with 43 sources; the Production Gemini key is also free-tier (every search logged the
+  grounding fallback), and each transient Gemini 503 cost about five minutes because the platform
+  redelivers a thrown callback on its own backoff. Follow-up branch `claude/research-queue-retry`
+  (this record plus PR #52's release record) asks the queue for a 60 s redelivery explicitly.
+  Open decision for Amit: a billing-enabled Google AI project for real web grounding.
 - **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
   merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
   Production — 2026-09-21" below):** Amit asked for the deep
@@ -287,6 +295,54 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Production verification and the retry directive — 2026-09-21
+
+Amit asked for the two open checks to be done through the browser extension (Claude in Chrome,
+signed in as Amit). Vercel: the project's Storage page lists only the Blob store and the Neon
+integration; queues live under Observability → Queues (Production, last 12 hours). Before the run
+only `capture-requests` was listed; after the first research message `research-runs` appeared
+with no manual creation. Final counters for the run: queued 9, received 11, deleted 9,
+redeliveries 2. A 2FA-setup interstitial appeared once on the dashboard and was not acted on.
+
+Signed-in run on `https://distilai.app/research` (report `d92db1bc…`, same query as the local
+runs): started 14:18:36 IST, completed 14:31:41 IST, 4 sub-questions, deepening, synthesis, 43
+sources, stepper advancing over SSE and polling. Function logs (`/api/queue/research-runs`):
+
+- 14:18:36 plan callback → Gemini `503 high demand` on `gemini-3.5-flash` (Production is
+  Gemini-only) → `ResearchStageRetryError` → callback 500. **Redelivered at 14:23:41**, five
+  minutes later: without a `retry` directive the `@vercel/queue` callback leaves the message to
+  the platform's own backoff, not the 60 s `retryAfterSeconds` in `vercel.json`.
+- 14:23:41 plan completed; 14:23:54 search 0 completed (13 s); 14:24:09 search 1 → 503 → 500;
+  redelivered around 14:29; the remaining stages ran back to back and synthesis finished at
+  14:31:41. Two 503s therefore cost about ten of the thirteen minutes.
+- Every search and deepening callback logged `research_search_grounding_fallback` (level 40):
+  the Production `GEMINI_API_KEY` has no Google Search grounding quota either, so the sources
+  are model memory. The queue SDK also prints the thrown error, including the provider URL, to
+  the function log as "Queue callback error"; no secret is in it.
+
+Follow-up in the same branch (`claude/research-queue-retry`, from `origin/main` `60a9438`):
+`src/app/api/queue/research-runs/route.ts` passes `retry: researchQueueRetry` to
+`handleCallback`, returning `{ afterSeconds: 60 }` for `ResearchStageRetryError` (the SDK then
+reschedules through the queue's change-visibility call) and `undefined` for anything else; the
+contract test covers the option and both branches. Not deployed until this branch merges.
+
+### Release: PR #51 to Production — 2026-09-21
+
+Amit authorized waiting for the full gate and merging in the session that built the change.
+Full gate on the PR at `b1b2c3e` (all jobs green: lint/typecheck/deterministic tests, PostgreSQL
+integration, web and mobile E2E, extension E2E, production build, quality-gate, non-blocking
+coverage), then `gh pr merge --squash` → `main` at `60a9438`. Vercel auto-deployed it (release
+pin `unpinned`; GitHub deployment `6564723168`, status `success`). Checked anonymously from the
+laptop right after (08:43Z): `https://distilai.app/api/health` 200 with the expected body,
+`/research` 307 → `/sign-in`, `GET /api/ai/research/list` 401, and an anonymous
+`POST /api/queue/research-runs` 404, the same answer the existing `capture-requests` callback
+gives a non-queue caller. No signed-in run was attempted on Production and the Vercel dashboard
+was not opened: whether the `research-runs` consumer appears under Storage → Queues, and whether
+the Production Gemini key has search-grounding quota, are the two open items in the handoff
+bullet. Remote branch auto-deleted; the worktree
+`.claude/worktrees/deep-research-vercel-ea8b82` still exists locally (now on this docs branch)
+and should be removed after this record merges. No Neon, environment-variable or alias change.
 
 ### Deep research on a queue worker and the search facade — 2026-09-21
 

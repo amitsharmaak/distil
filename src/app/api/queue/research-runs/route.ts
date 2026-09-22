@@ -1,5 +1,6 @@
 import { handleCallback } from "@vercel/queue";
 
+import { ResearchStageRetryError } from "@/lib/ai/research";
 import { parseResearchRunMessageV1 } from "@/lib/contracts/tenant-jobs";
 import {
   consumeResearchRunMessage,
@@ -26,7 +27,22 @@ export function createResearchQueueMessageHandler(consume: ResearchMessageConsum
   };
 }
 
+/**
+ * Seconds before a retryable stage is delivered again. Without an explicit
+ * directive the platform redelivers a thrown callback on its own backoff
+ * (about five minutes was observed on Production on 2026-09-21), which eats
+ * into the 15-minute stale window; the directive reschedules through the
+ * queue's visibility API instead.
+ */
+export const RESEARCH_RETRY_AFTER_SECONDS = 60;
+
+export function researchQueueRetry(error: unknown): { afterSeconds: number } | undefined {
+  return error instanceof ResearchStageRetryError
+    ? { afterSeconds: RESEARCH_RETRY_AFTER_SECONDS }
+    : undefined;
+}
+
 export const POST = handleCallback(
   createResearchQueueMessageHandler((message) => consumeResearchRunMessage(message)),
-  { visibilityTimeoutSeconds: maxDuration }
+  { visibilityTimeoutSeconds: maxDuration, retry: researchQueueRetry }
 );
