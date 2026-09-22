@@ -18,15 +18,17 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Model selection: Gemini default, Anthropic optional (branch
-  `claude/model-selection-providers-4ac002`, 2026-09-22; checkpoint "Gemini-default model
-  selection — 2026-09-22"):** every task in `src/lib/ai/ai-config.ts` now prefers Gemini except
-  `summarize-complex` and `research-synthesize`, which prefer Claude Sonnet and fall back to
-  Gemini when `ANTHROPIC_API_KEY` is absent. OpenAI is assigned to nothing. Next steps for Amit:
-  review and merge the branch; before the release, run `npm run audit:ai-models` with the
-  Production keys (or confirm `claude-sonnet-4-6` is enabled on the Production Anthropic
-  project). Optionally remove `OPENAI_API_KEY` from Vercel once the release is live; nothing
-  reads it any more except an OpenAI-only fallback that no longer triggers.
+- **Model selection: Gemini default, Anthropic optional (PR
+  [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
+  on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
+  "Release: PR #55 to Production — 2026-09-22"):** every task in `src/lib/ai/ai-config.ts` now
+  prefers Gemini except `summarize-complex` and `research-synthesize`, which prefer Claude
+  Sonnet and fall back to Gemini when `ANTHROPIC_API_KEY` is absent. OpenAI is assigned to
+  nothing. Open items for Amit: run `npm run audit:ai-models` with the Production keys (or
+  confirm `claude-sonnet-4-6` is enabled on the Production Anthropic project), since the Claude
+  ids were never checked live; optionally remove `OPENAI_API_KEY` from Vercel, which nothing on
+  the default path reads any more; the first Production summary and research run after the
+  release have not been observed yet.
 - **Deep research on Vercel: Steps 1 and 2 merged and live (PR
   [#51](https://github.com/amitsharmaak/distil/pull/51), squash merged as `60a9438` on
   2026-09-21 after the full gate; Production deployed it before 08:43Z — see "Release: PR #51 to
@@ -307,12 +309,29 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Release: PR #55 to Production — 2026-09-22
+
+Amit authorized the merge in the session that built the change. The first quality-gate run on
+PR [#55](https://github.com/amitsharmaak/distil/pull/55) failed on the formatting gate because
+the touched `docs/agent-architecture.md` had never been run through Prettier; the file was
+formatted in `a8f1d0f`, after which the `full-ci` gate was green on every job (lint/typecheck/
+deterministic tests, PostgreSQL integration, web and mobile E2E, extension E2E, production build,
+quality-gate, non-blocking coverage). `gh pr merge --squash` → `main` at `e7f0b34` (15:38Z).
+Vercel auto-deployed it (GitHub deployment `6594602057`, environment Production, status
+`success` at 15:39Z). Checked anonymously afterwards: `/api/health` 200,
+`GET /api/ai/research/list` 401. No Neon, environment-variable or alias change. The remote
+branch `claude/model-selection-providers-4ac002` is still present and can be deleted; the
+worktree `.claude/worktrees/keen-lehmann-fe2a8d` (now on this docs branch) should be removed
+after this record merges. Not yet observed on Production: a summary routed through the new
+Gemini defaults and a research run whose synthesis stage uses the optional Anthropic
+assignment; the next capture and research run will show them in the AI audit rows.
+
 ### Gemini-default model selection — 2026-09-22
 
 Amit asked how model selection was set up and for the minimum-provider recommendation; he
 chose Gemini as the default with Anthropic kept optional. Branch
-`claude/model-selection-providers-4ac002`; implementation complete and locally verified, not
-released.
+`claude/model-selection-providers-4ac002`; released as PR #55 (see "Release: PR #55 to
+Production — 2026-09-22").
 
 - **Assignments (`src/lib/ai/ai-config.ts`):** `summarize`, `knowledge-answer`, `prioritize`,
   `preference-analysis`, `auto-tag` → `gemini-3.5-flash-lite`; `research-plan`, `research-gaps`
