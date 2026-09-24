@@ -254,7 +254,7 @@ export interface CaptureRepository {
   create(input: NewCaptureRecord): Promise<CaptureRecord>;
   findById(id: string): Promise<CaptureRecord | undefined>;
   findActiveOrReadyByNormalizedUrl(normalizedUrl: string): Promise<CaptureRecord | undefined>;
-  list(limit?: number): Promise<CaptureRecord[]>;
+  list(limit?: number, statuses?: readonly CaptureStatus[]): Promise<CaptureRecord[]>;
   transition(
     id: string,
     allowedFrom: readonly CaptureStatus[],

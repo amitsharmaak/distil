@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   CaptureDispatcher,
   CaptureReceipt,
+  CaptureStatus,
   CreateCaptureRequest,
   CreateCaptureResponse,
 } from "@/lib/contracts/capture";
@@ -139,9 +140,9 @@ export class CaptureService {
     return toCaptureReceipt(capture);
   }
 
-  async list(limit = 50): Promise<CaptureReceipt[]> {
+  async list(limit = 50, statuses?: readonly CaptureStatus[]): Promise<CaptureReceipt[]> {
     const safeLimit = Math.max(1, Math.min(limit, 100));
-    return (await this.dependencies.captures.list(safeLimit)).map(toCaptureReceipt);
+    return (await this.dependencies.captures.list(safeLimit, statuses)).map(toCaptureReceipt);
   }
 
   async retry(id: string): Promise<CaptureReceipt> {

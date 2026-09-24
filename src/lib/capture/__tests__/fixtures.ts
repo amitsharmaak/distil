@@ -75,8 +75,12 @@ export class MemoryCaptureRepository implements CaptureRepository {
     return record ? structuredClone(record) : undefined;
   }
 
-  async list(limit = 50): Promise<CaptureRecord[]> {
-    return [...this.records.values()].slice(0, limit).map((v) => structuredClone(v));
+  async list(limit = 50, statuses?: readonly CaptureRecord["status"][]): Promise<CaptureRecord[]> {
+    return [...this.records.values()]
+      .filter((v) => !statuses?.length || statuses.includes(v.status))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map((v) => structuredClone(v));
   }
 
   async transition(

@@ -120,6 +120,42 @@ describe("capture HTTP contracts", () => {
     expect((await handler(new Request("http://localhost/api/v1/captures"))).status).toBe(200);
   });
 
+  it("GET narrows the list to the requested statuses and rejects an unknown one", async () => {
+    const rejected = captureRecord({
+      id: "10000000-0000-4000-8000-00000000000a",
+      normalizedUrl: "https://notes.wisprflow.ai/shared/abc",
+      status: "rejected",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      lastErrorCode: "CONTENT_REJECTED",
+      lastErrorMessage: "Distil could not identify enough readable article content on this page",
+    });
+    const handler = createCaptureCollectionHandlers(setup([captureRecord(), rejected])).GET;
+
+    const filtered = await handler(
+      new Request("http://localhost/api/v1/captures?status=rejected,failed")
+    );
+    expect(filtered.status).toBe(200);
+    await expect(filtered.json()).resolves.toEqual({
+      receipts: [
+        expect.objectContaining({
+          id: rejected.id,
+          status: "rejected",
+          error: {
+            code: "CONTENT_REJECTED",
+            message: "Distil could not identify enough readable article content on this page",
+          },
+        }),
+      ],
+    });
+
+    const unknown = await handler(new Request("http://localhost/api/v1/captures?status=nonsense"));
+    expect(unknown.status).toBe(400);
+    await expect(unknown.json()).resolves.toMatchObject({ error: { code: "INVALID_REQUEST" } });
+    expect((await handler(new Request("http://localhost/api/v1/captures?status="))).status).toBe(
+      400
+    );
+  });
+
   it("limits capture-token credentials to creating captures", async () => {
     const dependencies = setup();
     dependencies.authenticate.mockResolvedValue({

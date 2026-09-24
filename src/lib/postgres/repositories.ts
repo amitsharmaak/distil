@@ -542,10 +542,15 @@ class PostgresCaptures implements CaptureRepository {
     >`SELECT * FROM capture_requests WHERE normalized_url=${url} AND status IN ('queued','processing','ready') ORDER BY created_at ASC LIMIT 1`;
     return r[0] ? mapCapture(r[0]) : undefined;
   }
-  async list(limit = 50) {
-    return (
-      await this.sql<Row[]>`SELECT * FROM capture_requests ORDER BY created_at DESC LIMIT ${limit}`
-    ).map(mapCapture);
+  async list(limit = 50, statuses?: readonly string[]) {
+    const rows = statuses?.length
+      ? await this.sql<
+          Row[]
+        >`SELECT * FROM capture_requests WHERE status IN ${this.sql(statuses)} ORDER BY created_at DESC LIMIT ${limit}`
+      : await this.sql<
+          Row[]
+        >`SELECT * FROM capture_requests ORDER BY created_at DESC LIMIT ${limit}`;
+    return rows.map(mapCapture);
   }
   async transition(id: string, allowed: readonly string[], t: CaptureTransition) {
     if (!allowed.length) return undefined;
