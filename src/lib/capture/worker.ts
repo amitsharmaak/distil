@@ -5,6 +5,13 @@ import type { ProcessingResult, RawContent } from "@/lib/intelligence/types";
 import { extractOGFromHtml, isTwitterUrl, type OGData } from "@/lib/og";
 import { isGranolaUrl, parseGranolaPage, renderProseMirror } from "@/lib/granola";
 import {
+  fetchWisprNote,
+  isWisprUrl,
+  renderWisprMarkdown,
+  wisprShareSlug,
+  type WisprNote,
+} from "@/lib/wispr";
+import {
   extractYouTubeId,
   fetchYouTubeVideoDetails,
   formatDuration,
@@ -162,6 +169,8 @@ export interface DefaultCaptureProcessorDependencies {
   fetchSocialMetadata?: (url: string) => Promise<OGData>;
   /** YouTube details when the watch page lacks them; defaults to innertube then oEmbed. */
   fetchVideoDetails?: (videoId: string) => Promise<YouTubeVideoDetails | null>;
+  /** Resolves a Wispr Flow shared note; defaults to Wispr's public share API. */
+  fetchWisprNote?: (slug: string) => Promise<WisprNote | null>;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
   enqueueEnrichment?: (itemId: string) => Promise<void>;
   now?: () => Date;
@@ -242,6 +251,42 @@ export function createDefaultCaptureProcessor(
           topics: capture.topics,
           author: note.owner ?? undefined,
           publication: "Granola",
+          url: article.url,
+          priority: capture.priority,
+          isRead: false,
+          createdAt: fetchedAt,
+          extractedLinks: [],
+          contentExtractedAt: fetchedAt,
+          processingStatus: "ready",
+        });
+        await rawContent.attachItem(capture.id, item.id);
+        await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
+        return { status: "ready", itemId: item.id };
+      }
+
+      // Wispr Flow: the shared note page is an empty client-rendered shell, so
+      // the note comes from Wispr's public share API keyed by the URL's slug.
+      if (!extracted && isWisprUrl(article.url)) {
+        const slug = wisprShareSlug(article.url) as string;
+        const note = await (dependencies.fetchWisprNote ?? fetchWisprNote)(slug);
+        if (!note) {
+          return {
+            status: "rejected",
+            reason: "Distil could not read this Wispr Flow note; is the share link public?",
+          };
+        }
+        const rendered = renderWisprMarkdown(note.markdown);
+        const excerpt = rendered.text.replace(/\s+/g, " ").trim();
+        const item = await dependencies.items.insert({
+          id: capture.id,
+          title: capture.title ?? note.title,
+          summary: capture.notes ?? `${excerpt.slice(0, 277)}${excerpt.length > 277 ? "..." : ""}`,
+          fullContent: rendered.html,
+          sourceType: capture.source === "browser-extension" ? "browser-extension" : "manual",
+          contentType: "article",
+          topics: capture.topics,
+          author: note.owner ?? undefined,
+          publication: "Wispr Flow",
           url: article.url,
           priority: capture.priority,
           isRead: false,
