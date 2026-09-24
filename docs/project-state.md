@@ -18,6 +18,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Wispr Flow shared notes now capture (branch
+  `claude/iphone-shortcut-ingestion-bug-66415f`, not yet merged or released; checkpoint "Wispr
+  Flow shared notes rejected by the durable worker — 2026-09-24"):** a
+  `notes.wisprflow.ai/shared/<slug>` link was silently rejected by the durable worker because the
+  page is an empty client-rendered shell. `src/lib/wispr.ts` reads the note from Wispr's public
+  share API and renders its markdown to reader HTML. Open items for Amit: release the branch and
+  re-share the link (the old receipt is `rejected` and cannot be retried; re-saving creates a
+  fresh capture). Still open in general: a rejected capture is invisible unless
+  `GET /api/v1/captures` is opened by hand — the two scoped follow-ups are in the checkpoint.
 - **Model selection: Gemini default, Anthropic optional (PR
   [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
   on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
@@ -308,6 +317,57 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Wispr Flow shared notes rejected by the durable worker — 2026-09-24
+
+Amit saved `https://notes.wisprflow.ai/shared/<slug>` with the iPhone Shortcut. The Shortcut
+reported "Saved to Distil" (the API answered `202 Accepted`, which is correct: the receipt is
+queued for the worker) but nothing appeared in the Feed. Same shape as the X/Twitter finding of
+2026-09-19.
+
+**Cause (verified against the live page, not inferred).** A Wispr Flow share link is a
+client-rendered Vite app; the served HTML is 446 bytes ending in `<body><div id="root"></div>`.
+Readability finds nothing, `extractContentFromHtml` returns null, and since the URL matches none
+of the processor's source handlers (Granola, YouTube, X/Twitter) it falls through to the generic
+path in `src/lib/capture/worker.ts`, where `readableText.length` is 0 against the
+`MIN_READABLE_TEXT_CHARACTERS` floor of 80. The receipt moves to `rejected` with "Distil could
+not identify enough readable article content on this page". Nothing surfaces that: the receipt
+UI (`src/components/capture/capture-receipt.tsx`) only polls a capture submitted from the current
+`/save` tab, and no page renders the `GET /api/v1/captures` list, so a Shortcut capture that is
+rejected is invisible until the endpoint is opened by hand.
+
+**Fix (branch `claude/iphone-shortcut-ingestion-bug-66415f`).** New module `src/lib/wispr.ts`,
+mirroring `src/lib/granola.ts`. Wispr serves shared notes unauthenticated from
+`https://api.wisprflow.ai/api/v1/meetings/shared/<slug>` (a fixed public host, the same pattern
+as fxtwitter in `og.ts`), returning `title`, `summary` (markdown), `notes`, `created_at` and
+`owner.profile`. `wisprShareSlug` accepts only the canonical `/shared/<slug>` path — the app also
+routes a bare `/<slug>`, but that collides with its own routes and the share button never
+produces it. `fetchWisprNote` has a 5 s timeout, a 2 MB response cap and returns null on any
+failure; `parseWisprNote` prefers `summary` and falls back to `notes`. `renderWisprMarkdown`
+renders the markdown subset Wispr emits (headings, nested bullet/ordered lists, paragraphs,
+bold/italic/code/links) to reader HTML plus a plain-text rendering for the excerpt; it escapes
+before applying inline markdown, so an `href` is safe in an attribute, and non-http(s) link
+targets are left as text. Headings are normalised so the note's shallowest level (Wispr writes
+`###`) opens at h2. The processor gains a Wispr branch after the Granola one and an injectable
+`fetchWisprNote`; a note that cannot be read is rejected with "Distil could not read this Wispr
+Flow note; is the share link public?".
+
+**Verified.** Eight unit tests in `src/lib/__tests__/wispr.unit.test.ts` and two worker tests in
+`src/lib/capture/__tests__/worker.unit.test.ts`; `npm run check` green (223 suites, 1621 tests,
+0 lint errors). The module was also run against the real share link outside the deterministic
+suites: it returns "Wispr Flow Pilot Deployment Planning", owner "Abhinn Kothari", and 4.2 kB of
+reader HTML. Every tag it emits is in the `sanitizeArticleHtml` allowlist. Not yet released or
+observed on Production.
+
+**Not done.** Rejected captures are still invisible outside `/save`: `GET /api/v1/captures`
+returns every receipt with its status and error, but nothing renders it. Two follow-ups were
+scoped and deferred — a recent-captures list on `/save` (small; pull-only, and note that
+`retry` is gated to `failed`, so a `rejected` receipt cannot be retried — re-saving the URL is
+the path, since `rejected` is not in the duplicate set), and letting the Shortcut report the real
+outcome by allowing a capture-token to read its own receipt at `GET /api/v1/captures/:id`
+(currently session-only, `src/lib/capture/http.ts`) and polling it after a short wait. Wispr's
+`transcript` endpoint is tier-gated (`transcript_access: false`) and `todos` was empty in the
+sample, so neither is read.
 
 ### Release: PR #55 to Production — 2026-09-22
 

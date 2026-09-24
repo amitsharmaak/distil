@@ -568,6 +568,72 @@ describe("default capture processor", () => {
     expect(enqueueEnrichment).toHaveBeenCalledWith(note.id);
   });
 
+  it("saves a Wispr Flow note fetched from the share API", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+    };
+    const enqueueEnrichment = jest.fn().mockResolvedValue(undefined);
+    const fetchWisprNote = jest.fn().mockResolvedValue({
+      title: "Pilot Deployment Planning",
+      owner: "Abhinn Kothari",
+      createdAt: "2026-09-24T06:59:24.049000",
+      markdown: "### Geography\n- UAE with Hussain on board.",
+    });
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      enqueueEnrichment,
+      fetchWisprNote,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response('<body><div id="root"></div></body>')),
+      },
+    });
+    const note = captureRecord({ url: "https://notes.wisprflow.ai/shared/NdNXPj7C-_bj" });
+    await expect(processor(note)).resolves.toEqual({ status: "ready", itemId: note.id });
+    expect(fetchWisprNote).toHaveBeenCalledWith("NdNXPj7C-_bj");
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Pilot Deployment Planning",
+        author: "Abhinn Kothari",
+        publication: "Wispr Flow",
+        summary: "Geography - UAE with Hussain on board.",
+        fullContent: "<h2>Geography</h2>\n<ul>\n<li>UAE with Hussain on board.</li>\n</ul>",
+      })
+    );
+    expect(enqueueEnrichment).toHaveBeenCalledWith(note.id);
+  });
+
+  it("rejects a Wispr Flow note the share API will not return", async () => {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn(),
+    };
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchWisprNote: jest.fn().mockResolvedValue(null),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response('<body><div id="root"></div></body>')),
+      },
+    });
+    await expect(
+      processor(captureRecord({ url: "https://notes.wisprflow.ai/shared/private" }))
+    ).resolves.toEqual({
+      status: "rejected",
+      reason: "Distil could not read this Wispr Flow note; is the share link public?",
+    });
+    expect(items.insert).not.toHaveBeenCalled();
+  });
+
   it("rejects an X/Twitter post whose text cannot be resolved", async () => {
     const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
     const items = {
