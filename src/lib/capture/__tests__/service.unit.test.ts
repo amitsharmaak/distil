@@ -128,9 +128,9 @@ describe("CaptureService", () => {
     await expect(service.get(record.id)).resolves.toMatchObject({ id: record.id });
     await expect(service.get("missing")).rejects.toMatchObject({ name: "CaptureNotFoundError" });
     await service.list(1_000);
-    expect(list).toHaveBeenCalledWith(100);
+    expect(list).toHaveBeenCalledWith(100, undefined);
     await service.list();
-    expect(list).toHaveBeenLastCalledWith(50);
+    expect(list).toHaveBeenLastCalledWith(50, undefined);
   });
 
   it("renders optional item and error receipt fields including the fallback message", async () => {
@@ -173,4 +173,37 @@ describe("CaptureService", () => {
       }).retry("missing")
     ).rejects.toMatchObject({ name: "CaptureNotFoundError" });
   });
+});
+
+it("lists only the requested statuses, newest first", async () => {
+  const captures = new MemoryCaptureRepository([
+    captureRecord({
+      id: "a",
+      normalizedUrl: "https://a.example/",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }),
+    captureRecord({
+      id: "b",
+      normalizedUrl: "https://b.example/",
+      status: "rejected",
+      createdAt: "2026-01-03T00:00:00.000Z",
+    }),
+    captureRecord({
+      id: "c",
+      normalizedUrl: "https://c.example/",
+      status: "failed",
+      createdAt: "2026-01-02T00:00:00.000Z",
+    }),
+  ]);
+  const service = new CaptureService({
+    context,
+    captures,
+    dispatcher: new FakeCaptureDispatcher(),
+  });
+
+  await expect(service.list(50, ["rejected", "failed"])).resolves.toMatchObject([
+    { id: "b", status: "rejected" },
+    { id: "c", status: "failed" },
+  ]);
+  await expect(service.list(50)).resolves.toHaveLength(3);
 });

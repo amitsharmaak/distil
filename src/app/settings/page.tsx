@@ -5,6 +5,7 @@ import { Archive, FlaskConical, Folder, KeyRound, Sparkles, UserRound } from "lu
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TokenSettings } from "@/components/capture/token-settings";
+import { CaptureDiagnostics } from "@/components/capture/capture-diagnostics";
 
 /**
  * Settings keeps only what the hosted product uses: capture tokens and a
@@ -32,6 +33,7 @@ export default function SettingsPage() {
 
         <TabsContent value="capture" className="mt-4 space-y-4">
           <TokenSettings />
+          <CaptureDiagnostics />
         </TabsContent>
 
         <TabsContent value="account" className="mt-4 space-y-4">

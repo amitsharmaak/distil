@@ -1,4 +1,4 @@
-import type { AuthPrincipal } from "@/lib/contracts/capture";
+import { CAPTURE_STATUSES, type AuthPrincipal, type CaptureStatus } from "@/lib/contracts/capture";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { CaptureService } from "./service";
 import { CaptureNotFoundError, CaptureNotRetryableError, QueueUnavailableError } from "./service";
@@ -100,13 +100,26 @@ export function createCaptureCollectionHandlers(dependencies: CaptureHttpDepende
     GET: async (request: Request): Promise<Response> => {
       const principal = await authorized(request, dependencies.authenticate, new Set(["session"]));
       if (principal instanceof Response) return principal;
-      const value = new URL(request.url).searchParams.get("limit");
+      const query = new URL(request.url).searchParams;
+      const value = query.get("limit");
       const limit = value === null ? 50 : Number(value);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         return apiError("INVALID_REQUEST", "limit must be an integer between 1 and 100", 400);
       }
+      // `?status=rejected,failed` narrows the list to the captures that never
+      // produced an item, which is what the capture diagnostics panel reads.
+      const requested = query.get("status");
+      const statuses = requested === null ? undefined : requested.split(",").filter(Boolean);
+      const unknown = statuses?.find(
+        (status) => !(CAPTURE_STATUSES as readonly string[]).includes(status)
+      );
+      if (unknown !== undefined || statuses?.length === 0) {
+        return apiError("INVALID_REQUEST", "status must be a comma-separated capture status", 400);
+      }
       return Response.json({
-        receipts: await (await dependencies.service(principal.context)).list(limit),
+        receipts: await (
+          await dependencies.service(principal.context)
+        ).list(limit, statuses as CaptureStatus[] | undefined),
       });
     },
   };

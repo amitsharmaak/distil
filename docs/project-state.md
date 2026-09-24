@@ -18,15 +18,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Wispr Flow shared notes now capture (branch
-  `claude/iphone-shortcut-ingestion-bug-66415f`, not yet merged or released; checkpoint "Wispr
-  Flow shared notes rejected by the durable worker — 2026-09-24"):** a
+- **Wispr Flow shared notes now capture (PR
+  [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
+  2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
+  worker — 2026-09-24" and "Release: PR #57 to Production — 2026-09-24"):** a
   `notes.wisprflow.ai/shared/<slug>` link was silently rejected by the durable worker because the
   page is an empty client-rendered shell. `src/lib/wispr.ts` reads the note from Wispr's public
-  share API and renders its markdown to reader HTML. Open items for Amit: release the branch and
-  re-share the link (the old receipt is `rejected` and cannot be retried; re-saving creates a
-  fresh capture). Still open in general: a rejected capture is invisible unless
-  `GET /api/v1/captures` is opened by hand — the two scoped follow-ups are in the checkpoint.
+  share API and renders its markdown to reader HTML. Open items for Amit: confirm the Production
+  deployment and re-share the original link — its old receipt is `rejected` and cannot be
+  retried, so re-saving is what creates a fresh capture.
+- **Capture diagnostics in Settings (branch `claude/capture-failure-notifications`, not yet
+  merged; checkpoint "Capture diagnostics in Settings — 2026-09-24"):** Settings → Capture now
+  lists the captures that never produced an item, each with its reason and a Retry or Save again
+  action, read from `capture_requests` via `GET /api/v1/captures?status=rejected,failed`. No
+  migration and no notification bell — see the checkpoint for why both were avoided. Open item
+  for Amit: the populated list was never exercised against a database, because this worktree's
+  `.env.local` has no `DATABASE_URL`; the first look on Production is the real check.
 - **Model selection: Gemini default, Anthropic optional (PR
   [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
   on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
@@ -317,6 +324,61 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Capture diagnostics in Settings — 2026-09-24
+
+Amit asked that any article accepted but never processed be recorded and surfaced somewhere he
+can see it, with a brief summary of what happened. He chose Settings, framed as internal
+diagnostics, over the notification bell.
+
+**Two findings that shaped the design.**
+
+1. **The `notifications` table cannot hold capture failures.** `notifications.item_id` is
+   `NOT NULL` with a foreign key to `items.id` (`src/lib/postgres/schema.ts`), and a failed
+   capture has no item — that is the failure. Writing failures there would need a migration
+   (nullable `item_id` plus a capture reference). `capture_requests` already records the URL,
+   status, `last_error_code`, `last_error_message`, attempts and timestamps, so it was used as
+   the source directly: no migration, no duplicated state, and the panel shows failures that
+   were already recorded before this shipped rather than only new ones.
+2. **The notification bell was removed deliberately.** PR
+   [#8](https://github.com/amitsharmaak/distil/pull/8) ("UI simplification", 2026-09-11) dropped
+   the bell and its 30 s polling for the "calm reading" intent, and
+   `src/components/layout/__tests__/topbar.component.test.tsx` asserts its absence. Amit was
+   offered the bell and chose a diagnostics surface in Settings instead, so that decision stands
+   untouched.
+
+**The change (branch `claude/capture-failure-notifications`).** `GET /api/v1/captures` takes an
+optional `?status=` filter (comma-separated, validated against `CAPTURE_STATUSES`, 400 on an
+unknown or empty value); `CaptureRepository.list` and `CaptureService.list` take an optional
+status list, and the Postgres query narrows with `status IN` as `transition` already does. New
+client component `src/components/capture/capture-diagnostics.tsx` reads
+`?status=rejected,failed&limit=25` and renders each one with its host and path, relative time,
+the stored error message as the summary, the error code, the attempt count, and an action:
+**Retry** for a retryable `failed` capture, **Save again** otherwise, because a `rejected`
+capture is not retryable (`service.ts`) and re-saving is the path that works (`rejected` is not
+in the duplicate set). Mounted in Settings → Capture under the token panel.
+
+**Verified.** 4 component tests, 1 contract test, 1 service test; `npm run check` green (224
+suites, 1627 tests, 0 lint errors). Checked in the local dev server: the panel mounts under
+Settings → Capture. The populated list could **not** be exercised locally — this worktree's
+`.env.local` is the legacy SQLite-era config with no `DATABASE_URL`, so `/api/v1/captures` 500s
+here; only the loading, error and empty paths were seen in the browser. The browser check did
+catch one real defect, since fixed: on a load failure the panel rendered the error _and_ "Nothing
+to report — every capture has produced an item", which in a diagnostics panel is the wrong lie —
+the empty state is now suppressed whenever the list could not be read.
+
+**Scope.** This covers captures that never produced an item. An item that was created but whose
+AI enrichment failed is a different, quieter case (`enqueueEnrichment` is best-effort and
+swallows its error by design) and is not surfaced here.
+
+### Release: PR #57 to Production — 2026-09-24
+
+PR [#57](https://github.com/amitsharmaak/distil/pull/57) (Wispr Flow shared notes) squash merged
+as `4824f76` after the Tier 2 full gate: quality gate, PostgreSQL integration, web/mobile E2E,
+extension E2E, production build and Vercel all green. Merged on Amit's instruction once CI
+passed. Vercel deploys `main` to Production automatically; the deployment has not been observed
+and no Wispr note has been captured on Production yet. The pre-existing receipt for the original
+link is `rejected` and cannot be retried — re-sharing the link creates a fresh capture.
 
 ### Wispr Flow shared notes rejected by the durable worker — 2026-09-24
 
