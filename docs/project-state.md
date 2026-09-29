@@ -18,6 +18,17 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Inline search, quick filters and AI life areas: plan only, not started (branch
+  `claude/distil-search-filtering-redesign-d4f727`; checkpoint "Inline search, quick filters and
+  life areas — 2026-09-29"):** Amit wants the dedicated Search page replaced by a search bar at
+  the top of Today and Feed that filters as he types, with one-tap quick filters (Videos, X
+  links, …), and wants Distil to hold his personal, work and learning material with every item
+  sorted automatically by AI into one of four areas (Personal, Work, Learning, Updates), shown as
+  a filter and fixable with one tap. All open decisions are answered and recorded in the
+  checkpoint. Next: Amit picks one phase (F1–F7) per task; F1 and F2 can start independently from
+  `main`. Separate follow-up after F7: move the area classifier onto the model Amit called "the
+  new TypeSafe model GeV" (not yet identified; confirm the exact model before starting that
+  task).
 - **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
   `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
   which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
@@ -339,6 +350,239 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Inline search, quick filters and life areas — 2026-09-29
+
+Amit's intent, condensed: the Search tab feels dated. There should be no separate search page;
+a search bar at the top of Today and Feed should filter the page's items as he types, with the
+most important quick filters (Videos, X links, …) on the page itself. Separately, he wants Distil
+to be the one place for everything that matters to him: personal material (for example his
+child's school), work material (for example Granola notes) and content he learns from. Every item
+should be sorted into one of four areas **automatically by AI**; he does not want to write rules
+or set anything up, only to have a very simple way to fix a wrong area. A later, separate task
+moves the classifier onto a newer model.
+
+This checkpoint is a plan only. Nothing was implemented; no code, schema or cloud state changed.
+
+#### How search and classification work today (verified against `main` at `ea420d4`)
+
+- **Three unrelated search paths.**
+  1. `/search` (`src/components/phase2/search-experience.tsx`, gated by `FEATURE_SEARCH`) calls
+     `GET /api/v1/search` → `searchPassages` (`src/lib/knowledge/retrieval.ts`): keyword search
+     over `content_chunks.search_vector`, returning passages rather than items. Semantic mode is
+     never pinned. Nothing runs until Search is pressed; the component mirrors ten URL filters in
+     local state, hardcodes its own filter lists and takes a raw collection ID.
+  2. `/feed?q=` (`src/components/feed/feed-list.tsx` `requestPath`) calls the legacy
+     `GET /api/items?q=` → `hybridSearch` (`src/lib/ai/search.ts`): full-text search on
+     `items.search_vector` (title, summary, topics only) plus in-process cosine over the 500 most
+     recent embeddings. With a query, `feedFilterKey` (`src/lib/feed/feed-url.ts`) collapses to
+     `q=…`, so every Feed filter, read/archive state, pagination and server rendering is ignored.
+  3. Today has no search; the top-bar icon (`src/components/layout/topbar.tsx`) links to
+     `/search`, as does the sidebar (`src/components/layout/sidebar.tsx`).
+- **The Feed query is the right home.** `src/lib/feed/feed-query.ts` already composes filters,
+  sort, cursor pagination and personalization, and `/feed` and `/` server-render through it
+  (`loadFeedPage`, `src/lib/feed/feed-params.ts`). It has no text parameter.
+- **"X links" is not a stored facet.** `sourceType` is the capture channel and `contentType` is
+  article/video/podcast; X is only recognisable from the URL host (`isTwitterUrl`,
+  `src/lib/utils.ts`).
+- **No area concept exists.** `topics` are free-form. The Stage 1 classifier
+  (`src/lib/intelligence/classifier.ts`, task `auto-tag`, result in `items.content_classification`)
+  only runs inside `processContent` (`src/lib/intelligence/pipeline.ts`), which is used by the
+  Gmail, Slack and publisher connectors. **The durable capture worker (extension, iPhone
+  Shortcut, manual, Granola, X, Wispr) never runs it**; that path's only AI step is the brief
+  generated in `src/lib/queue/capture-consumer.ts`. No single existing call sees every item, so
+  area classification needs its own step called from both paths.
+- **Manual overrides already have a pattern.** `manual_priority` is kept beside the AI
+  `priority` and edited through `PATCH /api/v1/items/[id]/state` (`src/lib/phase2/reader-service.ts`).
+
+#### Decisions (Amit, in chat, 2026-09-29)
+
+1. **Areas:** exactly four — **Personal, Work, Learning, Updates**. Learning is material studied
+   and kept; Updates is news and information skimmed.
+2. **One area per item.** Topics keep the finer detail.
+3. **Fully automatic.** The AI always assigns its best guess; there is no Unsorted bucket and no
+   user-written rules or area descriptions. Confidence is stored for tuning only.
+4. **Corrections teach the AI.** Amit's recent reclassifications are passed to the classifier as
+   examples.
+5. **Reclassify:** an area badge on every card and in the reader; tapping it offers the four
+   areas. One tap to see, two to fix.
+6. **Area filter:** a segmented switch (All · Personal · Work · Learning · Updates) above the
+   quick filters, on both Today and Feed.
+7. **Backfill:** classify all existing items (title and summary only).
+8. **Gmail unchanged.** The relevance gate keeps its current allowlist (newsletter, digest,
+   announcement). Consequence: personal and work email (e.g. school notices) is not captured
+   from Gmail; that material arrives through other sources.
+9. **Today search scope:** the unread queue, plus a "Search everything →" link to `/feed?q=…`.
+10. **Search matches** title, summary, author, publication and topics; **not** body text.
+11. **Quick filters:** Videos, X links, Podcasts, Unread, High priority, plus the areas, without
+    a crowded row of chips. Amit left the layout to Claude; the chosen layout is under "Filter
+    bar" below.
+12. **Follow-up model task:** after this plan, a separate task moves area classification onto
+    the model Amit referred to as "the new TypeSafe model GeV". The exact model is not yet
+    identified; confirm it with Amit before that task starts.
+
+#### Target design
+
+- **One query model.** `q`, `site` and `area` become parameters of `FeedQuery`,
+  `parseFeedQuery` and `GET /api/v1/feed`, so search composes with every filter, sort,
+  pagination and the server-rendered first page. `/api/v1/search` and `searchPassages` stay
+  as the retrieval layer for Ask and grounding; they are no longer a page.
+- **Matching.** `websearch_to_tsquery` with the last token as a prefix (`:*`) so partial words
+  match while typing; when `q` is present, relevance (`ts_rank`) orders results ahead of the
+  current score. The `items.search_vector` generated column is widened to include `author` and
+  `publication` (weights: title A, author/publication B, summary and topics C).
+- **Site facet.** A generated, indexed `site` column holding the URL host without `www.`
+  (`x.com` for both `x.com` and `twitter.com`). "X links" is `site=x.com`; YouTube or Substack
+  chips later need no schema change.
+- **Filter bar** (one shared client component on Today and Feed):
+  - Row 1: the search field (placeholder "Search your items", `/` focuses it, Esc clears) and a
+    **Filters** button showing a count of active filters.
+  - Row 2: the area switch — All · Personal · Work · Learning · Updates.
+  - Row 3: five compact toggles — Unread · High priority · Videos · X · Podcasts — followed by
+    any filter set from the Filters sheet shown as a removable chip, and "Clear" when anything
+    is active. Rows 2 and 3 scroll horizontally on phones instead of wrapping.
+  - The Filters sheet (popover on desktop, bottom sheet on phones) holds everything else from
+    today's `src/components/feed/feed-filters.tsx`: source, topic, collection, dates, archive,
+    sort, and the view mode.
+  - Quick filters are one client-safe registry mapping each toggle to URL parameters
+    (`contentType=video`, `site=x.com`, `contentType=podcast`, `read=false`, `priority=high`),
+    shared by both pages. The URL remains the single source of truth.
+  - Typing filters the items already on screen immediately (title, publication, author), then a
+    250 ms debounced `router.replace` fetches the server result; the current list stays visible,
+    dimmed, while it loads, as Feed already does for filter changes.
+- **Area classification.** A new AI task `classify-area` (Gemini flash-lite by default, in
+  `src/lib/ai/ai-config.ts`) behind one function, `classifyItemArea(repositories, itemId)`. Input:
+  title, source type, author, publication, site, topics, the brief or summary, and at most about
+  2,000 characters of text, plus up to 20 of Amit's most recent corrections as examples
+  (title, site, author → area). Output via Gemini structured output with a zod mirror:
+  `{area, confidence, reason}`. It is called after the item is stored, from the capture
+  consumer (independently of the brief, so it runs even when the brief is off or fails) and from
+  the connector save path. Failure leaves the area empty and is retried by the backfill job;
+  it never blocks capture. Keeping it behind one function and one task name is what makes the
+  follow-up model swap a small change.
+- **Storage.** `items.area` (AI), `items.area_confidence`, `items.area_reason`,
+  `items.area_classified_at`, `items.manual_area`, all nullable; the effective area is
+  `COALESCE(manual_area, area)`, indexed per user. Reprocessing never touches `manual_area`.
+  Corrections are read back from items where `manual_area` differs from `area`.
+- **Today.** With no query or filters, Today is unchanged. With a query, a quick filter or an
+  area other than All, the priority and revisiting sections are replaced by one results list
+  from the unread queue and a "Search everything →" link to the Feed with the same parameters.
+
+#### Phase F1 — Feed query: text search and site facet
+
+- **Goal:** `q` and `site` on the Feed query and API, with prefix matching and relevance order.
+  No UI change.
+- **Files:** `src/lib/feed/feed-query.ts`, `src/lib/feed/feed-params.ts`,
+  `src/lib/feed/feed-url.ts`, `src/app/api/v1/feed/route.ts`, `src/lib/postgres/schema.ts`, a
+  new tenant migration after `0011` (widened `search_vector`, generated `site` column and its
+  index).
+- **Approach:** build the tsquery server-side from the trimmed input (escape operators; last
+  token as prefix); `q` requires at least 2 characters; `site` accepts a short allowlist of
+  hosts. `feedFilterKey` includes `q` like any other filter.
+- **Tests:** feed-query unit and contract tests (prefix match, relevance order, `q` combined with
+  read/archive/contentType, cursor pagination under `q`, `twitter.com` → `x.com`), API route
+  validation tests.
+- **Verification:** local loop (Docker Postgres) with real items; Quick gate. The migration
+  needs Amit's authorization to apply to Production at release.
+- **Record:** dated checkpoint and handoff bullet update.
+
+#### Phase F2 — Area classification at capture
+
+- **Goal:** every new item gets an AI area automatically.
+- **Files:** a new tenant migration (area columns and index), `src/lib/postgres/schema.ts`,
+  `src/lib/types.ts`, `src/lib/postgres/item-columns.ts`, `src/lib/postgres/mappers.ts`,
+  `src/lib/repositories/ports.ts`, `src/lib/postgres/repositories.ts`, a new
+  `src/lib/ai/classify-area.ts` and prompt in `src/lib/prompts/`, `src/lib/ai/ai-config.ts`,
+  `src/lib/queue/capture-consumer.ts`, and the connector save path (Gmail, Slack, publishers).
+- **Approach:** as in Target design. Include `area` (effective) in the summary projection so list
+  surfaces receive it. The prompt defines the four areas with a few generic examples each (school
+  or family logistics → Personal; meeting notes, colleague threads → Work; explainers, courses,
+  deep essays → Learning; news, announcements, release notes → Updates).
+- **Tests:** prompt tests (four areas defined, corrections included and capped), classifier unit
+  tests (valid output stored, invalid output rejected, failure does not throw into capture),
+  capture-consumer test (classification runs when the brief is disabled), repository contract
+  tests.
+- **Verification:** local loop with at least one real item per area (a Granola note, a school
+  or family item, an explainer, a news item); record the area and confidence for each (not the
+  content). Quick gate; migration authorization as in F1.
+- **Record:** checkpoint with the per-area sample results; handoff bullet update.
+
+#### Phase F3 — Filter bar on Feed
+
+- **Goal:** replace Feed's filter UI with the shared filter bar; Feed search runs on the new
+  query path.
+- **Files:** new `src/components/feed/filter-bar.tsx` and a client-safe quick-filter registry in
+  `src/lib/feed/`, `src/components/feed/feed-list.tsx` (drop the legacy `/api/items?q=` branch
+  in `requestPath`), `src/components/feed/feed-filters.tsx` (becomes the Filters sheet),
+  `src/app/feed/page.tsx` (server-render with `q`), feed query `area` parameter.
+- **Approach:** as in Target design. The area switch is shown once F2 has merged; if F3 lands
+  first, it is hidden until then.
+- **Tests:** filter-bar component tests (typing debounces to one navigation, `/` and Esc, toggles
+  map to the right parameters, sheet filters appear as removable chips, Clear), feed-list tests
+  for server-rendered search results and load-more under `q`.
+- **Verification:** browser preview on desktop and phone widths, light and dark; screenshot of
+  the bar with a query, an area and two toggles active. Quick gate.
+- **Record:** checkpoint with the screenshots' description; handoff update.
+
+#### Phase F4 — Area badge and one-tap reclassify
+
+- **Goal:** see and fix an item's area in two taps; corrections feed the classifier.
+- **Files:** `src/components/feed/content-card.tsx`, the reader header,
+  `src/lib/phase2/reader-service.ts` (`stateSchema` gains `area`),
+  `PATCH /api/v1/items/[id]/state`, `src/lib/ai/classify-area.ts` (read recent corrections).
+- **Approach:** the badge opens a four-option menu; the change is optimistic and writes
+  `manual_area`. Choosing the AI's own area clears `manual_area`.
+- **Tests:** component tests for the badge menu, reader-service and route tests, a classifier
+  test that corrections appear as examples.
+- **Verification:** browser preview: reclassify from a card and from the reader, then filter by
+  the new area. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Phase F5 — Filter bar on Today
+
+- **Goal:** the same bar on Today, searching the unread queue.
+- **Files:** `src/app/page.tsx`, `src/components/phase2/today-experience.tsx`,
+  `src/components/phase2/today-prototype.tsx`, `src/lib/feed/today-selection.ts`.
+- **Approach:** as in Target design (results mode plus "Search everything →"); the default Today
+  view is unchanged.
+- **Tests:** Today component tests for default, filtered and empty-result states and the link's
+  parameters.
+- **Verification:** browser preview, desktop and phone. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Phase F6 — Backfill areas for existing items
+
+- **Goal:** every existing item has an area.
+- **Approach:** a tenant-scoped job that classifies items with no area in batches, using title
+  and summary only, through the existing queue with the tenant AI budget; idempotent and
+  resumable. Running it on Production is a cloud mutation that needs Amit's authorization for
+  that run.
+- **Tests:** job unit tests (skips classified and manually set items, resumes after a failure,
+  respects the batch size).
+- **Verification:** local run over the local library; record counts per area and failures.
+- **Record:** checkpoint with counts; handoff update.
+
+#### Phase F7 — Retire the Search page and the legacy search path
+
+- **Goal:** one search surface.
+- **Files:** `src/app/search/page.tsx` (redirect `/search?…` to `/feed?…`, mapping parameters),
+  `src/components/phase2/search-experience.tsx` and its tests (delete),
+  `src/components/layout/topbar.tsx` and `sidebar.tsx` (remove the Search entries; the top-bar
+  icon may focus the page's search field instead), `src/app/api/items/route.ts` (remove the
+  `q` branch), `AGENTS.md` and docs describing search, and the `FEATURE_SEARCH` gating of the
+  page. `hybridSearch` stays while `src/lib/agent/rag.ts` uses it; moving that to the Feed query
+  is optional here.
+- **Tests:** redirect test; remove or rewrite tests for deleted code.
+- **Verification:** old `/search?q=…` links land on the equivalent Feed view. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Order, ownership and recording
+
+F1 and F2 are independent and can start from `main` in either order. F3 needs F1 (and F2 for the
+area switch). F4 needs F2 and F3. F5 needs F3. F6 needs F2. F7 goes last. Each phase is its own
+`claude/<task>` branch and PR with its own state update. Re-verify every `file:line` reference
+against current `main` before starting a phase. The model follow-up (decision 12) is a separate
+task after F7.
 
 ### summary-structure applied to Production — 2026-09-29
 
