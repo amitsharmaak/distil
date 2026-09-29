@@ -18,12 +18,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Inline search, quick filters and AI life areas: F1 merged, F2 implemented and not merged
-  (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
-  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 on branch
-  `claude/areas-f2-classification`; checkpoints "Life areas F2: AI area classification at
-  capture — 2026-09-29", "Inline search F1: feed text search and site facet — 2026-09-29" and
-  "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
+- **Inline search, quick filters and AI life areas: F1 and F2 merged, both stages applied to
+  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
+  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; checkpoints
+  "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
+  classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
+  2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
   page replaced by a search bar at the top of Today and Feed that filters as he types, with
   one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
   learning material with every item sorted automatically by AI into one of four areas (Personal,
@@ -31,11 +32,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
   `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
   an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
-  changed. **Neither stage is applied to Production yet**; both need Amit's authorization, and
-  neither code path depends on its stage (F1's plain feed never reads the new columns, and F2's
-  classifier fails softly), so the code can deploy first. Both stages must be applied before F3.
-  Next: Amit merges the F2 PR, then applies `feed-search` and `life-areas` to Production in that
-  order. F3 starts from `main` after that. Separate follow-up after F7: move the area classifier
+  changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
+  `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
+  and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
+  his terminal scrollback and shell history during this release (see the checkpoint); (2)
+  confirm that a new capture on Production gets an area (not yet observed). Next: F3 (filter bar
+  on Feed) starts from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
 - **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
@@ -517,6 +519,48 @@ been applied to Production at 09:53:39Z beforehand (checkpoint "summary-structur
 Production — 2026-09-29"), so the release order held. Per Amit, the Vercel Production
 deployment of `ea420d4` completed; Claude did not re-check the deployment. Old summaries render
 as v1 until regenerated.
+
+### feed-search and life-areas applied to Production — 2026-09-29
+
+Amit authorized applying the F1 and F2 tenant stages to Production and ran both himself. He
+merged PR [#64](https://github.com/amitsharmaak/distil/pull/64) (all checks, including the full
+gate, had passed; squash merged as `cf0cf28`), then fast-forwarded the main checkout to
+`cf0cf28`. He copied the `distil-production` owner connection string from the Neon console's
+Connect dialog (role `neondb_owner`, database `neondb`, pooling off, host
+`ep-delicate-frog-b3g28rqu.c-4.ap-southeast-1.aws.neon.tech`) into
+`DATABASE_MIGRATION_URL="$(pbpaste)"` and ran, in order:
+
+1. `npm run db:tenant:migrate -- --stage feed-search --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied feed-search: 0012_feed_search.sql`. Its only NOTICE was the usual
+   `distil_tenant_migrations already exists, skipping`.
+2. `npm run db:tenant:migrate -- --stage life-areas --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied life-areas: 0013_life_areas.sql`. The NOTICEs were the ledger-table one plus
+   `items_area_check`, `items_manual_area_check` and `items_area_confidence_check` "does not
+   exist, skipping". Those three are expected on a first run: the migration drops each constraint
+   `IF EXISTS` before adding it, so it stays idempotent.
+
+Claude verified both outcomes by reading Amit's terminal output. It did not connect to
+Production.
+
+**Security note.** Before the successful runs, the full owner connection string, password
+included, was pasted directly at the shell prompt several times. zsh rejected those lines (glob
+error), so nothing ran with it, but the string is in that terminal's scrollback and in
+`~/.zsh_history`, and it reached Claude's context when Claude read the terminal. It is not
+recorded anywhere in the repository. Recommended to Amit, and not yet confirmed:
+
+- Reset the `neondb_owner` password on `distil-production` in the Neon console.
+- Update Vercel's `DATABASE_MIGRATION_URL` (release-only; the app runs on the separate restricted
+  runtime role in `DATABASE_URL`, so the site is unaffected).
+- Optionally delete the history lines with `sed -i '' '/neondb_owner:/d' ~/.zsh_history` from a
+  new terminal.
+
+**State now.** Production's items table has `feed_search_vector`, `site` and the seven area
+columns, with the `tenant_api.items` view rebuilt. The deployed `cf0cf28` code classifies each
+new capture's area (`FEATURE_AREA_CLASSIFICATION` is unset, so on). Not yet observed on
+Production: a capture receiving an area. Items captured before this point stay unclassified
+until F6. No client sends `q` or `site` until F3.
+
+**Next:** F3 (filter bar on Feed) from `main`.
 
 ### Life areas F2: AI area classification at capture — 2026-09-29
 
