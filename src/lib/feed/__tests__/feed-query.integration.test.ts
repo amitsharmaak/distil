@@ -65,13 +65,15 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
     baseline,
   });
-  // feed-search (0012) adds the columns search and the site facet read.
+  // feed-search (0012) adds the columns search and the site facet read; the later stages keep
+  // this suite on the full current schema.
   for (const stage of [
     "lifecycle",
     "returning-auth",
     "perf-indexes",
     "summary-structure",
     "feed-search",
+    "life-areas",
   ] as const) {
     await applyTenantMigrationStage({
       sql: harness.sql,

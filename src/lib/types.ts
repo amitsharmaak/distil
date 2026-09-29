@@ -4,6 +4,13 @@ export type ContentType = "article" | "video" | "podcast";
 
 export type Priority = "high" | "medium" | "low";
 
+/**
+ * The four life areas every item belongs to (one each). Learning is material
+ * studied and kept; updates are news and information skimmed.
+ */
+export const LIFE_AREAS = ["personal", "work", "learning", "updates"] as const;
+export type LifeArea = (typeof LIFE_AREAS)[number];
+
 export interface ExtractedLink {
   text: string;
   url: string;
