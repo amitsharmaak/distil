@@ -18,16 +18,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Tester onboarding: extension origin prefilled (branch
-  `claude/distil-user-testing-setup-2f99c6`, not merged; checkpoint "Extension origin defaults to
-  Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
+- **Tester onboarding: extension origin prefilled (PR
+  [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
+  checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
   extension Options page now prefills `https://distilai.app`, so a tester only pastes their own
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
-  Next: Amit merges, then issues the tester's invitation himself (Production mutation) and shares
+  Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability: plan recorded, nothing implemented (docs-only branch
-  `claude/deep-research-readability-8ab4ee`; checkpoint "Deep research readability: diagnosis
-  and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
+- **Deep research readability: plan merged, nothing implemented (PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62), squash merged as `0726cc0` on
+  2026-09-29; checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
   poorly rendered content). Root causes: the source list is a regex scrape of every URL in the
   raw findings (41 listed, 8 cited in the local sample), prompts ask for URLs everywhere, one
   4,096-token synthesis compresses the findings to ~800 words in a fixed four-heading template,
@@ -35,12 +35,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
   writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
   decisions in the checkpoint and picks a phase (recommended R1).
-- **Inline search, quick filters and AI life areas: F1 and F2 merged, both stages applied to
-  Production, F3 implemented and not merged (plan PR
-  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+- **Inline search, quick filters and AI life areas: F1–F3 merged, both stages applied to
+  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
   [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
-  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 on branch
-  `claude/search-f3-filter-bar`; checkpoints "Inline search F3: filter bar on Feed —
+  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 PR
+  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; checkpoints
+  "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
   2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
   classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
   2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
@@ -56,14 +56,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
   his terminal scrollback and shell history during this release (see the checkpoint); (2)
   confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
-  filter bar in a browser before or right after merging (it was verified by tests only; see the
-  F3 checkpoint). Next: Amit merges the F3 PR; F4 (area badge and one-tap reclassify) and F5
-  (filter bar on Today) can then start from `main`. Separate follow-up after F7: move the area classifier
+  filter bar on `https://distilai.app/feed` on desktop and phone (it was verified by tests only;
+  see the F3 checkpoint). Next: F4 (area badge and one-tap reclassify) and F5 (filter bar on
+  Today) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
-- **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
-  `claude/adaptive-summaries-s2-delta-91757a`, PR
-  [#60](https://github.com/amitsharmaak/distil/pull/60); checkpoint "Adaptive summaries S2:
+- **Adaptive brief and detailed summaries: S1 released; S2 merged (PR
+  [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on 2026-09-29
+  in the consolidation, **before** the pre-merge key check in step (1) below; checkpoint "Adaptive summaries S2:
   detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
   delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
   brief to stay a short overview, and the detailed view to add meaningful depth beyond the
@@ -75,12 +75,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   and it is rebuilt when the brief is regenerated. No schema change. Verified locally with
   `npm run check` and on the four local items (all four pass the new delta check; per-item
   verdicts in the S2 checkpoint), on the Gemini fallback because the local `ANTHROPIC_API_KEY`
-  is rejected. Next: (1) before merging, confirm the Production Anthropic key and
-  `claude-sonnet-4-6` answer (`npm run audit:ai-models` with the Production keys) — every
-  detailed request now routes to Claude when that key is set, and an authentication failure
-  does not fall back to Gemini; (2) Amit reviews the PR and asks for the merge; (3) on
-  Production, open Detailed on one item with a new brief and one with an old brief. S3 (depth
-  on demand) starts from `main` after the merge, on Amit's decision.
+  is rejected. Next: (1) **now, since S2 is on `main` and auto-deploys:** confirm the
+  Production Anthropic key and `claude-sonnet-4-6` answer (`npm run audit:ai-models` with the
+  Production keys). Every detailed request routes to Claude when that key is set, and an
+  authentication failure does not fall back to Gemini, so a bad key breaks Detailed on
+  Production. The quick mitigation is to remove `ANTHROPIC_API_KEY` from Vercel, which routes
+  Detailed to Gemini. (2) On Production, open Detailed on one item with a new brief and one with
+  an old brief. S3 (depth on demand) starts from `main` on Amit's decision.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -387,6 +388,42 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Consolidation of open PRs — 2026-09-29
+
+Amit asked to consolidate all branches and work. With his explicit choice ("merge all three"),
+Claude brought each open PR up to date with `main` and squash merged it after its checks
+passed. In every case the only conflict was `docs/project-state.md`, where both sides had added
+their own handoff bullet or checkpoint; each resolution kept both texts unchanged. `main` is
+now `195189b`, with no open PRs.
+
+| PR                                                    | What                                                                         | Squash commit |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------- | ------------- |
+| [#67](https://github.com/amitsharmaak/distil/pull/67) | Inline search F3: filter bar on Feed (full gate passed)                      | `91214b0`     |
+| [#62](https://github.com/amitsharmaak/distil/pull/62) | Deep research readability plan (docs only)                                   | `0726cc0`     |
+| [#66](https://github.com/amitsharmaak/distil/pull/66) | Extension Options prefills `https://distilai.app` (Quick gate)               | `bd06a58`     |
+| [#60](https://github.com/amitsharmaak/distil/pull/60) | Adaptive summaries S2: detailed as a delta over the brief (full gate passed) | `195189b`     |
+
+**Notes**
+
+- **#60 and the Anthropic key.** #60's own session was syncing `main` into its branch while this
+  ran; Claude merged the latest `main` into it once after waiting for that session.
+  - **Vercel check:** Vercel posted no status for that merge commit, so an empty commit
+    re-triggered it. All nine checks then passed.
+  - **Merged before the key check.** #60 went in **before** its recorded pre-merge step
+    (confirming the Production Anthropic key answers for `claude-sonnet-4-6`); see the S2
+    handoff bullet for why that matters now.
+- **#66 changes the extension's default origin.** `AGENTS.md` §9 reserves that for Amit; his
+  instruction to merge it is the task-specific authorization.
+- **Cleanup: this session's worktrees.** Removed the F1, F2, F3 and release-record worktrees
+  and their local branches, all merged. The remote branches are deleted by GitHub.
+- **Cleanup: left in place.**
+  - The plan worktree `distil-search-filtering-redesign-d4f727`, which is the session's working
+    directory.
+  - The scratch worktree `consolidate-prs`.
+  - Every other session's worktree.
+
+  Amit can remove the first two with `git worktree remove`.
 
 ### Adaptive summaries S2: detailed as a delta over the brief — 2026-09-29
 
