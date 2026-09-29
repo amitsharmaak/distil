@@ -18,8 +18,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Feed header, Filters sheet redesign and Search page retired (branch
-  `claude/feed-page-layout-redesign-e8b8a0`, not merged; checkpoint "Feed header: compact
+- **Feed header, Filters sheet redesign and Search page retired (PR
+  [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
   long, the filter pills too prominent, the Filters sheet poorly designed, and the separate Search
   page redundant. The search is now a compact pill beside the Feed title. Every filter lives in a
@@ -28,7 +28,18 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `/feed?…`. This covers the UI part of F7. Still open from F7: the `/api/items` `q` branch,
   `GET /api/v1/search` (no UI caller now) and the `FEATURE_SEARCH` flag. Checked by tests and in the
   local in-app browser with real items: phone and desktop layouts, the `/search` redirect, and
-  the removed icon and sidebar entry. Not deployed.
+  the removed icon and sidebar entry. Not yet checked on Production.
+- **App slowness: diagnosed live, plan P8–P11 recorded, nothing implemented (branch
+  `claude/app-performance-investigation-917601`; checkpoint "App slowness: live diagnosis and
+  phased plan (P8–P11) — 2026-09-29"):** Amit finds the whole app slow. Measured on Production
+  through his Chrome session: a warm click is ~450 ms, of which the proxy's authentication is
+  ~210–370 ms (a fresh Neon connection for the one account lookup, ~125 ms, plus an uncached
+  Neon Auth round trip, 80–250 ms) while the page's own database work is ~20 ms; after a few idle
+  minutes Neon and Vercel cold starts stack (8.5 s Today load observed). Phases, one per task:
+  **P8** proxy lookup without a per-request connection, **P9** provider check from the signed
+  cookie cache for read-only requests, **P10** fewer prefetches and instant Feed chips, **P11**
+  Neon/Vercel cold-start settings (cloud change). Next: Amit answers the four decisions in the
+  checkpoint and picks a phase (recommended P8).
 - **AI cost accounting corrected (PR [#69](https://github.com/amitsharmaak/distil/pull/69),
   squash merged as `d3ec32e` on 2026-09-29; checkpoints "Consolidation of open PRs (2) —
   2026-09-29" and "AI cost accounting: verified prices, thinking tokens, grounding fee —
@@ -459,6 +470,164 @@ filters (Unread, High priority, Videos, X, Podcasts) took two rows he does not u
   owner (old file kept as `.env.local.neon-backup`). The local database also got the
   `feed-search` and `life-areas` tenant stages.
 - **F5 note.** When Today gets the filter bar, it gets the same compact search and sheet layout.
+
+### App slowness: live diagnosis and phased plan (P8–P11) — 2026-09-29
+
+**Why.** Amit reported that the whole app feels very slow and asked Claude to drive Production
+through the Chrome extension (Today → Feed → filter chips and a post → Today → Search → back) and
+find the cause. This task is diagnosis and planning only (docs-only branch
+`claude/app-performance-investigation-917601`, from `main` `aba860b`); no code changed and
+nothing in Vercel or Neon was touched.
+
+**How it was measured.** Amit's signed-in session in his own Chrome against
+`https://distilai.app` (edge `bom1`, functions `sin1`, Neon `ap-southeast-1`). Navigations were
+timed in the page with a `MutationObserver` plus Resource Timing; server phases were read from
+`Server-Timing` through same-origin `fetch`. Caveat for whoever re-measures: the MCP tab was
+hidden (`document.visibilityState === "hidden"`), so Chrome clamps `setInterval`/`setTimeout` to
+1 s; the first round of readings snapped to ~1000 ms for that reason and was discarded. Use
+observers or `MessageChannel`, not timers, or bring the tab to the front.
+
+**Live readings (2026-09-29).**
+
+| Action                                   | Time                         | Notes                                                                |
+| ---------------------------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| First load of `/`                        | load event 3.3 s             | document proxy 935 ms (`proxy-auth-db` 642 ms)                       |
+| Today → Feed (client nav)                | 0.5 s warm, 1.9 s first time | one RSC request; first one had proxy 950 ms                          |
+| Feed chips (Work, High priority, X, …)   | 0.55–0.8 s each              | every chip is a `router.replace` server render (`feed-list.tsx:225`) |
+| Feed → post                              | ~0.45 s                      | one RSC request                                                      |
+| Router-cache hits (Today ↔ Search, back) | 35–100 ms                    | no request                                                           |
+| **Search → Today after idle**            | **8.5 s**                    | TTFB 1.04 s (proxy 882 ms), then 7.5 s until the RSC stream finished |
+| Cold `/api/v1/feed` after 6½ min idle    | 1.6 s                        | `proxy-auth-db` 643 ms `q=2`, route `db` 74 ms, route total 142 ms   |
+| Cold `/` RSC right after that            | TTFB 1.08 s                  | proxy only 234 ms, so ~840 ms is the `/` page function starting cold |
+
+Warm `Server-Timing` on `GET /api/v1/feed`, four samples:
+
+```
+proxy-auth-provider  83–248 ms  calls=1   (Neon Auth get-session, uncached)
+proxy-auth-db        124–128 ms q=1       (distil_resolve_auth_identity)
+proxy total          207–374 ms
+route auth           0.6–1.0 ms           (HMAC identity token, P1)
+route db             7–24 ms   q=2–3 tx=1 (the actual feed read)
+```
+
+Client rendering is not a factor: the Feed page has ~660 DOM nodes and no long tasks or long
+animation frames were observed during navigation.
+
+**Diagnosis — three causes.**
+
+1. **The proxy's account lookup opens a new Postgres connection on every request (~125 ms,
+   the largest fixed cost).** `distil_resolve_auth_identity` is a single indexed join
+   (`src/lib/postgres/tenant-migrations/0007_phase3_tenant_contract.sql:304-320`); the same
+   database answers the route's own queries in ~5 ms each over a pooled connection. The timed
+   phase wraps only `findAccountByIdentity` (`src/lib/auth/auth-metrics.ts:34`), so the
+   constant ~125 ms is TCP + TLS + SCRAM to Neon, not query time. The Next 16 proxy is deployed
+   and invoked separately from render code (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:19`
+   warns against relying on shared modules or globals), so the `globalThis`-memoised pool from
+   `src/lib/postgres/client.ts` (`max: 4`, `idle_timeout: 20`) and
+   `src/lib/auth/repository-runtime.ts` does not survive between proxy invocations. This is
+   inferred from timings, not yet proven — P8 step 1 proves it. It is the ~130 ms item already
+   flagged after P1 and P5 (checkpoints "Performance P1 released" and "Performance P5 live
+   numbers").
+2. **The provider check is a network round trip on every request (80–250 ms).**
+   `verifyNeonSession` deliberately sets `disableCookieCache=true`
+   (`src/lib/auth/neon-server.ts:88`) so a provider-side revocation is seen on the next request,
+   even though the SDK is configured with a 300 s signed session cookie
+   (`neon-server.ts:31`, `sessionDataTtl: 300`). Every RSC prefetch pays it too: the first load
+   of `/` prefetched 9 routes (`/feed`, `/research`, `/ask`, `/search`, `/settings`, `/save` and
+   three `/feed/<id>`), each through the full proxy.
+3. **Cold starts stack on the first request after a few idle minutes.** The Neon compute
+   wakes from scale-to-zero (`proxy-auth-db` 125 → 643 ms, `q=2`) and each Vercel function
+   (proxy, `/`, `/feed`, API routes are separate) boots cold (~0.8 s for `/`). Together they
+   gave the 8.5 s Today load; the 7.5 s tail was not fully attributed (the page does only 2–3
+   tenant reads, `src/app/page.tsx`, `src/lib/feed/feed-params.ts:132-147`; no AI call).
+   Previously recorded outliers of the same kind: 12 s and 3.4 s (P5 live numbers, 2026-09-18).
+
+Net effect: a warm click is ~450 ms end to end, of which ~210–370 ms is proxy authentication and
+~20 ms is the page's actual database work; the remainder is network and render.
+
+**Plan — four PR-sized phases, each its own task from current `main`.** Re-verify every
+file:line reference above against `main` before starting a phase. Every phase records a dated
+checkpoint with before/after `Server-Timing` readings taken the way described above (four warm
+samples of `GET /api/v1/feed` and `/feed` RSC, plus one reading after ≥6 min idle), so the
+numbers in the table stay the baseline.
+
+**P8 — Proxy account lookup without a per-request connection (code only; recommended
+first).** Goal: `proxy-auth-db` warm ≤ 30 ms with identical authorization semantics.
+
+- Step 1, prove the cause: on a Preview deployment, time a connection-establishing phase
+  separately from the query (for example two consecutive `findAccountByIdentity` calls, or a
+  `SELECT 1` before it, under a temporary `proxy-auth-connect` phase in
+  `src/lib/observability/request-metrics.ts`). Expect ~120 ms connect and ≤ 10 ms query. If the
+  query itself is slow instead, stop and re-plan (then it is a plan/RLS problem, not transport).
+- Step 2, fix (decision 1 below): (a) **recommended** — run only the proxy's lookup through
+  Neon's HTTP driver (`@neondatabase/serverless` `neon()`; one HTTPS request over a kept-alive
+  fetch, no TCP/TLS/SCRAM handshake per request) behind the existing `AuthRepositoryPort`, keep
+  `postgres` for everything else; or (b) a short-lived signed account-binding cookie
+  (provider subject → user id + status, HMAC with the identity-token secret, TTL 60 s) that
+  skips the lookup while fresh, which delays suspension/deletion by up to the TTL.
+- Files: `src/lib/auth/repository-runtime.ts`, `src/lib/postgres/auth-repository.ts` (or a
+  sibling HTTP adapter), `src/proxy.ts:112-121`, `package.json`; the security-definer function
+  and `distil_runtime` grants stay unchanged.
+- Tests: adapter unit test with the HTTP client mocked (same row mapping as
+  `auth-repository.unit.test.ts`), `neon-proxy` unit tests unchanged, integration test of the
+  adapter against Docker Postgres if the HTTP driver can be pointed at it (otherwise document the
+  gap), `npm run check`.
+- Verify on a Preview deployment first, then after release on Production; record both readings.
+
+**P9 — Provider session check from the signed cookie cache (code; needs decision 2).** Goal:
+remove the 80–250 ms Neon Auth round trip from ordinary navigations and prefetches.
+
+- Use the SDK's signed `session_data` cookie (already issued, `sessionDataTtl` 300 s) for
+  `GET`/`HEAD` page and RSC requests; keep `disableCookieCache=true` for every non-GET request,
+  for `/api/auth/*`, `/account`, capture and token management, and for any request whose cookie
+  cache is missing or expired. Set the TTL to the revocation window Amit chooses.
+- Files: `src/lib/auth/neon-server.ts:62-100` (`verifyNeonSession`), `src/lib/auth/neon-proxy.ts:
+108-170`, `src/proxy.ts`; tests in `src/lib/auth/__tests__/`.
+- Tests: GET navigation uses the cache and makes no provider call; POST, auth and account paths
+  still verify uncached; expired/missing cache falls back to one uncached check; the refreshed
+  `Set-Cookie` is still forwarded. `npm run check`.
+- Security note for the checkpoint: after a sign-out elsewhere or a provider-side revocation, a
+  read-only page view can succeed for up to the TTL; mutations cannot.
+
+**P10 — Fewer requests from the client (code only).** Goal: fewer proxy passes per interaction
+and instant feedback on Feed chips.
+
+- Sidebar links to rarely used routes (Research, Ask, Settings, Save) get `prefetch={false}`
+  (`src/components/layout/sidebar.tsx:86`); keep Today, Feed and Search prefetched. Leave card
+  links (`src/components/feed/content-card.tsx:213`) on the default viewport prefetch unless the
+  P8/P9 readings still show prefetch contention.
+- Feed chips: wrap the `router.replace` in `src/components/feed/feed-list.tsx:225` in
+  `useTransition`, flip the chip's selected state immediately and show a subtle pending state
+  on the list, so the tap feels instant while the server renders. Do not move filtering to the
+  client — the list is paginated and server-ranked.
+- Tests: sidebar component test for the prefetch props, filter-bar/feed-list component tests
+  for optimistic chip state and pending UI; `npm run check`; local loop check in the in-app
+  browser.
+
+**P11 — Cold-start mitigation (cloud configuration; needs task-specific authorization from
+Amit).** Goal: the first request after idle under ~1.5 s.
+
+- Check, then change only with approval: the `distil-production` Neon compute's scale-to-zero
+  setting (longer suspend timeout or always-on; depends on the Neon plan and cost), and whether
+  Fluid compute is enabled on the Vercel project (it keeps instances warm longer and reuses them
+  across concurrent requests). Vercel Hobby crons run once a day, so a keep-warm cron is not an
+  option there.
+- No code change unless a setting requires one. Record the before/after idle reading.
+
+**Decisions for Amit (recommendation first).**
+
+1. P8 approach: Neon HTTP driver for the proxy lookup (recommended; no security change, one new
+   dependency) versus a 60 s signed account-binding cookie (no DB call at all, but account
+   status changes lag by up to the TTL).
+2. P9 revocation window for read-only navigations: 60 s (recommended), 300 s (the SDK default
+   already configured), or keep the uncached check on every request (skip P9).
+3. P11: whether to change Neon scale-to-zero and Vercel Fluid compute settings, given plan and
+   cost.
+4. Order: P8 → P9 → P10, with P11 whenever decision 3 is made. P8 and P10 change no security
+   behaviour; together P8 and P9 should bring a warm click from ~450 ms to ~150–200 ms.
+
+**Not deployed. Nothing changed in Vercel or Neon.** Production was only read, through Amit's
+own signed-in browser session; no data was modified.
 
 ### Consolidation of open PRs (2) — 2026-09-29
 
