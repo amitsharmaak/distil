@@ -99,6 +99,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   migration and no notification bell — see the checkpoint for why both were avoided. Open item
   for Amit: the populated list was never exercised against a database, because this worktree's
   `.env.local` has no `DATABASE_URL`; the first look on Production is the real check.
+- **AI model audit accepts Anthropic aliases (branch `claude/haiku-alias-audit`; checkpoint
+  "AI model audit resolves Anthropic aliases — 2026-09-29"):** `npm run audit:ai-models`
+  reported `claude-haiku-4-5` as missing because Anthropic's ListModels returns only the dated
+  snapshot. The ids stay undated aliases; the script now resolves an unlisted id with GetModel.
+  No runtime or cloud change. Next: merge on Amit's decision.
 - **Model selection: Gemini default, Anthropic optional (PR
   [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
   on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
@@ -423,6 +428,27 @@ Also seen, not acted on:
   in the sidebar.
 
 These are Amit's account decisions.
+
+### AI model audit resolves Anthropic aliases — 2026-09-29
+
+`npm run audit:ai-models` printed `anthropic: MISSING claude-haiku-4-5` while
+`claude-sonnet-4-6` passed. Checked live with the local key, read-only: ListModels returns
+`claude-sonnet-4-6` (that model has no dated id) and `claude-haiku-4-5-20251001`, never the
+Haiku alias; GetModel (`models.retrieve`) resolves `claude-haiku-4-5` to
+`claude-haiku-4-5-20251001` and returns 404 for an unknown id. The Messages API accepts the
+alias, and the Claude API reference recommends aliases, so the configured id was never wrong.
+
+- **Decision:** keep the undated alias in `ai-config.ts` and `MODEL_COSTS` (no key change,
+  so cost lookup is unaffected). A dated pin would only differ once Anthropic ships a new Haiku
+  4.5 snapshot, and the alias is the documented form.
+- **Change:** `scripts/check-ai-models.ts` falls back to GetModel for Anthropic ids that are
+  missing from the list, and prints `ok  claude-haiku-4-5 (alias of claude-haiku-4-5-20251001)`;
+  a 404 is still `MISSING`. `ai-config.unit.test.ts` pins that Anthropic ids are undated
+  aliases. There is a comment in `ai-config.ts`, and `AGENTS.md` has a note in its AI bullet.
+- **Verification (local):** `npm run audit:ai-models` passes for Gemini and both Claude ids
+  (OpenAI skipped, no key); `npm run check` passes (228 suites, 1725 tests) after `npm ci`, which replaced this worktree's stale jsdom 30 install. Before that, one harness test failed on a jsdom ESM `require`. The local `ANTHROPIC_API_KEY` now
+  lists models, unlike the S2 note, which recorded it as rejected. The Production key was not
+  checked.
 
 ### Consolidation of open PRs — 2026-09-29
 

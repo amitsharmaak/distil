@@ -6,6 +6,10 @@
  *
  * Providers without a key are skipped and reported; a referenced id missing from a
  * configured provider's catalogue exits non-zero. Never prints key values.
+ *
+ * Anthropic's ListModels returns dated snapshot ids (`claude-haiku-4-5-20251001`), not the
+ * aliases ai-config uses (`claude-haiku-4-5`). An id absent from the list is therefore
+ * resolved with GetModel, which accepts aliases, and reported as `ok` with its snapshot.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
@@ -49,6 +53,22 @@ async function listAnthropicModels(apiKey: string): Promise<Set<string>> {
   return ids;
 }
 
+/** Resolves an alias to its snapshot id; null when the provider does not know the id. */
+async function resolveAnthropicAlias(apiKey: string, model: string): Promise<string | null> {
+  try {
+    return (await new Anthropic({ apiKey }).models.retrieve(model)).id;
+  } catch (error) {
+    if (error instanceof Anthropic.NotFoundError) return null;
+    throw error;
+  }
+}
+
+const aliasResolvers: Partial<
+  Record<ProviderName, (apiKey: string, model: string) => Promise<string | null>>
+> = {
+  anthropic: resolveAnthropicAlias,
+};
+
 const listers: Record<ProviderName, (apiKey: string) => Promise<Set<string>>> = {
   gemini: listGeminiModels,
   openai: listOpenAIModels,
@@ -73,9 +93,25 @@ async function main(): Promise<void> {
       continue;
     }
     for (const model of wanted) {
-      const ok = available.has(model);
-      if (!ok) failures += 1;
-      console.log(`${provider}: ${ok ? "ok     " : "MISSING"} ${model}`);
+      if (available.has(model)) {
+        console.log(`${provider}: ok      ${model}`);
+        continue;
+      }
+      const resolve = aliasResolvers[provider];
+      let snapshot: string | null = null;
+      try {
+        snapshot = resolve ? await resolve(keys[provider], model) : null;
+      } catch (error) {
+        failures += 1;
+        console.log(`${provider}: could not resolve ${model}: ${(error as Error).message}`);
+        continue;
+      }
+      if (snapshot) {
+        console.log(`${provider}: ok      ${model} (alias of ${snapshot})`);
+      } else {
+        failures += 1;
+        console.log(`${provider}: MISSING ${model}`);
+      }
     }
   }
   if (failures > 0) {
