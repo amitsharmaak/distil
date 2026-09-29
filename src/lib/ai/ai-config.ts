@@ -56,18 +56,30 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
  * Cost per 1 million tokens (USD) for each model.
  * Used by the router to estimate per-call spend and enforce the daily budget.
  * Every model id referenced in this file must have a row here.
+ *
+ * Standard paid-tier list prices for text, checked 2026-09-29 against
+ * ai.google.dev/gemini-api/docs/pricing, developers.openai.com/api/docs/pricing and
+ * platform.claude.com/docs/en/about-claude/pricing. Gemini output prices include
+ * thinking tokens. None of these models has a >200k-prompt tier.
  */
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
-  // Estimate pending a checked price sheet; only used for budget accounting.
-  "gemini-3.5-flash": { input: 0.5, output: 3.0 },
+  "gemini-3.5-flash": { input: 1.5, output: 9.0 },
   "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
-  "gemini-3-flash-preview": { input: 0.15, output: 0.6 },
+  "gemini-3-flash-preview": { input: 0.5, output: 3.0 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4o": { input: 2.5, output: 10.0 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
 };
+
+/**
+ * Cost (USD) of one Google Search query run by a grounded Gemini 3.x call: $14 per
+ * 1,000 queries. A single grounded request can run several queries, each billed.
+ * The 5,000 free queries per month (shared across Gemini 3.x) are not netted off,
+ * so estimates err high until that allowance is exhausted.
+ */
+export const GEMINI_SEARCH_QUERY_COST = 14 / 1_000;
 
 /**
  * Gemini model used for web-search-grounded generation.

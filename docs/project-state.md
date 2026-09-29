@@ -18,6 +18,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **AI cost accounting corrected (branch `claude/model-token-costs-6e8e23`, PR pending;
+  checkpoint "AI cost accounting: verified prices, thinking tokens, grounding fee —
+  2026-09-29"):** Amit asked for accurate per-call costs. Two Gemini rates were 3–5× too low,
+  Gemini thinking tokens were never counted, and grounded-search queries were not charged. All
+  three are fixed in code; recorded costs rise from the merge onward (earlier rows stay
+  under-counted). Next: Amit reviews and merges; open follow-ups are listed in the checkpoint.
 - **Tester onboarding: extension origin prefilled (PR
   [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
   checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
@@ -388,6 +394,55 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### AI cost accounting: verified prices, thinking tokens, grounding fee — 2026-09-29
+
+Amit asked for the real per-token price of every model in `src/lib/ai/ai-config.ts` so that
+per-call costs (audit log `cost`, `ai.usage` `costMicrousd`, the daily and rolling budgets) are
+accurate. Prices were read on 2026-09-29 from the official pages:
+`ai.google.dev/gemini-api/docs/pricing`, `developers.openai.com/api/docs/pricing` and
+`platform.claude.com/docs/en/about-claude/pricing` (standard paid tier, USD per 1M tokens).
+
+| Model                  | Was (in / out) | Now (in / out) |
+| ---------------------- | -------------- | -------------- |
+| gemini-3.5-flash-lite  | 0.30 / 2.50    | unchanged      |
+| gemini-3.5-flash       | 0.50 / 3.00    | 1.50 / 9.00    |
+| gemini-3.1-flash-lite  | 0.25 / 1.50    | unchanged      |
+| gemini-3-flash-preview | 0.15 / 0.60    | 0.50 / 3.00    |
+| gpt-4o-mini            | 0.15 / 0.60    | unchanged      |
+| gpt-4o                 | 2.50 / 10.00   | unchanged      |
+| claude-sonnet-4-6      | 3.00 / 15.00   | unchanged      |
+| claude-haiku-4-5       | 1.00 / 5.00    | unchanged      |
+
+**Code changes**
+
+- `MODEL_COSTS` corrected as above.
+- **Thinking tokens.** `geminiUsage` (`providers.ts`) now adds `thoughtsTokenCount` to output
+  tokens. Gemini 3.x thinks by default and bills thinking at the output rate; before this,
+  every Gemini call omitted it.
+- **Grounding fee.** Google bills each Google Search query a grounded call runs at $14 per
+  1,000 (one request can run several). `geminiUsage` reads
+  `groundingMetadata.webSearchQueries`, and the router's `estimateCost` adds
+  `GEMINI_SEARCH_QUERY_COST` ($0.014) per query. The 5,000 free queries a month are not netted
+  off, so estimates err high until that allowance is used.
+- New `src/lib/ai/__tests__/cost-estimate.unit.test.ts`.
+
+**Verified locally:** lint and typecheck pass; `src/lib/ai` Jest suites pass (14 suites, 167
+tests). The full Jest run had two failures unrelated to this change:
+`dispatchers.unit.test.ts` (a 30 ms timing test; passes when run alone) and
+`vercel-runtime-externals.unit.test.ts` (`require(jsdom)` hits `ERR_REQUIRE_ESM`; fails
+identically with this change stashed, so it is this worktree's `node_modules`). Not deployed;
+no external resources touched.
+
+**Not changed (follow-ups, each a separate decision)**
+
+- Anthropic cache-write and cache-read tokens are still added to input at the base rate
+  (writes are 1.25×, reads 0.1×). Nothing enables prompt caching today, so this has no effect
+  yet.
+- `text-embedding-004` (`embeddings.ts`) is no longer on Google's pricing page (current:
+  Gemini Embedding 2, $0.20 per 1M). Embeddings are not costed at all. Run
+  `npm run audit:ai-models` to confirm it still answers.
+- Historical `ai_audit_log` and usage rows keep their old, lower estimates.
 
 ### Consolidation of open PRs — 2026-09-29
 
