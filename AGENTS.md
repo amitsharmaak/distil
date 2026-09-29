@@ -98,8 +98,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
   (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
-- **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` and `/feed/[id]` reader,
-  `/search`, `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,
+- **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
+  in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
+  `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,
   `/onboarding`, `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop
   sidebar link, Settings → Library link on mobile, and the flask button in the reader action bar;
   routes under `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were

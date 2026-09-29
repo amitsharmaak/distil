@@ -22,11 +22,10 @@ describe("Topbar", () => {
     jest.restoreAllMocks();
   });
 
-  it("renders the date, a search link and an icon-only theme toggle", () => {
+  it("renders the date and an icon-only theme toggle", () => {
     render(<Topbar />);
 
     expect(screen.getByText("Wednesday, January 15")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "true");
   });
 
@@ -34,15 +33,10 @@ describe("Topbar", () => {
     render(<Topbar />);
 
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    // Search lives in the Feed page header; the top bar has no search entry.
+    expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Notifications" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ask Distil" })).not.toBeInTheDocument();
-  });
-
-  it("hides the search link when search is disabled by the server", () => {
-    render(<Topbar showSearch={false} />);
-
-    expect(screen.queryByRole("link", { name: "Search" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("theme-toggle")).toBeInTheDocument();
   });
 
   it("replaces the date with a back link on reader routes", () => {

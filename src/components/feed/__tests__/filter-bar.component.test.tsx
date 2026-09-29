@@ -105,60 +105,56 @@ describe("FilterBar search", () => {
   });
 });
 
-describe("FilterBar area switch", () => {
-  it("shows All by default and selects one area at a time", () => {
-    const { onChange } = renderBar();
-    const group = screen.getByRole("radiogroup", { name: "Area" });
-    expect(group).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("radio", { name: "Work" }));
-    expect(onChange).toHaveBeenLastCalledWith({ area: "work" });
+describe("FilterBar layout", () => {
+  it("keeps the area switch and quick toggles out of the bar", () => {
+    renderBar();
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unread only" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Active filters" })).not.toBeInTheDocument();
   });
 
-  it("returns to All by removing the area", () => {
-    const { onChange } = renderBar("area=personal");
-    expect(screen.getByRole("radio", { name: "Personal" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("radio", { name: "All" }));
-    expect(onChange).toHaveBeenLastCalledWith({ area: undefined });
+  it("renders the leading slot beside the search", () => {
+    render(
+      <FilterBar
+        filters={feedFilterState(new URLSearchParams())}
+        onChange={jest.fn()}
+        leading={<h1>Feed</h1>}
+      />
+    );
+    expect(screen.getByRole("heading", { name: "Feed" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search your items" })).toHaveAttribute(
+      "placeholder",
+      "Search"
+    );
   });
 });
 
-describe("FilterBar quick filters", () => {
-  it("renders the five toggles with Unread on by default", () => {
-    renderBar();
-    const pressed = (name: string) =>
-      screen.getByRole("button", { name }).getAttribute("aria-pressed");
-    expect(pressed("Unread")).toBe("true");
-    expect(pressed("High priority")).toBe("false");
-    expect(pressed("Videos")).toBe("false");
-    expect(pressed("X")).toBe("false");
-    expect(pressed("Podcasts")).toBe("false");
-  });
-
-  it("maps each toggle to URL parameters and keeps other values of the same facet", () => {
-    const { onChange } = renderBar("contentType=podcast&priority=medium");
-    fireEvent.click(screen.getByRole("button", { name: "Videos" }));
-    expect(onChange).toHaveBeenLastCalledWith({ contentType: ["podcast", "video"] });
-    fireEvent.click(screen.getByRole("button", { name: "Podcasts" }));
-    expect(onChange).toHaveBeenLastCalledWith({ contentType: [] });
-    fireEvent.click(screen.getByRole("button", { name: "High priority" }));
-    expect(onChange).toHaveBeenLastCalledWith({ priority: ["medium", "high"] });
-    fireEvent.click(screen.getByRole("button", { name: "X" }));
-    expect(onChange).toHaveBeenLastCalledWith({ site: ["x.com"] });
-    fireEvent.click(screen.getByRole("button", { name: "Unread" }));
-    expect(onChange).toHaveBeenLastCalledWith({ read: "true", showRead: undefined });
-  });
-
-  it("shows sheet filters as removable chips and clears everything at once", () => {
+describe("FilterBar active filter chips", () => {
+  it("shows every active filter as a removable chip and clears everything at once", () => {
     const { onChange } = renderBar(
-      "source=gmail&topic=AI&collection=c1&archive=include&dateFrom=2026-09-01T00:00:00.000Z&q=rust&area=work",
+      "source=gmail&topic=AI&collection=c1&archive=include&dateFrom=2026-09-01T00:00:00.000Z&q=rust&area=work&contentType=video&priority=high&site=x.com&read=true",
       { collectionNames: { c1: "Reading list" } }
     );
-    for (const label of ["Gmail", "AI", "Reading list", "Including archived", "From 2026-09-01"]) {
+    for (const label of [
+      "Work",
+      "Read included",
+      "High priority",
+      "Videos",
+      "X posts",
+      "Gmail",
+      "AI",
+      "Reading list",
+      "Including archived",
+      "From 2026-09-01",
+    ]) {
       expect(screen.getByRole("button", { name: `Remove filter: ${label}` })).toBeInTheDocument();
     }
     fireEvent.click(screen.getByRole("button", { name: "Remove filter: Gmail" }));
     expect(onChange).toHaveBeenLastCalledWith({ source: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter: Work" }));
+    expect(onChange).toHaveBeenLastCalledWith({ area: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter: Read included" }));
+    expect(onChange).toHaveBeenLastCalledWith({ read: undefined, showRead: undefined });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(onChange).toHaveBeenLastCalledWith(
@@ -167,8 +163,8 @@ describe("FilterBar quick filters", () => {
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 
-  it("offers Clear only when something narrows the default view", () => {
-    renderBar();
+  it("offers chips and Clear only when a filter narrows the default view", () => {
+    renderBar("q=rust");
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
     cleanup();
     renderBar("site=x.com");

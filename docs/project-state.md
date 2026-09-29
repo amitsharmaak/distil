@@ -18,6 +18,17 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Feed header, Filters sheet redesign and Search page retired (branch
+  `claude/feed-page-layout-redesign-e8b8a0`, not merged; checkpoint "Feed header: compact
+  search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
+  long, the filter pills too prominent, the Filters sheet poorly designed, and the separate Search
+  page redundant. The search is now a compact pill beside the Feed title. Every filter lives in a
+  redesigned sheet: a side panel on desktop, a bottom sheet on phones. The top-bar search icon,
+  the sidebar Search entry and the Search page UI are gone, and `/search?…` redirects to
+  `/feed?…`. This covers the UI part of F7. Still open from F7: the `/api/items` `q` branch,
+  `GET /api/v1/search` (no UI caller now) and the `FEATURE_SEARCH` flag. Checked by tests and in the
+  local in-app browser with real items: phone and desktop layouts, the `/search` redirect, and
+  the removed icon and sidebar entry. Not deployed.
 - **Tester onboarding: extension origin prefilled (PR
   [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
   checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
@@ -394,6 +405,46 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Feed header: compact search, filters moved into the sheet — 2026-09-29
+
+Amit's feedback on the F3 filter bar: the search spanned the page, and the area switch and quick
+filters (Unread, High priority, Videos, X, Podcasts) took two rows he does not use daily.
+
+- **Header.** `FilterBar` takes a `leading` slot. Feed puts its title and the Collections /
+  Archive links there, so the search sits on the right of the same row. The search is a rounded
+  `h-9` pill, `w-56`, and widens to `w-72` on focus. On a phone it takes its own row with the
+  Filters button. The placeholder is "Search". The accessible name is still "Search your items",
+  and "/" still focuses it.
+- **Sheet (second pass, after Amit called the first version "terrible").** `FeedFilterSheet`
+  now takes `filters` and `onChange`, like the bar, instead of a dozen callback props.
+  - **Layout:** a right-hand panel (400 px) from `sm` up and a bottom sheet with a grab handle on
+    phones. It has a header with an active count, a scrolling body and a fixed footer with
+    **Reset** (clears every filter but keeps the search; disabled when nothing is active) and
+    **Done**. Changes still apply as they are made.
+  - **Controls:** segmented controls for Sort (with Best match while searching), Area and
+    Archive; a switch for "Unread only"; check-marked chips for Type (Articles, Videos,
+    Podcasts, X posts), Priority, Source, Topic and Collection; side-by-side From/To dates. The
+    layout toggle sits beside the Sort heading. Native selects and the separate "Show" group
+    are gone. `FilterSheetQuickControls` was removed.
+- **Search page retired (UI part of F7).** The top-bar search icon, the sidebar Search entry, the
+  `showSearch` props and `src/components/phase2/search-experience.tsx` (and its test) are
+  removed. `src/app/search/page.tsx` redirects to `/feed` with the query string unchanged
+  (`feed-url-for-search.ts`); the parameter names are shared. One difference: the old page
+  showed read and unread items by default, and the Feed shows unread only. Left for the rest of
+  F7: the `/api/items` `q` branch, `GET /api/v1/search` and the `FEATURE_SEARCH` flag.
+- **Chips.** `activeSheetFilters` became `activeFilterChips`, which covers every non-default
+  filter: area, "Read included", every priority, type and site, plus the existing sheet facets.
+  The chip row (and its Clear) shows only when a chip exists, and the Filters badge counts the
+  chips. A search alone has only the field's own clear button.
+- **URL contract unchanged.** Every control writes the same parameters as before.
+- **Checks.** `jest src/app/search src/components/layout src/components/feed src/lib/feed`
+  passes (99 tests). `tsc --noEmit`, eslint and prettier are clean on the changed files. The
+  first pass was checked in the in-app browser at desktop and 375 px width. For Amit to try it
+  locally, the worktree's `.env.local` was rebuilt from the example against the existing local
+  owner (old file kept as `.env.local.neon-backup`). The local database also got the
+  `feed-search` and `life-areas` tenant stages.
+- **F5 note.** When Today gets the filter bar, it gets the same compact search and sheet layout.
 
 ### Anthropic key added to Production — 2026-09-29
 

@@ -4,7 +4,7 @@
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FeedList } from "../feed-list";
-import type { ContentItem, ContentType, Priority, SourceType } from "@/lib/types";
+import type { ContentItem } from "@/lib/types";
 
 let mockSearch = "";
 const mockReplace = jest.fn();
@@ -42,81 +42,44 @@ jest.mock("@/components/feed/content-card", () => ({
 
 jest.mock("@/components/feed/feed-filters", () => ({
   FeedFilterSheet: ({
+    filters,
+    onChange,
     activeCount,
     viewMode,
     onViewModeChange,
-    selectedSources,
-    onSourcesChange,
-    selectedTypes,
-    onTypesChange,
-    selectedPriorities,
-    onPrioritiesChange,
-    onArchiveChange,
-    onSortChange,
-    onTopicsChange,
-    onCollectionsChange,
-    onDateFromChange,
-    onDateToChange,
   }: {
+    filters: { sources: string[]; contentTypes: string[]; priorities: string[]; showRead: boolean };
+    onChange: (updates: Record<string, string | string[] | undefined>) => void;
     activeCount: number;
     viewMode: "card" | "compact";
     onViewModeChange: (mode: "card" | "compact") => void;
-    selectedSources: SourceType[];
-    onSourcesChange: (sources: SourceType[]) => void;
-    selectedTypes: ContentType[];
-    onTypesChange: (types: ContentType[]) => void;
-    selectedPriorities: Priority[];
-    onPrioritiesChange: (priorities: Priority[]) => void;
-    onArchiveChange: (archive: "exclude" | "only" | "include") => void;
-    onSortChange: (sort: "for_you" | "recent" | "priority") => void;
-    onTopicsChange: (topics: string[]) => void;
-    onCollectionsChange: (collections: string[]) => void;
-    onDateFromChange: (date: string) => void;
-    onDateToChange: (date: string) => void;
   }) => (
     <div data-testid="filters">
       <output data-testid="sheet-state">
-        {viewMode}|{selectedSources.join(",")}|{selectedTypes.join(",")}|
-        {selectedPriorities.join(",")}|{activeCount}
+        {viewMode}|{filters.sources.join(",")}|{filters.contentTypes.join(",")}|
+        {filters.priorities.join(",")}|{activeCount}
       </output>
       <button type="button" onClick={() => onViewModeChange("compact")}>
         Compact view
       </button>
-      <button type="button" onClick={() => onSourcesChange(["gmail"])}>
+      <button type="button" onClick={() => onChange({ source: ["gmail"] })}>
         Gmail only
       </button>
-      <button type="button" onClick={() => onSourcesChange([])}>
+      <button type="button" onClick={() => onChange({ source: [] })}>
         All sources
       </button>
-      <button type="button" onClick={() => onTypesChange(["video"])}>
+      <button type="button" onClick={() => onChange({ contentType: ["video"] })}>
         Videos only
       </button>
-      <button type="button" onClick={() => onTypesChange([])}>
-        All types
-      </button>
-      <button type="button" onClick={() => onPrioritiesChange(["high"])}>
+      <button type="button" onClick={() => onChange({ priority: ["high"] })}>
         High only
       </button>
-      <button type="button" onClick={() => onPrioritiesChange([])}>
-        All priorities
-      </button>
-      <button type="button" onClick={() => onArchiveChange("include")}>
-        Include archive
-      </button>
-      <button type="button" onClick={() => onSortChange("recent")}>
-        Sort recent
-      </button>
-      <button type="button" onClick={() => onTopicsChange(["Testing"])}>
-        Testing topic
-      </button>
-      <button type="button" onClick={() => onCollectionsChange(["collection-1"])}>
-        Collection one
-      </button>
-      <button type="button" onClick={() => onDateFromChange("2026-01-01")}>
-        From date
-      </button>
-      <button type="button" onClick={() => onDateToChange("2026-01-03")}>
-        To date
+      <button
+        type="button"
+        aria-pressed={!filters.showRead}
+        onClick={() => onChange({ read: filters.showRead ? "false" : "true" })}
+      >
+        Unread only
       </button>
     </div>
   ),
@@ -215,8 +178,8 @@ describe("FeedList without a server page (client fetch)", () => {
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?contentType=video", { scroll: false });
     fireEvent.click(screen.getByRole("button", { name: "High only" }));
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?priority=high", { scroll: false });
-    // The Unread quick filter lives in the filter bar and is on by default.
-    const unread = screen.getByRole("button", { name: "Unread" });
+    // The Unread quick filter lives in the Filters sheet and is on by default.
+    const unread = screen.getByRole("button", { name: "Unread only" });
     expect(unread).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(unread);
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?read=true", { scroll: false });

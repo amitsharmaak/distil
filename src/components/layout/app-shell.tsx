@@ -14,11 +14,9 @@ export function isReaderPath(pathname: string): boolean {
 export function AppShell({
   children,
   showAnswers = true,
-  showSearch = true,
 }: {
   children: React.ReactNode;
   showAnswers?: boolean;
-  showSearch?: boolean;
 }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -41,14 +39,13 @@ export function AppShell({
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
         showAnswers={showAnswers}
-        showSearch={showSearch}
       />
       <div
         className={`min-w-0 flex-1 transition-all duration-300 ${
           sidebarCollapsed ? "md:pl-16" : "md:pl-64"
         }`}
       >
-        <Topbar showSearch={showSearch} backHref={reader ? "/feed" : undefined} />
+        <Topbar backHref={reader ? "/feed" : undefined} />
         <main
           className={
             reader
