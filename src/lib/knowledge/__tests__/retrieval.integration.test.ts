@@ -52,6 +52,22 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
     baseline,
   });
+  // Item projections read columns from every later stage (life-areas: area, manual_area).
+  for (const stage of [
+    "lifecycle",
+    "returning-auth",
+    "perf-indexes",
+    "summary-structure",
+    "feed-search",
+    "life-areas",
+  ] as const) {
+    await applyTenantMigrationStage({
+      sql: harness.sql,
+      stage,
+      ownerId: context.userId,
+      migrationsDirectory: tenantMigrations,
+    });
+  }
   await harness.sql`
     INSERT INTO users (id, status) VALUES (${context.userId}::uuid, 'active')
     ON CONFLICT (id) DO UPDATE SET status='active'

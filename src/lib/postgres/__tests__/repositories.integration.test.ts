@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { PostgresTestHarness } from "../../../../tests/support/postgres";
+import { PostgresTestHarness, addLifeAreaColumns } from "../../../../tests/support/postgres";
 import type { ContentItem } from "@/lib/types";
 import { createPostgresRepositories } from "../repositories";
 
@@ -23,6 +23,7 @@ const item = (id: string, url: string, title = "PostgreSQL search"): ContentItem
 beforeAll(async () => {
   await harness.start();
   await harness.migrate(migrations);
+  await addLifeAreaColumns(harness.sql);
 });
 afterEach(async () => harness.reset());
 afterAll(async () => harness.stop());

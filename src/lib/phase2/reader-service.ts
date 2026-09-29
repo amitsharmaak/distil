@@ -8,7 +8,7 @@ import type {
   ItemNoteRecord,
   RepositorySet,
 } from "@/lib/repositories/ports";
-import type { ContentItem } from "@/lib/types";
+import { LIFE_AREAS, type ContentItem } from "@/lib/types";
 
 const isoNow = () => new Date().toISOString();
 
@@ -23,6 +23,8 @@ export const stateSchema = z
       .refine((value) => [0, 0.25, 0.5, 0.75, 1].includes(value), "must be a reading milestone")
       .optional(),
     manualPriority: prioritySchema.nullable().optional(),
+    /** Amit's area; `null` (or the AI's own area) returns the item to the AI's answer. */
+    area: z.enum(LIFE_AREAS).nullable().optional(),
     idempotencyKey: z.string().trim().min(1).max(128).optional(),
   })
   .strict()
@@ -31,7 +33,8 @@ export const stateSchema = z
       value.isRead !== undefined ||
       value.archived !== undefined ||
       value.readingProgress !== undefined ||
-      value.manualPriority !== undefined,
+      value.manualPriority !== undefined ||
+      value.area !== undefined,
     "at least one state field is required"
   );
 
@@ -214,7 +217,15 @@ export async function updateItemState(
 
   const updated = requireItem(await repositories.items.update(itemId, patch), itemId);
   for (const itemEvent of events) await repositories.itemEvents.append(itemEvent);
-  return updated;
+  if (input.area === undefined) return updated;
+
+  // Area corrections live in their own columns, which `update` never writes.
+  // Picking the AI's own area is not a correction: it clears the override, so
+  // only real disagreements are fed back to the classifier as examples.
+  const manualArea = input.area === null || input.area === current.aiArea ? null : input.area;
+  if (manualArea === (current.manualArea ?? null)) return updated;
+  await repositories.items.setManualArea(itemId, manualArea, now);
+  return requireItem(await repositories.items.findById(itemId), itemId);
 }
 
 export async function getNote(

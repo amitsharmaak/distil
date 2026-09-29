@@ -60,6 +60,21 @@ beforeAll(async () => {
     ownerId: context.userId,
     migrationsDirectory: tenantMigrations,
   });
+  // Item projections read columns from every later stage (life-areas: area, manual_area).
+  for (const stage of [
+    "returning-auth",
+    "perf-indexes",
+    "summary-structure",
+    "feed-search",
+    "life-areas",
+  ] as const) {
+    await applyTenantMigrationStage({
+      sql: harness.sql,
+      stage,
+      ownerId: context.userId,
+      migrationsDirectory: tenantMigrations,
+    });
+  }
 });
 afterAll(async () => harness.stop());
 

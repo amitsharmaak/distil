@@ -100,6 +100,24 @@ export async function resetTestDatabase(
   await sql.unsafe(`TRUNCATE TABLE ${identifiers} RESTART IDENTITY CASCADE`);
 }
 
+/**
+ * Suites that exercise the Phase 2 (pre-tenant) schema apply only `src/lib/postgres/migrations`.
+ * Every item projection now also reads the life-areas columns (tenant stage 0013), so this adds
+ * exactly those columns there. Production and every tenant-staged suite get them from 0013.
+ */
+export async function addLifeAreaColumns(sql: Sql): Promise<void> {
+  await sql.unsafe(`
+    ALTER TABLE items
+      ADD COLUMN IF NOT EXISTS area text,
+      ADD COLUMN IF NOT EXISTS area_confidence double precision,
+      ADD COLUMN IF NOT EXISTS area_reason text,
+      ADD COLUMN IF NOT EXISTS area_model text,
+      ADD COLUMN IF NOT EXISTS area_classified_at timestamptz,
+      ADD COLUMN IF NOT EXISTS manual_area text,
+      ADD COLUMN IF NOT EXISTS manual_area_at timestamptz
+  `);
+}
+
 export class PostgresTestHarness {
   private container?: StartedPostgreSqlContainer;
   private client?: Sql;

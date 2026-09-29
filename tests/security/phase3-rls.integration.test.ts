@@ -72,6 +72,21 @@ describeWithTenantMigration(
         ownerId: fixture.alpha.user.id,
         migrationsDirectory: tenantMigrations,
       });
+      // Item projections read columns from every later stage (life-areas: area, manual_area).
+      for (const stage of [
+        "returning-auth",
+        "perf-indexes",
+        "summary-structure",
+        "feed-search",
+        "life-areas",
+      ] as const) {
+        await applyTenantMigrationStage({
+          sql: owner.sql,
+          stage,
+          ownerId: fixture.alpha.user.id,
+          migrationsDirectory: tenantMigrations,
+        });
+      }
 
       await owner.sql`
         INSERT INTO users (id)
