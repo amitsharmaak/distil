@@ -19,7 +19,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
-  `claude/adaptive-summaries-s2-delta-91757a`, PR link in the checkpoint "Adaptive summaries S2:
+  `claude/adaptive-summaries-s2-delta-91757a`, PR
+  [#60](https://github.com/amitsharmaak/distil/pull/60); checkpoint "Adaptive summaries S2:
   detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
   delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
   brief to stay a short overview, and the detailed view to add meaningful depth beyond the
@@ -349,7 +350,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 Amit asked for S2 of the plan below with his earlier decisions standing: detailed always uses
 `summarize-complex` (Claude Sonnet, or Gemini 3.5 Flash without an Anthropic key), stacked
 layout (interleaving waits for S3), capture keeps generating only the brief, and existing
-stored summaries stay until Regenerate. Branch `claude/adaptive-summaries-s2-delta-91757a` from
+stored summaries stay until Regenerate. PR [#60](https://github.com/amitsharmaak/distil/pull/60),
+branch `claude/adaptive-summaries-s2-delta-91757a` from
 `main` at `ea420d4`. References in the S2 brief were re-checked against `ea420d4` and held.
 
 **What changed**
