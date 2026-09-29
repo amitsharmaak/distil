@@ -12,14 +12,11 @@
       <p class="intro">Connect this browser to your Distil account.</p>
       <form id="configuration">
         <label for="origin">Distil origin</label>
-        <input
-          id="origin"
-          name="origin"
-          type="url"
-          required
-          placeholder="https://distil.example.com"
-        />
-        <p class="hint">Enter the origin only, without a path.</p>
+        <input id="origin" name="origin" type="url" required placeholder="https://distilai.app" />
+        <p class="hint">
+          Leave as <code>https://distilai.app</code> unless you run your own Distil. Origin only,
+          without a path.
+        </p>
 
         <label for="token">Capture token</label>
         <input id="token" name="token" type="password" autocomplete="off" required />

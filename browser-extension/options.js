@@ -7,6 +7,8 @@ const discardPrevious = document.getElementById("discard-previous");
 const discardLabel = document.getElementById("discard-label");
 const accountWarning = document.getElementById("account-warning");
 
+const DEFAULT_ORIGIN = "https://distilai.app";
+
 async function accountKey(origin, token) {
   const input = new TextEncoder().encode(`${origin}\n${token}`);
   const digest = await crypto.subtle.digest("SHA-256", input);
@@ -41,7 +43,7 @@ async function loadConfiguration() {
     distilConfig: null,
     distilCaptureQueues: {},
   });
-  originInput.value = distilConfig?.origin || "http://localhost:3000";
+  originInput.value = distilConfig?.origin || DEFAULT_ORIGIN;
   if (distilConfig?.token) {
     tokenInput.required = false;
     tokenInput.placeholder = "Saved — leave blank to keep it";
