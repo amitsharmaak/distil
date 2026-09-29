@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import type { FeedPage, FeedQuery } from "@/lib/feed/feed-query";
+import { MAX_FEED_SEARCH_LENGTH, type FeedPage, type FeedQuery } from "@/lib/feed/feed-query";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import { LIFE_AREAS } from "@/lib/types";
 
 import { multiValue, toSearchParams, type FeedSearchInput } from "./feed-url";
 import { TODAY_FEED_QUERY } from "./today-selection";
@@ -25,7 +26,19 @@ export const feedQuerySchema = z.object({
   collection: z.array(z.string().trim().min(1).max(160)).max(25).optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
-  sort: z.enum(["recent", "priority", "for_you"]).default("for_you"),
+  q: z.string().trim().min(2).max(MAX_FEED_SEARCH_LENGTH).optional(),
+  site: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^[a-z0-9.-]{1,253}$/)
+    )
+    .max(10)
+    .optional(),
+  area: z.array(z.enum(LIFE_AREAS)).max(LIFE_AREAS.length).optional(),
+  sort: z.enum(["recent", "priority", "for_you", "relevance"]).default("for_you"),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().min(1).max(1024).optional(),
   resurface: z.enum(["stale"]).optional(),
@@ -59,7 +72,11 @@ export function parseFeedQuery(input: FeedSearchInput): ParsedFeedQuery {
     collection: list("collection"),
     dateFrom: optional("dateFrom"),
     dateTo: optional("dateTo"),
-    sort: optional("sort"),
+    q: optional("q"),
+    site: list("site"),
+    area: list("area"),
+    // A search is ordered by relevance unless the caller picked a sort.
+    sort: optional("sort") ?? (params.get("q")?.trim() ? "relevance" : undefined),
     limit: optional("limit"),
     cursor: optional("cursor"),
     resurface: optional("resurface"),
@@ -69,6 +86,9 @@ export function parseFeedQuery(input: FeedSearchInput): ParsedFeedQuery {
   }
   if (parsed.data.dateFrom && parsed.data.dateTo && parsed.data.dateFrom > parsed.data.dateTo) {
     return { ok: false, message: "dateFrom must not be after dateTo" };
+  }
+  if (parsed.data.sort === "relevance" && !parsed.data.q) {
+    return { ok: false, message: "sort=relevance requires q" };
   }
   return { ok: true, data: parsed.data };
 }
@@ -88,6 +108,9 @@ export function feedListQuery(
     collectionIds: data.collection,
     dateFrom: data.dateFrom,
     dateTo: data.dateTo,
+    search: data.q,
+    sites: data.site,
+    areas: data.area,
     sort: data.sort,
     limit: data.limit,
     cursor: data.cursor,

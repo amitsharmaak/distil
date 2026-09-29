@@ -28,6 +28,32 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
   writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
   decisions in the checkpoint and picks a phase (recommended R1).
+- **Inline search, quick filters and AI life areas: F1 and F2 merged, both stages applied to
+  Production, F3 implemented and not merged (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
+  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 on branch
+  `claude/search-f3-filter-bar`; checkpoints "Inline search F3: filter bar on Feed —
+  2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
+  classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
+  2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
+  page replaced by a search bar at the top of Today and Feed that filters as he types, with
+  one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
+  learning material with every item sorted automatically by AI into one of four areas (Personal,
+  Work, Learning, Updates), shown as a filter and fixable with one tap. All open decisions are
+  answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
+  `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
+  an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
+  changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
+  `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
+  and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
+  his terminal scrollback and shell history during this release (see the checkpoint); (2)
+  confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
+  filter bar in a browser before or right after merging (it was verified by tests only; see the
+  F3 checkpoint). Next: Amit merges the F3 PR; F4 (area badge and one-tap reclassify) and F5
+  (filter bar on Today) can then start from `main`. Separate follow-up after F7: move the area classifier
+  onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
+  model before starting that task).
 - **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
   `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
   which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
@@ -493,6 +519,504 @@ after completion (today `progress` is cleared on completion) so the page can off
    still removes the bloat but its sources remain unverified model memory.
 
 **Not deployed. Nothing changed in Vercel or Neon.** Local database only read.
+
+### Inline search F3: filter bar on Feed — 2026-09-29
+
+Amit asked to merge the release record (PR [#65](https://github.com/amitsharmaak/distil/pull/65),
+squash merged as `3d8a23a` after the Quick gate) and start F3. Branch
+`claude/search-f3-filter-bar` from `cf0cf28`, then fast-forwarded to `3d8a23a`. Implementation
+complete and verified by tests; not merged and not deployed. **Not yet seen in a browser** (see
+Verification).
+
+**What changed**
+
+- **Filter bar** (`src/components/feed/filter-bar.tsx`) at the top of `/feed`, three rows:
+  1. **Search:** a search field ("Search your items"; `/` focuses it; Esc or × clears it) and
+     the Filters button.
+  2. **Area switch:** All · Personal · Work · Learning · Updates, one at a time.
+  3. **Quick filters and chips:**
+     - Five toggles: Unread (on by default, as before), High priority, Videos, X and Podcasts.
+     - Each filter set in the sheet appears as a removable chip, so nothing hidden is ever
+       active without being shown.
+     - "Clear" appears whenever anything narrows the default view.
+
+  Rows 2 and 3 scroll sideways on phones instead of wrapping.
+
+- **Typing:**
+  - **Instantly:** each keystroke narrows the items already on screen (title, publication,
+    author).
+  - **After 250 ms:** a pause commits `q` to the URL once, and the server renders the real
+    result.
+  - **Short input:** text shorter than 2 characters is never sent.
+  - **Clearing:** removing the search also removes a `sort=relevance` from the URL.
+- **Quick-filter registry** (`src/lib/feed/quick-filters.ts`, client-safe): each toggle's URL
+  mapping, the area options, the removable-chip list and the clear-all update. F5 reuses it on
+  Today.
+- **Filters sheet** (`src/components/feed/feed-filters.tsx`, now `FeedFilterSheet`): now holds
+  sort, which gains "Best match" (relevance) while searching, plus every facet and the layout.
+  Sort and the unread toggle are no longer inline.
+- **One search path:**
+  - `FeedList` always calls `GET /api/v1/feed`. The legacy `/api/items?q=` branch is gone from
+    the island; the route itself stays until F7.
+  - `feedFilterKey` no longer special-cases search.
+  - `/feed` server-renders search results like any other filter. It parses exactly the request
+    the island would send (`feedRequestSearch(state)`), so the key and the data always agree.
+- **Area filter on the API:** `area` (repeatable) on `GET /api/v1/feed` filters on
+  `COALESCE(manual_area, area)`, referenced only when requested.
+
+**Deviations from the F3 brief, and why**
+
+- **Item projections still don't carry the area.** Filtering happens in SQL, so the list does
+  not need it yet. Adding `area`/`manual_area` to `ITEM_SUMMARY_COLUMNS` moves to F4, where the
+  badge first shows it. It also means updating the five integration suites that stop before the
+  `life-areas` stage, which belongs with that change.
+- **Search placeholder:** "Search your items".
+- **No header subtitle while searching:** the search field itself shows the query.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 226 suites / 1,700 tests passed.
+  - New `filter-bar.component.test.tsx` (11 cases): the debounce commits once per pause, short
+    input is never sent, clear and Esc work, the field follows URL changes, `/` focus (and not
+    from another text field), the area switch, the toggle-to-URL mapping, chips and Clear.
+  - `feed-list.component.test.tsx`: search goes through `/api/v1/feed` with area and site,
+    instant narrowing while typing, and relevance dropped when the search is cleared.
+  - `/feed` page tests: search server-renders with relevance, and a 1-character `q` is ignored.
+  - Feed query, route and contract tests for `area`.
+- `npm run test:integration`: all 13 PostgreSQL suites passed, including the effective-area
+  filter (the AI's area, overridden by a correction, and unclassified items excluded).
+- **Not verified in a browser.** No checkout has local-loop settings: the main `.env.local` is
+  still the pre-Phase-3 SQLite configuration, with no `DATABASE_URL` and no local auth secrets.
+  Setting that up needs Amit's local password choice and possibly `npm run db:local:reset`
+  (wipes the local database). Option: after merging, open `https://distilai.app/feed` on desktop
+  and phone and try a search, an area, and a couple of toggles.
+
+**Restart steps:** merge the F3 PR (Production already has both stages, so it works on deploy).
+F4 adds `area`/`manual_area` to the item projections and the badge. F5 puts the bar on Today.
+
+### feed-search and life-areas applied to Production — 2026-09-29
+
+Amit authorized applying the F1 and F2 tenant stages to Production and ran both himself. He
+merged PR [#64](https://github.com/amitsharmaak/distil/pull/64) (all checks, including the full
+gate, had passed; squash merged as `cf0cf28`), then fast-forwarded the main checkout to
+`cf0cf28`. He copied the `distil-production` owner connection string from the Neon console's
+Connect dialog (role `neondb_owner`, database `neondb`, pooling off, host
+`ep-delicate-frog-b3g28rqu.c-4.ap-southeast-1.aws.neon.tech`) into
+`DATABASE_MIGRATION_URL="$(pbpaste)"` and ran, in order:
+
+1. `npm run db:tenant:migrate -- --stage feed-search --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied feed-search: 0012_feed_search.sql`. Its only NOTICE was the usual
+   `distil_tenant_migrations already exists, skipping`.
+2. `npm run db:tenant:migrate -- --stage life-areas --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied life-areas: 0013_life_areas.sql`. The NOTICEs were the ledger-table one plus
+   `items_area_check`, `items_manual_area_check` and `items_area_confidence_check` "does not
+   exist, skipping". Those three are expected on a first run: the migration drops each constraint
+   `IF EXISTS` before adding it, so it stays idempotent.
+
+Claude verified both outcomes by reading Amit's terminal output. It did not connect to
+Production.
+
+**Security note.** Before the successful runs, the full owner connection string, password
+included, was pasted directly at the shell prompt several times. zsh rejected those lines (glob
+error), so nothing ran with it, but the string is in that terminal's scrollback and in
+`~/.zsh_history`, and it reached Claude's context when Claude read the terminal. It is not
+recorded anywhere in the repository. Recommended to Amit, and not yet confirmed:
+
+- Reset the `neondb_owner` password on `distil-production` in the Neon console.
+- Update Vercel's `DATABASE_MIGRATION_URL` (release-only; the app runs on the separate restricted
+  runtime role in `DATABASE_URL`, so the site is unaffected).
+- Optionally delete the history lines with `sed -i '' '/neondb_owner:/d' ~/.zsh_history` from a
+  new terminal.
+
+**State now.** Production's items table has `feed_search_vector`, `site` and the seven area
+columns, with the `tenant_api.items` view rebuilt. The deployed `cf0cf28` code classifies each
+new capture's area (`FEATURE_AREA_CLASSIFICATION` is unset, so on). Not yet observed on
+Production: a capture receiving an area. Items captured before this point stay unclassified
+until F6. No client sends `q` or `site` until F3.
+
+**Next:** F3 (filter bar on Feed) from `main`.
+
+### Life areas F2: AI area classification at capture — 2026-09-29
+
+Amit asked to merge F1 (PR [#63](https://github.com/amitsharmaak/distil/pull/63): Quick gate and
+the full gate passed, squash merged as `76471e5`) and start F2. Branch
+`claude/areas-f2-classification` from `76471e5`. Implementation complete and locally verified;
+not merged, not deployed, and the new tenant stage is not applied anywhere outside test
+databases. No UI changed.
+
+**What changed**
+
+- **Tenant stage `life-areas`** (`src/lib/postgres/tenant-migrations/0013_life_areas.sql`): seven
+  nullable columns on `items`. The AI's answer goes in `area`, `area_confidence`, `area_reason`,
+  `area_model` and `area_classified_at`. Amit's correction goes in `manual_area` and
+  `manual_area_at`, which F4 writes. Check constraints limit both area columns to the four areas
+  and confidence to 0–1. An expression index on `(user_id, COALESCE(manual_area, area))` serves
+  the F3 filter. The stage rebuilds `tenant_api.items` and is registered everywhere
+  `feed-search` is.
+- **Classifier** (`src/lib/ai/classify-area.ts`, prompt `src/lib/prompts/classify-area.ts`,
+  version `area-v1`): one call per item on the new AI task `classify-area` (Gemini 3.5 Flash-Lite;
+  per-provider fallbacks as for `auto-tag`) through the tenant AI router, so the tenant budget
+  and accounting apply. Gemini structured output returns `{area, confidence, reason}`, checked by
+  a zod mirror.
+  - **Inputs:** title, how it was saved, content type, site, author, publication, topics, the
+    brief's overview, the first 2,000 characters of readable text, and up to 20 of Amit's most
+    recent corrections as examples.
+  - **Output handling:** an area outside the four is rejected and nothing is stored. Confidence
+    is clamped and the reason trimmed to 200 characters.
+  - **Idempotent:** it skips an item that already has an AI area unless forced, so a redelivered
+    queue message costs nothing. It never writes `manual_area`.
+- **Wiring** (`src/lib/queue/capture-consumer.ts`): runs after the brief, so it can read it, but
+  independently of it, in its own try/catch. A failure logs `capture_area_skipped` and never
+  fails the capture. New default-on kill switch `FEATURE_AREA_CLASSIFICATION` (`AGENTS.md`
+  updated).
+- **Repository** (`ItemRepository`): `findAreaState`, `setAiArea`, `listAreaCorrections`
+  (tenant-scoped; a correction is a set `manual_area` that differs from `area`, newest first).
+  Registered as `area-classification` in `docs/authorization-matrix.json`.
+
+**Deviations from the F2 brief, and why**
+
+- **The connector save path is not wired.** Gmail, Slack and publisher connectors are off in
+  hosted deployments (`FEATURE_CONNECTORS=false`), and their legacy `processContent` pipeline has
+  no tenant AI capability by design (see the comment in `src/lib/intelligence/pipeline.ts`).
+  Every Production item arrives through the capture queue, which is wired. Anything else is
+  covered by the F6 backfill.
+- **Item projections do not select the area yet.** Adding `area` and `manual_area` to
+  `ITEM_SUMMARY_COLUMNS` would make every item read depend on the new stage. It moves to F3,
+  where the UI first needs it, so F2 can deploy before its stage like F1.
+- **`area_model` and `manual_area_at` were added** beyond the brief. The first records which
+  model answered, for the follow-up model task. The second orders corrections, and adding it now
+  avoids a second migration in F4.
+
+**Prompt check against the real model (local Gemini key, synthetic items only, no captured
+content).** Eight invented items, two per area, including a Granola meeting note, a school
+permission slip, a dental confirmation, a transformer explainer, a lecture video, a
+quarterly-results news item, an X post about a launch, and a management essay. The first run got
+7 of 8. The miss was the management essay, classified Work where Amit's intent is Learning
+("general advice about doing a job well"). The Work and Learning definitions now say that
+explicitly. A re-run of that item and the Granola note gave Learning (0.95) and Work (1.0). The
+other six were not re-run, to stay inside the free-tier limit of 20 calls per model per day;
+the change touched only the Work/Learning boundary.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 225 suites / 1,682 tests passed.
+- `npm run test:integration`: all 13 PostgreSQL suites passed. That includes the new
+  `src/lib/postgres/__tests__/life-areas.integration.test.ts`: writes through the tenant view,
+  a correction survives AI reclassification and ordinary updates, corrections list is newest
+  first and excludes agreements and other tenants, and the check constraints reject a fifth area
+  or confidence above 1.
+- Not done: a capture through the local dev loop, which needs the stage on Amit's local database
+  and a signed-in browser.
+
+**Risk to watch:** the capture callback now makes one more model call after the brief (about 1–2
+s on Flash-Lite; timeout 15 s). A long item whose brief already takes most of the Vercel Hobby
+60 s budget could run out of time. A redelivered message then finds the brief cached and the
+area classifier idempotent.
+
+**Restart steps:** merge the F2 PR. Before F3, Amit applies both stages to Production with his
+authorization, in order:
+`npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>`, then
+`--stage life-areas`. Record both. Then F3 starts from `main`.
+
+### Inline search F1: feed text search and site facet — 2026-09-29
+
+Amit asked to merge the plan (PR [#61](https://github.com/amitsharmaak/distil/pull/61), squash
+merged as `bdf877f` after the Quick gate passed) and start F1. Branch
+`claude/search-f1-feed-query` from `bdf877f`. Implementation complete and locally verified; not
+merged, not deployed, and the new tenant stage is not applied anywhere outside test databases.
+
+**What changed**
+
+- **API** (`src/lib/feed/feed-params.ts`): `GET /api/v1/feed` accepts `q` (2–200 characters,
+  trimmed), `site` (repeatable or comma list, up to 10 lowercase hosts matching
+  `^[a-z0-9.-]{1,253}$`) and `sort=relevance`. A request with `q` and no `sort` is ordered by
+  relevance; `sort=relevance` without `q` is a 400. The server-rendered `/feed` and `/` parse the
+  same schema but send neither parameter yet.
+- **Query** (`src/lib/feed/feed-query.ts`): `search` matches when the weighted text vector
+  matches an all-terms tsquery whose last term is a prefix, **or** the typed text appears
+  literally in the title, author or publication (`ILIKE`, wildcards escaped). The literal match
+  exists because stemming stores "learning" as `learn`, so a half-typed "learni" never matches
+  the index. Terms are only `\p{L}\p{N}` runs (no tsquery operator can come from the caller),
+  capped at eight, and PostgreSQL's English stop words are dropped in code because a
+  stop-word-only `to_tsquery` raises a NOTICE the runtime client would log on every keystroke.
+  Relevance is `ts_rank` plus 1 for a literal title match, rounded to six places and used as
+  the keyset cursor score, so pagination under relevance works like the other sorts. `sites`
+  filters `i.site = ANY(...)`, with `twitter.com` and mobile hosts folded into `x.com`.
+- **Tenant stage `feed-search`** (`src/lib/postgres/tenant-migrations/0012_feed_search.sql`):
+  adds the generated columns `items.feed_search_vector` (title A, author and publication B,
+  summary and topics C) and `items.site` (URL host without `www.`), a `(user_id, site)` btree,
+  and rebuilds the `tenant_api.items` view so the runtime role can see them. Registered in the
+  migrator, `scripts/migrate-tenant.ts`, `scripts/local-db-reset.ts`,
+  `scripts/perf/measure-web-vitals.ts`, the query-plan security test, `AGENTS.md`, the
+  backup-restore runbook and the Drizzle schema. The account export drops
+  `feed_search_vector` like `search_vector`.
+- **Release order:** the plain feed never references the new columns (a unit test asserts it),
+  so the code may deploy before the stage. The stage must be applied before a client sends `q`
+  or `site`; no client does until F3. Applying it to Production needs Amit's authorization.
+
+**Deviations from the F1 brief, and why**
+
+- The existing `items.search_vector` is **not** widened. It feeds the legacy `/api/items?q=`
+  path, and replacing a generated column means dropping it, which the `tenant_api.items` view
+  depends on. A new column is additive; F7 can drop the old one with the legacy path.
+- **No GIN index** on the new vector: `@@` is not leakproof, so under forced row-level security
+  it is evaluated above the security barrier and an index can never serve it (the same finding
+  as P7, recorded in `0010_perf_indexes.sql`). Per-tenant libraries are small, so the
+  sequential match over one tenant's rows is acceptable.
+- `site` is validated as a host pattern instead of an allowlist, so YouTube, Substack or any
+  other host needs no code change.
+- `src/lib/feed/feed-url.ts` (the client's filter key) is unchanged. Moving the Feed island onto
+  `q` belongs with the filter bar in F3; until then the island keeps its legacy search path.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint, typecheck and 224 suites / 1,664 tests passed.
+- `npm run test:integration` (Testcontainers, `postgres:16-alpine`): all 12 PostgreSQL suites
+  passed, including the new feed cases (prefix and stem matching, title-first ranking, author
+  match, search combined with content type, stop-word-only and `%` input, `twitter.com` folded
+  into `x.com`, keyset pagination under relevance without skips or repeats), the account
+  export, RLS and query-plan suites with the new stage applied.
+- Checked by hand in a throwaway `postgres:16-alpine`: the stop-word NOTICE, the stem mismatch
+  for half-typed words, and the host expression on real URL shapes.
+- Not done: the local dev loop against Amit's local database (it would need the stage applied
+  there and a signed-in browser; nothing user-visible changed in F1).
+
+**Restart steps:** merge the F1 PR; before F3 ships, Amit applies
+`npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>` to Production with his
+authorization and records it. F2 and F3 start from `main` after the merge.
+
+### Inline search, quick filters and life areas — 2026-09-29
+
+Amit's intent, condensed: the Search tab feels dated. There should be no separate search page;
+a search bar at the top of Today and Feed should filter the page's items as he types, with the
+most important quick filters (Videos, X links, …) on the page itself. Separately, he wants Distil
+to be the one place for everything that matters to him: personal material (for example his
+child's school), work material (for example Granola notes) and content he learns from. Every item
+should be sorted into one of four areas **automatically by AI**; he does not want to write rules
+or set anything up, only to have a very simple way to fix a wrong area. A later, separate task
+moves the classifier onto a newer model.
+
+This checkpoint is a plan only. Nothing was implemented; no code, schema or cloud state changed.
+
+#### How search and classification work today (verified against `main` at `ea420d4`)
+
+- **Three unrelated search paths.**
+  1. `/search` (`src/components/phase2/search-experience.tsx`, gated by `FEATURE_SEARCH`) calls
+     `GET /api/v1/search` → `searchPassages` (`src/lib/knowledge/retrieval.ts`): keyword search
+     over `content_chunks.search_vector`, returning passages rather than items. Semantic mode is
+     never pinned. Nothing runs until Search is pressed; the component mirrors ten URL filters in
+     local state, hardcodes its own filter lists and takes a raw collection ID.
+  2. `/feed?q=` (`src/components/feed/feed-list.tsx` `requestPath`) calls the legacy
+     `GET /api/items?q=` → `hybridSearch` (`src/lib/ai/search.ts`): full-text search on
+     `items.search_vector` (title, summary, topics only) plus in-process cosine over the 500 most
+     recent embeddings. With a query, `feedFilterKey` (`src/lib/feed/feed-url.ts`) collapses to
+     `q=…`, so every Feed filter, read/archive state, pagination and server rendering is ignored.
+  3. Today has no search; the top-bar icon (`src/components/layout/topbar.tsx`) links to
+     `/search`, as does the sidebar (`src/components/layout/sidebar.tsx`).
+- **The Feed query is the right home.** `src/lib/feed/feed-query.ts` already composes filters,
+  sort, cursor pagination and personalization, and `/feed` and `/` server-render through it
+  (`loadFeedPage`, `src/lib/feed/feed-params.ts`). It has no text parameter.
+- **"X links" is not a stored facet.** `sourceType` is the capture channel and `contentType` is
+  article/video/podcast; X is only recognisable from the URL host (`isTwitterUrl`,
+  `src/lib/utils.ts`).
+- **No area concept exists.** `topics` are free-form. The Stage 1 classifier
+  (`src/lib/intelligence/classifier.ts`, task `auto-tag`, result in `items.content_classification`)
+  only runs inside `processContent` (`src/lib/intelligence/pipeline.ts`), which is used by the
+  Gmail, Slack and publisher connectors. **The durable capture worker (extension, iPhone
+  Shortcut, manual, Granola, X, Wispr) never runs it**; that path's only AI step is the brief
+  generated in `src/lib/queue/capture-consumer.ts`. No single existing call sees every item, so
+  area classification needs its own step called from both paths.
+- **Manual overrides already have a pattern.** `manual_priority` is kept beside the AI
+  `priority` and edited through `PATCH /api/v1/items/[id]/state` (`src/lib/phase2/reader-service.ts`).
+
+#### Decisions (Amit, in chat, 2026-09-29)
+
+1. **Areas:** exactly four — **Personal, Work, Learning, Updates**. Learning is material studied
+   and kept; Updates is news and information skimmed.
+2. **One area per item.** Topics keep the finer detail.
+3. **Fully automatic.** The AI always assigns its best guess; there is no Unsorted bucket and no
+   user-written rules or area descriptions. Confidence is stored for tuning only.
+4. **Corrections teach the AI.** Amit's recent reclassifications are passed to the classifier as
+   examples.
+5. **Reclassify:** an area badge on every card and in the reader; tapping it offers the four
+   areas. One tap to see, two to fix.
+6. **Area filter:** a segmented switch (All · Personal · Work · Learning · Updates) above the
+   quick filters, on both Today and Feed.
+7. **Backfill:** classify all existing items (title and summary only).
+8. **Gmail unchanged.** The relevance gate keeps its current allowlist (newsletter, digest,
+   announcement). Consequence: personal and work email (e.g. school notices) is not captured
+   from Gmail; that material arrives through other sources.
+9. **Today search scope:** the unread queue, plus a "Search everything →" link to `/feed?q=…`.
+10. **Search matches** title, summary, author, publication and topics; **not** body text.
+11. **Quick filters:** Videos, X links, Podcasts, Unread, High priority, plus the areas, without
+    a crowded row of chips. Amit left the layout to Claude; the chosen layout is under "Filter
+    bar" below.
+12. **Follow-up model task:** after this plan, a separate task moves area classification onto
+    the model Amit referred to as "the new TypeSafe model GeV". The exact model is not yet
+    identified; confirm it with Amit before that task starts.
+
+#### Target design
+
+- **One query model.** `q`, `site` and `area` become parameters of `FeedQuery`,
+  `parseFeedQuery` and `GET /api/v1/feed`, so search composes with every filter, sort,
+  pagination and the server-rendered first page. `/api/v1/search` and `searchPassages` stay
+  as the retrieval layer for Ask and grounding; they are no longer a page.
+- **Matching.** `websearch_to_tsquery` with the last token as a prefix (`:*`) so partial words
+  match while typing; when `q` is present, relevance (`ts_rank`) orders results ahead of the
+  current score. The `items.search_vector` generated column is widened to include `author` and
+  `publication` (weights: title A, author/publication B, summary and topics C).
+- **Site facet.** A generated, indexed `site` column holding the URL host without `www.`
+  (`x.com` for both `x.com` and `twitter.com`). "X links" is `site=x.com`; YouTube or Substack
+  chips later need no schema change.
+- **Filter bar** (one shared client component on Today and Feed):
+  - Row 1: the search field (placeholder "Search your items", `/` focuses it, Esc clears) and a
+    **Filters** button showing a count of active filters.
+  - Row 2: the area switch — All · Personal · Work · Learning · Updates.
+  - Row 3: five compact toggles — Unread · High priority · Videos · X · Podcasts — followed by
+    any filter set from the Filters sheet shown as a removable chip, and "Clear" when anything
+    is active. Rows 2 and 3 scroll horizontally on phones instead of wrapping.
+  - The Filters sheet (popover on desktop, bottom sheet on phones) holds everything else from
+    today's `src/components/feed/feed-filters.tsx`: source, topic, collection, dates, archive,
+    sort, and the view mode.
+  - Quick filters are one client-safe registry mapping each toggle to URL parameters
+    (`contentType=video`, `site=x.com`, `contentType=podcast`, `read=false`, `priority=high`),
+    shared by both pages. The URL remains the single source of truth.
+  - Typing filters the items already on screen immediately (title, publication, author), then a
+    250 ms debounced `router.replace` fetches the server result; the current list stays visible,
+    dimmed, while it loads, as Feed already does for filter changes.
+- **Area classification.** A new AI task `classify-area` (Gemini flash-lite by default, in
+  `src/lib/ai/ai-config.ts`) behind one function, `classifyItemArea(repositories, itemId)`. Input:
+  title, source type, author, publication, site, topics, the brief or summary, and at most about
+  2,000 characters of text, plus up to 20 of Amit's most recent corrections as examples
+  (title, site, author → area). Output via Gemini structured output with a zod mirror:
+  `{area, confidence, reason}`. It is called after the item is stored, from the capture
+  consumer (independently of the brief, so it runs even when the brief is off or fails) and from
+  the connector save path. Failure leaves the area empty and is retried by the backfill job;
+  it never blocks capture. Keeping it behind one function and one task name is what makes the
+  follow-up model swap a small change.
+- **Storage.** `items.area` (AI), `items.area_confidence`, `items.area_reason`,
+  `items.area_classified_at`, `items.manual_area`, all nullable; the effective area is
+  `COALESCE(manual_area, area)`, indexed per user. Reprocessing never touches `manual_area`.
+  Corrections are read back from items where `manual_area` differs from `area`.
+- **Today.** With no query or filters, Today is unchanged. With a query, a quick filter or an
+  area other than All, the priority and revisiting sections are replaced by one results list
+  from the unread queue and a "Search everything →" link to the Feed with the same parameters.
+
+#### Phase F1 — Feed query: text search and site facet
+
+- **Goal:** `q` and `site` on the Feed query and API, with prefix matching and relevance order.
+  No UI change.
+- **Files:** `src/lib/feed/feed-query.ts`, `src/lib/feed/feed-params.ts`,
+  `src/lib/feed/feed-url.ts`, `src/app/api/v1/feed/route.ts`, `src/lib/postgres/schema.ts`, a
+  new tenant migration after `0011` (widened `search_vector`, generated `site` column and its
+  index).
+- **Approach:** build the tsquery server-side from the trimmed input (escape operators; last
+  token as prefix); `q` requires at least 2 characters; `site` accepts a short allowlist of
+  hosts. `feedFilterKey` includes `q` like any other filter.
+- **Tests:** feed-query unit and contract tests (prefix match, relevance order, `q` combined with
+  read/archive/contentType, cursor pagination under `q`, `twitter.com` → `x.com`), API route
+  validation tests.
+- **Verification:** local loop (Docker Postgres) with real items; Quick gate. The migration
+  needs Amit's authorization to apply to Production at release.
+- **Record:** dated checkpoint and handoff bullet update.
+
+#### Phase F2 — Area classification at capture
+
+- **Goal:** every new item gets an AI area automatically.
+- **Files:** a new tenant migration (area columns and index), `src/lib/postgres/schema.ts`,
+  `src/lib/types.ts`, `src/lib/postgres/item-columns.ts`, `src/lib/postgres/mappers.ts`,
+  `src/lib/repositories/ports.ts`, `src/lib/postgres/repositories.ts`, a new
+  `src/lib/ai/classify-area.ts` and prompt in `src/lib/prompts/`, `src/lib/ai/ai-config.ts`,
+  `src/lib/queue/capture-consumer.ts`, and the connector save path (Gmail, Slack, publishers).
+- **Approach:** as in Target design. Include `area` (effective) in the summary projection so list
+  surfaces receive it. The prompt defines the four areas with a few generic examples each (school
+  or family logistics → Personal; meeting notes, colleague threads → Work; explainers, courses,
+  deep essays → Learning; news, announcements, release notes → Updates).
+- **Tests:** prompt tests (four areas defined, corrections included and capped), classifier unit
+  tests (valid output stored, invalid output rejected, failure does not throw into capture),
+  capture-consumer test (classification runs when the brief is disabled), repository contract
+  tests.
+- **Verification:** local loop with at least one real item per area (a Granola note, a school
+  or family item, an explainer, a news item); record the area and confidence for each (not the
+  content). Quick gate; migration authorization as in F1.
+- **Record:** checkpoint with the per-area sample results; handoff bullet update.
+
+#### Phase F3 — Filter bar on Feed
+
+- **Goal:** replace Feed's filter UI with the shared filter bar; Feed search runs on the new
+  query path.
+- **Files:** new `src/components/feed/filter-bar.tsx` and a client-safe quick-filter registry in
+  `src/lib/feed/`, `src/components/feed/feed-list.tsx` (drop the legacy `/api/items?q=` branch
+  in `requestPath`), `src/components/feed/feed-filters.tsx` (becomes the Filters sheet),
+  `src/app/feed/page.tsx` (server-render with `q`), feed query `area` parameter.
+- **Approach:** as in Target design. The area switch is shown once F2 has merged; if F3 lands
+  first, it is hidden until then.
+- **Tests:** filter-bar component tests (typing debounces to one navigation, `/` and Esc, toggles
+  map to the right parameters, sheet filters appear as removable chips, Clear), feed-list tests
+  for server-rendered search results and load-more under `q`.
+- **Verification:** browser preview on desktop and phone widths, light and dark; screenshot of
+  the bar with a query, an area and two toggles active. Quick gate.
+- **Record:** checkpoint with the screenshots' description; handoff update.
+
+#### Phase F4 — Area badge and one-tap reclassify
+
+- **Goal:** see and fix an item's area in two taps; corrections feed the classifier.
+- **Files:** `src/components/feed/content-card.tsx`, the reader header,
+  `src/lib/phase2/reader-service.ts` (`stateSchema` gains `area`),
+  `PATCH /api/v1/items/[id]/state`, `src/lib/ai/classify-area.ts` (read recent corrections).
+- **Approach:** the badge opens a four-option menu; the change is optimistic and writes
+  `manual_area`. Choosing the AI's own area clears `manual_area`.
+- **Tests:** component tests for the badge menu, reader-service and route tests, a classifier
+  test that corrections appear as examples.
+- **Verification:** browser preview: reclassify from a card and from the reader, then filter by
+  the new area. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Phase F5 — Filter bar on Today
+
+- **Goal:** the same bar on Today, searching the unread queue.
+- **Files:** `src/app/page.tsx`, `src/components/phase2/today-experience.tsx`,
+  `src/components/phase2/today-prototype.tsx`, `src/lib/feed/today-selection.ts`.
+- **Approach:** as in Target design (results mode plus "Search everything →"); the default Today
+  view is unchanged.
+- **Tests:** Today component tests for default, filtered and empty-result states and the link's
+  parameters.
+- **Verification:** browser preview, desktop and phone. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Phase F6 — Backfill areas for existing items
+
+- **Goal:** every existing item has an area.
+- **Approach:** a tenant-scoped job that classifies items with no area in batches, using title
+  and summary only, through the existing queue with the tenant AI budget; idempotent and
+  resumable. Running it on Production is a cloud mutation that needs Amit's authorization for
+  that run.
+- **Tests:** job unit tests (skips classified and manually set items, resumes after a failure,
+  respects the batch size).
+- **Verification:** local run over the local library; record counts per area and failures.
+- **Record:** checkpoint with counts; handoff update.
+
+#### Phase F7 — Retire the Search page and the legacy search path
+
+- **Goal:** one search surface.
+- **Files:** `src/app/search/page.tsx` (redirect `/search?…` to `/feed?…`, mapping parameters),
+  `src/components/phase2/search-experience.tsx` and its tests (delete),
+  `src/components/layout/topbar.tsx` and `sidebar.tsx` (remove the Search entries; the top-bar
+  icon may focus the page's search field instead), `src/app/api/items/route.ts` (remove the
+  `q` branch), `AGENTS.md` and docs describing search, and the `FEATURE_SEARCH` gating of the
+  page. `hybridSearch` stays while `src/lib/agent/rag.ts` uses it; moving that to the Feed query
+  is optional here.
+- **Tests:** redirect test; remove or rewrite tests for deleted code.
+- **Verification:** old `/search?q=…` links land on the equivalent Feed view. Quick gate.
+- **Record:** checkpoint and handoff update.
+
+#### Order, ownership and recording
+
+F1 and F2 are independent and can start from `main` in either order. F3 needs F1 (and F2 for the
+area switch). F4 needs F2 and F3. F5 needs F3. F6 needs F2. F7 goes last. Each phase is its own
+`claude/<task>` branch and PR with its own state update. Re-verify every `file:line` reference
+against current `main` before starting a phase. The model follow-up (decision 12) is a separate
+task after F7.
 
 ### summary-structure applied to Production — 2026-09-29
 

@@ -4,6 +4,8 @@
  */
 export interface Phase2FeatureFlags {
   captureSummary: boolean;
+  /** Per-capture life-area classification; `false` stops the extra AI call. */
+  areaClassification: boolean;
   /** Server-render `/` and `/feed` with their data; `false` restores the client-fetch pages. */
   serverRender: boolean;
   knowledgeUi: boolean;
@@ -20,6 +22,7 @@ export function readPhase2FeatureFlags(
 ): Phase2FeatureFlags {
   return Object.freeze({
     captureSummary: environment.FEATURE_CAPTURE_SUMMARY?.trim().toLowerCase() !== "false",
+    areaClassification: environment.FEATURE_AREA_CLASSIFICATION?.trim().toLowerCase() !== "false",
     serverRender: environment.FEATURE_SERVER_RENDER?.trim().toLowerCase() !== "false",
     knowledgeUi: enabled(environment.FEATURE_KNOWLEDGE_UI),
     search: enabled(environment.FEATURE_SEARCH),

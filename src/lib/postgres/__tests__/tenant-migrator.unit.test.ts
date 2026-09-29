@@ -165,4 +165,65 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+
+  it("applies the feed-search stage only after the summary-structure ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+      ["returning-auth", "0009_phase3_returning_auth.sql"],
+      ["perf-indexes", "0010_perf_indexes.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "feed-search", ownerId })
+    ).rejects.toThrow("feed-search requires the summary-structure stage first");
+    fake.applied.push({
+      stage: "summary-structure",
+      name: "0011_summary_structure.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "feed-search", ownerId })
+    ).resolves.toMatchObject({
+      stage: "feed-search",
+      file: "0012_feed_search.sql",
+      alreadyApplied: false,
+    });
+  });
+
+  it("applies the life-areas stage only after the feed-search ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+      ["returning-auth", "0009_phase3_returning_auth.sql"],
+      ["perf-indexes", "0010_perf_indexes.sql"],
+      ["summary-structure", "0011_summary_structure.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "life-areas", ownerId })
+    ).rejects.toThrow("life-areas requires the feed-search stage first");
+    fake.applied.push({
+      stage: "feed-search",
+      name: "0012_feed_search.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "life-areas", ownerId })
+    ).resolves.toMatchObject({
+      stage: "life-areas",
+      file: "0013_life_areas.sql",
+      alreadyApplied: false,
+    });
+  });
 });

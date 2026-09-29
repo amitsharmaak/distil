@@ -50,8 +50,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
-  `src/lib/postgres/tenant-migrations/0005–0011` (Phase 3 expand/backfill/contract/lifecycle/
-  returning-auth, the P7 perf-indexes stage, then the summary-structure stage) run through `npm run db:tenant:migrate` and are
+  `src/lib/postgres/tenant-migrations/0005–0013` (Phase 3 expand/backfill/contract/lifecycle/
+  returning-auth, the P7 perf-indexes stage, the summary-structure and feed-search stages, then the life-areas stage) run through `npm run db:tenant:migrate` and are
   checked by
   `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
   the restricted runtime role in `DATABASE_URL`. Row-level security is forced.
@@ -107,8 +107,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
   `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_SEARCH`,
-  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Two kill switches default
-  on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary) and
+  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
+  on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
+  `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and
   `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`
   restores the client-fetch pages).
 - **Deployment:** `docs/vercel-deployment.md` (topology and variable mapping) and

@@ -2,13 +2,14 @@ import type { Sql } from "postgres";
 
 import { itemSummaryColumnsSql } from "@/lib/postgres/item-columns";
 import { mapItemSummary } from "@/lib/postgres/mappers";
-import type { ContentItem, ContentItemSummary, Priority } from "@/lib/types";
+import type { ContentItem, ContentItemSummary, LifeArea, Priority } from "@/lib/types";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 export const DEFAULT_FEED_PAGE_SIZE = 30;
 export const MAX_FEED_PAGE_SIZE = 100;
 
-export type FeedSort = "recent" | "priority" | "for_you";
+/** `relevance` orders by text-search rank and applies only when the query carries `search`. */
+export type FeedSort = "recent" | "priority" | "for_you" | "relevance";
 export type FeedArchiveFilter = "exclude" | "only" | "include";
 
 export interface FeedFilters {
@@ -21,6 +22,12 @@ export interface FeedFilters {
   collectionIds?: string[];
   dateFrom?: string;
   dateTo?: string;
+  /** Free text matched against title, author, publication, summary and topics. */
+  search?: string;
+  /** URL hosts without `www.`; `x.com` also covers twitter.com (generated `items.site`). */
+  sites?: string[];
+  /** Effective life areas: Amit's correction when set, otherwise the AI's area. */
+  areas?: LifeArea[];
 }
 
 export interface FeedQuery extends FeedFilters {
@@ -139,6 +146,56 @@ function manualPriorityScore(priority: Priority): number {
 
 export const PERSONALIZATION_HALF_LIFE_DAYS = 60;
 
+/** Longest search input the feed accepts; longer input is rejected by the API schema. */
+export const MAX_FEED_SEARCH_LENGTH = 200;
+const MAX_FEED_SEARCH_TERMS = 8;
+
+/**
+ * PostgreSQL's `english` stop words (`tsearch_data/english.stop`). They are
+ * dropped here because a query made only of them makes `to_tsquery` raise a
+ * NOTICE, which the database client would log on every such keystroke.
+ */
+const ENGLISH_STOP_WORDS = new Set(
+  "i me my myself we our ours ourselves you your yours yourself yourselves he him his himself she her hers herself it its itself they them their theirs themselves what which who whom this that these those am is are was were be been being have has had having do does did doing a an the and but if or because as until while of at by for with about against between into through during before after above below to from up down in out on off over under again further then once here there when where why how all any both each few more most other some such no nor not only own same so than too very s t can will just don should now".split(
+    " "
+  )
+);
+
+/**
+ * Builds the `to_tsquery('english', …)` input for search-as-you-type: every
+ * letter/digit run becomes a quoted term, all terms must match, and the last
+ * one is a prefix so a half-typed word still finds its item. Only `\p{L}\p{N}`
+ * characters survive, so no tsquery operator can come from the caller.
+ * Returns undefined when no searchable term remains (only punctuation or stop words).
+ */
+export function feedSearchTsQuery(search: string): string | undefined {
+  const terms = (search.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((term) => !ENGLISH_STOP_WORDS.has(term))
+    .slice(0, MAX_FEED_SEARCH_TERMS);
+  if (!terms.length) return undefined;
+  return terms
+    .map((term, index) => `'${term}'${index === terms.length - 1 ? ":*" : ""}`)
+    .join(" & ");
+}
+
+/**
+ * `ILIKE` pattern for a literal substring match on title, author and
+ * publication. It covers what stemming misses while typing (a prefix of a
+ * word longer than its stem, e.g. "learni") and exact names.
+ */
+export function feedSearchLikePattern(search: string): string {
+  return `%${search.trim().replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
+
+/** Normalizes a site filter value to the form `items.site` stores. */
+export function normalizeFeedSite(site: string): string {
+  const host = site
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+  return ["twitter.com", "mobile.twitter.com", "mobile.x.com"].includes(host) ? "x.com" : host;
+}
+
 export function decayAffinity(weight: number, occurredAt: string, now = new Date()): number {
   const ageDays = Math.max(0, (now.getTime() - new Date(occurredAt).getTime()) / 86_400_000);
   return weight * Math.exp((-Math.LN2 * ageDays) / PERSONALIZATION_HALF_LIFE_DAYS);
@@ -218,10 +275,19 @@ export function explainFeedRank(
   item: Pick<ContentItem, "priority" | "manualPriority" | "createdAt"> & {
     aiPriorityScore?: number;
     affinityScore?: number;
+    relevanceScore?: number;
   },
   sort: FeedSort,
   now = new Date()
 ): FeedRankExplanation {
+  if (sort === "relevance") {
+    return {
+      sort,
+      score: Number((item.relevanceScore ?? 0).toFixed(6)),
+      reasons: ["Matches your search"],
+      components: { manualPriority: item.manualPriority, itemPriority: item.priority },
+    };
+  }
   if (sort === "recent") {
     return {
       sort,
@@ -274,6 +340,10 @@ function rowAffinityScore(row: Row): number | undefined {
   return row.feed_affinity_score == null ? undefined : Number(row.feed_affinity_score);
 }
 
+function rowRelevanceScore(row: Row): number | undefined {
+  return row.feed_rank_score == null ? undefined : Number(row.feed_rank_score);
+}
+
 /** PostgreSQL-backed filtered, keyset-paginated feed; no client-side filtering. */
 export class PostgresFeedQuery {
   private readonly context: AuthContext;
@@ -317,6 +387,34 @@ export class PostgresFeedQuery {
       )`);
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
+    // feed_search_vector and site come from the feed-search tenant stage; they are
+    // referenced only when a request asks for them, so the plain feed never depends on it.
+    if (query.sites?.length)
+      conditions.push(
+        this.sql`i.site = ANY(${this.sql.array(query.sites.map(normalizeFeedSite))})`
+      );
+    // Area columns come from the life-areas tenant stage, also read only on request.
+    if (query.areas?.length)
+      conditions.push(
+        this.sql`COALESCE(i.manual_area, i.area) = ANY(${this.sql.array(query.areas)})`
+      );
+    const search = query.search?.trim() ? query.search.trim() : undefined;
+    const tsQuery = search ? feedSearchTsQuery(search) : undefined;
+    const likePattern = search ? feedSearchLikePattern(search) : undefined;
+    const titleMatch = likePattern
+      ? this.sql`i.title ILIKE ${likePattern} ESCAPE '\\'`
+      : this.sql`FALSE`;
+    if (search) {
+      const textMatch = tsQuery
+        ? this.sql`i.feed_search_vector @@ to_tsquery('english', ${tsQuery})`
+        : this.sql`FALSE`;
+      conditions.push(this.sql`(
+        ${textMatch}
+        OR ${titleMatch}
+        OR i.author ILIKE ${likePattern!} ESCAPE '\\'
+        OR i.publication ILIKE ${likePattern!} ESCAPE '\\'
+      )`);
+    }
     if (query.resurface === "stale") {
       conditions.push(this.sql`i.processing_status='ready'`);
       conditions.push(this.sql`i.is_read=false`);
@@ -377,7 +475,17 @@ export class PostgresFeedQuery {
     // Keyset cursors cross the PostgreSQL/JSON boundary. Quantize once in SQL
     // so ordering, equality checks, and the serialized cursor use the same
     // stable value instead of comparing a binary float after a JS round-trip.
-    const score = this.sql`ROUND((${unroundedScore})::numeric, 6)`;
+    // Relevance: the weighted text rank plus a flat boost when the typed text
+    // appears verbatim in the title. Without a search it is 0 for every row,
+    // which degrades to newest first through the tie-breaks below.
+    const relevance = tsQuery
+      ? this
+          .sql`ts_rank(i.feed_search_vector, to_tsquery('english', ${tsQuery})) + CASE WHEN ${titleMatch} THEN 1 ELSE 0 END`
+      : this.sql`CASE WHEN ${titleMatch} THEN 1 ELSE 0 END`;
+    const score =
+      sort === "relevance"
+        ? this.sql`ROUND((${relevance})::numeric, 6)`
+        : this.sql`ROUND((${unroundedScore})::numeric, 6)`;
 
     if (cursor) {
       if (sort === "recent") {
@@ -414,7 +522,12 @@ export class PostgresFeedQuery {
     let items = pageRows.map((row) => {
       const item = mapItemSummary(row);
       const rank = explainFeedRank(
-        { ...item, aiPriorityScore: rowAiPriorityScore(row), affinityScore: rowAffinityScore(row) },
+        {
+          ...item,
+          aiPriorityScore: rowAiPriorityScore(row),
+          affinityScore: rowAffinityScore(row),
+          relevanceScore: rowRelevanceScore(row),
+        },
         sort,
         new Date(now)
       );

@@ -10,7 +10,14 @@ import type {
   KnowledgeBackfillCheckpoint,
   KnowledgeBackfillType,
 } from "@/lib/knowledge/types";
-import type { ContentItem, ContentItemSummary, Notification, Priority } from "@/lib/types";
+import type {
+  ContentItem,
+  ContentItemSummary,
+  LifeArea,
+  Notification,
+  Priority,
+  SourceType,
+} from "@/lib/types";
 import type { UserId } from "@/lib/contracts/tenant-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { DigestStore } from "@/lib/digests/types";
@@ -59,6 +66,37 @@ export interface ItemRepository {
     rejectionReason?: string
   ): Promise<void>;
   updatePriorityScore(id: string, score: number, priority: Priority): Promise<void>;
+  /** The item's area columns (tenant stage life-areas); undefined for a missing item. */
+  findAreaState(id: string): Promise<ItemAreaState | undefined>;
+  /** Stores the AI's area answer. Never touches Amit's correction (`manual_area`). */
+  setAiArea(id: string, classification: AiAreaClassification): Promise<void>;
+  /** Most recent items whose corrected area differs from the AI's, newest correction first. */
+  listAreaCorrections(limit: number): Promise<AreaCorrection[]>;
+}
+
+export interface ItemAreaState {
+  area?: LifeArea;
+  manualArea?: LifeArea;
+  areaClassifiedAt?: string;
+}
+
+export interface AiAreaClassification {
+  area: LifeArea;
+  confidence: number;
+  reason: string;
+  model: string;
+  classifiedAt: string;
+}
+
+/** A correction as the classifier sees it: the item's identifying metadata and both areas. */
+export interface AreaCorrection {
+  title: string;
+  url: string;
+  sourceType: SourceType;
+  author?: string;
+  publication?: string;
+  aiArea?: LifeArea;
+  correctedArea: LifeArea;
 }
 
 export interface ItemNoteRecord {

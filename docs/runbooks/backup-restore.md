@@ -44,7 +44,7 @@ only for migrations; never substitute the pooled runtime URL.
    settings that no database, Auth endpoint, cookie secret, object namespace, queue or callback
    origin is shared with Production.
 3. With all writes frozen, apply one tenant stage at a time through `db:tenant:migrate`: `expand`,
-   `backfill`, `contract`, then `lifecycle`, `returning-auth`, `perf-indexes` and `summary-structure`. Before backfill, capture `tenant-before.json`; after
+   `backfill`, `contract`, then `lifecycle`, `returning-auth`, `perf-indexes`, `summary-structure`, `feed-search` and `life-areas`. Before backfill, capture `tenant-before.json`; after
    backfill run `db:tenant:verify -- --stage after --baseline ...`. Contract must use the unchanged
    before report. Preserve stdout/stderr and query the `distil_tenant_migrations` ledger without
    storing the connection URL.

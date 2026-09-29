@@ -5,6 +5,9 @@ import {
   decayAffinity,
   encodeFeedCursor,
   explainFeedRank,
+  feedSearchLikePattern,
+  feedSearchTsQuery,
+  normalizeFeedSite,
   reserveTopTenDiversity,
   resurfacingEligibility,
 } from "../feed-query";
@@ -353,5 +356,104 @@ describe("feed ranking contracts", () => {
     await expect(query.list({ cursor: "invalid" })).rejects.toMatchObject({
       code: "INVALID_CURSOR",
     } satisfies Partial<FeedQueryError>);
+  });
+
+  it("never references the feed-search columns unless a request asks for search or a site", async () => {
+    const sql = fakeFeedSql([feedRow("plain")]);
+    await new PostgresFeedQuery(sql as never, context).list({ sort: "for_you", now });
+    expect(sql.statements[0]).not.toContain("feed_search_vector");
+    expect(sql.statements[0]).not.toContain("i.site");
+    expect(sql.statements[0]).not.toContain("ILIKE");
+    expect(sql.statements[0]).not.toContain("manual_area");
+  });
+
+  it("filters by the effective area: Amit's correction first, then the AI's", async () => {
+    const sql = fakeFeedSql([feedRow("work")]);
+    await new PostgresFeedQuery(sql as never, context).list({
+      areas: ["work", "learning"],
+      sort: "recent",
+      now,
+    });
+    expect(sql.statements[0]).toContain("COALESCE(i.manual_area, i.area) = ANY(?)");
+  });
+
+  it("filters by text and site and orders a search by relevance", async () => {
+    const sql = fakeFeedSql([feedRow("hit", 1.060793)]);
+    const page = await new PostgresFeedQuery(sql as never, context).list({
+      search: "machine learni",
+      sites: ["twitter.com"],
+      sort: "relevance",
+      now,
+    });
+    const statement = sql.statements[0];
+    expect(statement).toContain("i.site = ANY(?)");
+    expect(statement).toContain("i.feed_search_vector @@ to_tsquery('english', ?)");
+    expect(statement).toContain("i.title ILIKE ? ESCAPE '\\'");
+    expect(statement).toContain("i.author ILIKE ? ESCAPE '\\'");
+    expect(statement).toContain("i.publication ILIKE ? ESCAPE '\\'");
+    expect(statement).toContain("ts_rank(i.feed_search_vector, to_tsquery('english', ?))");
+    expect(statement).not.toContain("affinity_signal");
+    expect(page.items[0].rank).toEqual({
+      sort: "relevance",
+      score: 1.060793,
+      reasons: ["Matches your search"],
+      components: { manualPriority: undefined, itemPriority: "medium" },
+    });
+  });
+
+  it("keeps a search's own sort when the caller picks one", async () => {
+    const sql = fakeFeedSql([feedRow("hit")]);
+    await new PostgresFeedQuery(sql as never, context).list({
+      search: "rust",
+      sort: "recent",
+      now,
+    });
+    expect(sql.statements[0]).toContain("i.feed_search_vector @@");
+    expect(sql.statements[0]).toContain("ORDER BY i.created_at DESC, i.id DESC");
+    expect(sql.statements[0]).not.toContain("ts_rank");
+  });
+
+  it("falls back to substring matching when the search has no indexable term", async () => {
+    const sql = fakeFeedSql([]);
+    await new PostgresFeedQuery(sql as never, context).list({
+      search: "the",
+      sort: "relevance",
+      now,
+    });
+    expect(sql.statements[0]).not.toContain("to_tsquery");
+    expect(sql.statements[0]).toContain("i.title ILIKE ? ESCAPE '\\'");
+  });
+});
+
+describe("feed search input", () => {
+  it("turns typed text into an all-terms tsquery whose last term is a prefix", () => {
+    expect(feedSearchTsQuery("Machine learni")).toBe("'machine' & 'learni':*");
+    expect(feedSearchTsQuery("  Rust  ")).toBe("'rust':*");
+    expect(feedSearchTsQuery("Ünïcode 2026")).toBe("'ünïcode' & '2026':*");
+  });
+
+  it("strips every tsquery operator and quote the caller could inject", () => {
+    expect(feedSearchTsQuery("zz' | !bb & (cc) <-> dd:*")).toBe("'zz' & 'bb' & 'cc' & 'dd':*");
+    expect(feedSearchTsQuery("!!! ???")).toBeUndefined();
+  });
+
+  it("drops stop words so a stop-word-only query never reaches to_tsquery", () => {
+    expect(feedSearchTsQuery("the")).toBeUndefined();
+    expect(feedSearchTsQuery("the state of AI")).toBe("'state' & 'ai':*");
+  });
+
+  it("caps the number of terms", () => {
+    expect(feedSearchTsQuery("a1 b2 c3 d4 e5 f6 g7 h8 i9 j10")?.split(" & ")).toHaveLength(8);
+  });
+
+  it("escapes LIKE wildcards so the substring match is literal", () => {
+    expect(feedSearchLikePattern(" 50%_off\\ ")).toBe("%50\\%\\_off\\\\%");
+  });
+
+  it("normalizes site filters to the stored host form", () => {
+    expect(normalizeFeedSite(" WWW.YouTube.com ")).toBe("youtube.com");
+    expect(normalizeFeedSite("twitter.com")).toBe("x.com");
+    expect(normalizeFeedSite("mobile.twitter.com")).toBe("x.com");
+    expect(normalizeFeedSite("x.com")).toBe("x.com");
   });
 });

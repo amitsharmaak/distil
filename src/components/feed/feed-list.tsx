@@ -3,30 +3,35 @@
 /**
  * Feed client island.
  *
- * The URL is the single source of truth for the filters: the server page
- * parses it, renders the first page of items and passes them in as
- * `initialPage`; every filter change is a `router.replace` (scroll kept) that
- * makes the server render the new page. Only load-more and the bounded
- * processing-status poll talk to the API from here.
+ * The URL is the single source of truth for the filters and the search: the
+ * server page parses it, renders the first page of items and passes them in
+ * as `initialPage`; every filter change (including a committed search) is a
+ * `router.replace` (scroll kept) that makes the server render the new page.
+ * Only load-more and the processing-status poll talk to the API from here.
  *
- * Without `initialPage` (search results, the legacy SQLite path, or a request
- * with no server-side user) the island fetches the page itself, exactly as
- * the old client page did.
+ * While a search is being typed, the items already on screen are narrowed
+ * locally at once; the debounced URL change then brings the server's answer.
+ *
+ * Without `initialPage` (the legacy SQLite path, or a request with no
+ * server-side user) the island fetches the page itself.
  */
 
-import { startTransition, useCallback, useEffect, useState, useTransition } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ContentCard } from "@/components/feed/content-card";
-import { FeedFilters } from "@/components/feed/feed-filters";
+import { FeedFilterSheet } from "@/components/feed/feed-filters";
+import { FilterBar } from "@/components/feed/filter-bar";
 import {
   dateQueryValue,
   feedFilterKey,
   feedFilterState,
   feedRequestSearch,
+  normalizeSearchQuery,
   type FeedFilterState,
 } from "@/lib/feed/feed-url";
+import { activeSheetFilters, type FilterUpdates } from "@/lib/feed/quick-filters";
 import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
 import type { ContentItemSummary, ContentType, Priority, SourceType } from "@/lib/types";
 
@@ -45,28 +50,31 @@ type FeedResponse = {
 };
 
 function requestPath(state: FeedFilterState, cursor?: string): string {
-  // Phase 2 owns normal consumption queries. Search remains on the legacy
-  // endpoint until the cited keyword-search route is wired in its next slice.
-  if (state.searchQuery) {
-    const query = new URLSearchParams({ includeProcessing: "true", q: state.searchQuery });
-    return `/api/items?${query.toString()}`;
-  }
   return `/api/v1/feed?${feedRequestSearch(state, cursor).toString()}`;
 }
 
-function nextUrl(
-  current: URLSearchParams,
-  updates: Record<string, string | string[] | undefined>
-): string {
+export function nextFeedUrl(current: URLSearchParams, updates: FilterUpdates): string {
   const params = new URLSearchParams(current);
   for (const [name, value] of Object.entries(updates)) {
     params.delete(name);
     if (Array.isArray(value)) value.forEach((entry) => params.append(name, entry));
     else if (value) params.set(name, value);
   }
+  // Relevance only exists for a search; dropping the search drops that sort too.
+  if (!normalizeSearchQuery(params.get("q") ?? "")) {
+    params.delete("q");
+    if (params.get("sort") === "relevance") params.delete("sort");
+  }
   params.delete("cursor");
   const search = params.toString();
   return search ? `/feed?${search}` : "/feed";
+}
+
+/** Case-insensitive match on what a card shows, for the instant local narrowing. */
+function matchesDraft(item: ContentItemSummary, needle: string): boolean {
+  return [item.title, item.publication, item.author].some((value) =>
+    value?.toLowerCase().includes(needle)
+  );
 }
 
 export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null }) {
@@ -85,6 +93,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     serverPage?.collections ?? []
   );
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
+  const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
   const [isPending, startNavigation] = useTransition();
 
   // A new server page (after router.replace) replaces the list in one step.
@@ -132,8 +141,9 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPage, loadedKey, filterKey, fetchItems]);
 
+  const hasServerPage = Boolean(serverPage);
   useEffect(() => {
-    if (serverPage || filters.searchQuery) return;
+    if (hasServerPage) return;
     let cancelled = false;
     fetch("/api/v1/collections")
       .then((res) => res.json())
@@ -146,7 +156,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     return () => {
       cancelled = true;
     };
-  }, [serverPage, filters.searchQuery]);
+  }, [hasServerPage]);
 
   const loading = loadedKey !== filterKey;
 
@@ -197,11 +207,22 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
 
   /** Rejected items remain confined to Settings even if an API regresses. */
   const filteredItems = items.filter((item) => item.processingStatus !== "rejected");
+  // Until the typed text reaches the URL, narrow what is already loaded.
+  const draftNeedle = searchDraft.trim().toLowerCase();
+  const narrowing =
+    Boolean(draftNeedle) && normalizeSearchQuery(searchDraft) !== filters.searchQuery;
+  const visibleItems = narrowing
+    ? filteredItems.filter((item) => matchesDraft(item, draftNeedle))
+    : filteredItems;
   const topicOptions = Array.from(new Set(items.flatMap((item) => item.topics))).sort();
+  const collectionNames = useMemo(
+    () => Object.fromEntries(collections.map(({ id, name }) => [id, name])),
+    [collections]
+  );
 
-  const replaceFilters = (updates: Record<string, string | string[] | undefined>) => {
+  const replaceFilters = (updates: FilterUpdates) => {
     startNavigation(() => {
-      router.replace(nextUrl(searchParams, updates), { scroll: false });
+      router.replace(nextFeedUrl(searchParams, updates), { scroll: false });
     });
   };
 
@@ -212,59 +233,63 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     );
   }
 
+  const emptyMessage = filters.searchQuery
+    ? `Nothing matches “${filters.searchQuery}” with these filters.`
+    : narrowing
+      ? `Nothing on this page matches “${searchDraft.trim()}”.`
+      : "No items match your filters.";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Page header */}
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
-          <div className="flex gap-3 text-sm text-muted-foreground">
-            <Link href="/collections" className="hover:text-foreground">
-              Collections
-            </Link>
-            <Link href="/archive" className="hover:text-foreground">
-              Archive
-            </Link>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
+        <div className="flex gap-3 text-sm text-muted-foreground">
+          <Link href="/collections" className="hover:text-foreground">
+            Collections
+          </Link>
+          <Link href="/archive" className="hover:text-foreground">
+            Archive
+          </Link>
         </div>
-        <p className="text-muted-foreground">
-          {filters.searchQuery
-            ? `Search results for "${filters.searchQuery}"`
-            : "All your content from every source"}
-        </p>
       </div>
 
-      {/* Filter bar */}
-      <FeedFilters
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        selectedSources={filters.sources}
-        onSourcesChange={(values: SourceType[]) => replaceFilters({ source: values })}
-        selectedTypes={filters.contentTypes}
-        onTypesChange={(values: ContentType[]) => replaceFilters({ contentType: values })}
-        selectedPriorities={filters.priorities}
-        onPrioritiesChange={(values: Priority[]) => replaceFilters({ priority: values })}
-        showRead={filters.showRead}
-        onShowReadChange={(value: boolean) =>
-          replaceFilters({ read: value ? "true" : "false", showRead: undefined })
-        }
-        archive={filters.archive}
-        onArchiveChange={(value: FeedArchiveFilter) => replaceFilters({ archive: value })}
-        sort={filters.sort}
-        onSortChange={(value: FeedSort) => replaceFilters({ sort: value })}
-        selectedTopics={filters.topics}
-        onTopicsChange={(values: string[]) => replaceFilters({ topic: values })}
-        topicOptions={topicOptions}
-        selectedCollections={filters.collections}
-        onCollectionsChange={(values: string[]) => replaceFilters({ collection: values })}
-        collectionOptions={collections}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        onDateFromChange={(value: string) =>
-          replaceFilters({ dateFrom: value ? dateQueryValue(value) : undefined })
-        }
-        onDateToChange={(value: string) =>
-          replaceFilters({ dateTo: value ? dateQueryValue(value, true) : undefined })
+      <FilterBar
+        filters={filters}
+        onChange={replaceFilters}
+        onSearchDraftChange={setSearchDraft}
+        collectionNames={collectionNames}
+        sheet={
+          <FeedFilterSheet
+            activeCount={activeSheetFilters(filters, collectionNames).length}
+            searching={Boolean(filters.searchQuery)}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            selectedSources={filters.sources}
+            onSourcesChange={(values: SourceType[]) => replaceFilters({ source: values })}
+            selectedTypes={filters.contentTypes}
+            onTypesChange={(values: ContentType[]) => replaceFilters({ contentType: values })}
+            selectedPriorities={filters.priorities}
+            onPrioritiesChange={(values: Priority[]) => replaceFilters({ priority: values })}
+            archive={filters.archive}
+            onArchiveChange={(value: FeedArchiveFilter) => replaceFilters({ archive: value })}
+            sort={filters.sort}
+            onSortChange={(value: FeedSort) => replaceFilters({ sort: value })}
+            selectedTopics={filters.topics}
+            onTopicsChange={(values: string[]) => replaceFilters({ topic: values })}
+            topicOptions={topicOptions}
+            selectedCollections={filters.collections}
+            onCollectionsChange={(values: string[]) => replaceFilters({ collection: values })}
+            collectionOptions={collections}
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            onDateFromChange={(value: string) =>
+              replaceFilters({ dateFrom: value ? dateQueryValue(value) : undefined })
+            }
+            onDateToChange={(value: string) =>
+              replaceFilters({ dateTo: value ? dateQueryValue(value, true) : undefined })
+            }
+          />
         }
       />
 
@@ -284,15 +309,12 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
             <p className="font-medium">Feed is unavailable</p>
             <p className="mt-1 text-muted-foreground">{loadError}</p>
           </div>
-        ) : filteredItems.length === 0 ? (
-          // Empty state when filters match nothing (or search returns nothing).
-          <div className="py-12 text-center text-muted-foreground">
-            {filters.searchQuery
-              ? `No results found for "${filters.searchQuery}"`
-              : "No items match your filters."}
+        ) : visibleItems.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground" role="status">
+            {emptyMessage}
           </div>
         ) : (
-          filteredItems.map((item) => (
+          visibleItems.map((item) => (
             <ContentCard
               key={item.id}
               item={item}
@@ -303,7 +325,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
           ))
         )}
       </div>
-      {nextCursor && !loading && (
+      {nextCursor && !loading && !narrowing && (
         <div className="flex justify-center">
           <button
             type="button"

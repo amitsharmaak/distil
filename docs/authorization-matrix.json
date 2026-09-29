@@ -2195,6 +2195,13 @@
       "requiredScope": "owned item/artifact lookup and user-scoped AI budget/audit"
     },
     {
+      "id": "area-classification",
+      "source": "src/lib/ai/classify-area.ts",
+      "entryPoints": ["classifyItemArea"],
+      "currentScope": "tenant-scoped: called by the capture consumer with the queue envelope's system context; reads the owned item, its brief and the tenant's own area corrections, and writes only the AI area columns through the tenant repositories; provider calls go through the tenant AI router's budget and accounting",
+      "requiredScope": "owned item and corrections only; never another tenant's items as examples; user-scoped AI budget/audit"
+    },
+    {
       "id": "prioritization",
       "source": "src/lib/ai/prioritize.ts",
       "entryPoints": ["reprioritize"],

@@ -41,7 +41,8 @@ jest.mock("@/components/feed/content-card", () => ({
 }));
 
 jest.mock("@/components/feed/feed-filters", () => ({
-  FeedFilters: ({
+  FeedFilterSheet: ({
+    activeCount,
     viewMode,
     onViewModeChange,
     selectedSources,
@@ -50,8 +51,6 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onTypesChange,
     selectedPriorities,
     onPrioritiesChange,
-    showRead,
-    onShowReadChange,
     onArchiveChange,
     onSortChange,
     onTopicsChange,
@@ -59,6 +58,7 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onDateFromChange,
     onDateToChange,
   }: {
+    activeCount: number;
     viewMode: "card" | "compact";
     onViewModeChange: (mode: "card" | "compact") => void;
     selectedSources: SourceType[];
@@ -67,8 +67,6 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onTypesChange: (types: ContentType[]) => void;
     selectedPriorities: Priority[];
     onPrioritiesChange: (priorities: Priority[]) => void;
-    showRead: boolean;
-    onShowReadChange: (showRead: boolean) => void;
     onArchiveChange: (archive: "exclude" | "only" | "include") => void;
     onSortChange: (sort: "for_you" | "recent" | "priority") => void;
     onTopicsChange: (topics: string[]) => void;
@@ -77,9 +75,9 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onDateToChange: (date: string) => void;
   }) => (
     <div data-testid="filters">
-      <output>
+      <output data-testid="sheet-state">
         {viewMode}|{selectedSources.join(",")}|{selectedTypes.join(",")}|
-        {selectedPriorities.join(",")}|{String(showRead)}
+        {selectedPriorities.join(",")}|{activeCount}
       </output>
       <button type="button" onClick={() => onViewModeChange("compact")}>
         Compact view
@@ -101,9 +99,6 @@ jest.mock("@/components/feed/feed-filters", () => ({
       </button>
       <button type="button" onClick={() => onPrioritiesChange([])}>
         All priorities
-      </button>
-      <button type="button" onClick={() => onShowReadChange(!showRead)}>
-        Toggle read
       </button>
       <button type="button" onClick={() => onArchiveChange("include")}>
         Include archive
@@ -220,7 +215,10 @@ describe("FeedList without a server page (client fetch)", () => {
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?contentType=video", { scroll: false });
     fireEvent.click(screen.getByRole("button", { name: "High only" }));
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?priority=high", { scroll: false });
-    fireEvent.click(screen.getByRole("button", { name: "Toggle read" }));
+    // The Unread quick filter lives in the filter bar and is on by default.
+    const unread = screen.getByRole("button", { name: "Unread" });
+    expect(unread).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(unread);
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?read=true", { scroll: false });
     fireEvent.click(screen.getByRole("button", { name: "All sources" }));
     expect(mockReplace).toHaveBeenLastCalledWith("/feed", { scroll: false });
@@ -242,15 +240,46 @@ describe("FeedList without a server page (client fetch)", () => {
     expect(screen.getByTestId("item-read")).toHaveAttribute("data-filter", "all");
   });
 
-  it("forwards a search query and shows read search results", async () => {
-    mockSearch = "q=durable+queues";
-    fetchMock.mockResolvedValue(itemsResponse([makeItem({ isRead: true })]));
+  it("sends a search through the feed API with every filter, ordered by relevance", async () => {
+    mockSearch = "q=durable+queues&area=work&site=x.com";
+    fetchMock.mockResolvedValue(itemsResponse([makeItem()]));
 
     render(<FeedList initialPage={null} />);
 
-    expect(screen.getByText('Search results for "durable queues"')).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search your items" })).toHaveValue(
+      "durable queues"
+    );
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/items?includeProcessing=true&q=durable+queues");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/feed?archive=exclude&sort=relevance&limit=100&q=durable+queues&read=false&site=x.com&area=work"
+    );
+    expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/items"))).toBe(
+      false
+    );
+  });
+
+  it("narrows loaded items at once while typing, then commits the search to the URL", async () => {
+    jest.useFakeTimers();
+    fetchMock.mockResolvedValue(
+      itemsResponse([
+        makeItem({ id: "a", title: "Durable queues in practice" }),
+        makeItem({ id: "b", title: "Gardening notes" }),
+      ])
+    );
+    render(<FeedList initialPage={null} />);
+    await settleInitialFetch();
+    expect(screen.getByText("Gardening notes")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "durable" } });
+    expect(screen.getByText("Durable queues in practice")).toBeInTheDocument();
+    expect(screen.queryByText("Gardening notes")).not.toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    act(() => {
+      jest.advanceTimersByTime(250);
+    });
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenLastCalledWith("/feed?q=durable", { scroll: false });
   });
 
   it("initializes the read filter from the URL", async () => {
@@ -342,6 +371,15 @@ describe("FeedList without a server page (client fetch)", () => {
 
     expect(screen.getByText("No items match your filters.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("drops a relevance sort when the search is cleared", async () => {
+    mockSearch = "q=rust&sort=relevance&contentType=video";
+    fetchMock.mockResolvedValue(itemsResponse([makeItem()]));
+    render(<FeedList initialPage={null} />);
+    await settleInitialFetch();
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(mockReplace).toHaveBeenLastCalledWith("/feed?contentType=video", { scroll: false });
   });
 });
 
