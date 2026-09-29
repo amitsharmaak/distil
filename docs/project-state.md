@@ -42,6 +42,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
   writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
   decisions in the checkpoint and picks a phase (recommended R1).
+- **Remove Ask Distil: plan only, nothing implemented (branch `worktree-remove-ask-distil-plan`;
+  checkpoint "Removing Ask Distil — 2026-09-29"):** Amit asked whether the library-wide `/ask`
+  chat earns its place. Claude's critique, which Amit accepted: Distil is a flow product
+  (capture, distil, read, move on), and a chat over the whole library suits a knowledge-base
+  product instead. Its retrieval is the same full-text search as Search, and it overlaps the
+  planned S3 "Ask about this" in the reader and `/research`. One phase, **A1**, deletes the page,
+  its API route, its answer pipeline and two orphaned modules; there is no schema change. Next:
+  Amit answers the two decisions in the checkpoint and schedules A1. It is independent of F5–F7
+  and S3; running it before F7 makes F7 smaller.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
@@ -407,6 +416,109 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Removing Ask Distil — 2026-09-29
+
+Amit's intent, condensed: Distil should stay very simple, and every feature must add a lot of
+value. Its purpose is to take information in from many sources, use AI to distil what he needs
+at that moment, and let him read and move on instead of visiting several places. Search earns its
+place because it finds things he has read. He asked whether Ask Distil (a chat that answers
+questions across the whole library) does too, or whether it is feature bloat.
+
+This checkpoint is a plan only. Nothing was implemented; no code, schema or cloud state changed.
+
+#### Critique (Claude, accepted by Amit in chat)
+
+- **Different product.** Ask serves a "second brain" you query later; Distil is a flow product.
+  A chat surface pulls the app toward "chat with my stuff", which is the sprawl Amit wants to
+  avoid.
+- **Little lift over search.** Ask retrieves through the same PostgreSQL full-text path
+  (embeddings optional, no pgvector) and then writes a paragraph over the hits. On a personal
+  library of a few hundred items, searching and reading the top briefs gives about the same
+  result and shows the real items, not a synthesis that might blend them wrong.
+- **Three question-answering features.** Library-wide Ask, the planned S3 "Go deeper" / "Ask
+  about this" in the reader, and `/research`. S3 fits the purpose best: it answers while he is
+  reading, from one item, and he keeps moving.
+- **Ongoing cost.** A nav slot, a feature flag, an API route, a grounded-answer prompt and
+  cache, an AI task (`knowledge-answer`), tenant-security tests, authorization-matrix entries
+  and AI budget, all kept working through every AI routing or schema change.
+- **Where it would earn its place:** questions across items ("what did the three pieces on X
+  disagree about?"). If Amit misses that after removal, the answer belongs on Feed's search
+  (see "Parked" below), not in a separate tab.
+
+#### What Ask is today (verified against `main` at `aba860b`)
+
+- **Surface.** `src/app/ask/page.tsx` renders `AskExperience`
+  (`src/components/phase2/ask-experience.tsx`) and returns 404 unless `FEATURE_ANSWERS=true`.
+  The sidebar shows an "Ask" link (`src/components/layout/sidebar.tsx:25`, filtered at `:80` by
+  `showAnswers`), which `src/app/layout.tsx:61` passes as `flags.answers` through `AppShell`.
+- **API.** `POST /api/v1/answers` (`src/app/api/v1/answers/route.ts`) calls
+  `answerFromKnowledge` (`src/lib/knowledge/service.ts:235`, with the in-memory answer cache and
+  the `GroundedAnswerResponse` types) and `createRouterGroundedAnswerGenerator`
+  (`src/lib/knowledge/answer-generator.ts`, AI task `knowledge-answer` in
+  `src/lib/ai/ai-config.ts`). Nothing else calls either function.
+- **Orphans found on the way.** `src/components/agent/chat-panel.tsx` (`ChatPanel`) is imported
+  by nothing; it belonged to the `/api/agent/**` routes deleted in P4. `src/lib/agent/rag.ts` is
+  imported only by its own test. It is the second caller of `hybridSearch`, which is why F7 keeps
+  `hybridSearch` alive.
+- **Stays.** `searchPassages` (`src/lib/knowledge/retrieval.ts`) and `GET /api/v1/search` (F7
+  owns their future), `content_chunks` and chunking, `grounding.ts`, and the
+  `research-synthesize` task (used by `src/lib/ai/research.ts`).
+
+#### Phase A1 — Remove Ask Distil
+
+- **Goal:** no `/ask` page, no answers API, no dead chat code; nothing else changes.
+- **Files:**
+  - Delete: `src/app/ask/page.tsx`, `src/components/phase2/ask-experience.tsx` and its component
+    test, `src/app/api/v1/answers/route.ts` and its security test,
+    `src/lib/knowledge/answer-generator.ts` and its unit test,
+    `src/components/agent/chat-panel.tsx`, `src/lib/agent/rag.ts` and its unit test.
+  - Edit: `src/lib/knowledge/service.ts` (remove `answerFromKnowledge`, `answerRequestSchema` if
+    unused elsewhere, the answer cache and answer-only types); `src/lib/ai/ai-config.ts` (remove
+    the `knowledge-answer` task from the union and all provider tables, as `dedup-check` was
+    removed, unless S3 has already started reusing it); `src/components/layout/sidebar.tsx`,
+    `src/components/layout/app-shell.tsx` and `src/app/layout.tsx` (drop the Ask entry and the `showAnswers` prop);
+    `src/lib/phase2/feature-flags.ts` and its test (drop `answers` / `FEATURE_ANSWERS`); the
+    sidebar and topbar component tests.
+  - Records: `docs/authorization-matrix.json` (the `/api/v1/answers`, `/ask`,
+    `grounded-answers` and `agent-rag` entries; `scripts/check-phase3-security.ts` checks this
+    file against the routes), `docs/perf/route-bundle-stats.baseline.json` (`/ask`), `AGENTS.md`
+    (the product line "search, ask, revisit", the `/ask` surface and the `FEATURE_ANSWERS` flag),
+    `docs/agent-architecture.md` (RAG section). Leave `docs/ai-first-architecture.md` as
+    historical, or add a one-line note that Ask was removed.
+  - Optional redirect: `/ask` → `/feed` so an old bookmark lands somewhere (see decision 2).
+- **Out of scope:** `/research`, `/api/v1/search`, `searchPassages`, `hybridSearch` (it keeps
+  its `/api/items` caller until F7), and any schema or data change. AI usage rows recorded under
+  `knowledge-answer` stay as history.
+- **Tests:** remove the deleted code's tests. Update the feature-flag, sidebar and topbar tests.
+  Keep `check-phase3-security` passing, and add a test that `/ask` returns 404 or redirects.
+- **Verification:** `npm run check`; local loop: the sidebar has no Ask entry, `/ask` behaves as
+  decided, and Today, Feed, the reader and research still work. Quick gate.
+- **Production:** no migration. After the release, Amit may delete `FEATURE_ANSWERS` from Vercel
+  (a cloud mutation; nothing reads it any more, so leaving it is harmless).
+- **Record:** a dated checkpoint and the handoff bullet updated.
+
+#### Open decisions for Amit
+
+1. **Remove the code or just hide it.** Recommended: remove. Setting `FEATURE_ANSWERS=false`
+   hides the tab, but the route, prompt, task and tests stay to be maintained.
+2. **What `/ask` does afterwards.** Recommended: redirect to `/feed`, which is cheap and
+   friendlier than a 404. Alternative: plain 404.
+
+#### Parked, not planned
+
+- **A short cited answer on Feed search.** When a Feed query reads like a question, show two or
+  three lines answered from the matching items, above the results. Only if Amit misses Ask
+  after A1. It would reuse `searchPassages` and a small prompt, not a chat.
+- **`/research` deserves the same question.** Deep web research is a different job from
+  distilling what Amit captured, and it has three entry points. Not assessed here.
+
+#### Order, ownership and recording
+
+A1 is one `claude/<task>` or `worktree-<task>` branch from `main` with its own state update. It
+is independent of F5, F6 and S3. Running it before F7 removes `rag.ts`, so F7 no longer needs to
+keep `hybridSearch` for it. Re-verify every `file:line` reference against current `main` before
+starting.
 
 ### Consolidation of open PRs (2) — 2026-09-29
 
