@@ -18,6 +18,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Tester onboarding: extension origin prefilled (branch
+  `claude/distil-user-testing-setup-2f99c6`, not merged; checkpoint "Extension origin defaults to
+  Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
+  extension Options page now prefills `https://distilai.app`, so a tester only pastes their own
+  capture token. Capture tokens are bound to one user and must never be shared between accounts.
+  Next: Amit merges, then issues the tester's invitation himself (Production mutation) and shares
+  a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
 - **Inline search, quick filters and AI life areas: F1 implemented, not merged (plan merged as
   PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 on branch
   `claude/search-f1-feed-query`; checkpoints "Inline search F1: feed text search and site
@@ -355,6 +362,24 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Extension origin defaults to Production — 2026-09-29
+
+Amit asked how seamless it is to onboard another user end to end (invitation, sign-in, browser
+extension, iPhone Shortcut). Findings from reading the code, not a live run: invitations are issued
+only by `npm run auth:invite` against Production and the URL is sent manually (7-day expiry, exact
+email match); the extension is load-unpacked only and previously defaulted its origin to
+`http://localhost:3000`; the Shortcut must be shared via iCloud link with the owner's token removed
+(ideally an Import Question on the `Authorization` header). Capture tokens resolve to exactly one
+user (`src/lib/auth/capture-token-identity.ts`), so every tester creates their own in
+Settings → Capture; reusing Amit's would file their captures into his account.
+
+Change: `browser-extension/options.js` defaults the origin to `https://distilai.app` when no
+configuration is saved, the Options placeholder and hint name it, the README is updated and the
+manifest version is 1.1.1. Host permissions are unchanged; the tester still approves origin access
+once on save. New extension harness test "prefills the Production origin before configuration";
+`npm run test:extension` passed 12/12 locally. Candidate follow-ups: unlisted Chrome Web Store
+listing, and an in-app invitation action instead of the CLI.
 
 ### Inline search F1: feed text search and site facet — 2026-09-29
 

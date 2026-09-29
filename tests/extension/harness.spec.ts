@@ -160,6 +160,12 @@ test("configures a runtime origin permission without rendering the saved token",
   await expect(options.getByText("dst_cap_playwright_only")).toHaveCount(0);
 });
 
+test("prefills the Production origin before configuration", async ({ context, extensionId }) => {
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(options.getByLabel("Distil origin")).toHaveValue("https://distilai.app");
+});
+
 test("rejects plaintext remote Distil origins", async ({ context, extensionId }) => {
   const options = await context.newPage();
   await options.goto(`chrome-extension://${extensionId}/options.html`);
