@@ -56,10 +56,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
   `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
   and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
-  his terminal scrollback and shell history during this release (see the checkpoint); (2)
-  confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
-  filter bar on `https://distilai.app/feed` on desktop and phone (it was verified by tests only;
-  see the F3 checkpoint); (4) the F4 area badge, likewise verified by tests only. Next: Amit
+  his terminal scrollback and shell history during this release (see the checkpoint); (2) the
+  F3 bar on a phone, and the F4 area badge in a browser (both verified by tests only). **Seen on
+  Production on 2026-09-29** (Claude, through Amit's signed-in Chrome): the F3 filter bar renders
+  on desktop with the area switch and the five toggles, `?area=work` filters, and a capture from
+  that afternoon had been classified by F2 as Updates (the only classified item until F6). Next: Amit
   merges the F4 PR (Production already has `life-areas`, so it works on deploy); F5 (filter bar
   on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
