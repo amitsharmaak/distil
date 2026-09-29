@@ -90,7 +90,8 @@ it("styles content-aware brief sections by their shape, not their heading", () =
 });
 
 it("keeps rendering stored v1 summaries with their fixed sections", () => {
-  const v1 = "## TL;DR\n\nOverview.\n\n## Key Points\n\n- One\n- Two\n\n## Notable Quotes\n\n- \"Quote\"";
+  const v1 =
+    '## TL;DR\n\nOverview.\n\n## Key Points\n\n- One\n- Two\n\n## Notable Quotes\n\n- "Quote"';
   const { container } = render(
     <AISummary itemId="one" ogSummary="original" initialBriefSummary={v1} />
   );

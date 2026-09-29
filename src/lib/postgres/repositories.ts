@@ -787,7 +787,9 @@ class PostgresSummaries implements SummaryRepository {
         // The provenance columns come from the summary-structure tenant stage; a write that
         // carries none of them touches only the base columns.
         const provenance =
-          v.structured !== undefined || v.promptVersion !== undefined || v.contentHash !== undefined;
+          v.structured !== undefined ||
+          v.promptVersion !== undefined ||
+          v.contentHash !== undefined;
         const structured = v.structured === undefined ? null : this.sql.json(v.structured as never);
         const updated = provenance
           ? await tx<Row[]>`

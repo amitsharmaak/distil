@@ -139,7 +139,9 @@ export function summarizePrompt(
   length: "brief" | "detailed",
   source: SummarySource = sourceFromItem(item)
 ): string {
-  return length === "brief" ? briefSummaryPrompt(item, source) : detailedSummaryPrompt(item, source);
+  return length === "brief"
+    ? briefSummaryPrompt(item, source)
+    : detailedSummaryPrompt(item, source);
 }
 
 /** One part of a long document reduced to notes; the brief or detailed prompt runs over them. */

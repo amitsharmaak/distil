@@ -160,7 +160,10 @@ function cleanItem(value: string): string {
 }
 
 function cleanHeading(value: string): string {
-  return value.replace(/^#+\s*/, "").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/^#+\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Convert a content-aware brief to markdown for storage/display. */
@@ -345,7 +348,9 @@ export async function generateSummary(
     promptSource = {
       kind: "notes",
       text: chunkNotes
-        .map(({ notes }, index) => `### Part ${index + 1}\n${notes.map((n) => `- ${n}`).join("\n")}`)
+        .map(
+          ({ notes }, index) => `### Part ${index + 1}\n${notes.map((n) => `- ${n}`).join("\n")}`
+        )
         .join("\n\n"),
     };
     task = "summarize-complex";

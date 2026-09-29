@@ -492,9 +492,7 @@ describe("generateSummary — content-aware brief (summary-v2)", () => {
       "## One",
       "Two",
     ]);
-    expect(
-      call.structured.sections.flatMap((s: { items: string[] }) => s.items)
-    ).toHaveLength(7);
+    expect(call.structured.sections.flatMap((s: { items: string[] }) => s.items)).toHaveLength(7);
     expect(call.structured.sections[1].format).toBe("bullets");
     expect(call.structured.openQuestions).toHaveLength(5);
     expect(result.summary).toContain("## One\n\n- a\n- b");

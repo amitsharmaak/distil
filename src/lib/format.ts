@@ -130,16 +130,18 @@ export function htmlToReadableText(value: string | null | undefined): string {
     )
     .replace(/<[^>]*>/g, "")
     .replace(/<[^>]*$/, "");
-  return decodeEntities(text)
-    .replace(/[^\S\n]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    // A list item or heading whose text sits in a nested block (<li><p>…</p></li>).
-    .replace(/(?<=^|\n)(-|##)\n+(?=[^\n])/g, "$1 ")
-    .replace(/^(?:-|##) *$/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    // Consecutive list items read as one list, not one paragraph per item.
-    .replace(/(?<=^|\n)(- [^\n]*)\n\n(?=- )/g, "$1\n")
-    .trim();
+  return (
+    decodeEntities(text)
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      // A list item or heading whose text sits in a nested block (<li><p>…</p></li>).
+      .replace(/(?<=^|\n)(-|##)\n+(?=[^\n])/g, "$1 ")
+      .replace(/^(?:-|##) *$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      // Consecutive list items read as one list, not one paragraph per item.
+      .replace(/(?<=^|\n)(- [^\n]*)\n\n(?=- )/g, "$1\n")
+      .trim()
+  );
 }
 
 export interface SummaryDigest {
