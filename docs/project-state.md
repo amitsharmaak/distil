@@ -18,6 +18,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Deep research readability: plan recorded, nothing implemented (docs-only branch
+  `claude/deep-research-readability-8ab4ee`; checkpoint "Deep research readability: diagnosis
+  and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
+  poorly rendered content). Root causes: the source list is a regex scrape of every URL in the
+  raw findings (41 listed, 8 cited in the local sample), prompts ask for URLs everywhere, one
+  4,096-token synthesis compresses the findings to ~800 words in a fixed four-heading template,
+  and the page is one small-type card with no navigation. Phases, one per task: **R1** readable
+  page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
+  writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
+  decisions in the checkpoint and picks a phase (recommended R1).
 - **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
   `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
   which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
@@ -339,6 +349,150 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research readability: diagnosis and phased plan — 2026-09-29
+
+**Why.** Amit finds deep research reports hard to consume: too many links bloat the page, and the
+research itself is neither detailed enough nor rendered well. He asked for the output and the
+whole page to be reworked. This task is analysis and planning only (docs-only branch
+`claude/deep-research-readability-8ab4ee`, from `main` `ea420d4`); no code changed.
+
+**Evidence.** Code read on `ea420d4`; the sample is the last completed local run `5a9cf55a`
+("What are the main approaches to on-device AI assistants on phones in 2026?", checkpoint "Deep
+research on a queue worker and the search facade — 2026-09-21"), read from Amit's local Docker
+Postgres. The page was not rendered for this task; the findings below come from the code and the
+stored report.
+
+**Diagnosis — five causes, each traced to code.**
+
+1. **The source list is a URL scrape, not a citation list.** Synthesis collects every URL that
+   appears anywhere in the raw findings (`src/lib/ai/research.ts:552-553`, a regex over
+   `combinedFindings`) and stores them all. The sample lists **41 sources, of which the report
+   cites 8**; the rest include bare homepages (`ieeexplore.ieee.org/`, the `nature.com` journal
+   root) and pages only loosely related to the question (a 2019 Pew survey, a 2019 Guardian
+   story). The page renders all
+   of them as raw, truncated URLs in a card (`src/app/research/[id]/page.tsx:379-402`).
+2. **The prompts ask for links, so the text is full of them.** Search and deepening ask for
+   findings "with source URLs" (`research.ts:505`, `:537`) and synthesis for "inline source
+   links" (`src/lib/prompts/research.ts`, `researchSynthesizePrompt`); in the sample, each
+   bullet that cites ends in two parenthesised links. Because both keys are free-tier (grounding is
+   refused and falls back to plain generation, see the 2026-09-21 checkpoints), every URL is
+   recalled from model memory and unverified. Even when grounding works, the real sources are
+   discarded: `GeminiProviderImpl.generateTextWithSearch` returns only `response.text()`
+   (`src/lib/ai/providers.ts:161`), never `groundingMetadata`.
+3. **Depth is lost at synthesis, not at search.** Five sub-questions plus up to two deepening
+   answers (each capped at 2,048 output tokens) are compressed by one synthesis call with the
+   provider-default 4,096 output tokens and a 50 s timeout (`RESEARCH_TIMEOUTS_MS.synthesize`).
+   The sample report is **789 words**: five themes of three one-line bullets each. Specific
+   facts, numbers and disagreements from the findings do not survive.
+4. **One fixed template for every question.** `researchSynthesizePrompt` always asks for
+   Executive Summary / Key Findings / Analysis / Conclusion, which produced generic filler in
+   the sample ("Audit current tech stacks", "Monitor hardware roadmaps"). The plan prompt also
+   fixes the angle list (background, current state, players, outlook) and passes the item's
+   full content unbounded as context (`research.ts:490`). This is the same problem adaptive
+   summaries S1 solved for item summaries.
+5. **The page is a wall.** The body is one `prose-sm` card (`page.tsx:372`) — smaller type than
+   the reader's `prose-lg` — with the model's own `# Research Report: …` H1 repeating the
+   question, `---` rules between sections, no table of contents or section navigation, and the
+   sources card below it. Only the executive summary is lifted out (by regex, `page.tsx:66`).
+
+**Plan — four PR-sized phases, each its own task from current `main`.** Re-verify every
+file:line reference above against `main` before starting a phase. Every phase keeps existing
+stored reports rendering (legacy markdown with `string[]` sources) and records a dated
+checkpoint with a before/after comparison against the `5a9cf55a` baseline (789 words, 41 sources
+listed / 8 cited).
+
+**R1 — Readable report page (UI only; recommended first).** Goal: existing reports become easy
+to read without any engine change.
+
+- Files: `src/app/research/[id]/page.tsx`; new `src/components/research/` pieces (report body,
+  table of contents, sources list); tests in `src/app/research/[id]/__tests__/`.
+- Reading column at the reader's scale (`prose` base or `prose-lg`, ~70ch), no card around the
+  body. Header: the question, date, and "N sections · ~M min read · K sources".
+- Drop the duplicate H1 and `---` rules before rendering. TL;DR on top (generalise the
+  executive-summary extraction to TL;DR / Summary headings).
+- Table of contents from `##`/`###` headings: sticky right rail on desktop, collapsible "On this
+  page" on mobile. Heading ids from a custom heading component passed through the existing
+  `Markdown` `components` prop (no new dependency).
+- Inline links rendered compactly (small muted domain chip with an external-link icon) instead of
+  full link text in parentheses.
+- Sources collapsed by default. Inside: "Cited in this report (n)" first — the URLs that
+  appear in the report body — shown as domain + short path, and the remaining scraped URLs behind
+  a second "Other links the research touched" disclosure. (R2 replaces this with real citations.)
+- Copy as Markdown and Research further in one compact toolbar.
+- Tests: TOC from headings, H1 and rules stripped, cited/other split, a report with no summary
+  heading still renders, legacy `string[]` sources.
+- Verify on the local loop (in-app browser) with `5a9cf55a`: desktop, 375 px mobile, dark mode.
+
+**R2 — Grounded, numbered citations (engine + UI).** Goal: the source list holds only what the
+report cites, each with a title and domain, and the text carries `[n]` markers, not URLs.
+
+- Provider: return `groundingMetadata.groundingChunks` (`web.uri`, `web.title`) alongside the
+  text from `generateTextWithSearch`; the tenant facade returns `{ text, sources, grounded }`
+  (`grounded: false` on the plain fallback). Grounding URIs are
+  `vertexaisearch.cloud.google.com/grounding-api-redirect/…` redirects whose title is usually
+  the domain: resolve them to the final URL in the search stage (manual redirect, ~3 s timeout,
+  capped count, keep the redirect on failure). Confirm this behaviour live first.
+- Durable state: findings become `{ question, notes, sources[], grounded }`; bump the run-state
+  version and keep parsing version 1 so in-flight runs finish.
+- Prompts: search and deepening ask for specific facts, figures, dates, named examples and
+  disagreements, and no URLs in the text. On the ungrounded path, ask for at most three sources
+  the model is confident exist, as a trailing JSON block, marked unverified.
+- Synthesis gets a numbered source list (`[1] title — domain`) and must cite with `[n]` only.
+  After synthesis keep only the cited sources; store them as objects
+  `{ id, url, title, domain, grounded }` in the existing `research_reports.sources` text column
+  (no migration). The routes' `JSON.parse(report.sources)` passes objects through unchanged.
+- UI: `[n]` → superscript citation linking to the numbered source (title on hover or tap);
+  numbered sources list with title and domain; a one-line note "Sources recalled by the model,
+  not verified by search" when nothing was grounded.
+- Tests: grounding-metadata parsing (providers), facade shape (`router-search.unit`), state v1
+  resume, cited-only sources and `[n]` mapping (`research-stages.unit`), page with object and
+  legacy sources.
+- Limitation: while the Gemini keys are free-tier only the ungrounded path can be exercised live;
+  the grounded path is verified with fixtures until the billing decision below is made.
+
+**R3 — Adaptive, deeper report (engine).** Goal: a report shaped for the question, 1,500–2,500
+words, whose sections keep the specifics from the findings.
+
+- Replace the single `synthesize` stage with `outline` → one `write` stage per section →
+  assembly (no model call), each one queue message inside the 60 s lease, reusing the resumable
+  stage machinery.
+- `outline` (JSON, `research-synthesize`): `shape` (explainer, comparison, landscape, decision,
+  how-to, timeline, other), a 2–3 sentence TL;DR, 3–5 key takeaways each carrying a concrete
+  fact, 3–6 sections (heading written for the question, purpose, the findings and sources it
+  draws on, format: prose, table, steps or bullets) and caveats / open questions.
+- `write` i (`research-synthesize`, ≤45 s, ~1,200 output tokens): 250–450 words for that section
+  from its findings, `[n]` citations, a GFM table when the format is table.
+- Assembly: `## TL;DR`, `## Key takeaways`, the sections, `## Caveats and open questions`, stored
+  as markdown in `research_reports.report` (Copy as Markdown keeps working) with R2's sources.
+- Contract: add `outline` and `write` to `ResearchRunStepKind` and the Zod schema in
+  `src/lib/contracts/tenant-jobs.ts`; keep handling a redelivered `synthesize` message by
+  routing it to `outline`. Stepper gains "Writing (2/5): <heading>". A section that fails its
+  attempts becomes a short placeholder rather than failing the report.
+- Plan prompt: choose sub-questions for the question type instead of the fixed four angles; reduce
+  item context with `htmlToReadableText` (`src/lib/format.ts`) and cap it.
+- Cost: about 4–6 more model calls per run; the local free-tier cap (20 requests per model per
+  day) allows roughly one run a day.
+- Tests: full stage walk, resume mid-`write`, degraded section, assembled markdown shape, contract
+  schema, `/research/[id]` stepper labels.
+
+**R4 — Research notes drill-down (optional; decide after R3).** Keep the per-question findings
+after completion (today `progress` is cleared on completion) so the page can offer a collapsed
+"How this was researched" list of sub-questions with their notes. Needs a storage decision
+(a `notes jsonb` column is a tenant migration stage like `summary-structure`).
+
+**Decisions for Amit (recommendation first).**
+
+1. Order: R1 → R2 → R3. R1 fixes the page for existing reports right away; R2 comes before R3
+   because the section writer cites by `[n]`. Alternative: R3 first if depth matters most.
+2. Storage: markdown plus source objects in the existing text columns, no migration
+   (recommended), versus a structured `jsonb` column like S1's `ai_summaries.structured`.
+3. Length target 1,500–2,500 words for R3 (recommended), with TL;DR and key takeaways on top for
+   skimming.
+4. Already open: a billing-enabled Google AI project for real search grounding. Without it R2
+   still removes the bloat but its sources remain unverified model memory.
+
+**Not deployed. Nothing changed in Vercel or Neon.** Local database only read.
 
 ### summary-structure applied to Production — 2026-09-29
 
