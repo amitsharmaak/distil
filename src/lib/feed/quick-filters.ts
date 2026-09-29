@@ -1,13 +1,14 @@
 /**
  * The filter bar's vocabulary, shared by every page that shows it (Feed now,
- * Today in F5). Each entry maps to URL parameters, so the URL stays the single
+ * Today in F5): the search stays in the bar, every filter sits in the Filters
+ * sheet, and the bar shows what is active as removable chips. Each entry maps to URL parameters, so the URL stays the single
  * source of truth and a filtered view can be shared or restored with Back.
  *
  * Client-safe: no zod or other server-only imports.
  */
 
 import type { FeedFilterState } from "@/lib/feed/feed-url";
-import { LIFE_AREAS, type ContentType, type LifeArea, type Priority } from "@/lib/types";
+import { LIFE_AREAS, type LifeArea, type Priority } from "@/lib/types";
 
 /** URL parameter changes; `undefined` removes the parameter. */
 export type FilterUpdates = Record<string, string | string[] | undefined>;
@@ -41,47 +42,28 @@ function toggled<T extends string>(values: T[], value: T): T[] {
 export const X_SITE = "x.com";
 
 export interface QuickFilter {
-  id: "unread" | "high" | "video" | "x" | "podcast";
+  id: "unread" | "x";
   label: string;
   isActive(state: FeedFilterState): boolean;
   toggle(state: FeedFilterState): FilterUpdates;
 }
 
-const contentTypeToggle = (type: ContentType) => (state: FeedFilterState) => ({
-  contentType: toggled(state.contentTypes, type),
-});
-
-/** The one-tap toggles, in display order. */
+/**
+ * The toggles in the Filters sheet's "Show" group that no facet group already
+ * offers (priority, type and source have their own groups there).
+ */
 export const QUICK_FILTERS: QuickFilter[] = [
   {
     id: "unread",
-    label: "Unread",
+    label: "Unread only",
     isActive: (state) => !state.showRead,
     toggle: (state) => ({ read: state.showRead ? "false" : "true", showRead: undefined }),
   },
   {
-    id: "high",
-    label: "High priority",
-    isActive: (state) => state.priorities.includes("high"),
-    toggle: (state) => ({ priority: toggled<Priority>(state.priorities, "high") }),
-  },
-  {
-    id: "video",
-    label: "Videos",
-    isActive: (state) => state.contentTypes.includes("video"),
-    toggle: contentTypeToggle("video"),
-  },
-  {
     id: "x",
-    label: "X",
+    label: "X posts",
     isActive: (state) => state.sites.includes(X_SITE),
     toggle: (state) => ({ site: toggled(state.sites, X_SITE) }),
-  },
-  {
-    id: "podcast",
-    label: "Podcasts",
-    isActive: (state) => state.contentTypes.includes("podcast"),
-    toggle: contentTypeToggle("podcast"),
   },
 ];
 
@@ -91,6 +73,11 @@ const SOURCE_LABELS: Record<string, string> = {
   "browser-extension": "Extension",
   manual: "Manual",
   publisher: "Publisher",
+};
+const CONTENT_TYPE_LABELS: Record<string, string> = {
+  article: "Articles",
+  video: "Videos",
+  podcast: "Podcasts",
 };
 const ARCHIVE_LABELS = { include: "Including archived", only: "Archived only" } as const;
 const PRIORITY_LABELS: Record<Priority, string> = {
@@ -106,17 +93,30 @@ export interface ActiveFilterChip {
 }
 
 /**
- * Filters set from the Filters sheet that the toggles do not already show,
- * each with the update that removes it. Shown as removable chips so nothing
- * hidden is ever active silently.
+ * Every filter that narrows the list beyond the default unread view, each
+ * with the update that removes it. All filters live in the Filters sheet, so
+ * the bar shows these as removable chips and nothing is ever active silently.
  */
-export function activeSheetFilters(
+export function activeFilterChips(
   state: FeedFilterState,
   collectionNames: Record<string, string> = {}
 ): ActiveFilterChip[] {
   const chips: ActiveFilterChip[] = [];
+  for (const area of state.areas) {
+    chips.push({
+      key: `area:${area}`,
+      label: AREA_LABELS[area] ?? area,
+      remove: { area: state.areas.filter((entry) => entry !== area) },
+    });
+  }
+  if (state.showRead) {
+    chips.push({
+      key: "read",
+      label: "Read included",
+      remove: { read: undefined, showRead: undefined },
+    });
+  }
   for (const priority of state.priorities) {
-    if (priority === "high") continue;
     chips.push({
       key: `priority:${priority}`,
       label: PRIORITY_LABELS[priority] ?? priority,
@@ -124,18 +124,16 @@ export function activeSheetFilters(
     });
   }
   for (const type of state.contentTypes) {
-    if (type === "video" || type === "podcast") continue;
     chips.push({
       key: `contentType:${type}`,
-      label: type === "article" ? "Articles" : type,
+      label: CONTENT_TYPE_LABELS[type] ?? type,
       remove: { contentType: state.contentTypes.filter((entry) => entry !== type) },
     });
   }
   for (const site of state.sites) {
-    if (site === X_SITE) continue;
     chips.push({
       key: `site:${site}`,
-      label: site,
+      label: site === X_SITE ? "X posts" : site,
       remove: { site: state.sites.filter((entry) => entry !== site) },
     });
   }
@@ -182,13 +180,7 @@ export function activeSheetFilters(
 
 /** True when anything narrows the list beyond the default unread view. */
 export function hasActiveFilters(state: FeedFilterState): boolean {
-  return (
-    Boolean(state.searchQuery) ||
-    state.areas.length > 0 ||
-    state.showRead ||
-    QUICK_FILTERS.some((filter) => filter.id !== "unread" && filter.isActive(state)) ||
-    activeSheetFilters(state).length > 0
-  );
+  return Boolean(state.searchQuery) || activeFilterChips(state).length > 0;
 }
 
 /** Removes every filter and the search, back to the default unread view; sort and layout stay. */
@@ -207,3 +199,8 @@ export const CLEAR_ALL_FILTERS: FilterUpdates = {
   dateFrom: undefined,
   dateTo: undefined,
 };
+
+/** The Filters sheet's Reset: every filter back to default, but the search stays. */
+export const RESET_SHEET_FILTERS: FilterUpdates = Object.fromEntries(
+  Object.entries(CLEAR_ALL_FILTERS).filter(([name]) => name !== "q")
+);

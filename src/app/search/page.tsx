@@ -1,14 +1,18 @@
-import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import { SearchExperience } from "@/components/phase2/search-experience";
-import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
+/**
+ * The old Search page. Search now lives in the Feed header and uses the same
+ * URL parameters (`q`, `source`, `contentType`, `priority`, `topic`,
+ * `collection`, `read`, `archive`, `dateFrom`, `dateTo`), so old `/search?…`
+ * links and bookmarks land on the equivalent Feed view.
+ */
 
-export default function SearchPage() {
-  if (!readPhase2FeatureFlags().search) notFound();
+import { redirect } from "next/navigation";
 
-  return (
-    <Suspense fallback={<p className="py-12 text-center text-muted-foreground">Loading search…</p>}>
-      <SearchExperience />
-    </Suspense>
-  );
+import { feedUrlForSearch, type SearchParams } from "./feed-url-for-search";
+
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  redirect(feedUrlForSearch(await searchParams));
 }

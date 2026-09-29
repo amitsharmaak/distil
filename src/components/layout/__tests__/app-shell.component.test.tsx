@@ -16,10 +16,8 @@ jest.mock("@/components/layout/theme-toggle", () => ({
   ThemeToggle: () => <span data-testid="theme-toggle" />,
 }));
 jest.mock("@/components/layout/topbar", () => ({
-  Topbar: ({ backHref, showSearch }: { backHref?: string; showSearch?: boolean }) => (
-    <header data-back={backHref ?? ""} data-search={String(showSearch)}>
-      Topbar
-    </header>
+  Topbar: ({ backHref }: { backHref?: string }) => (
+    <header data-back={backHref ?? ""}>Topbar</header>
   ),
 }));
 jest.mock("@/components/layout/mobile-nav", () => ({ MobileNav: () => <nav>Mobile</nav> }));
@@ -52,7 +50,7 @@ describe("AppShell", () => {
 
   it("shows the mobile tab bar and reserves space for it on list routes", () => {
     render(
-      <AppShell showSearch={false}>
+      <AppShell>
         <p>Content</p>
       </AppShell>
     );
@@ -62,7 +60,6 @@ describe("AppShell", () => {
       "pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))]"
     );
     expect(screen.getByText("Topbar")).toHaveAttribute("data-back", "");
-    expect(screen.getByText("Topbar")).toHaveAttribute("data-search", "false");
   });
 
   it("drops the mobile tab bar and routes Back through the top bar on reader pages", () => {

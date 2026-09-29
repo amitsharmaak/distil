@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   Newspaper,
   Rss,
-  Search,
   Settings,
   BookmarkPlus,
   ChevronLeft,
@@ -21,7 +20,6 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/search", label: "Search", icon: Search },
   { href: "/ask", label: "Ask", icon: Bot },
   { href: "/research", label: "Research", icon: FlaskConical },
   { href: "/save", label: "Save", icon: BookmarkPlus },
@@ -32,12 +30,10 @@ export function Sidebar({
   collapsed: controlledCollapsed,
   onCollapsedChange,
   showAnswers = true,
-  showSearch = true,
 }: {
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   showAnswers?: boolean;
-  showSearch?: boolean;
 }) {
   const pathname = usePathname();
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -76,7 +72,6 @@ export function Sidebar({
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {navItems
           .filter((item) => {
-            if (item.href === "/search") return showSearch;
             if (item.href === "/ask") return showAnswers;
             return true;
           })

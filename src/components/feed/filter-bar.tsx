@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The filter bar at the top of the feed (and Today, from F5): search as you
- * type, the life-area switch, one-tap quick filters, and chips for anything
- * set in the Filters sheet. The URL is the only state it changes; the parent
+ * The filter bar at the top of the feed (and Today, from F5): a compact search
+ * beside the page title, the Filters sheet trigger, and a row of removable
+ * chips for whatever filters are active. Every filter itself lives in the
+ * sheet (`FeedFilterSheet`). The URL is the only state it changes; the parent
  * owns navigation through `onChange`.
  *
  * Typing reports the draft immediately (`onSearchDraftChange`, for instant
@@ -15,13 +16,9 @@ import * as React from "react";
 import { Search, X } from "lucide-react";
 
 import {
-  AREA_OPTIONS,
   CLEAR_ALL_FILTERS,
-  QUICK_FILTERS,
-  activeSheetFilters,
-  areaUpdate,
+  activeFilterChips,
   hasActiveFilters,
-  selectedArea,
   type FilterUpdates,
 } from "@/lib/feed/quick-filters";
 import { normalizeSearchQuery, type FeedFilterState } from "@/lib/feed/feed-url";
@@ -59,7 +56,10 @@ export interface FilterBarProps {
   collectionNames?: Record<string, string>;
   /** The Filters sheet trigger, rendered beside the search field. */
   sheet?: React.ReactNode;
+  /** Rendered at the start of the search row, typically the page title. */
+  leading?: React.ReactNode;
   placeholder?: string;
+  label?: string;
 }
 
 export function FilterBar({
@@ -68,7 +68,9 @@ export function FilterBar({
   onSearchDraftChange,
   collectionNames,
   sheet,
-  placeholder = "Search your items",
+  leading,
+  placeholder = "Search",
+  label = "Search your items",
 }: FilterBarProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [draft, setDraft] = React.useState(filters.searchQuery);
@@ -116,129 +118,93 @@ export function FilterBar({
     if (committed) onChange({ q: undefined });
   };
 
-  const area = selectedArea(filters);
-  const chips = activeSheetFilters(filters, collectionNames);
+  const chips = activeFilterChips(filters, collectionNames);
   const anyActive = hasActiveFilters(filters);
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2">
-        <div role="search" className="relative min-w-0 flex-1">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <input
-            ref={inputRef}
-            type="search"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                if (draft) clearSearch();
-                else inputRef.current?.blur();
-              }
-            }}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            enterKeyHint="search"
-            autoComplete="off"
-            className="h-10 w-full rounded-lg border bg-card pl-9 pr-16 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
-          />
-          {draft ? (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        {leading}
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+          <div
+            role="search"
+            className="relative min-w-0 flex-1 sm:w-56 sm:flex-none sm:transition-[width] sm:duration-200 sm:focus-within:w-72"
+          >
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <input
+              ref={inputRef}
+              type="search"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  if (draft) clearSearch();
+                  else inputRef.current?.blur();
+                }
+              }}
+              placeholder={placeholder}
+              aria-label={label}
+              enterKeyHint="search"
+              autoComplete="off"
+              className="h-9 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-10 text-base text-foreground transition-colors placeholder:text-muted-foreground hover:bg-muted focus-visible:border-border focus-visible:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
+            />
+            {draft ? (
+              <button
+                type="button"
+                onClick={() => {
+                  clearSearch();
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <kbd
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border bg-card px-1.5 font-mono text-[11px] leading-4 text-muted-foreground sm:block"
+              >
+                /
+              </kbd>
+            )}
+          </div>
+          {sheet}
+        </div>
+      </div>
+
+      {chips.length > 0 && (
+        <div className={rowClass} role="group" aria-label="Active filters">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => onChange(chip.remove)}
+              aria-label={`Remove filter: ${chip.label}`}
+              className={pillClass(true)}
+            >
+              {chip.label}
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          ))}
+          {anyActive && (
             <button
               type="button"
               onClick={() => {
-                clearSearch();
-                inputRef.current?.focus();
+                setDraft("");
+                onChange(CLEAR_ALL_FILTERS);
               }}
-              aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="min-h-9 shrink-0 px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              <X className="h-4 w-4" />
+              Clear
             </button>
-          ) : (
-            <kbd
-              aria-hidden="true"
-              className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground sm:block"
-            >
-              /
-            </kbd>
           )}
         </div>
-        {sheet}
-      </div>
-
-      <div
-        role="radiogroup"
-        aria-label="Area"
-        className={cn(rowClass, "rounded-lg bg-muted/60 p-1")}
-      >
-        {AREA_OPTIONS.map((option) => {
-          const checked = option.value === area;
-          return (
-            <button
-              key={option.label}
-              type="button"
-              role="radio"
-              aria-checked={checked}
-              onClick={() => {
-                if (!checked) onChange(areaUpdate(option.value));
-              }}
-              className={cn(
-                "min-h-8 flex-1 shrink-0 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                checked
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className={rowClass} role="group" aria-label="Quick filters">
-        {QUICK_FILTERS.map((filter) => {
-          const active = filter.isActive(filters);
-          return (
-            <button
-              key={filter.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange(filter.toggle(filters))}
-              className={pillClass(active)}
-            >
-              {filter.label}
-            </button>
-          );
-        })}
-        {chips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => onChange(chip.remove)}
-            aria-label={`Remove filter: ${chip.label}`}
-            className={pillClass(true)}
-          >
-            {chip.label}
-            <X className="h-3 w-3" aria-hidden="true" />
-          </button>
-        ))}
-        {anyActive && (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft("");
-              onChange(CLEAR_ALL_FILTERS);
-            }}
-            className="min-h-9 shrink-0 px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

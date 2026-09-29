@@ -58,9 +58,7 @@ export default function RootLayout({
       </head>
       <body className={`${newsreader.variable} ${outfit.variable} font-sans antialiased`}>
         <ThemeProvider>
-          <AppShell showAnswers={flags.answers} showSearch={flags.search}>
-            {children}
-          </AppShell>
+          <AppShell showAnswers={flags.answers}>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>
