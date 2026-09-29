@@ -30,6 +30,12 @@ describe("ai-config invariants", () => {
     }
   });
 
+  it("routes Anthropic by undated alias, not a dated snapshot", () => {
+    for (const id of listConfiguredModels().anthropic) {
+      expect(id).toMatch(/^claude-[a-z]+-\d+(-\d+)?$/);
+    }
+  });
+
   it("keeps the summary retry model distinct from the summary assignments", () => {
     expect(DEFAULT_MODEL_CONFIG.summarize.model).not.toBe(GEMINI_SUMMARY_FALLBACK_MODEL);
     expect(PROVIDER_FALLBACK_MODELS.gemini["summarize-complex"]).not.toBe(

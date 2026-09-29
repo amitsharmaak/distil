@@ -123,6 +123,8 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
     "auto-tag": "gpt-4o-mini",
     "classify-area": "gpt-4o-mini",
   },
+  // Anthropic ids are the undated aliases the API accepts; ListModels shows the dated
+  // snapshot (claude-haiku-4-5 -> claude-haiku-4-5-20251001), which the audit resolves.
   anthropic: {
     summarize: "claude-haiku-4-5",
     "knowledge-answer": "claude-haiku-4-5",
