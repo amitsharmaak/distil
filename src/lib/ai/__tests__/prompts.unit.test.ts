@@ -5,11 +5,11 @@
  * Test fixture: the TechCrunch "Claude Code voice mode" article.
  */
 
-import { chunkNotesPrompt, summarizePrompt } from "@/lib/prompts/summarize";
+import { briefSummaryPrompt, chunkNotesPrompt, detailedDeltaPrompt } from "@/lib/prompts/summarize";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { researchPlanPrompt, researchSynthesizePrompt } from "@/lib/prompts/research";
 import type { ContentItem } from "@/lib/types";
-import type { UserPreferenceProfile } from "../types";
+import type { BriefSummaryOutput, UserPreferenceProfile } from "../types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -39,29 +39,29 @@ const aiPreferences: UserPreferenceProfile = {
   lastUpdated: new Date().toISOString(),
 };
 
-// ── summarizePrompt ───────────────────────────────────────────────────────────
+// ── briefSummaryPrompt ──────────────────────────────────────────────────────────
 
-describe("summarizePrompt", () => {
+describe("briefSummaryPrompt", () => {
   it("includes the article title", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
     expect(prompt).toContain("Claude Code rolls out a voice mode capability");
   });
 
   it("includes author and publication", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
     expect(prompt).toContain("Kyle Wiggers");
     expect(prompt).toContain("TechCrunch");
   });
 
   it("includes all topic tags", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
     expect(prompt).toContain("AI");
     expect(prompt).toContain("Developer Tools");
     expect(prompt).toContain("Voice AI");
   });
 
   it("uses the OG summary when no fullContent is provided", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
     expect(prompt).toContain("Available Summary");
     expect(prompt).toContain(techCrunchItem.summary!);
   });
@@ -71,7 +71,7 @@ describe("summarizePrompt", () => {
       ...techCrunchItem,
       fullContent: "Full article body text from the scraped TechCrunch page...",
     };
-    const prompt = summarizePrompt(withContent, "brief");
+    const prompt = briefSummaryPrompt(withContent);
     expect(prompt).toContain("Full Content");
     expect(prompt).toContain("Full article body text from the scraped TechCrunch page...");
     expect(prompt).not.toContain("Available Summary");
@@ -83,12 +83,12 @@ describe("summarizePrompt", () => {
       summary: "",
       fullContent: undefined,
     };
-    const prompt = summarizePrompt(titleOnly, "brief");
+    const prompt = briefSummaryPrompt(titleOnly);
     expect(prompt).toContain("Only title and metadata available");
   });
 
   describe("brief format (content-aware)", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
 
     it("asks the model to choose a shape from the hints rather than fill a fixed template", () => {
       expect(prompt).toContain("There is no fixed template");
@@ -127,7 +127,7 @@ describe("summarizePrompt", () => {
     });
 
     it("summarizes from chunk notes when given them", () => {
-      const fromNotes = summarizePrompt(techCrunchItem, "brief", {
+      const fromNotes = briefSummaryPrompt(techCrunchItem, {
         kind: "notes",
         text: "### Part 1\n- A specific note",
       });
@@ -137,19 +137,58 @@ describe("summarizePrompt", () => {
     });
   });
 
-  describe("detailed format", () => {
-    it("requests Key Points, Why This Matters, and Notable Quotes sections", () => {
-      const prompt = summarizePrompt(techCrunchItem, "detailed");
-      expect(prompt).toContain("Key Points");
-      expect(prompt).toContain("Why This Matters");
-      expect(prompt).toContain("Notable Quotes");
-      expect(prompt).toContain("5-8 bullet points");
+  describe("detailed format (delta over the brief)", () => {
+    const brief: BriefSummaryOutput = {
+      shape: "news",
+      overview: "Claude Code gained a hands-free voice mode.",
+      sections: [
+        { heading: "What changes for developers", format: "bullets", items: ["Dictate edits"] },
+      ],
+      openQuestions: ["How accurate is it on code identifiers?", "Which platforms get it?"],
+    };
+    const prompt = detailedDeltaPrompt(techCrunchItem, brief);
+
+    it("shows the brief as already read, with its open questions", () => {
+      expect(prompt).toContain("The brief (the reader has already read this)");
+      expect(prompt).toContain('"overview": "Claude Code gained a hands-free voice mode."');
+      expect(prompt).toContain('"heading": "What changes for developers"');
+      expect(prompt).toContain("1. How accurate is it on code identifiers?");
+      expect(prompt).toContain("2. Which platforms get it?");
+      // The open questions are listed once, not repeated inside the brief JSON.
+      expect(prompt.match(/Which platforms get it\?/g)).toHaveLength(1);
+      expect(prompt).not.toContain('"shape"');
     });
 
-    it("carries the detailed instructions over chunk notes too", () => {
-      const prompt = summarizePrompt(techCrunchItem, "detailed", { kind: "notes", text: "- n" });
-      expect(prompt).toContain("5-8 bullet points");
-      expect(prompt).toContain("Notes From Each Part Of A Long Document");
+    it("forbids restating the brief and asks for what it left out", () => {
+      expect(prompt).toContain("Never restate a brief point");
+      expect(prompt).toContain("Answer the open questions");
+      expect(prompt).toContain("reasoning and mechanism");
+      expect(prompt).toContain("caveats and limits, counterpoints");
+    });
+
+    it("scales to the source instead of padding", () => {
+      expect(prompt).toContain("Scale to the content");
+      expect(prompt).toContain("If the brief already covers the piece, return one section");
+      expect(prompt).toContain("Never pad");
+    });
+
+    it("asks each section to name what it deepens", () => {
+      expect(prompt).toContain('"deepens"');
+      expect(prompt).not.toContain("5-8 bullet points");
+      expect(prompt).not.toContain("Why This Matters");
+    });
+
+    it("includes the source and works over chunk notes too", () => {
+      expect(prompt).toContain(techCrunchItem.summary!);
+      const fromNotes = detailedDeltaPrompt(techCrunchItem, brief, { kind: "notes", text: "- n" });
+      expect(fromNotes).toContain("Notes From Each Part Of A Long Document");
+      expect(fromNotes).toContain("Never restate a brief point");
+    });
+
+    it("says so when the brief recorded no open questions", () => {
+      expect(detailedDeltaPrompt(techCrunchItem, { ...brief, openQuestions: [] })).toContain(
+        "(none recorded)"
+      );
     });
   });
 
@@ -164,7 +203,7 @@ describe("summarizePrompt", () => {
   });
 
   it("specifies the content type in the prompt", () => {
-    const prompt = summarizePrompt(techCrunchItem, "brief");
+    const prompt = briefSummaryPrompt(techCrunchItem);
     expect(prompt).toContain("article");
   });
 });

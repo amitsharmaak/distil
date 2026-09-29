@@ -52,3 +52,20 @@ it("keeps unexpected internal errors private", async () => {
   expect(response.status).toBe(500);
   expect(await response.json()).toEqual({ error: "Failed to generate summary" });
 });
+it("returns the brief alongside a detailed summary that had to generate it", async () => {
+  jest
+    .mocked(generateSummary)
+    .mockResolvedValueOnce({ summary: "Detailed", cached: false, brief: "Brief" })
+    .mockResolvedValueOnce({ summary: "Detailed", cached: true });
+  expect(await (await POST(request())).json()).toEqual({
+    summary: "Detailed",
+    cached: false,
+    itemId: "one",
+    briefSummary: "Brief",
+  });
+  expect(await (await POST(request())).json()).toEqual({
+    summary: "Detailed",
+    cached: true,
+    itemId: "one",
+  });
+});

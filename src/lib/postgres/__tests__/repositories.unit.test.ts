@@ -643,14 +643,34 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     await expect(r.summaries.find("item-1", "brief")).resolves.toMatchObject({ itemId: "item-1" });
     await expect(r.summaries.find("missing")).resolves.toBeUndefined();
     respond(
-      { prompt_type: "brief", summary: "Brief" },
-      { prompt_type: "detailed", summary: "Detailed" },
+      { id: "b1", prompt_type: "brief", summary: "Brief", created_at: "2026-01-01Z" },
+      { prompt_type: "detailed", summary: "Detailed", created_at: "2026-01-02Z", brief_id: "b1" },
       { prompt_type: "unknown", summary: "Ignored" }
     );
     await expect(r.summaries.findAll("item-1")).resolves.toEqual({
       brief: "Brief",
       detailed: "Detailed",
     });
+    // A detailed summary built from an earlier brief is stale and left out.
+    respond(
+      { id: "b2", prompt_type: "brief", summary: "New brief", created_at: "2026-01-03Z" },
+      { prompt_type: "detailed", summary: "Detailed", created_at: "2026-01-02Z", brief_id: "b1" }
+    );
+    await expect(r.summaries.findAll("item-1")).resolves.toEqual({ brief: "New brief" });
+    // A pre-S2 detailed summary (no brief id) stays until the brief is regenerated after it.
+    respond(
+      { id: "b2", prompt_type: "brief", summary: "Brief", created_at: "2026-01-01Z" },
+      { prompt_type: "detailed", summary: "Old detailed", created_at: "2026-01-02Z" }
+    );
+    await expect(r.summaries.findAll("item-1")).resolves.toEqual({
+      brief: "Brief",
+      detailed: "Old detailed",
+    });
+    respond(
+      { id: "b2", prompt_type: "brief", summary: "Brief", created_at: "2026-01-03Z" },
+      { prompt_type: "detailed", summary: "Old detailed", created_at: "2026-01-02Z" }
+    );
+    await expect(r.summaries.findAll("item-1")).resolves.toEqual({ brief: "Brief" });
     respond(summary);
     await expect(
       r.summaries.upsert({

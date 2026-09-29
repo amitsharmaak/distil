@@ -61,21 +61,26 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (filter bar on Today) can then start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
-- **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
-  `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
-  which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
-  2026-09-29" and "Adaptive summaries: brief, detailed delta and depth on demand — 2026-09-28"):**
-  Amit wants the summary to fit each piece instead of one fixed template, the brief to stay a
-  short overview, and the detailed view to add meaningful depth beyond the brief. He chose the
-  recommended answer to all four open decisions and asked for S1 on this branch. S1 is done
-  locally: the brief now picks a shape and up to three sections for the piece, records the
-  questions it leaves open, and is stored with its structured JSON and prompt version (new tenant
-  stage `summary-structure`, `0011_summary_structure.sql`). **The stage is applied to
-  Production** (2026-09-29 09:53:39Z, by Amit with his authorization; checkpoint
-  "summary-structure applied to Production — 2026-09-29"), so the release-order condition is
-  met and PR #59 can be merged. Next: Amit merges PR #59 (label `full-ci`), then presses
-  Regenerate on one Production item's brief to see the new format; S2 (detailed as a delta) is
-  the next phase and starts from `main` after the merge.
+- **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
+  `claude/adaptive-summaries-s2-delta-91757a`, PR
+  [#60](https://github.com/amitsharmaak/distil/pull/60); checkpoint "Adaptive summaries S2:
+  detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
+  delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
+  brief to stay a short overview, and the detailed view to add meaningful depth beyond the
+  brief. S1 (content-aware brief) was squash merged as `ea420d4` (PR
+  [#59](https://github.com/amitsharmaak/distil/pull/59)) on 2026-09-29 and deployed to
+  Production after the `summary-structure` stage was applied there at 09:53:39Z (checkpoint
+  "Release: PR #59 to Production — 2026-09-29"). S2 makes Detailed a delta over the stored
+  brief: it shows the brief once, a "Going deeper" divider, then only what the brief left out,
+  and it is rebuilt when the brief is regenerated. No schema change. Verified locally with
+  `npm run check` and on the four local items (all four pass the new delta check; per-item
+  verdicts in the S2 checkpoint), on the Gemini fallback because the local `ANTHROPIC_API_KEY`
+  is rejected. Next: (1) before merging, confirm the Production Anthropic key and
+  `claude-sonnet-4-6` answer (`npm run audit:ai-models` with the Production keys) — every
+  detailed request now routes to Claude when that key is set, and an authentication failure
+  does not fall back to Gemini; (2) Amit reviews the PR and asks for the merge; (3) on
+  Production, open Detailed on one item with a new brief and one with an old brief. S3 (depth
+  on demand) starts from `main` after the merge, on Amit's decision.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -382,6 +387,159 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Adaptive summaries S2: detailed as a delta over the brief — 2026-09-29
+
+Amit asked for S2 of the plan below with his earlier decisions standing: detailed always uses
+`summarize-complex` (Claude Sonnet, or Gemini 3.5 Flash without an Anthropic key), stacked
+layout (interleaving waits for S3), capture keeps generating only the brief, and existing
+stored summaries stay until Regenerate. PR [#60](https://github.com/amitsharmaak/distil/pull/60),
+branch `claude/adaptive-summaries-s2-delta-91757a` from
+`main` at `ea420d4`. References in the S2 brief were re-checked against `ea420d4` and held.
+
+**What changed**
+
+- **Prompt** (`src/lib/prompts/summarize.ts`): `detailedDeltaPrompt` replaces the v1 detailed
+  template. It gives the model the source (or the chunk notes), the brief as JSON under "the
+  reader has already read this" (overview and sections; the shape is left out) and the brief's
+  open questions as a numbered list, then asks it to answer the questions the content answers,
+  add the reasoning, mechanism, evidence, specifics, caveats and counterpoints the brief
+  compressed or skipped, never restate a brief point without new information, scale to the
+  source (one short section when the brief already covers the piece), and name in `deepens` the
+  brief heading or open question each section expands. `summarizePrompt` and the v1 detailed
+  prompt are gone; `DETAILED_SUMMARY_PROMPT_VERSION` is `summary-v2`.
+- **Generator** (`src/lib/ai/summarize.ts`): the pipeline is split into
+  `prepareSummarySource` (size estimate and, over 8k estimated tokens, chunk notes),
+  `writeBrief` and `writeDetailedDelta`, which the eval harness calls too. A detailed request
+  loads the stored brief; when it is missing or is not a valid `summary-v2` brief it generates
+  and stores the brief first (one notes pass feeds both), then writes the delta on
+  `summarize-complex` whatever the size. The stored detailed row is
+  `structured = {briefId, sections}`, and its markdown is the brief, `## Going deeper`, then the
+  sections, each with an `_Expands on: …_` line when `deepens` is set. Caps (8 sections, 30
+  items) only stop runaway output; an empty delta is `invalid_output` and is not stored. The
+  brief is stored before the delta call, so a retry after a timeout has only the delta left.
+- **Staleness** (`src/lib/ai/summary-freshness.ts`): a detailed row is current when its
+  `briefId` is the stored brief's row id (every regeneration writes a new id). Pre-S2 detailed
+  rows carry no `briefId` and stay until the brief is regenerated after them. The generator
+  serves a cached detailed summary (and applies the 60 s force cooldown) only while it is
+  current; `PostgresSummaries.findAll`, which the reader page and `GET /api/ai/summary/[itemId]`
+  use, leaves a stale detailed summary out, so the reader regenerates it on the next Detailed
+  click.
+- **Route and reader**: `POST /api/ai/summarize` also returns `briefSummary` when a detailed
+  request had to generate the brief. The reader renders `## Going deeper` as a labelled divider
+  and the `_Expands on_` line as a caption under the section heading, drops its in-memory
+  detailed summary when the brief is regenerated, and takes a new brief from a detailed
+  response.
+- **Eval** (`evals/delta-metrics.ts`, `evals/run-evals.ts --delta`): restatement is the share
+  of the detailed text's word trigrams already in the brief; novel specifics are numbers and
+  mid-sentence proper names in the detailed items that are in the source and not in the brief;
+  specifics missing from the source are counted as ungrounded. A case passes at restatement
+  ≤ 15% and at least 3 novel specifics (or a single section for a source under 600 words).
+  `--delta` runs on the recorded fixture `evals/recorded-delta.json` (one good and one
+  restating delta, synthetic text); `--delta --live [--items file] [--dump file]` runs the real
+  brief and delta prompts through the unscoped router. Result files hold metrics only. The
+  eval's `.env.local` loader now respects a variable set to an empty value, so
+  `ANTHROPIC_API_KEY= npm run eval -- --delta --live` exercises the Gemini path.
+- `AGENTS.md` §3 AI bullet notes the delta and the staleness rule.
+- **No schema change.** S1's `structured`, `prompt_version` and `content_hash` columns were
+  enough.
+
+**Verified locally**
+
+- `npm run check`: lint (0 errors, the 5 known warnings), typecheck, 226 suites / 1,669 tests
+  passed (1,670 on the final tree). New and updated: `prompts.unit` (brief and open questions in the delta prompt, the
+  no-restatement and scale rules, `deepens`), `summarize.unit` (delta over a stored brief on
+  `summarize-complex`, brief generated first when missing or v1, `briefId` stored, cached while
+  current, rebuilt after brief regeneration, v1 detailed kept until the brief is newer, force
+  cooldown only for a current row, empty delta rejected, one notes pass for brief and delta),
+  `summary-freshness.unit`, `repositories.unit` (`findAll` drops a stale detailed row),
+  `ai-summary.component` (stacked layout, overview shown once, caption, detailed dropped on
+  brief regeneration), `route.unit` (`briefSummary`), `evals/delta-metrics.unit`. This
+  worktree's `node_modules` predated the lockfile (a jsdom dependency failed
+  `vercel-runtime-externals`); `npm ci` fixed it.
+- Local Docker Postgres (not reset): for each of the four local items the brief was
+  regenerated and Detailed opened through `generateSummary` with the tenant repositories
+  (scratch script, not committed). Every detailed row stored `summary-v2` with the current
+  brief's id, and `findAll` returned it. Detailed took 10.6–13.3 s for the two short items and
+  20.3–27.9 s for the two long ones (the long ones re-run the chunk-notes pass, since notes are
+  not stored). Staleness end to end on the meeting note: Detailed served from cache; a forced
+  brief regeneration made `findAll` drop the detailed row; the next Detailed click rebuilt it
+  from the new brief id.
+- **Finding: the local `ANTHROPIC_API_KEY` is rejected** (`authentication_error`, "API key is
+  invalid"), and the tenant router does not fall back across providers on authentication
+  failures. The runs above therefore blanked the key for the process and used the documented
+  fallback, `gemini-3.5-flash` for `summarize-complex`. Claude Sonnet output was not observed.
+- Not verified: the reader in a browser. Building a local login for this worktree (a
+  rebuilt `.env.local` with a throwaway password hash) was refused by the session's permission
+  classifier, so the stacked layout is covered by component tests only.
+
+**Delta eval numbers**
+
+Recorded fixture (`npm run eval -- --delta`): the good delta passes (restatement 1.8%, 10 novel
+specifics, 0 ungrounded, both open questions addressed); the restating delta fails (81.8%, 0).
+
+The four local items, from the rows `generateSummary` stored (detailed on `gemini-3.5-flash`):
+
+| Item (S1 shape)                               | Source words | Delta sections / words | Restatement | Novel specifics | Ungrounded | Open questions addressed | Result |
+| --------------------------------------------- | ------------ | ---------------------- | ----------- | --------------- | ---------- | ------------------------ | ------ |
+| Short YouTube interview (conversation)        | 828          | 3 / 227                | 2.7%        | 9               | 1          | 33%                      | pass   |
+| Granola meeting note (meeting-note)           | 604          | 3 / 251                | 0.4%        | 15              | 0          | 67%                      | pass   |
+| Long YouTube review (product, notes path)     | 6,512        | 6 / 345                | 2.0%        | 21              | 0          | 100%                     | pass   |
+| X post with a video transcript (conversation) | 5,842        | 4 / 338                | 1.8%        | 14              | 0          | 100%                     | pass   |
+
+Mean restatement 1.7%, 14.8 novel specifics, 0.3 ungrounded, 75% of open questions addressed.
+`run-evals.ts --delta --live` on the same four items, twice: 3 of 4 then 4 of 4 passed (mean
+restatement 1.2% and 0.4%; mean novel specifics 13.3 and 14.3). The one failure was the short
+interview with 2 novel specifics, so the specifics count varies from run to run on short
+sources. Ungrounded hits were an acronym the model spelled out and, before the metric was
+changed to read items only, Title Case heading words.
+
+**Per-item verdicts (is every detailed section new information?)**
+
+- Short YouTube interview: yes. One section answers how to get direct access; the others add
+  demo figures the brief did not have (token counts, build time) and the routing tiers and
+  running costs. One item re-covers a brief demo and adds only the route. Two of three open
+  questions were not answered, apparently because the video does not say.
+- Granola meeting note: yes, the clearest delta. Partner network and prospecting tool,
+  monetisation and coaching plans, and camera, cabling and power specifics, none in the brief.
+- Long YouTube review: yes, with weak spots. Four sections answer the open questions and two
+  deepen brief sections with workspace details and who raised the privacy concerns. Two items
+  re-cover a brief example with one added detail, and two answers (a mini-game, a giveaway) are
+  low value because the brief chose trivial open questions.
+- X post with a video transcript: yes. It adds the visa steps in order, how the
+  agent-to-agent network works, the card limit and platform mechanics. One item answers its
+  open question vaguely ("the terms contain controversial clauses"), apparently because the
+  source says no more; the prompt says to skip such questions.
+
+Takeaway: the delta holds. Restatement stays under 3% and every section brings something new.
+Its quality now depends on the brief's open questions, which S1 sometimes spends on trivia; an
+S1 prompt tweak (ask for questions a reader would care about) is a candidate for S3 or a
+follow-up.
+
+**Release and restart steps**
+
+1. Before merging: confirm the Production `ANTHROPIC_API_KEY` and `claude-sonnet-4-6`
+   (`npm run audit:ai-models` with the Production keys). With S2, every detailed request goes
+   to Claude when that key is set. If the key is invalid, Detailed fails with "The AI service
+   configuration needs attention" and does not fall back; removing the key would fall back to
+   Gemini.
+2. Merge the PR on Amit's request (Quick gate; no migration, so no stage to apply first).
+3. On Production, open Detailed on one item whose brief is `summary-v2` and on one of the 20
+   older items. The older one generates the brief first; on a long item that is notes, brief
+   and delta in one request against the 60 s limit, and a timeout leaves the brief stored, so
+   Try Again completes it.
+4. Cost note: a detailed request on a long item re-runs the chunk-notes pass. Storing the notes
+   is a possible later optimisation.
+
+### Release: PR #59 to Production — 2026-09-29
+
+PR [#59](https://github.com/amitsharmaak/distil/pull/59) (adaptive summaries plan and S1, the
+content-aware brief; label `full-ci`) was squash merged as `ea420d4` at 2026-09-29 10:40:21Z
+(merge state and SHA confirmed with `gh pr view 59`). The `summary-structure` tenant stage had
+been applied to Production at 09:53:39Z beforehand (checkpoint "summary-structure applied to
+Production — 2026-09-29"), so the release order held. Per Amit, the Vercel Production
+deployment of `ea420d4` completed; Claude did not re-check the deployment. Old summaries render
+as v1 until regenerated.
 
 ### Extension origin defaults to Production — 2026-09-29
 

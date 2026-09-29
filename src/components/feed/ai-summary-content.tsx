@@ -22,18 +22,40 @@ export interface AISummaryProps {
 type ViewMode = "ai" | "original";
 type SummaryLength = "brief" | "detailed";
 
+interface SummarySectionBlock {
+  title: string;
+  body: string;
+  key: string;
+  /** Detailed summaries: the brief section or open question this section expands. */
+  deepens?: string;
+}
+
+/** The divider a detailed summary puts between the brief and the delta sections. */
+const GOING_DEEPER_KEY = "going-deeper";
+const DEEPENS_LINE = /^_Expands on: (.+)_\n*/;
+
 /** Parse markdown into sections by ## headers for structured rendering. */
-function parseSummarySections(content: string): { title: string; body: string; key: string }[] {
+function parseSummarySections(content: string): SummarySectionBlock[] {
   const parts = content.split(/(?=^## .+$)/m).filter(Boolean);
   return parts.map((part) => {
-    const match = part.match(/^## (.+?)\n\n([\s\S]*)/);
+    const match = part.match(/^## (.+?)(?:\n\n([\s\S]*))?$/);
     if (!match) return { title: "", body: part.trim(), key: "other" };
-    const [, title, body] = match;
+    const [, title, rawBody = ""] = match;
     const key = title
       .toLowerCase()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "");
-    return { title: title.trim(), body: body.trim(), key };
+    const body = rawBody.trim();
+    const deepens = body.match(DEEPENS_LINE);
+    if (deepens) {
+      return {
+        title: title.trim(),
+        body: body.slice(deepens[0].length).trim(),
+        key,
+        deepens: deepens[1].replace(/\\([\\_*])/g, "$1"),
+      };
+    }
+    return { title: title.trim(), body, key };
   });
 }
 
@@ -67,12 +89,33 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
 
   return (
     <div className="distil-reader space-y-5">
-      {sections.map(({ title, body, key }, index) => {
+      {sections.map(({ title, body, key, deepens }, index) => {
+        const sectionKey = `${key}-${index}`;
+        if (key === GOING_DEEPER_KEY && !body) {
+          return (
+            <div
+              key={sectionKey}
+              role="separator"
+              aria-label={title}
+              className="flex items-center gap-3 pt-3"
+            >
+              <span className="h-px flex-1 bg-border" />
+              <span className={sectionLabel}>{title}</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          );
+        }
         if (!body) return null;
         const style = sectionStyle(key, body);
-        const sectionKey = `${key}-${index}`;
         const label = (spacing: string) =>
-          title ? <p className={`${sectionLabel} ${spacing}`}>{title}</p> : null;
+          title ? (
+            <div className={spacing}>
+              <p className={sectionLabel}>{title}</p>
+              {deepens && (
+                <p className="mt-1 text-xs text-muted-foreground">Expands on: {deepens}</p>
+              )}
+            </div>
+          ) : null;
 
         if (style === "lead") {
           return (
@@ -219,8 +262,11 @@ export function AISummary({
       const data = await res.json();
       if (length === "brief") {
         setBriefSummary(data.summary);
+        // The detailed summary is a delta over the brief; a new brief makes it stale.
+        if (!data.cached) setDetailedSummary(null);
       } else {
         setDetailedSummary(data.summary);
+        if (data.briefSummary) setBriefSummary(data.briefSummary);
       }
       setSummaryLength(length);
       setViewMode("ai");

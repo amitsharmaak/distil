@@ -1,4 +1,5 @@
 import type { Sql } from "postgres";
+import { isDetailedCurrent } from "@/lib/ai/summary-freshness";
 import type {
   AiAreaClassification,
   AreaCorrection,
@@ -810,14 +811,25 @@ class PostgresSummaries implements SummaryRepository {
         >`SELECT * FROM ai_summaries WHERE item_id=${id} ORDER BY created_at DESC LIMIT 1`;
     return r[0] ? this.map(r[0]) : undefined;
   }
+  /** Both summaries; a detailed summary built from an earlier brief is left out (stale). */
   async findAll(id: string) {
     const r = await this.sql<
       Row[]
-    >`SELECT summary,prompt_type FROM ai_summaries WHERE item_id=${id}`;
+    >`SELECT id,summary,prompt_type,created_at,structured->'briefId' AS brief_id FROM ai_summaries WHERE item_id=${id}`;
+    const brief = r.find((x) => x.prompt_type === "brief");
+    const detailed = r.find((x) => x.prompt_type === "detailed");
     const out: { brief?: string; detailed?: string } = {};
-    for (const x of r)
-      if (x.prompt_type === "brief") out.brief = String(x.summary);
-      else if (x.prompt_type === "detailed") out.detailed = String(x.summary);
+    if (brief) out.brief = String(brief.summary);
+    const createdAt = (x: Row) =>
+      x.created_at instanceof Date ? x.created_at.toISOString() : String(x.created_at);
+    if (
+      detailed &&
+      isDetailedCurrent(brief && { id: String(brief.id), createdAt: createdAt(brief) }, {
+        createdAt: createdAt(detailed),
+        structured: { briefId: detailed.brief_id },
+      })
+    )
+      out.detailed = String(detailed.summary);
     return out;
   }
   async upsert(v: Omit<SummaryRecord, "createdAt">) {

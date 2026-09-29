@@ -93,7 +93,10 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   optional upgrade for `summarize-complex` and `research-synthesize` (Gemini fallback when the
   key is absent); OpenAI is assigned to nothing. `npm run audit:ai-models` checks that every
   configured id is callable. Summaries use Gemini with a budget-admitted same-provider fallback
-  model and 15-second per-attempt timeouts. Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
+  model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
+  structured JSON; the detailed summary is a delta over the stored brief, always on
+  `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
+  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` and `/feed/[id]` reader,
   `/search`, `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,

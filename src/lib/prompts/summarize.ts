@@ -6,18 +6,20 @@
  * - Brief (summary-v2): the model first decides what kind of piece this is, then writes an
  *   overview and at most three sections chosen for that piece, plus the questions the brief
  *   leaves open (stored for the detailed summary, never shown).
- * - Detailed: the summary-v1 template (overview, key points, why it matters, quotes) until the
- *   detailed summary is rebuilt as a delta over the brief.
+ * - Detailed (summary-v2): a delta over the stored brief. The model is shown the brief as
+ *   already read and writes only what it left out: answers to its open questions, reasoning,
+ *   evidence, specifics, caveats and counterpoints.
  * - Long documents: each chunk yields notes, and the brief or detailed prompt runs over the notes.
  */
 
 import type { ContentItem } from "@/lib/types";
-import type { SummaryOutput } from "@/lib/ai/types";
-
-export type { SummaryOutput };
+import type { BriefSummaryOutput } from "@/lib/ai/types";
 
 /** Prompt version recorded with every stored brief. */
 export const BRIEF_SUMMARY_PROMPT_VERSION = "summary-v2";
+
+/** Prompt version recorded with every stored detailed summary (the delta over the brief). */
+export const DETAILED_SUMMARY_PROMPT_VERSION = "summary-v2";
 
 /** What the model is given to summarize. */
 export type SummarySource =
@@ -106,42 +108,67 @@ ${BRIEF_OUTPUT_SCHEMA}`;
 }
 
 const DETAILED_OUTPUT_SCHEMA = `{
-  "overview": "2-3 sentence overview paragraph",
-  "keyPoints": ["point 1", "point 2", "..."],
-  "whyItMatters": "short paragraph on significance",
-  "notableQuotes": ["optional quote 1", "optional quote 2"]
+  "sections": [
+    {
+      "heading": "a short heading written for this piece",
+      "deepens": "the brief section heading or open question this expands, or an empty string",
+      "format": "bullets | steps | paragraph | quotes",
+      "items": ["..."]
+    }
+  ]
 }`;
 
-/** The detailed summary (summary-v1 template). */
-export function detailedSummaryPrompt(
+/** The brief as the detailed prompt shows it: what the reader has already read. */
+function briefForPrompt(brief: BriefSummaryOutput): string {
+  return JSON.stringify(
+    {
+      overview: brief.overview,
+      sections: brief.sections.map(({ heading, items }) => ({ heading, items })),
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * The detailed summary: a delta over the brief. The reader sees the brief first and this
+ * underneath it, so it must add information rather than restate the brief at more length.
+ */
+export function detailedDeltaPrompt(
   item: ContentItem,
+  brief: BriefSummaryOutput,
   source: SummarySource = sourceFromItem(item)
 ): string {
-  return `You are a content summarizer for a personal information aggregator. Your job is to create clear, insightful summaries that help the reader quickly understand the key information.
+  const questions = brief.openQuestions.length
+    ? brief.openQuestions.map((question, index) => `${index + 1}. ${question}`).join("\n")
+    : "(none recorded)";
+  return `You write the "Going deeper" part of a summary for a personal reading library. The reader has already read the brief below. They opened the detailed view because they want more than the brief gave them, so everything you write must be new to them.
 
-## Content to Summarize
+## Content
 ${metadataSection(item)}
 
 ${sourceSection(source)}
 
-## Instructions
-- overview: 2-3 sentence overview paragraph
-- keyPoints (Key Points): array of 5-8 bullet points
-- whyItMatters (Why This Matters): short paragraph on significance and implications
-- notableQuotes (Notable Quotes): 1-3 key quotes if available in the content
+## The brief (the reader has already read this)
+\`\`\`json
+${briefForPrompt(brief)}
+\`\`\`
+
+## Questions the brief left open
+${questions}
+
+## How to write the deeper part
+1. Answer the open questions that the content answers, with its specifics. Skip a question the content does not answer; do not guess.
+2. Add what the brief compressed or skipped and a curious reader would want next: the reasoning and mechanism behind the main claims, the evidence and how it was obtained, the specifics (numbers, names, dates, examples, the exact steps), caveats and limits, counterpoints, and what the author concedes or dismisses.
+3. Never restate a brief point. An item may touch a point the brief made only to add something the brief does not contain (the how, the why, the number, the example, the exception). If an item would only repeat or reword the brief, leave it out.
+4. Scale to the content. A long, dense piece can need several sections; a short piece gets little. If the brief already covers the piece, return one section with one item that says so and names anything minor it left out. Never pad.
+5. Each section has a heading written for this piece (not "Key Points" or "Details"), and "deepens": the exact heading of the brief section, or the exact open question, that it expands; use an empty string when it covers something neither mentions.
+   - "bullets" for separate points, "steps" for an ordered procedure, "paragraph" for one short passage (one item), "quotes" for exact lines from the content (only when the content is available).
+   - Each item is one to three sentences, concrete and specific.
+6. Use only what is in the content and metadata. Do not add outside facts.
 
 Output a JSON object with this exact structure. Output ONLY the JSON object, no other text:
 ${DETAILED_OUTPUT_SCHEMA}`;
-}
-
-export function summarizePrompt(
-  item: ContentItem,
-  length: "brief" | "detailed",
-  source: SummarySource = sourceFromItem(item)
-): string {
-  return length === "brief"
-    ? briefSummaryPrompt(item, source)
-    : detailedSummaryPrompt(item, source);
 }
 
 /** One part of a long document reduced to notes; the brief or detailed prompt runs over them. */
