@@ -95,7 +95,12 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
       migrationsDirectory: tenantMigrations,
       baseline,
     });
-    for (const stage of ["lifecycle", "returning-auth", "perf-indexes"] as const) {
+    for (const stage of [
+      "lifecycle",
+      "returning-auth",
+      "perf-indexes",
+      "summary-structure",
+    ] as const) {
       await applyTenantMigrationStage({
         sql: owner.sql,
         stage,

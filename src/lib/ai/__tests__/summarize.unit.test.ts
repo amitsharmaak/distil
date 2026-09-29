@@ -63,15 +63,25 @@ const techCrunchItem: ContentItem = {
 
 // Structured JSON output that renders to the expected markdown (short content uses summarize).
 const mockBriefOutput = {
+  shape: "news",
   overview:
     "Anthropic has launched voice mode for Claude Code, enabling hands-free coding via speech-to-text integration. The feature is available to all Claude Code users as of March 2026.",
-  keyPoints: [
-    "Voice commands now drive code navigation, editing, and terminal interactions",
-    "Built on Anthropic's internal ASR pipeline, optimised for programming vocabulary",
-    "Available in the CLI with no extra configuration required",
-    "Works across macOS, Linux, and Windows",
-    "Part of a broader push to make Claude Code accessible to more developers",
+  sections: [
+    {
+      heading: "What changes for developers",
+      format: "bullets",
+      items: [
+        "Voice commands now drive code navigation, editing, and terminal interactions",
+        "Available in the CLI with no extra configuration required",
+      ],
+    },
+    {
+      heading: "Getting started",
+      format: "steps",
+      items: ["Update Claude Code", "Grant microphone access"],
+    },
   ],
+  openQuestions: ["How accurate is the ASR on code identifiers?"],
 };
 
 const mockDetailedOutput = {
@@ -98,13 +108,15 @@ const mockBriefSummary = `## TL;DR
 
 Anthropic has launched voice mode for Claude Code, enabling hands-free coding via speech-to-text integration. The feature is available to all Claude Code users as of March 2026.
 
-## Key Points
+## What changes for developers
 
 - Voice commands now drive code navigation, editing, and terminal interactions
-- Built on Anthropic's internal ASR pipeline, optimised for programming vocabulary
 - Available in the CLI with no extra configuration required
-- Works across macOS, Linux, and Windows
-- Part of a broader push to make Claude Code accessible to more developers`;
+
+## Getting started
+
+1. Update Claude Code
+2. Grant microphone access`;
 
 const mockDetailedSummary = `## TL;DR
 
@@ -274,12 +286,12 @@ describe("generateSummary — generation", () => {
     });
     let active = 0;
     let peak = 0;
-    mockGenerateJSON.mockImplementation(async () => {
+    mockGenerateJSON.mockImplementation(async (prompt: string) => {
       active += 1;
       peak = Math.max(peak, active);
       await new Promise((resolve) => setTimeout(resolve, 1));
       active -= 1;
-      return mockBriefOutput;
+      return prompt.includes("taking notes on part") ? { notes: ["A note"] } : mockBriefOutput;
     });
 
     await generateSummary(context, repositories, "long-item", { length: "brief" });
@@ -343,21 +355,24 @@ describe("generateSummary — generation", () => {
     await generateSummary(context, repositories, techCrunchItem.id);
 
     const promptArg = mockGenerateJSON.mock.calls[0][0] as string;
-    expect(promptArg).toContain("3-5");
-    expect(promptArg).toContain("keyPoints");
+    expect(promptArg).toContain("There is no fixed template");
+    expect(promptArg).toContain("openQuestions");
   });
 });
 
 // ── TechCrunch article end-to-end ─────────────────────────────────────────────
 
 describe("generateSummary — TechCrunch article fixture", () => {
-  it("brief summary contains TL;DR and Key Points sections", async () => {
+  it("brief summary leads with TL;DR and uses the sections chosen for the piece", async () => {
     const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "brief",
     });
 
-    expect(result.summary).toContain("TL;DR");
-    expect(result.summary).toContain("Key Points");
+    expect(result.summary.startsWith("## TL;DR\n\n")).toBe(true);
+    expect(result.summary).toContain("## What changes for developers");
+    expect(result.summary).toContain("1. Update Claude Code");
+    expect(result.summary).not.toContain("Key Points");
+    expect(result.summary).not.toContain("How accurate is the ASR");
   });
 
   it("detailed summary also contains Why This Matters section", async () => {
@@ -396,10 +411,11 @@ describe("generateSummary — TechCrunch article fixture", () => {
 
 describe("summary output safety", () => {
   it.each([
-    { overview: "ok" },
-    { overview: "", keyPoints: ["point"] },
-    { overview: "ok", keyPoints: [] },
-  ])("rejects malformed output without caching it", async (output) => {
+    { shape: "news", sections: [], openQuestions: [] },
+    { shape: "news", overview: "  ", sections: [], openQuestions: [] },
+    { shape: "news", overview: "ok", sections: "not a list", openQuestions: [] },
+    { shape: "news", overview: "ok", sections: [{ format: "bullets", items: ["x"] }] },
+  ])("rejects malformed brief output without caching it", async (output) => {
     mockGenerateJSON.mockResolvedValue(output);
     await expect(generateSummary(context, repositories, techCrunchItem.id)).rejects.toMatchObject({
       code: "AI_INVALID_OUTPUT",
@@ -413,8 +429,131 @@ describe("summary output safety", () => {
       expect.objectContaining({ model: "gemini-3.1-flash-lite" })
     );
     expect(mockGenerateJSON.mock.calls[0][2].responseSchema.required).toEqual([
+      "shape",
+      "overview",
+      "sections",
+      "openQuestions",
+    ]);
+  });
+});
+
+describe("generateSummary — content-aware brief (summary-v2)", () => {
+  it("stores the structured brief, its prompt version and a content hash", async () => {
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "brief" });
+
+    const call = mockUpsertAISummary.mock.calls[0][0];
+    expect(call.promptVersion).toBe("summary-v2");
+    expect(call.structured).toEqual(mockBriefOutput);
+    expect(call.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("stores the detailed summary with the v1 prompt version", async () => {
+    mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
+    await generateSummary(context, repositories, techCrunchItem.id, { length: "detailed" });
+
+    const call = mockUpsertAISummary.mock.calls[0][0];
+    expect(call.promptVersion).toBe("summary-v1");
+    expect(call.structured).toEqual(mockDetailedOutput);
+    expect(mockGenerateJSON.mock.calls[0][2].responseSchema.required).toEqual([
       "overview",
       "keyPoints",
     ]);
+  });
+
+  it("accepts an overview-only brief when the piece needs no sections", async () => {
+    mockGenerateJSON.mockResolvedValue({
+      shape: "other",
+      overview: "A two-line note.",
+      sections: [],
+      openQuestions: [],
+    });
+    const result = await generateSummary(context, repositories, techCrunchItem.id);
+    expect(result.summary).toBe("## TL;DR\n\nA two-line note.");
+  });
+
+  it("trims output beyond the caps instead of rejecting it", async () => {
+    mockGenerateJSON.mockResolvedValue({
+      shape: "not-a-shape",
+      overview: "Overview.",
+      sections: [
+        { heading: "## One", format: "bullets", items: ["- a", "b", "c", "d"] },
+        { heading: "Empty", format: "bullets", items: ["  "] },
+        { heading: "Two", format: "unknown", items: ["e", "f", "g", "h"] },
+        { heading: "Three", format: "paragraph", items: ["i", "j"] },
+        { heading: "Four", format: "bullets", items: ["k"] },
+      ],
+      openQuestions: ["1", "2", "3", "4", "5", "6"],
+    });
+    const result = await generateSummary(context, repositories, techCrunchItem.id);
+    const call = mockUpsertAISummary.mock.calls[0][0];
+
+    expect(call.structured.shape).toBe("other");
+    expect(call.structured.sections.map((s: { heading: string }) => s.heading)).toEqual([
+      "## One",
+      "Two",
+    ]);
+    expect(call.structured.sections.flatMap((s: { items: string[] }) => s.items)).toHaveLength(7);
+    expect(call.structured.sections[1].format).toBe("bullets");
+    expect(call.structured.openQuestions).toHaveLength(5);
+    expect(result.summary).toContain("## One\n\n- a\n- b");
+    expect(result.summary).not.toContain("Empty");
+    expect(result.summary).not.toContain("Four");
+  });
+
+  it("renders quotes as block quotes and paragraphs as prose", async () => {
+    mockGenerateJSON.mockResolvedValue({
+      shape: "conversation",
+      overview: "An interview.",
+      sections: [
+        { heading: "In their words", format: "quotes", items: ["We shipped it in a week."] },
+        { heading: "Context", format: "paragraph", items: ["One short passage."] },
+      ],
+      openQuestions: [],
+    });
+    const result = await generateSummary(context, repositories, techCrunchItem.id);
+    expect(result.summary).toContain("## In their words\n\n> We shipped it in a week.");
+    expect(result.summary).toContain("## Context\n\nOne short passage.");
+  });
+
+  it("sends article text, not reader HTML, and sizes the request by the text", async () => {
+    const markup = `<div class="${"x".repeat(9000)}"><h2>Launch</h2><p>Voice mode &amp; more.</p><ul><li>One</li><li>Two</li></ul></div>`;
+    mockGetItemById.mockReturnValue({ ...techCrunchItem, fullContent: markup });
+
+    await generateSummary(context, repositories, techCrunchItem.id);
+
+    const [prompt, task] = mockGenerateJSON.mock.calls[0] as [string, string];
+    expect(task).toBe("summarize");
+    expect(prompt).toContain("## Launch\n\nVoice mode & more.\n\n- One\n- Two");
+    expect(prompt).not.toContain("<p>");
+    expect(prompt).not.toContain("xxxx");
+  });
+
+  it("writes long documents from chunk notes with the requested length's instructions", async () => {
+    const paragraph = "Long-form source material. ".repeat(500);
+    mockGetItemById.mockReturnValue({
+      ...techCrunchItem,
+      id: "long-item",
+      fullContent: Array.from({ length: 12 }, () => paragraph).join("\n\n"),
+    });
+    mockGenerateJSON.mockImplementation(async (prompt: string) =>
+      prompt.includes("taking notes on part")
+        ? { notes: ["Specific note"] }
+        : prompt.includes("5-8 bullet points")
+          ? mockDetailedOutput
+          : mockBriefOutput
+    );
+
+    for (const length of ["brief", "detailed"] as const) {
+      mockGenerateJSON.mockClear();
+      await generateSummary(context, repositories, "long-item", { length });
+      const calls = mockGenerateJSON.mock.calls as [string, string][];
+      const [finalPrompt, finalTask] = calls[calls.length - 1];
+      expect(finalTask).toBe("summarize-complex");
+      expect(finalPrompt).toContain("Notes From Each Part Of A Long Document");
+      expect(finalPrompt).toContain("### Part 1\n- Specific note");
+      expect(finalPrompt).toContain(
+        length === "brief" ? "There is no fixed template" : "5-8 bullet points"
+      );
+    }
   });
 });

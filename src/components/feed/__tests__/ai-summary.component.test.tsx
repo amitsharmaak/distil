@@ -56,3 +56,49 @@ it("retries the failed Detailed request and preserves the existing brief summary
     force: false,
   });
 });
+
+it("styles content-aware brief sections by their shape, not their heading", () => {
+  const brief = [
+    "## TL;DR",
+    "",
+    "A short overview.",
+    "",
+    "## The three steps",
+    "",
+    "1. Install it",
+    "2. Configure it",
+    "",
+    "## What changes for developers",
+    "",
+    "- Faster builds",
+    "- Fewer flags",
+    "",
+    "## In their words",
+    "",
+    "> We shipped it in a week.",
+  ].join("\n");
+  const { container } = render(
+    <AISummary itemId="one" ogSummary="original" initialBriefSummary={brief} />
+  );
+
+  expect(screen.getByText("The three steps")).toBeVisible();
+  expect(screen.getByText("What changes for developers")).toBeVisible();
+  const styles = [...container.querySelectorAll("[data-section-style]")].map((node) =>
+    node.getAttribute("data-section-style")
+  );
+  expect(styles).toEqual(["steps", "bullets", "quotes"]);
+});
+
+it("keeps rendering stored v1 summaries with their fixed sections", () => {
+  const v1 =
+    '## TL;DR\n\nOverview.\n\n## Key Points\n\n- One\n- Two\n\n## Notable Quotes\n\n- "Quote"';
+  const { container } = render(
+    <AISummary itemId="one" ogSummary="original" initialBriefSummary={v1} />
+  );
+
+  expect(screen.getByText("Key Points")).toBeVisible();
+  const styles = [...container.querySelectorAll("[data-section-style]")].map((node) =>
+    node.getAttribute("data-section-style")
+  );
+  expect(styles).toEqual(["bullets", "quotes"]);
+});

@@ -319,6 +319,12 @@ export interface SummaryRecord {
   model: string;
   promptType: string;
   createdAt: string;
+  /** The model's structured output behind `summary` (summary-v2 briefs onward). */
+  structured?: unknown;
+  /** Prompt version that produced the row, e.g. `summary-v2`; absent on older rows. */
+  promptVersion?: string;
+  /** SHA-256 of the text the summary was written from. */
+  contentHash?: string;
 }
 
 export interface SummaryRepository {

@@ -661,6 +661,31 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
         promptType: "brief",
       })
     ).resolves.toMatchObject({ id: "s" });
+    expect(fake.queries.at(-1)).not.toContain("structured");
+    respond({
+      ...summary,
+      structured: { shape: "news" },
+      prompt_version: "summary-v2",
+      content_hash: "abc",
+    });
+    await expect(
+      r.summaries.upsert({
+        id: "s",
+        itemId: "item-1",
+        summary: "Brief",
+        model: "model",
+        promptType: "brief",
+        structured: { shape: "news" },
+        promptVersion: "summary-v2",
+        contentHash: "abc",
+      })
+    ).resolves.toMatchObject({
+      structured: { shape: "news" },
+      promptVersion: "summary-v2",
+      contentHash: "abc",
+    });
+    expect(fake.queries.at(-1)).toContain("structured=");
+    expect(fake.queries.at(-1)).toContain("prompt_version=");
     await r.summaries.deleteForItem("item-1");
 
     const feedback = {

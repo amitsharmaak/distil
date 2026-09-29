@@ -751,6 +751,9 @@ class PostgresSummaries implements SummaryRepository {
       model: String(r.model),
       promptType: String(r.prompt_type),
       createdAt: iso(r.created_at),
+      ...(r.structured != null ? { structured: r.structured } : {}),
+      ...(r.prompt_version != null ? { promptVersion: String(r.prompt_version) } : {}),
+      ...(r.content_hash != null ? { contentHash: String(r.content_hash) } : {}),
     };
   }
   async find(id: string, type?: "brief" | "detailed") {
@@ -781,18 +784,42 @@ class PostgresSummaries implements SummaryRepository {
         tenantLockKey("summary-item-prompt", v.itemId, v.promptType),
       ],
       async (tx) => {
-        const updated = await tx<Row[]>`
-          UPDATE ai_summaries
-          SET id=${v.id},summary=${v.summary},model=${v.model},created_at=now()
-          WHERE item_id=${v.itemId} AND prompt_type=${v.promptType}
-          RETURNING *
-        `;
+        // The provenance columns come from the summary-structure tenant stage; a write that
+        // carries none of them touches only the base columns.
+        const provenance =
+          v.structured !== undefined ||
+          v.promptVersion !== undefined ||
+          v.contentHash !== undefined;
+        const structured = v.structured === undefined ? null : this.sql.json(v.structured as never);
+        const updated = provenance
+          ? await tx<Row[]>`
+              UPDATE ai_summaries
+              SET id=${v.id},summary=${v.summary},model=${v.model},created_at=now(),
+                structured=${structured},prompt_version=${v.promptVersion ?? null},
+                content_hash=${v.contentHash ?? null}
+              WHERE item_id=${v.itemId} AND prompt_type=${v.promptType}
+              RETURNING *
+            `
+          : await tx<Row[]>`
+              UPDATE ai_summaries
+              SET id=${v.id},summary=${v.summary},model=${v.model},created_at=now()
+              WHERE item_id=${v.itemId} AND prompt_type=${v.promptType}
+              RETURNING *
+            `;
         if (updated[0]) return this.map(updated[0]);
-        const inserted = await tx<Row[]>`
-          INSERT INTO ai_summaries (id,item_id,summary,model,prompt_type,created_at)
-          VALUES (${v.id},${v.itemId},${v.summary},${v.model},${v.promptType},now())
-          RETURNING *
-        `;
+        const inserted = provenance
+          ? await tx<Row[]>`
+              INSERT INTO ai_summaries
+                (id,item_id,summary,model,prompt_type,created_at,structured,prompt_version,content_hash)
+              VALUES (${v.id},${v.itemId},${v.summary},${v.model},${v.promptType},now(),
+                ${structured},${v.promptVersion ?? null},${v.contentHash ?? null})
+              RETURNING *
+            `
+          : await tx<Row[]>`
+              INSERT INTO ai_summaries (id,item_id,summary,model,prompt_type,created_at)
+              VALUES (${v.id},${v.itemId},${v.summary},${v.model},${v.promptType},now())
+              RETURNING *
+            `;
         return this.map(inserted[0]);
       }
     );

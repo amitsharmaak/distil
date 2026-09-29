@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-22
+## Current handoff — 2026-09-29
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -18,6 +18,21 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
+  `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
+  which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
+  2026-09-29" and "Adaptive summaries: brief, detailed delta and depth on demand — 2026-09-28"):**
+  Amit wants the summary to fit each piece instead of one fixed template, the brief to stay a
+  short overview, and the detailed view to add meaningful depth beyond the brief. He chose the
+  recommended answer to all four open decisions and asked for S1 on this branch. S1 is done
+  locally: the brief now picks a shape and up to three sections for the piece, records the
+  questions it leaves open, and is stored with its structured JSON and prompt version (new tenant
+  stage `summary-structure`, `0011_summary_structure.sql`). **The stage is applied to
+  Production** (2026-09-29 09:53:39Z, by Amit with his authorization; checkpoint
+  "summary-structure applied to Production — 2026-09-29"), so the release-order condition is
+  met and PR #59 can be merged. Next: Amit merges PR #59 (label `full-ci`), then presses
+  Regenerate on one Production item's brief to see the new format; S2 (detailed as a delta) is
+  the next phase and starts from `main` after the merge.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -324,6 +339,328 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### summary-structure applied to Production — 2026-09-29
+
+Amit authorized applying the adaptive-summaries S1 stage to Production and ran it himself from
+this worktree (the only checkout with `0011_summary_structure.sql` before the merge), with the
+`distil-production` owner connection string copied from the Neon console's Connect dialog into
+`DATABASE_MIGRATION_URL="$(pbpaste)"`; the connection string never passed through Claude, and
+Claude cleared the clipboard afterwards. Command:
+`npm run db:tenant:migrate -- --stage summary-structure --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`.
+(A first attempt copied the `<uuid>` placeholder literally; zsh rejected it as a redirection
+before anything ran.)
+
+Verified by Claude with read-only queries in the Neon SQL editor (project
+`floral-river-70536503`, branch `distil-production` / `br-damp-wildflower-b3kw15cu`, database
+`neondb`):
+
+- Ledger `distil_tenant_migrations`: expand, backfill, contract, lifecycle (2026-09-09),
+  returning-auth (2026-09-10), perf-indexes (2026-09-18) and now `summary-structure` /
+  `0011_summary_structure.sql` applied `2026-09-29 09:53:39Z`, all owner
+  `3844a094-2018-4118-83f4-874e7081568d`.
+- Columns: `public.ai_summaries` and the `tenant_api.ai_summaries` contract view both have
+  `structured jsonb`, `prompt_version text` and `content_hash text`, so the runtime role now
+  sees all three.
+- The 20 existing Production summaries all have `prompt_version` NULL, as intended: nothing was
+  rewritten, and they keep rendering as v1 until regenerated.
+
+No application code, deployment or environment variable changed. The code that writes the new
+columns ships when PR [#59](https://github.com/amitsharmaak/distil/pull/59) merges. Rollback:
+recreate `tenant_api.ai_summaries` with its previous column list, drop the two columns, and
+delete the ledger row.
+
+### Adaptive summaries S1: content-aware brief — 2026-09-29
+
+Amit chose the recommended answer to each open decision in the plan below (existing summaries
+stay until Regenerate; detailed routes through `summarize-complex` in S2; stacked detailed layout
+in S2; capture keeps generating only the brief) and asked for S1 on the plan's branch, so PR
+[#59](https://github.com/amitsharmaak/distil/pull/59) now carries the plan and S1 together.
+
+**What changed**
+
+- **Prompt** (`src/lib/prompts/summarize.ts`): `briefSummaryPrompt` replaces the fixed brief
+  template. The model sets `shape` (argument, news, how-to, research, conversation, meeting-note,
+  product, list, other) from the shape-hints table, writes a 1–3 sentence overview and at most
+  three sections with headings written for the piece (`format` bullets, steps, paragraph or
+  quotes, at most seven items in total), and lists 2–5 `openQuestions` the brief raises but does
+  not answer. `detailedSummaryPrompt` is the unchanged v1 template. `chunkNotesPrompt` replaces
+  the chunk mini-summaries: each part of a long document becomes specific notes, and the brief or
+  detailed prompt then runs over the notes, so long documents now honour the requested length
+  (they previously got the same generic synthesis at both lengths).
+- **Generator** (`src/lib/ai/summarize.ts`): article HTML is reduced to text with
+  `htmlToReadableText` (`src/lib/format.ts`; paragraphs, `## ` headings and `- ` lists kept)
+  before prompting and before the size estimate. Brief output is validated with zod and trimmed
+  to the caps instead of rejected (unknown shape → `other`, unknown format → `bullets`, empty
+  sections dropped); a missing overview or malformed section is still `invalid_output`. The
+  Gemini response schema constrains `shape` and `format` to enums. Rendering keeps `## TL;DR`
+  first, so feed cards and the reader's overview styling are unchanged; each section renders as
+  `## <heading>` with a bullet list, numbered list, prose or block quotes. Open questions are
+  stored, never rendered.
+- **Storage**: tenant stage `summary-structure` (`src/lib/postgres/tenant-migrations/0011_summary_structure.sql`)
+  adds nullable `ai_summaries.structured jsonb` and `prompt_version text` and rebuilds the
+  `tenant_api.ai_summaries` contract view. Finding: PostgreSQL froze that view's column list when
+  0007 created it, so 0010's `content_hash` was never visible to the runtime role; the rebuild
+  exposes it too. Every new summary row now records `structured`, `prompt_version`
+  (`summary-v2` brief, `summary-v1` detailed) and `content_hash` (SHA-256 of the prompt text).
+  `PostgresSummaries.upsert` writes the new columns only when given them, so older callers and
+  the integration fixtures that stop before the new stage are unaffected. The stage is wired into
+  `migrator.ts`, `scripts/migrate-tenant.ts`, `scripts/local-db-reset.ts`,
+  `scripts/perf/measure-web-vitals.ts`, the query-plans integration test, `AGENTS.md` and the
+  backup-restore runbook.
+- **Reader** (`src/components/feed/ai-summary-content.tsx`): sections are styled by their
+  markdown shape (bullet list, numbered steps, block quotes, prose) instead of by the four fixed
+  heading names; `TL;DR` and `Why This Matters` keep their treatment, so stored v1 summaries
+  render as before. `toSummaryDigest` (Today) falls back to the first listed section when there
+  is no Key Points section.
+
+**Verified locally**
+
+- `npm run check`: lint (0 errors, the 5 known warnings), typecheck, 224 suites / 1,646 tests
+  passed. New and updated tests: `prompts.unit`, `summarize.unit` (structured storage, prompt
+  version, caps, HTML stripping and task sizing, notes-based long documents at both lengths),
+  `ai-summary.component` (format-based styling, v1 still renders), `format.unit`,
+  `repositories.unit`, `tenant-migrator.unit`, `migration-invariants.unit`.
+- `npm run test:integration` (Testcontainers PostgreSQL, Docker): 12 suites / 47 tests passed,
+  including the query-plans security suite, which now applies `summary-structure`, and the
+  repository and tenant-upsert suites that write `ai_summaries`.
+- Real model, local Docker Postgres: the `summary-structure` stage was applied to Amit's local
+  database (additive; no reset), then a brief was regenerated for each of the four local items
+  through `generateSummary` with the tenant repositories (scratch script, not committed). Every
+  run succeeded and stored `summary-v2` with structured JSON: a Granola meeting note →
+  `meeting-note` (timeline-and-pricing and action-items sections, 2 s on
+  `gemini-3.5-flash-lite`); a short YouTube interview → `conversation` (2 s); two long items (an
+  X post embedding a video transcript and a long YouTube review, both over 8k estimated tokens)
+  → `conversation` and `product` via the notes path (9–11 s, synthesis on `gemini-3.5-flash`
+  because the local environment has no `ANTHROPIC_API_KEY`). Items were concrete (figures,
+  owners, dates) and no brief used a generic "Key Points" heading. All four chose `bullets`;
+  `steps` and `quotes` are covered by tests only.
+- Not verified: the reader was not viewed in a browser (this worktree's `.env.local` has no
+  local login hash); Production is untouched.
+
+**Release and restart steps**
+
+1. Done 2026-09-29 (checkpoint "summary-structure applied to Production — 2026-09-29").
+   Amit authorizes applying `summary-structure` to Production:
+   `npm run db:tenant:migrate -- --stage summary-structure --amit-user-id <uuid>` with the
+   Production `DATABASE_MIGRATION_URL`. It must run **before** the merge, because `main`
+   auto-deploys and the new code writes the new columns.
+2. Merge PR #59 (Quick gate; add `full-ci` since a migration changed), then open one item on
+   Production and press Regenerate on its brief to see the new format; old summaries stay as
+   they are until regenerated.
+3. S2 (detailed as a delta over the brief) starts from `main` after the merge; it reads
+   `ai_summaries.structured.openQuestions`.
+
+### Adaptive summaries: brief, detailed delta and depth on demand — 2026-09-28
+
+Amit's intent, in his words condensed: the current summary is one fixed template applied to
+everything, and it is not thought out for each piece. A summary should be shaped by what that
+particular article needs. The brief should give a short overview. The detailed view should go
+further, and the step from brief to detailed should be a meaningful delta, not more text lifted
+from somewhere in the article. Ultimately he wants to get as much depth as he wants on a given
+item. Standardisation is still welcome where it helps (a consistent overview line, consistent
+styling); a single rigid section list is not.
+
+This checkpoint is a plan only. Nothing was implemented; no code, schema or cloud state changed.
+
+#### How summaries work today (verified against `main` at `3b50c6c`)
+
+- **One user-facing path.** `src/lib/ai/summarize.ts` `generateSummary()` builds
+  `summarizePrompt(item, length)` from `src/lib/prompts/summarize.ts` and stores rendered markdown
+  in `ai_summaries` keyed by `(user_id, item_id, prompt_type)` with `prompt_type` `brief` or
+  `detailed`. The reader (`src/components/feed/ai-summary-content.tsx`) re-parses that markdown
+  by `## ` headings and styles four known keys (`tldr`, `key-points`, `why-this-matters`,
+  `notable-quotes`) with a generic fallback for any other heading.
+- **The fixed template.** Every item, of every kind, gets the same JSON shape
+  `{overview, keyPoints[], whyItMatters?, notableQuotes?}`. The only difference between brief and
+  detailed is volume: brief asks for 3–5 key points and omits the other two; detailed asks for
+  5–8 key points, a "why this matters" paragraph and 1–3 quotes. Detailed is generated
+  independently of the brief, from the same prompt, so it largely repeats the brief with more
+  bullets. That is exactly the "no meaningful delta" Amit describes.
+- **Content type is ignored.** The prompt interpolates `Type: article|video|podcast`, but there
+  are no per-shape instructions. A how-to, a research write-up, a news item, an opinion essay, a
+  YouTube transcript and a Granola meeting note all get TL;DR / Key Points.
+- **Input quality.** `getSummarizableContent` passes `items.full_content` as stored, which for
+  articles is Readability **HTML**, so markup reaches the model and inflates the `chars / 4`
+  size estimate that routes between `summarize` (under 2k estimated tokens), `summarize-complex`
+  (2k–8k) and map-reduce (over 8k).
+- **Map-reduce ignores length.** Over 8k estimated tokens, `chunkSummarizePrompt` and
+  `synthesizeChunkSummariesPrompt` carry no brief/detailed instruction, yet the result is stored
+  under the requested `prompt_type`. Long pieces get the same generic output at both depths.
+- **Only markdown is stored.** The structured JSON is discarded after rendering, so a later step
+  cannot tell what the brief already said without re-parsing prose.
+  `ai_summaries.content_hash` (added by `0010_perf_indexes.sql`, present in Production) is unused.
+- **When it runs.** Capture generates a brief (`src/lib/queue/capture-consumer.ts`, flag
+  `captureSummary`, default on). The reader's Brief / Detailed toggle generates detailed on
+  demand via `POST /api/ai/summarize`; Regenerate posts `force: true` with a 60 s cooldown.
+- **Nearby, unused.** A grounded brief/detailed summary with cited claims exists
+  (`src/lib/knowledge/intelligence-runtime.ts`, tables `intelligence_artifacts`,
+  `intelligence_claims`, `claim_evidence`), but no worker runs its jobs and no UI shows it.
+  `content_chunks` are written at capture. There is no item-scoped question answering:
+  `/api/v1/answers` has no `itemId` filter; Deep Research is the only item-scoped AI feature.
+
+#### Target design
+
+Three layers, each built on the one before it.
+
+1. **Brief (S1): a short overview shaped by the piece.** The model first decides what kind of
+   piece this is and what a reader needs from that kind, then writes a one-to-three-sentence
+   overview and at most three short sections chosen for this piece. Shape guidance is a small
+   library of hints, not templates; the model may rename, merge or drop sections, and must omit
+   anything empty. Alongside the visible brief it records, but does not show, the questions the
+   brief raises and leaves unanswered ("how did they get that number", "what are the steps",
+   "what is the counter-argument"). That list is what makes S2's delta possible.
+2. **Detailed (S2): only what the brief left out.** Detailed is generated _from_ the stored brief:
+   the prompt shows the model the brief and says the reader has already read it. The model's job
+   is to answer the brief's open questions and add the reasoning, mechanism, evidence, specifics
+   (numbers, names, examples, steps), caveats and counterpoints that the brief compressed or
+   skipped. It must not restate a brief point without adding new information, and it scales to
+   the source: a short post that the brief already covers yields a short detailed view that says
+   so, not padding. In the reader, Detailed shows the brief first and then a "Going deeper" block
+   with the delta sections, so nothing is read twice.
+3. **Depth on demand (S3): as deep as Amit wants on any point.** Each brief or detailed point
+   gets a "Go deeper" action, and the reader gets an "Ask about this" box. Both answer from the
+   item's own text with short supporting quotes, and the answers are kept on the item.
+
+Shape hints for S1 (a starting list; tune with real items):
+
+| Shape                                  | What the reader needs                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| Argument, essay or opinion             | the thesis, the main reasons, what the author concedes or dismisses       |
+| News or announcement                   | what happened, who and when, what changes and for whom                    |
+| How-to or tutorial                     | the goal, the steps in order, prerequisites and pitfalls                  |
+| Research, data or report               | the question, the method in a line, the findings with numbers, the limits |
+| Interview, podcast or video transcript | who is speaking, the main claims by segment, memorable lines              |
+| Meeting or voice note (Granola, Wispr) | decisions, action items with owners, open questions                       |
+| Product or tool                        | what it does, how it differs, availability and cost                       |
+| List or roundup                        | the items, each with a one-line reason it is on the list                  |
+
+#### Open decisions for Amit
+
+1. **Existing summaries.** Recommended: leave stored summaries as they are; new captures get the
+   new brief, and Regenerate upgrades an old item. Alternatives are regenerating lazily whenever
+   an old summary is opened (costs a model call per first view) or a one-off backfill (a cloud
+   mutation needing its own authorization).
+2. **Model for detailed.** Recommended: always route detailed through `summarize-complex` (Claude
+   Sonnet when `ANTHROPIC_API_KEY` is set, otherwise `gemini-3.5-flash`), since the delta needs
+   more reasoning than a flash-lite call. It is on demand only, so volume stays low.
+3. **Detailed layout.** Recommended for S2: stacked (brief, then "Going deeper"). Interleaving
+   the deeper material under each brief point fits better with S3's per-point "Go deeper", so
+   revisit it there.
+4. **Capture.** Recommended: capture keeps generating only the brief; detailed and S3 stay on
+   demand.
+
+#### Phase S1 — Content-aware brief
+
+- **Goal:** replace the fixed brief template with an overview plus up to three sections chosen
+  for the piece, stored in structured form, with the brief's unanswered questions recorded for S2.
+  Existing detailed behaviour stays as is until S2.
+- **Files:** `src/lib/prompts/summarize.ts`, `src/lib/ai/summarize.ts`, `src/lib/ai/types.ts`,
+  `src/components/feed/ai-summary-content.tsx`, a new tenant migration after `0010` (see
+  Storage), `src/lib/postgres/schema.ts`, `src/lib/repositories/ports.ts`,
+  `src/lib/postgres/repositories.ts`.
+- **Approach:**
+  - Convert `full_content` HTML to plain text before prompting and before the size estimate
+    (reuse an existing text extractor if `src/lib/knowledge/` or `src/lib/capture/` has one;
+    otherwise a small DOM-free stripper). Keep headings and list structure as line breaks.
+  - New output schema, version `summary-v2`:
+    `{shape, overview, sections: [{heading, format: "bullets" | "steps" | "paragraph" | "quotes", items: string[]}], openQuestions: string[]}`.
+    `shape` is one of the table's shapes or `other`. Brief caps: overview at most three
+    sentences, at most three sections, at most seven items in total; `openQuestions` 2–5 short
+    questions, never rendered in S1.
+  - Prompt: the shape hints table as guidance, an explicit "choose what this piece needs; do
+    not force sections" instruction, and the caps. Update the Gemini `responseSchema` and the zod
+    `summarySchema` to match.
+  - Rendering: keep `## TL;DR` for the overview so feed cards (`content-card.tsx` strips the
+    stored markdown for its excerpt) and the reader's overview styling keep working; render each
+    section as `## <heading>`. Teach the reader's generic fallback to style `bullets`, `steps`
+    (numbered) and `quotes` like the existing key-points and quote blocks, by format rather than
+    by heading text; old stored summaries keep rendering through the existing keys.
+  - Storage: add `structured jsonb` and `prompt_version text` to `ai_summaries` in one small
+    tenant migration, and write `content_hash` (hash of the plain text) at the same time. This
+    is the first schema change in this plan; S2 depends on `structured`.
+  - Map-reduce: chunk prompts extract notes (claims, numbers, names, steps) instead of
+    mini-summaries; the synthesis prompt applies the same shape-aware brief instructions.
+- **Tests to update:** `src/lib/ai/__tests__/prompts.unit.test.ts` (shape hints present, caps,
+  no fixed section list), `summarize.unit.test.ts` (new schema parsed and rendered, `structured`
+  and `prompt_version` stored, map-reduce synthesis carries the brief instructions, HTML stripped
+  before the size estimate), `src/components/feed/__tests__/ai-summary.component.test.tsx`
+  (format-based rendering, and an old v1 markdown summary still renders), repository contract
+  tests for the new columns.
+- **Verification:** local loop (Docker Postgres, inline capture) with one real item of at least
+  five shapes (an essay, a news item, a how-to, a YouTube video with transcript, a Granola or
+  Wispr note); record for each the chosen shape, the sections and whether the brief reads right.
+  Unit, component and contract suites; Quick gate. The migration needs Amit's authorization to
+  apply to Production at release.
+- **Record:** a dated checkpoint with the five sample briefs' shapes and section headings (not
+  their captured content), and the handoff bullet updated.
+
+#### Phase S2 — Detailed as a delta over the brief
+
+- **Goal:** detailed adds only what the brief left out, and the reader shows the brief once
+  followed by the delta.
+- **Depends on:** S1 (`ai_summaries.structured` with `openQuestions`).
+- **Files:** `src/lib/prompts/summarize.ts`, `src/lib/ai/summarize.ts`,
+  `src/components/feed/ai-summary-content.tsx`, `src/app/api/ai/summarize/route.ts` if the
+  response shape changes, `evals/run-evals.ts`.
+- **Approach:**
+  - Generating detailed first loads the brief's `structured` value, generating the brief if it is
+    missing or is a v1 summary without `structured`.
+  - Detailed prompt: the source text, the brief as JSON with "the reader has already read this",
+    and the brief's `openQuestions`. Instruct the model to answer those questions and add the
+    reasoning, mechanism, evidence and specifics, caveats and counterpoints the brief compressed
+    or skipped; never restate a brief point without new information; scale to the source, and if
+    the brief already covers a short piece, return one short section saying so.
+  - Output schema: `{sections: [{heading, deepens?: string, format, items}]}`, where `deepens`
+    names the brief section or question the block expands. Store it with
+    `prompt_type = "detailed"` and `prompt_version = "summary-v2"`; a detailed row records which
+    brief it was built from (the brief's `id` in `structured`), and regenerating the brief marks
+    the old detailed as stale so it is rebuilt on next open.
+  - Route detailed through `summarize-complex` regardless of size (decision 2). Map-reduce for
+    long sources: the chunk notes from S1 plus the brief feed a single delta synthesis.
+  - Reader: the Detailed toggle renders the brief, then a "Going deeper" divider, then the delta
+    sections.
+- **Tests to update:** prompts (brief and open questions are in the detailed prompt; the
+  no-restatement rule is present), summarize (detailed generates the brief first when missing,
+  uses `summarize-complex`, records the brief id, stale-on-brief-regenerate), component (stacked
+  layout, no duplicated overview).
+- **Evaluation:** add a delta check to `evals/run-evals.ts` using the real prompts: word-level
+  overlap between detailed and brief stays low, and detailed contains specifics (numbers, names,
+  steps) from the source that the brief does not. Run it on the S1 sample items and record the
+  numbers.
+- **Verification:** local loop on the S1 sample items, reading brief then detailed for each and
+  noting whether every detailed section is new information. Quick gate.
+- **Record:** a dated checkpoint with the eval numbers and the per-item verdicts.
+
+#### Phase S3 — Depth on demand
+
+- **Goal:** Amit can go as deep as he wants on any point, or ask his own question about the
+  item, and the answers stay with the item.
+- **Depends on:** S2 (section anchors via `deepens` and headings).
+- **Files:** a new route `src/app/api/v1/items/[id]/summary/expand/route.ts`, a new prompt in
+  `src/lib/prompts/summarize.ts`, a new tenant table and repository, reader components.
+- **Approach:**
+  - Reader: a "Go deeper" action on each brief and detailed item, and an "Ask about this" input
+    under the summary. Answers render inline under the point they expand (this is where the
+    interleaved layout from decision 3 fits) or in a list under the summary for free questions.
+  - Route: `POST {anchor?: string, question?: string}` through the tenant router (budget and
+    audit as usual), answering only from the item's own text with one or two short supporting
+    quotes, and saying plainly when the item does not answer the question. Long items select
+    relevant `content_chunks` (existing retrieval in `src/lib/knowledge/retrieval.ts`) instead of
+    sending everything.
+  - Storage: a new tenant table `summary_expansions` (`user_id`, `item_id`, `anchor`, `question`,
+    `answer`, `model`, `created_at`) with the Phase 3 tenant policies; deleted with the item.
+  - Out of scope: reusing the unwired grounded-claims pipeline; it is a candidate for citation
+    checking later, not a dependency.
+- **Tests:** route security and tenant-boundary tests like the other `/api/v1/items/[id]/**`
+  routes, prompt tests (answers only from the item, quotes required, "not in this item" path),
+  repository contract tests, component tests for inline answers.
+- **Verification:** local loop, three "Go deeper" and three own questions on two items, one of
+  them a question the item cannot answer. The migration needs Amit's authorization at release.
+- **Record:** a dated checkpoint and the handoff bullet updated.
+
+Every phase: re-verify the file and line references above against current `main` before starting,
+work on its own `claude/<task>` branch, and include the state-file update in the same branch.
 
 ### Capture diagnostics in Settings — 2026-09-24
 

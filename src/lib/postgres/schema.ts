@@ -969,6 +969,8 @@ export const aiSummaries = pgTable(
     promptType: text("prompt_type").notNull(),
     createdAt: time("created_at").notNull(),
     contentHash: text("content_hash"),
+    structured: jsonb(),
+    promptVersion: text("prompt_version"),
   },
   (t) => [uniqueIndex("ai_summaries_user_item_prompt_idx").on(t.userId, t.itemId, t.promptType)]
 );

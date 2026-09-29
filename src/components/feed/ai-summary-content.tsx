@@ -37,6 +37,27 @@ function parseSummarySections(content: string): { title: string; body: string; k
   });
 }
 
+type SectionStyle = "lead" | "bullets" | "steps" | "quotes" | "callout" | "prose";
+
+/**
+ * How a section is styled. Content-aware briefs name their sections per piece, so the style
+ * follows the section's markdown shape (a bullet list, a numbered list, block quotes, prose);
+ * the fixed v1 headings keep their established treatment.
+ */
+function sectionStyle(key: string, body: string): SectionStyle {
+  if (key === "tldr" || key === "tl-dr") return "lead";
+  if (key === "why-this-matters") return "callout";
+  if (key === "notable-quotes") return "quotes";
+  const lines = body.split("\n").filter((line) => line.trim());
+  if (lines.length === 0) return "prose";
+  if (lines.every((line) => /^\s*[-*+]\s+/.test(line))) return "bullets";
+  if (lines.every((line) => /^\s*\d+[.)]\s+/.test(line))) return "steps";
+  if (lines.every((line) => /^\s*>/.test(line))) return "quotes";
+  return "prose";
+}
+
+const sectionLabel = "text-[11px] font-medium tracking-widest uppercase text-muted-foreground";
+
 /** Renders structured AI summary in reader typography — same aesthetic as tweet/article content. */
 function StructuredSummaryMarkdown({ content }: { content: string }) {
   const sections = useMemo(() => parseSummarySections(content), [content]);
@@ -46,25 +67,25 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
 
   return (
     <div className="distil-reader space-y-5">
-      {sections.map(({ title, body, key }) => {
+      {sections.map(({ title, body, key }, index) => {
         if (!body) return null;
+        const style = sectionStyle(key, body);
+        const sectionKey = `${key}-${index}`;
+        const label = (spacing: string) =>
+          title ? <p className={`${sectionLabel} ${spacing}`}>{title}</p> : null;
 
-        if (key === "tldr" || key === "tl-dr") {
+        if (style === "lead") {
           return (
-            <div key={key} className={baseProse}>
+            <div key={sectionKey} className={baseProse}>
               <Markdown>{body}</Markdown>
             </div>
           );
         }
 
-        if (key === "key-points") {
+        if (style === "bullets") {
           return (
-            <div key={key}>
-              {title && (
-                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-3">
-                  {title}
-                </p>
-              )}
+            <div key={sectionKey} data-section-style="bullets">
+              {label("mb-3")}
               <Markdown
                 components={{
                   ul: ({ children }) => <ul className="list-none space-y-2 my-0">{children}</ul>,
@@ -82,37 +103,18 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
           );
         }
 
-        if (key === "why-this-matters") {
+        if (style === "steps") {
           return (
-            <div key={key} className="border-l-2 border-primary/50 pl-4 py-0.5">
-              {title && (
-                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-2">
-                  {title}
-                </p>
-              )}
-              <div className={`${baseProse} [&_p]:my-1`}>
-                <Markdown>{body}</Markdown>
-              </div>
-            </div>
-          );
-        }
-
-        if (key === "notable-quotes") {
-          return (
-            <div key={key}>
-              {title && (
-                <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-3">
-                  {title}
-                </p>
-              )}
+            <div key={sectionKey} data-section-style="steps">
+              {label("mb-3")}
               <Markdown
                 components={{
-                  ul: ({ children }) => <ul className="list-none space-y-3 my-0">{children}</ul>,
-                  li: ({ children }) => (
-                    <li className="border-l-2 border-border/50 pl-4 py-0.5 italic text-muted-foreground [&>p]:my-0">
+                  ol: ({ children }) => (
+                    <ol className="list-decimal marker:text-primary marker:font-medium space-y-2 my-0 pl-5">
                       {children}
-                    </li>
+                    </ol>
                   ),
+                  li: ({ children }) => <li className="pl-1 [&>p]:my-0">{children}</li>,
                 }}
               >
                 {body}
@@ -121,13 +123,47 @@ function StructuredSummaryMarkdown({ content }: { content: string }) {
           );
         }
 
+        if (style === "callout") {
+          return (
+            <div key={sectionKey} className="border-l-2 border-primary/50 pl-4 py-0.5">
+              {label("mb-2")}
+              <div className={`${baseProse} [&_p]:my-1`}>
+                <Markdown>{body}</Markdown>
+              </div>
+            </div>
+          );
+        }
+
+        if (style === "quotes") {
+          return (
+            <div key={sectionKey} data-section-style="quotes">
+              {label("mb-3")}
+              <div className="space-y-3">
+                <Markdown
+                  components={{
+                    ul: ({ children }) => <ul className="list-none space-y-3 my-0">{children}</ul>,
+                    li: ({ children }) => (
+                      <li className="border-l-2 border-border/50 pl-4 py-0.5 italic text-muted-foreground [&>p]:my-0">
+                        {children}
+                      </li>
+                    ),
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-2 border-border/50 pl-4 py-0.5 my-0 italic text-muted-foreground [&>p]:my-0">
+                        {children}
+                      </blockquote>
+                    ),
+                  }}
+                >
+                  {body}
+                </Markdown>
+              </div>
+            </div>
+          );
+        }
+
         return (
-          <div key={key} className={baseProse}>
-            {title && (
-              <p className="text-[11px] font-medium tracking-widest uppercase text-muted-foreground mb-2">
-                {title}
-              </p>
-            )}
+          <div key={sectionKey} className={baseProse}>
+            {label("mb-2")}
             <Markdown>{body}</Markdown>
           </div>
         );

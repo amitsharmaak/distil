@@ -80,7 +80,13 @@ async function main(): Promise<void> {
 
     const migrationsDirectory = path.resolve("src/lib/postgres/tenant-migrations");
     const stage = async (
-      name: "expand" | "backfill" | "lifecycle" | "returning-auth" | "perf-indexes"
+      name:
+        | "expand"
+        | "backfill"
+        | "lifecycle"
+        | "returning-auth"
+        | "perf-indexes"
+        | "summary-structure"
     ) => {
       await applyTenantMigrationStage({ sql, stage: name, ownerId, migrationsDirectory });
       process.stdout.write(`Applied tenant stage ${name}\n`);
@@ -99,6 +105,7 @@ async function main(): Promise<void> {
     await stage("lifecycle");
     await stage("returning-auth");
     await stage("perf-indexes");
+    await stage("summary-structure");
 
     await sql.unsafe(`
       DO $$
