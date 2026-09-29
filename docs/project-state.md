@@ -451,8 +451,9 @@ filters (Unread, High priority, Videos, X, Podcasts) took two rows he does not u
   The chip row (and its Clear) shows only when a chip exists, and the Filters badge counts the
   chips. A search alone has only the field's own clear button.
 - **URL contract unchanged.** Every control writes the same parameters as before.
-- **Checks.** `jest src/app/search src/components/layout src/components/feed src/lib/feed`
-  passes (99 tests). `tsc --noEmit`, eslint and prettier are clean on the changed files. The
+- **Checks.** After merging `origin/main` (`aba860b`), `npm run check` passes: lint has 0
+  errors and 5 existing warnings in untouched files, and all 231 suites and 1,736 tests pass.
+  The worktree's `node_modules` predated the `jsdom` 22.1.0 pin, so `npm ci` was needed first. `tsc --noEmit`, eslint and prettier are clean on the changed files. The
   first pass was checked in the in-app browser at desktop and 375 px width. For Amit to try it
   locally, the worktree's `.env.local` was rebuilt from the example against the existing local
   owner (old file kept as `.env.local.neon-backup`). The local database also got the
