@@ -5,6 +5,7 @@ import { getTenantRepositories } from "@/lib/database";
 import { indexCapturedItem } from "@/lib/knowledge/capture-index";
 import { createCaptureQueueConsumer } from "@/lib/queue/consumer";
 import { generateSummary } from "@/lib/ai/summarize";
+import { classifyItemArea } from "@/lib/ai/classify-area";
 import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { aiLogger, sanitizeLogError } from "@/lib/logger";
 
@@ -34,18 +35,37 @@ export async function consumeCaptureMessage(message: CaptureQueueMessageV2): Pro
       rawContent: repositories.rawContent,
       enqueueEnrichment: async (itemId) => {
         await indexCapturedItem({ context, repositories, itemId });
-        if (!readPhase2FeatureFlags().captureSummary) return;
-        try {
-          await generateSummary(context, repositories, itemId, { length: "brief" });
-        } catch (error) {
-          aiLogger.warn(
-            {
-              event: "capture_summary_skipped",
-              traceId: context.requestId,
-              err: sanitizeLogError(error),
-            },
-            "Capture summary generation skipped"
-          );
+        const flags = readPhase2FeatureFlags();
+        if (flags.captureSummary) {
+          try {
+            await generateSummary(context, repositories, itemId, { length: "brief" });
+          } catch (error) {
+            aiLogger.warn(
+              {
+                event: "capture_summary_skipped",
+                traceId: context.requestId,
+                err: sanitizeLogError(error),
+              },
+              "Capture summary generation skipped"
+            );
+          }
+        }
+        // After the brief, so the classifier can read it; independent of it, so an item
+        // still gets an area when the brief is disabled or fails. A failure leaves the
+        // item unclassified for the backfill and never fails the capture.
+        if (flags.areaClassification) {
+          try {
+            await classifyItemArea(context, repositories, itemId);
+          } catch (error) {
+            aiLogger.warn(
+              {
+                event: "capture_area_skipped",
+                traceId: context.requestId,
+                err: sanitizeLogError(error),
+              },
+              "Capture area classification skipped"
+            );
+          }
         }
       },
     }),

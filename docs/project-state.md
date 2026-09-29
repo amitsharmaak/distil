@@ -25,22 +25,28 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit merges, then issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Inline search, quick filters and AI life areas: F1 implemented, not merged (plan merged as
-  PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 on branch
-  `claude/search-f1-feed-query`; checkpoints "Inline search F1: feed text search and site
-  facet — 2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit
-  wants the dedicated Search page replaced by a search bar at the top of Today and Feed that
-  filters as he types, with one-tap quick filters (Videos, X links, …), and wants Distil to hold
-  his personal, work and learning material with every item sorted automatically by AI into one
-  of four areas (Personal, Work, Learning, Updates), shown as a filter and fixable with one tap.
-  All open decisions are answered and recorded in the plan checkpoint. F1 adds `q`, `site` and
-  `sort=relevance` to `GET /api/v1/feed` with a new tenant stage `feed-search`
-  (`0012_feed_search.sql`); no UI changed. Next: Amit merges the F1 PR; the stage must be
-  applied to Production (needs his authorization) before any client sends `q` or `site`, which
-  first happens in F3. The plain feed does not depend on the stage, so the code can deploy first.
-  F2 can start from `main` in parallel. Separate follow-up after F7: move the area classifier onto
-  the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact model
-  before starting that task).
+- **Inline search, quick filters and AI life areas: F1 and F2 merged, both stages applied to
+  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
+  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; checkpoints
+  "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
+  classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
+  2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
+  page replaced by a search bar at the top of Today and Feed that filters as he types, with
+  one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
+  learning material with every item sorted automatically by AI into one of four areas (Personal,
+  Work, Learning, Updates), shown as a filter and fixable with one tap. All open decisions are
+  answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
+  `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
+  an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
+  changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
+  `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
+  and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
+  his terminal scrollback and shell history during this release (see the checkpoint); (2)
+  confirm that a new capture on Production gets an area (not yet observed). Next: F3 (filter bar
+  on Feed) starts from `main`. Separate follow-up after F7: move the area classifier
+  onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
+  model before starting that task).
 - **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
   `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
   which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
@@ -380,6 +386,130 @@ manifest version is 1.1.1. Host permissions are unchanged; the tester still appr
 once on save. New extension harness test "prefills the Production origin before configuration";
 `npm run test:extension` passed 12/12 locally. Candidate follow-ups: unlisted Chrome Web Store
 listing, and an in-app invitation action instead of the CLI.
+
+### feed-search and life-areas applied to Production — 2026-09-29
+
+Amit authorized applying the F1 and F2 tenant stages to Production and ran both himself. He
+merged PR [#64](https://github.com/amitsharmaak/distil/pull/64) (all checks, including the full
+gate, had passed; squash merged as `cf0cf28`), then fast-forwarded the main checkout to
+`cf0cf28`. He copied the `distil-production` owner connection string from the Neon console's
+Connect dialog (role `neondb_owner`, database `neondb`, pooling off, host
+`ep-delicate-frog-b3g28rqu.c-4.ap-southeast-1.aws.neon.tech`) into
+`DATABASE_MIGRATION_URL="$(pbpaste)"` and ran, in order:
+
+1. `npm run db:tenant:migrate -- --stage feed-search --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied feed-search: 0012_feed_search.sql`. Its only NOTICE was the usual
+   `distil_tenant_migrations already exists, skipping`.
+2. `npm run db:tenant:migrate -- --stage life-areas --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`
+   → `Applied life-areas: 0013_life_areas.sql`. The NOTICEs were the ledger-table one plus
+   `items_area_check`, `items_manual_area_check` and `items_area_confidence_check` "does not
+   exist, skipping". Those three are expected on a first run: the migration drops each constraint
+   `IF EXISTS` before adding it, so it stays idempotent.
+
+Claude verified both outcomes by reading Amit's terminal output. It did not connect to
+Production.
+
+**Security note.** Before the successful runs, the full owner connection string, password
+included, was pasted directly at the shell prompt several times. zsh rejected those lines (glob
+error), so nothing ran with it, but the string is in that terminal's scrollback and in
+`~/.zsh_history`, and it reached Claude's context when Claude read the terminal. It is not
+recorded anywhere in the repository. Recommended to Amit, and not yet confirmed:
+
+- Reset the `neondb_owner` password on `distil-production` in the Neon console.
+- Update Vercel's `DATABASE_MIGRATION_URL` (release-only; the app runs on the separate restricted
+  runtime role in `DATABASE_URL`, so the site is unaffected).
+- Optionally delete the history lines with `sed -i '' '/neondb_owner:/d' ~/.zsh_history` from a
+  new terminal.
+
+**State now.** Production's items table has `feed_search_vector`, `site` and the seven area
+columns, with the `tenant_api.items` view rebuilt. The deployed `cf0cf28` code classifies each
+new capture's area (`FEATURE_AREA_CLASSIFICATION` is unset, so on). Not yet observed on
+Production: a capture receiving an area. Items captured before this point stay unclassified
+until F6. No client sends `q` or `site` until F3.
+
+**Next:** F3 (filter bar on Feed) from `main`.
+
+### Life areas F2: AI area classification at capture — 2026-09-29
+
+Amit asked to merge F1 (PR [#63](https://github.com/amitsharmaak/distil/pull/63): Quick gate and
+the full gate passed, squash merged as `76471e5`) and start F2. Branch
+`claude/areas-f2-classification` from `76471e5`. Implementation complete and locally verified;
+not merged, not deployed, and the new tenant stage is not applied anywhere outside test
+databases. No UI changed.
+
+**What changed**
+
+- **Tenant stage `life-areas`** (`src/lib/postgres/tenant-migrations/0013_life_areas.sql`): seven
+  nullable columns on `items`. The AI's answer goes in `area`, `area_confidence`, `area_reason`,
+  `area_model` and `area_classified_at`. Amit's correction goes in `manual_area` and
+  `manual_area_at`, which F4 writes. Check constraints limit both area columns to the four areas
+  and confidence to 0–1. An expression index on `(user_id, COALESCE(manual_area, area))` serves
+  the F3 filter. The stage rebuilds `tenant_api.items` and is registered everywhere
+  `feed-search` is.
+- **Classifier** (`src/lib/ai/classify-area.ts`, prompt `src/lib/prompts/classify-area.ts`,
+  version `area-v1`): one call per item on the new AI task `classify-area` (Gemini 3.5 Flash-Lite;
+  per-provider fallbacks as for `auto-tag`) through the tenant AI router, so the tenant budget
+  and accounting apply. Gemini structured output returns `{area, confidence, reason}`, checked by
+  a zod mirror.
+  - **Inputs:** title, how it was saved, content type, site, author, publication, topics, the
+    brief's overview, the first 2,000 characters of readable text, and up to 20 of Amit's most
+    recent corrections as examples.
+  - **Output handling:** an area outside the four is rejected and nothing is stored. Confidence
+    is clamped and the reason trimmed to 200 characters.
+  - **Idempotent:** it skips an item that already has an AI area unless forced, so a redelivered
+    queue message costs nothing. It never writes `manual_area`.
+- **Wiring** (`src/lib/queue/capture-consumer.ts`): runs after the brief, so it can read it, but
+  independently of it, in its own try/catch. A failure logs `capture_area_skipped` and never
+  fails the capture. New default-on kill switch `FEATURE_AREA_CLASSIFICATION` (`AGENTS.md`
+  updated).
+- **Repository** (`ItemRepository`): `findAreaState`, `setAiArea`, `listAreaCorrections`
+  (tenant-scoped; a correction is a set `manual_area` that differs from `area`, newest first).
+  Registered as `area-classification` in `docs/authorization-matrix.json`.
+
+**Deviations from the F2 brief, and why**
+
+- **The connector save path is not wired.** Gmail, Slack and publisher connectors are off in
+  hosted deployments (`FEATURE_CONNECTORS=false`), and their legacy `processContent` pipeline has
+  no tenant AI capability by design (see the comment in `src/lib/intelligence/pipeline.ts`).
+  Every Production item arrives through the capture queue, which is wired. Anything else is
+  covered by the F6 backfill.
+- **Item projections do not select the area yet.** Adding `area` and `manual_area` to
+  `ITEM_SUMMARY_COLUMNS` would make every item read depend on the new stage. It moves to F3,
+  where the UI first needs it, so F2 can deploy before its stage like F1.
+- **`area_model` and `manual_area_at` were added** beyond the brief. The first records which
+  model answered, for the follow-up model task. The second orders corrections, and adding it now
+  avoids a second migration in F4.
+
+**Prompt check against the real model (local Gemini key, synthetic items only, no captured
+content).** Eight invented items, two per area, including a Granola meeting note, a school
+permission slip, a dental confirmation, a transformer explainer, a lecture video, a
+quarterly-results news item, an X post about a launch, and a management essay. The first run got
+7 of 8. The miss was the management essay, classified Work where Amit's intent is Learning
+("general advice about doing a job well"). The Work and Learning definitions now say that
+explicitly. A re-run of that item and the Granola note gave Learning (0.95) and Work (1.0). The
+other six were not re-run, to stay inside the free-tier limit of 20 calls per model per day;
+the change touched only the Work/Learning boundary.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 225 suites / 1,682 tests passed.
+- `npm run test:integration`: all 13 PostgreSQL suites passed. That includes the new
+  `src/lib/postgres/__tests__/life-areas.integration.test.ts`: writes through the tenant view,
+  a correction survives AI reclassification and ordinary updates, corrections list is newest
+  first and excludes agreements and other tenants, and the check constraints reject a fifth area
+  or confidence above 1.
+- Not done: a capture through the local dev loop, which needs the stage on Amit's local database
+  and a signed-in browser.
+
+**Risk to watch:** the capture callback now makes one more model call after the brief (about 1–2
+s on Flash-Lite; timeout 15 s). A long item whose brief already takes most of the Vercel Hobby
+60 s budget could run out of time. A redelivered message then finds the brief cached and the
+area classifier idempotent.
+
+**Restart steps:** merge the F2 PR. Before F3, Amit applies both stages to Production with his
+authorization, in order:
+`npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>`, then
+`--stage life-areas`. Record both. Then F3 starts from `main`.
 
 ### Inline search F1: feed text search and site facet — 2026-09-29
 
