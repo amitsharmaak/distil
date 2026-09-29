@@ -128,6 +128,14 @@ describe("GET /api/v1/feed contract", () => {
     );
   });
 
+  it("passes area filters through", async () => {
+    const response = await GET(
+      new Request("https://distil.example/api/v1/feed?area=work,personal")
+    );
+    expect(response.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ areas: ["work", "personal"] }));
+  });
+
   it("keeps an explicit sort for a search", async () => {
     const response = await GET(
       new Request("https://distil.example/api/v1/feed?q=rust&sort=recent")
@@ -141,6 +149,7 @@ describe("GET /api/v1/feed contract", () => {
     ["an over-long search", `q=${"a".repeat(201)}`],
     ["relevance without a search", "sort=relevance"],
     ["a site that is not a host", "site=x.com/path"],
+    ["an unknown area", "area=hobbies"],
   ])("rejects %s without querying", async (_label, query) => {
     const response = await GET(new Request(`https://distil.example/api/v1/feed?${query}`));
     expect(response.status).toBe(400);
