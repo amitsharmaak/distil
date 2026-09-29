@@ -95,12 +95,20 @@ export interface BriefSummaryOutput {
   openQuestions: string[];
 }
 
-/** Structured output of the detailed summary (JSON mode; the summary-v1 template). */
-export interface SummaryOutput {
-  overview: string;
-  keyPoints: string[];
-  whyItMatters?: string;
-  notableQuotes?: string[];
+/** One "Going deeper" section of a detailed summary (summary-v2). */
+export interface DetailedDeltaSection extends SummarySection {
+  /** The brief section heading or open question this section expands; absent when neither. */
+  deepens?: string;
+}
+
+/**
+ * Structured output of the detailed summary (summary-v2): only what the brief left out. It is
+ * written from, and rendered after, the brief whose row id is `briefId`; regenerating the
+ * brief gives it a new id, which makes this detailed summary stale.
+ */
+export interface DetailedDeltaOutput {
+  briefId: string;
+  sections: DetailedDeltaSection[];
 }
 
 /** Feedback entry joined with its corresponding item data. */

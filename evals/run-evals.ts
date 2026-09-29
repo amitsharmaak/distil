@@ -4,12 +4,28 @@
  * Usage:
  *   npx tsx evals/run-evals.ts          # Dry run (baseline with golden labels)
  *   npx tsx evals/run-evals.ts --live   # Live run (calls AI models)
+ *   npx tsx evals/run-evals.ts --delta  # Detailed-summary delta check on a recorded fixture
+ *   npx tsx evals/run-evals.ts --delta --live [--items <file.json>]
+ *                                       # Delta check through the real brief and detailed
+ *                                       # prompts; items default to the five longest golden
+ *                                       # items, or a JSON array of content items;
+ *                                       # --dump <file> writes the cases (with source text)
+ *                                       # for inspection, to a path outside the repository
  *
  * For live mode, set GEMINI_API_KEY in .env.local or environment.
  */
 
 import fs from "fs";
 import path from "path";
+import type { StructuredGenerate } from "../src/lib/ai/summarize";
+import type { ContentItem } from "../src/lib/types";
+import {
+  MAX_RESTATEMENT,
+  MIN_NOVEL_SPECIFICS,
+  SHORT_SOURCE_WORDS,
+  evaluateDelta,
+  type DeltaCase,
+} from "./delta-metrics";
 
 // Load .env.local if it exists (for live mode API keys)
 function loadEnvLocal(): void {
@@ -21,7 +37,7 @@ function loadEnvLocal(): void {
       if (match) {
         const key = match[1].trim();
         const value = match[2].trim().replace(/^["']|["']$/g, "");
-        if (!process.env[key]) process.env[key] = value;
+        if (!(key in process.env)) process.env[key] = value;
       }
     }
   }
@@ -321,10 +337,120 @@ Output ONLY the JSON object.`;
   return { priority, topics, summary, category, dedup };
 }
 
+// ── Delta check: detailed summaries add to the brief ─────────────────────────
+
+interface DeltaItem {
+  id: string;
+  title: string;
+  fullContent?: string;
+  summary?: string;
+  contentType?: string;
+  topics?: string[];
+  author?: string;
+  publication?: string;
+}
+
+/** Run the real brief and detailed-delta prompts for each item (unscoped router, no DB). */
+async function liveDeltaCases(items: DeltaItem[]): Promise<DeltaCase[]> {
+  const { generateJSON, getEffectiveModel } = await import("../src/lib/ai/router");
+  const summarize = await import("../src/lib/ai/summarize");
+  const { AIProviderError } = await import("../src/lib/ai/errors");
+  const generate: StructuredGenerate = async (prompt, task, responseSchema, schema) => {
+    const value = await generateJSON<unknown>(prompt, task, {
+      responseSchema,
+      timeoutMs: task === "summarize-complex" ? 40_000 : 15_000,
+    });
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      const { provider, model } = getEffectiveModel(task);
+      throw new AIProviderError("invalid_output", provider, model);
+    }
+    return parsed.data;
+  };
+  console.log(
+    `Brief: ${getEffectiveModel("summarize").model} / ${getEffectiveModel("summarize-complex").model}; detailed: ${getEffectiveModel("summarize-complex").model}\n`
+  );
+
+  const cases: DeltaCase[] = [];
+  for (const raw of items) {
+    const item = {
+      sourceType: "manual",
+      contentType: "article",
+      topics: [],
+      url: "",
+      priority: "medium",
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      ...raw,
+    } as ContentItem;
+    const started = Date.now();
+    const { source, text } = summarize.getSummarizableText(item);
+    const prepared = await summarize.prepareSummarySource(text, source, generate);
+    const brief = await summarize.writeBrief(item, prepared, generate);
+    const detailed = await summarize.writeDetailedDelta(item, prepared, brief, generate);
+    console.log(
+      `  ${raw.id}: ${prepared.source.kind === "notes" ? "notes path, " : ""}${((Date.now() - started) / 1000).toFixed(1)} s`
+    );
+    cases.push({ id: raw.id, source: text, brief, detailed });
+  }
+  return cases;
+}
+
+async function runDelta(isLive: boolean): Promise<void> {
+  const itemsFlag = process.argv.indexOf("--items");
+  let cases: DeltaCase[];
+  if (isLive) {
+    const items: DeltaItem[] =
+      itemsFlag > 0
+        ? JSON.parse(fs.readFileSync(process.argv[itemsFlag + 1], "utf-8"))
+        : (
+            JSON.parse(
+              fs.readFileSync(path.join(__dirname, "golden-set.json"), "utf-8")
+            ) as GoldenItem[]
+          )
+            .sort((a, b) => b.fullContent.length - a.fullContent.length)
+            .slice(0, 5);
+    console.log(`\nRunning the delta check in LIVE mode on ${items.length} items\n`);
+    cases = await liveDeltaCases(items);
+  } else {
+    cases = JSON.parse(fs.readFileSync(path.join(__dirname, "recorded-delta.json"), "utf-8"));
+    console.log(`\nRunning the delta check in DRY mode on ${cases.length} recorded cases\n`);
+  }
+
+  const dumpFlag = process.argv.indexOf("--dump");
+  if (dumpFlag > 0) {
+    // Cases carry the source text; write them only to a path outside the repository.
+    fs.writeFileSync(process.argv[dumpFlag + 1], JSON.stringify(cases, null, 2), "utf-8");
+  }
+
+  const metrics = evaluateDelta(cases);
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+  console.log(
+    `\nThresholds: restatement <= ${pct(MAX_RESTATEMENT)}, novel specifics >= ${MIN_NOVEL_SPECIFICS} (or one section for a source under ${SHORT_SOURCE_WORDS} words)\n`
+  );
+  for (const r of metrics.perCase) {
+    console.log(
+      `${r.pass ? "PASS" : "FAIL"}  ${r.id}: ${r.sourceWords} source words, ${r.detailedSections} sections / ${r.detailedWords} words, restatement ${pct(r.restatement)}, novel specifics ${r.novelSpecifics.length}, ungrounded ${r.ungroundedSpecifics.length}, open questions addressed ${pct(r.openQuestionsAddressed)}`
+    );
+  }
+  console.log(
+    `\nMean restatement ${pct(metrics.meanRestatement)}, mean novel specifics ${metrics.meanNovelSpecifics.toFixed(1)}, mean ungrounded ${metrics.meanUngroundedSpecifics.toFixed(1)}, open questions addressed ${pct(metrics.meanOpenQuestionsAddressed)}, pass rate ${pct(metrics.passRate)}`
+  );
+
+  const resultsDir = path.join(__dirname, "results");
+  if (!fs.existsSync(resultsDir)) fs.mkdirSync(resultsDir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outPath = path.join(resultsDir, `delta-${isLive ? "live" : "dry"}-${ts}.json`);
+  // Metrics only: live cases hold captured content, which stays out of result files.
+  fs.writeFileSync(outPath, JSON.stringify(metrics, null, 2), "utf-8");
+  console.log(`\nResults saved to ${outPath}\n`);
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(): Promise<void> {
   const isLive = process.argv.includes("--live");
+  if (process.argv.includes("--delta")) return runDelta(isLive);
   const goldenPath = path.join(__dirname, "golden-set.json");
   const goldenSet: GoldenItem[] = JSON.parse(fs.readFileSync(goldenPath, "utf-8"));
   const recordedPath = path.join(__dirname, "recorded-predictions.json");

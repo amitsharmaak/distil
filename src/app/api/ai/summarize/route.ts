@@ -44,6 +44,8 @@ export const POST = withRequestMetrics(async (req: NextRequest) => {
       summary: result.summary,
       cached: result.cached,
       itemId,
+      // A detailed request that had to (re)generate the brief first returns it too.
+      ...(result.brief ? { briefSummary: result.brief } : {}),
     });
   } catch (error) {
     const authFailure = tenantRouteFailureResponse(error);

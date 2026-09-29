@@ -1,0 +1,62 @@
+[
+  {
+    "id": "delta-good",
+    "source": "Acme Robotics said on Tuesday that its warehouse picker, Model R2, now handles 1,200 items an hour, up from 800 last year. Chief engineer Priya Nair said the gain came from a new suction gripper and from re-planning routes every 30 seconds instead of every 5 minutes. The company tested the change in its Leeds warehouse for 6 weeks. Nair conceded that the gripper still fails on shrink-wrapped goods, about 4% of stock. Pricing stays at $2,500 a month per robot, and customers in Germany get the update in March.",
+    "brief": {
+      "overview": "Acme Robotics says its warehouse picker is now much faster after a hardware and software update.",
+      "sections": [
+        {
+          "heading": "What changed",
+          "items": [
+            "The picker handles far more items an hour than last year.",
+            "The price is unchanged."
+          ]
+        }
+      ],
+      "openQuestions": ["Where did the speed-up come from?", "What does it still struggle with?"]
+    },
+    "detailed": [
+      {
+        "heading": "Where the gain comes from",
+        "deepens": "Where did the speed-up come from?",
+        "items": [
+          "Model R2 went from 800 to 1,200 items an hour.",
+          "Priya Nair credits a new suction gripper and route re-planning every 30 seconds rather than every 5 minutes.",
+          "It was tested for 6 weeks in the Leeds warehouse."
+        ]
+      },
+      {
+        "heading": "Limits",
+        "deepens": "What does it still struggle with?",
+        "items": ["The gripper still fails on shrink-wrapped goods, about 4% of stock."]
+      }
+    ]
+  },
+  {
+    "id": "delta-restates",
+    "source": "Acme Robotics said on Tuesday that its warehouse picker, Model R2, now handles 1,200 items an hour, up from 800 last year. Chief engineer Priya Nair said the gain came from a new suction gripper and from re-planning routes every 30 seconds instead of every 5 minutes. The company tested the change in its Leeds warehouse for 6 weeks. Nair conceded that the gripper still fails on shrink-wrapped goods, about 4% of stock. Pricing stays at $2,500 a month per robot, and customers in Germany get the update in March.",
+    "brief": {
+      "overview": "Acme Robotics says its warehouse picker is now much faster after a hardware and software update.",
+      "sections": [
+        {
+          "heading": "What changed",
+          "items": [
+            "The picker handles far more items an hour than last year.",
+            "The price is unchanged."
+          ]
+        }
+      ],
+      "openQuestions": ["Where did the speed-up come from?", "What does it still struggle with?"]
+    },
+    "detailed": [
+      {
+        "heading": "Overview",
+        "items": [
+          "Acme Robotics says its warehouse picker is now much faster after a hardware and software update.",
+          "The picker handles far more items an hour than last year.",
+          "The price is unchanged, according to Acme."
+        ]
+      }
+    ]
+  }
+]

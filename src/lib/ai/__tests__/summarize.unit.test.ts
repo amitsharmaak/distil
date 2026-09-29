@@ -84,22 +84,21 @@ const mockBriefOutput = {
   openQuestions: ["How accurate is the ASR on code identifiers?"],
 };
 
-const mockDetailedOutput = {
-  overview:
-    "Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free, lowering the barrier for accessibility and repetitive tasks.",
-  keyPoints: [
-    "Voice input integrates directly into the Claude Code CLI",
-    "ASR optimised for programming terms and code identifiers",
-    "Supports dictation for editing, terminal commands, and git workflows",
-    "Available as opt-in feature; requires microphone permissions",
-    "Works on macOS, Linux, and Windows as of March 2026",
-    "No additional subscription required — included with existing access",
-    "Open feedback period for accuracy improvements",
-  ],
-  whyItMatters:
-    "Voice mode democratises AI-assisted coding for developers with repetitive strain injuries and other accessibility needs, while also speeding up routine tasks like file navigation and command execution.",
-  notableQuotes: [
-    '"We want Claude Code to be the most accessible coding assistant on the market." — Anthropic spokesperson',
+// The detailed delta over mockBriefOutput.
+const mockDeltaOutput = {
+  sections: [
+    {
+      heading: "How recognition handles code",
+      deepens: "How accurate is the ASR on code identifiers?",
+      format: "bullets",
+      items: ["The ASR model is tuned on programming vocabulary such as camelCase names."],
+    },
+    {
+      heading: "Platforms",
+      deepens: "",
+      format: "paragraph",
+      items: ["It works on macOS, Linux and Windows."],
+    },
   ],
 };
 
@@ -118,27 +117,66 @@ Anthropic has launched voice mode for Claude Code, enabling hands-free coding vi
 1. Update Claude Code
 2. Grant microphone access`;
 
-const mockDetailedSummary = `## TL;DR
+const mockDetailedSummary = `${mockBriefSummary}
 
-Anthropic has shipped a voice mode for Claude Code that lets developers dictate code and commands hands-free, lowering the barrier for accessibility and repetitive tasks.
+## Going deeper
 
-## Key Points
+## How recognition handles code
 
-- Voice input integrates directly into the Claude Code CLI
-- ASR optimised for programming terms and code identifiers
-- Supports dictation for editing, terminal commands, and git workflows
-- Available as opt-in feature; requires microphone permissions
-- Works on macOS, Linux, and Windows as of March 2026
-- No additional subscription required — included with existing access
-- Open feedback period for accuracy improvements
+_Expands on: How accurate is the ASR on code identifiers?_
 
-## Why This Matters
+- The ASR model is tuned on programming vocabulary such as camelCase names.
 
-Voice mode democratises AI-assisted coding for developers with repetitive strain injuries and other accessibility needs, while also speeding up routine tasks like file navigation and command execution.
+## Platforms
 
-## Notable Quotes
+It works on macOS, Linux and Windows.`;
 
-- "We want Claude Code to be the most accessible coding assistant on the market." — Anthropic spokesperson`;
+/** A stored summary-v2 brief row. */
+function briefRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "brief-1",
+    itemId: techCrunchItem.id,
+    summary: mockBriefSummary,
+    model: "gemini-3.5-flash-lite",
+    promptType: "brief",
+    createdAt: new Date(Date.now() - 120_000).toISOString(),
+    structured: mockBriefOutput,
+    promptVersion: "summary-v2",
+    ...overrides,
+  };
+}
+
+/** A stored summary-v2 detailed row built from `briefId`. */
+function detailedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "detailed-1",
+    itemId: techCrunchItem.id,
+    summary: mockDetailedSummary,
+    model: "gemini-3.5-flash",
+    promptType: "detailed",
+    createdAt: new Date(Date.now() - 90_000).toISOString(),
+    structured: { briefId: "brief-1", sections: mockDeltaOutput.sections },
+    promptVersion: "summary-v2",
+    ...overrides,
+  };
+}
+
+function storedRows(rows: { brief?: unknown; detailed?: unknown }) {
+  mockGetAISummary.mockImplementation((_id: string, type?: string) =>
+    type === "brief" ? rows.brief : type === "detailed" ? rows.detailed : undefined
+  );
+}
+
+/** Answer brief prompts with the brief and detailed prompts with the delta. */
+function answerByPrompt(notes = ["A note"]) {
+  mockGenerateJSON.mockImplementation(async (prompt: string) =>
+    prompt.includes("taking notes on part")
+      ? { notes }
+      : prompt.includes("Going deeper")
+        ? mockDeltaOutput
+        : mockBriefOutput
+  );
+}
 
 // ── Setup / teardown ──────────────────────────────────────────────────────────
 
@@ -249,20 +287,9 @@ describe("generateSummary — cache behaviour", () => {
     expect(second).toEqual({ summary: "Cached cooldown summary", cached: true });
   });
 
-  it("bypasses cache when the cached prompt_type does not match the requested length", async () => {
-    const briefRow = {
-      id: "sum-cached-3",
-      item_id: techCrunchItem.id,
-      summary: mockBriefSummary,
-      model: "gemini-3.5-flash-lite",
-      prompt_type: "brief",
-      created_at: new Date().toISOString(),
-    };
-    mockGetAISummary.mockImplementation((_id: string, type?: string) =>
-      type === "brief" ? briefRow : undefined
-    );
-
-    mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
+  it("does not serve a cached brief for a detailed request", async () => {
+    storedRows({ brief: briefRow() });
+    answerByPrompt();
 
     const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "detailed",
@@ -375,15 +402,18 @@ describe("generateSummary — TechCrunch article fixture", () => {
     expect(result.summary).not.toContain("How accurate is the ASR");
   });
 
-  it("detailed summary also contains Why This Matters section", async () => {
-    mockGenerateJSON.mockResolvedValueOnce(mockDetailedOutput);
+  it("detailed summary shows the brief once, then the delta under Going deeper", async () => {
+    answerByPrompt();
 
     const result = await generateSummary(context, repositories, techCrunchItem.id, {
       length: "detailed",
     });
 
-    expect(result.summary).toContain("Why This Matters");
-    expect(result.summary).toContain("Notable Quotes");
+    expect(result.summary.match(/## TL;DR/g)).toHaveLength(1);
+    expect(result.summary.indexOf("## What changes for developers")).toBeLessThan(
+      result.summary.indexOf("## Going deeper")
+    );
+    expect(result.summary).not.toContain("Why This Matters");
   });
 
   it("returns cached=false on first generation and cached=true on second call", async () => {
@@ -445,19 +475,6 @@ describe("generateSummary — content-aware brief (summary-v2)", () => {
     expect(call.promptVersion).toBe("summary-v2");
     expect(call.structured).toEqual(mockBriefOutput);
     expect(call.contentHash).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it("stores the detailed summary with the v1 prompt version", async () => {
-    mockGenerateJSON.mockResolvedValue(mockDetailedOutput);
-    await generateSummary(context, repositories, techCrunchItem.id, { length: "detailed" });
-
-    const call = mockUpsertAISummary.mock.calls[0][0];
-    expect(call.promptVersion).toBe("summary-v1");
-    expect(call.structured).toEqual(mockDetailedOutput);
-    expect(mockGenerateJSON.mock.calls[0][2].responseSchema.required).toEqual([
-      "overview",
-      "keyPoints",
-    ]);
   });
 
   it("accepts an overview-only brief when the piece needs no sections", async () => {
@@ -528,32 +545,170 @@ describe("generateSummary — content-aware brief (summary-v2)", () => {
     expect(prompt).not.toContain("xxxx");
   });
 
-  it("writes long documents from chunk notes with the requested length's instructions", async () => {
+  it("writes long documents from chunk notes, brief and detailed alike", async () => {
     const paragraph = "Long-form source material. ".repeat(500);
     mockGetItemById.mockReturnValue({
       ...techCrunchItem,
       id: "long-item",
       fullContent: Array.from({ length: 12 }, () => paragraph).join("\n\n"),
     });
-    mockGenerateJSON.mockImplementation(async (prompt: string) =>
-      prompt.includes("taking notes on part")
-        ? { notes: ["Specific note"] }
-        : prompt.includes("5-8 bullet points")
-          ? mockDetailedOutput
-          : mockBriefOutput
-    );
+    answerByPrompt(["Specific note"]);
 
-    for (const length of ["brief", "detailed"] as const) {
-      mockGenerateJSON.mockClear();
-      await generateSummary(context, repositories, "long-item", { length });
-      const calls = mockGenerateJSON.mock.calls as [string, string][];
-      const [finalPrompt, finalTask] = calls[calls.length - 1];
-      expect(finalTask).toBe("summarize-complex");
-      expect(finalPrompt).toContain("Notes From Each Part Of A Long Document");
-      expect(finalPrompt).toContain("### Part 1\n- Specific note");
-      expect(finalPrompt).toContain(
-        length === "brief" ? "There is no fixed template" : "5-8 bullet points"
-      );
-    }
+    await generateSummary(context, repositories, "long-item", { length: "brief" });
+    let calls = mockGenerateJSON.mock.calls as [string, string][];
+    let [finalPrompt, finalTask] = calls[calls.length - 1];
+    expect(finalTask).toBe("summarize-complex");
+    expect(finalPrompt).toContain("There is no fixed template");
+    expect(finalPrompt).toContain("### Part 1\n- Specific note");
+
+    // Detailed with no stored brief: the notes are taken once and feed the brief and the delta.
+    mockGenerateJSON.mockClear();
+    await generateSummary(context, repositories, "long-item", { length: "detailed" });
+    calls = mockGenerateJSON.mock.calls as [string, string][];
+    const noteCalls = calls.filter(([prompt]) => prompt.includes("taking notes on part"));
+    expect(noteCalls.length).toBe(calls.length - 2);
+    [finalPrompt, finalTask] = calls[calls.length - 1];
+    expect(finalTask).toBe("summarize-complex");
+    expect(finalPrompt).toContain("Going deeper");
+    expect(finalPrompt).toContain("Notes From Each Part Of A Long Document");
+    expect(finalPrompt).toContain("### Part 1\n- Specific note");
+  });
+});
+
+describe("generateSummary — detailed as a delta over the brief (summary-v2)", () => {
+  it("writes the delta over the stored brief with summarize-complex, even for short items", async () => {
+    storedRows({ brief: briefRow() });
+    answerByPrompt();
+
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+    });
+
+    expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
+    const [prompt, task, options] = mockGenerateJSON.mock.calls[0];
+    expect(task).toBe("summarize-complex");
+    expect(prompt).toContain("The brief (the reader has already read this)");
+    expect(prompt).toContain(mockBriefOutput.overview);
+    expect(prompt).toContain("1. How accurate is the ASR on code identifiers?");
+    expect(options.responseSchema.required).toEqual(["sections"]);
+
+    expect(mockUpsertAISummary).toHaveBeenCalledTimes(1);
+    const call = mockUpsertAISummary.mock.calls[0][0];
+    expect(call.promptType).toBe("detailed");
+    expect(call.promptVersion).toBe("summary-v2");
+    expect(call.structured).toEqual({
+      briefId: "brief-1",
+      sections: [
+        mockDeltaOutput.sections[0],
+        {
+          heading: "Platforms",
+          format: "paragraph",
+          items: ["It works on macOS, Linux and Windows."],
+        },
+      ],
+    });
+    expect(call.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(result).toEqual({ summary: mockDetailedSummary, cached: false });
+  });
+
+  it.each([
+    ["missing", undefined],
+    [
+      "a pre-S2 brief without structure",
+      briefRow({ structured: undefined, promptVersion: undefined }),
+    ],
+  ])("generates and stores the brief first when it is %s", async (_label, brief) => {
+    storedRows({ brief });
+    answerByPrompt();
+
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+    });
+
+    const tasks = mockGenerateJSON.mock.calls.map((call) => call[1]);
+    expect(tasks).toEqual(["summarize", "summarize-complex"]);
+    expect(mockGenerateJSON.mock.calls[0][0]).toContain("There is no fixed template");
+    const [storedBrief, storedDetailed] = mockUpsertAISummary.mock.calls.map((call) => call[0]);
+    expect(storedBrief).toMatchObject({ promptType: "brief", promptVersion: "summary-v2" });
+    expect(storedDetailed.promptType).toBe("detailed");
+    expect(storedDetailed.structured.briefId).toBe(storedBrief.id);
+    expect(result.brief).toBe(mockBriefSummary);
+    expect(result.summary).toBe(mockDetailedSummary);
+  });
+
+  it("serves a detailed summary that belongs to the stored brief from cache", async () => {
+    storedRows({ brief: briefRow(), detailed: detailedRow() });
+
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+    });
+
+    expect(result).toEqual({ summary: mockDetailedSummary, cached: true });
+    expect(mockGenerateJSON).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds a detailed summary once its brief has been regenerated", async () => {
+    storedRows({ brief: briefRow({ id: "brief-2" }), detailed: detailedRow() });
+    answerByPrompt();
+
+    const result = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+    });
+
+    expect(result.cached).toBe(false);
+    expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
+    expect(mockUpsertAISummary.mock.calls[0][0].structured.briefId).toBe("brief-2");
+  });
+
+  it("keeps a pre-S2 detailed summary until the brief is regenerated after it", async () => {
+    const oldDetailed = detailedRow({
+      summary: "## TL;DR\n\nOld detailed",
+      structured: undefined,
+      promptVersion: undefined,
+    });
+    storedRows({ brief: briefRow(), detailed: oldDetailed });
+    await expect(
+      generateSummary(context, repositories, techCrunchItem.id, { length: "detailed" })
+    ).resolves.toEqual({ summary: "## TL;DR\n\nOld detailed", cached: true });
+
+    storedRows({ brief: briefRow({ createdAt: new Date().toISOString() }), detailed: oldDetailed });
+    answerByPrompt();
+    const rebuilt = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+    });
+    expect(rebuilt.cached).toBe(false);
+  });
+
+  it("honours the force cooldown only for a current detailed summary", async () => {
+    storedRows({
+      brief: briefRow(),
+      detailed: detailedRow({ createdAt: new Date().toISOString() }),
+    });
+    const cooled = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+      force: true,
+    });
+    expect(cooled.cached).toBe(true);
+
+    storedRows({ brief: briefRow({ id: "brief-2" }), detailed: detailedRow() });
+    answerByPrompt();
+    const forced = await generateSummary(context, repositories, techCrunchItem.id, {
+      length: "detailed",
+      force: true,
+    });
+    expect(forced.cached).toBe(false);
+  });
+
+  it.each([
+    { sections: [] },
+    { sections: [{ heading: "Empty", format: "bullets", items: [" "] }] },
+    {},
+  ])("rejects an empty or malformed delta without caching it", async (output) => {
+    storedRows({ brief: briefRow() });
+    mockGenerateJSON.mockResolvedValue(output);
+    await expect(
+      generateSummary(context, repositories, techCrunchItem.id, { length: "detailed" })
+    ).rejects.toMatchObject({ code: "AI_INVALID_OUTPUT" });
+    expect(mockUpsertAISummary).not.toHaveBeenCalled();
   });
 });
