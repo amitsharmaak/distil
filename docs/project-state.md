@@ -27,13 +27,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   recommended answer to all four open decisions and asked for S1 on this branch. S1 is done
   locally: the brief now picks a shape and up to three sections for the piece, records the
   questions it leaves open, and is stored with its structured JSON and prompt version (new tenant
-  stage `summary-structure`, `0011_summary_structure.sql`). **Release order matters:** the
-  `summary-structure` stage must be applied to Production _before_ this branch reaches `main`,
-  because `main` auto-deploys while the pin is `unpinned` and the new code writes the new columns;
-  deployed first, every summary write would fail until the stage is applied. Applying it needs
-  Amit's task-specific authorization. Next: Amit reviews PR #59, authorizes and applies the stage
-  (or asks Claude to), then merges; S2 (detailed as a delta) is the next phase and needs only this
-  branch merged.
+  stage `summary-structure`, `0011_summary_structure.sql`). **The stage is applied to
+  Production** (2026-09-29 09:53:39Z, by Amit with his authorization; checkpoint
+  "summary-structure applied to Production — 2026-09-29"), so the release-order condition is
+  met and PR #59 can be merged. Next: Amit merges PR #59 (label `full-ci`), then presses
+  Regenerate on one Production item's brief to see the new format; S2 (detailed as a delta) is
+  the next phase and starts from `main` after the merge.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -341,6 +340,36 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### summary-structure applied to Production — 2026-09-29
+
+Amit authorized applying the adaptive-summaries S1 stage to Production and ran it himself from
+this worktree (the only checkout with `0011_summary_structure.sql` before the merge), with the
+`distil-production` owner connection string copied from the Neon console's Connect dialog into
+`DATABASE_MIGRATION_URL="$(pbpaste)"`; the connection string never passed through Claude, and
+Claude cleared the clipboard afterwards. Command:
+`npm run db:tenant:migrate -- --stage summary-structure --amit-user-id 3844a094-2018-4118-83f4-874e7081568d`.
+(A first attempt copied the `<uuid>` placeholder literally; zsh rejected it as a redirection
+before anything ran.)
+
+Verified by Claude with read-only queries in the Neon SQL editor (project
+`floral-river-70536503`, branch `distil-production` / `br-damp-wildflower-b3kw15cu`, database
+`neondb`):
+
+- Ledger `distil_tenant_migrations`: expand, backfill, contract, lifecycle (2026-09-09),
+  returning-auth (2026-09-10), perf-indexes (2026-09-18) and now `summary-structure` /
+  `0011_summary_structure.sql` applied `2026-09-29 09:53:39Z`, all owner
+  `3844a094-2018-4118-83f4-874e7081568d`.
+- Columns: `public.ai_summaries` and the `tenant_api.ai_summaries` contract view both have
+  `structured jsonb`, `prompt_version text` and `content_hash text`, so the runtime role now
+  sees all three.
+- The 20 existing Production summaries all have `prompt_version` NULL, as intended: nothing was
+  rewritten, and they keep rendering as v1 until regenerated.
+
+No application code, deployment or environment variable changed. The code that writes the new
+columns ships when PR [#59](https://github.com/amitsharmaak/distil/pull/59) merges. Rollback:
+recreate `tenant_api.ai_summaries` with its previous column list, drop the two columns, and
+delete the ledger row.
+
 ### Adaptive summaries S1: content-aware brief — 2026-09-29
 
 Amit chose the recommended answer to each open decision in the plan below (existing summaries
@@ -411,7 +440,8 @@ in S2; capture keeps generating only the brief) and asked for S1 on the plan's b
 
 **Release and restart steps**
 
-1. Amit authorizes applying `summary-structure` to Production:
+1. Done 2026-09-29 (checkpoint "summary-structure applied to Production — 2026-09-29").
+   Amit authorizes applying `summary-structure` to Production:
    `npm run db:tenant:migrate -- --stage summary-structure --amit-user-id <uuid>` with the
    Production `DATABASE_MIGRATION_URL`. It must run **before** the merge, because `main`
    auto-deploys and the new code writes the new columns.
