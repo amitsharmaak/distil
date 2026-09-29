@@ -18,6 +18,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **AI cost accounting corrected (branch `claude/model-token-costs-6e8e23`, PR pending;
+  checkpoint "AI cost accounting: verified prices, thinking tokens, grounding fee —
+  2026-09-29"):** Amit asked for accurate per-call costs. Two Gemini rates were 3–5× too low,
+  Gemini thinking tokens were never counted, and grounded-search queries were not charged. All
+  three are fixed in code; recorded costs rise from the merge onward (earlier rows stay
+  under-counted). Next: Amit reviews and merges; open follow-ups are listed in the checkpoint.
 - **Tester onboarding: extension origin prefilled (PR
   [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
   checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
@@ -65,9 +71,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
-- **Adaptive brief and detailed summaries: S1 released; S2 merged (PR
-  [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on 2026-09-29
-  in the consolidation, **before** the pre-merge key check in step (1) below; checkpoint "Adaptive summaries S2:
+- **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
+  (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
+  2026-09-29; checkpoints "Anthropic key added to Production — 2026-09-29", "Adaptive summaries S2:
   detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
   delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
   brief to stay a short overview, and the detailed view to add meaningful depth beyond the
@@ -79,13 +85,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   and it is rebuilt when the brief is regenerated. No schema change. Verified locally with
   `npm run check` and on the four local items (all four pass the new delta check; per-item
   verdicts in the S2 checkpoint), on the Gemini fallback because the local `ANTHROPIC_API_KEY`
-  is rejected. Next: (1) **now, since S2 is on `main` and auto-deploys:** confirm the
-  Production Anthropic key and `claude-sonnet-4-6` answer (`npm run audit:ai-models` with the
-  Production keys). Every detailed request routes to Claude when that key is set, and an
-  authentication failure does not fall back to Gemini, so a bad key breaks Detailed on
-  Production. The quick mitigation is to remove `ANTHROPIC_API_KEY` from Vercel, which routes
-  Detailed to Gemini. (2) On Production, open Detailed on one item with a new brief and one with
-  an old brief. S3 (depth on demand) starts from `main` on Amit's decision.
+  is rejected. **Production:** Vercel had no `ANTHROPIC_API_KEY` when S2 deployed, so Detailed
+  ran on Gemini at first. Amit then added a new key (audit: `claude-sonnet-4-6` ok) and
+  redeployed, and confirmed Detailed works. An authentication failure still does not fall back
+  to Gemini; if the key is ever revoked, remove the variable (Detailed then uses Gemini). Open
+  items: the local `.env.local` key is still the rejected one unless Amit replaced it;
+  `claude-haiku-4-5` shows as MISSING in the audit (Anthropic-only fallback, unused while Gemini
+  is configured; fix in progress in a separate session). S3 (depth on demand) starts from
+  `main` on Amit's decision.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -102,6 +109,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   migration and no notification bell — see the checkpoint for why both were avoided. Open item
   for Amit: the populated list was never exercised against a database, because this worktree's
   `.env.local` has no `DATABASE_URL`; the first look on Production is the real check.
+- **AI model audit accepts Anthropic aliases (branch `claude/haiku-alias-audit`; checkpoint
+  "AI model audit resolves Anthropic aliases — 2026-09-29"):** `npm run audit:ai-models`
+  reported `claude-haiku-4-5` as missing because Anthropic's ListModels returns only the dated
+  snapshot. The ids stay undated aliases; the script now resolves an unlisted id with GetModel.
+  No runtime or cloud change. Next: merge on Amit's decision.
 - **Model selection: Gemini default, Anthropic optional (PR
   [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
   on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
@@ -392,6 +404,110 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Anthropic key added to Production — 2026-09-29
+
+After the consolidation merged S2, Claude checked Vercel through Amit's Chrome (project
+`project-evgf1`, Settings → Environment Variables). **There was no `ANTHROPIC_API_KEY`**, so
+S2's Detailed summaries had been running on Gemini through `PROVIDER_FALLBACK_MODELS`. The
+Production risk recorded in the consolidation checkpoint (a bad key breaking Detailed) never
+applied.
+
+Amit chose to enable Claude:
+
+1. **New key.** He created a new Anthropic key and tested it locally, taking the key from the
+   clipboard with `ANTHROPIC_API_KEY="$(pbpaste)" npm run audit:ai-models`. The key never
+   passed through Claude or a file.
+   - All four Gemini models `ok`; `claude-sonnet-4-6` `ok`.
+   - `claude-haiku-4-5` `MISSING`. That is the Anthropic-only fallback, unused while Gemini is
+     configured, and a separate session is fixing the id.
+2. **Vercel variable.** Claude opened the Add Environment Variable form and filled in only the
+   name. Amit pasted the value and saved it as a **Secret** for **Production** only.
+3. **Redeploy.** Amit redeployed the current Production deployment ("Redeploy of Cwn2G15bt",
+   `main` at `d79aef3`). It was Ready in 3m 18s and is the current Production deployment.
+4. **Confirmed.** Amit confirmed that opening Detailed on Production works.
+
+Every S2 Detailed request and every deep-research synthesis on Production now routes to
+`claude-sonnet-4-6`, which costs more per call than Gemini. `DISTIL_DAILY_AI_BUDGET` still caps
+spend.
+
+Also seen, not acted on:
+
+- **Vercel account prompts:** "Secure Your Account with 2FA" and "Verify Your Secondary Email".
+- **Billing warning:** "The billing address on your payment method is missing or incomplete"
+  in the sidebar.
+
+These are Amit's account decisions.
+
+### AI model audit resolves Anthropic aliases — 2026-09-29
+
+`npm run audit:ai-models` printed `anthropic: MISSING claude-haiku-4-5` while
+`claude-sonnet-4-6` passed. Checked live with the local key, read-only: ListModels returns
+`claude-sonnet-4-6` (that model has no dated id) and `claude-haiku-4-5-20251001`, never the
+Haiku alias; GetModel (`models.retrieve`) resolves `claude-haiku-4-5` to
+`claude-haiku-4-5-20251001` and returns 404 for an unknown id. The Messages API accepts the
+alias, and the Claude API reference recommends aliases, so the configured id was never wrong.
+
+- **Decision:** keep the undated alias in `ai-config.ts` and `MODEL_COSTS` (no key change,
+  so cost lookup is unaffected). A dated pin would only differ once Anthropic ships a new Haiku
+  4.5 snapshot, and the alias is the documented form.
+- **Change:** `scripts/check-ai-models.ts` falls back to GetModel for Anthropic ids that are
+  missing from the list, and prints `ok  claude-haiku-4-5 (alias of claude-haiku-4-5-20251001)`;
+  a 404 is still `MISSING`. `ai-config.unit.test.ts` pins that Anthropic ids are undated
+  aliases. There is a comment in `ai-config.ts`, and `AGENTS.md` has a note in its AI bullet.
+- **Verification (local):** `npm run audit:ai-models` passes for Gemini and both Claude ids
+  (OpenAI skipped, no key); `npm run check` passes (228 suites, 1725 tests) after `npm ci`, which replaced this worktree's stale jsdom 30 install. Before that, one harness test failed on a jsdom ESM `require`. The local `ANTHROPIC_API_KEY` now
+  lists models, unlike the S2 note, which recorded it as rejected. The Production key was not
+  checked.
+
+### AI cost accounting: verified prices, thinking tokens, grounding fee — 2026-09-29
+
+Amit asked for the real per-token price of every model in `src/lib/ai/ai-config.ts` so that
+per-call costs (audit log `cost`, `ai.usage` `costMicrousd`, the daily and rolling budgets) are
+accurate. Prices were read on 2026-09-29 from the official pages:
+`ai.google.dev/gemini-api/docs/pricing`, `developers.openai.com/api/docs/pricing` and
+`platform.claude.com/docs/en/about-claude/pricing` (standard paid tier, USD per 1M tokens).
+
+| Model                  | Was (in / out) | Now (in / out) |
+| ---------------------- | -------------- | -------------- |
+| gemini-3.5-flash-lite  | 0.30 / 2.50    | unchanged      |
+| gemini-3.5-flash       | 0.50 / 3.00    | 1.50 / 9.00    |
+| gemini-3.1-flash-lite  | 0.25 / 1.50    | unchanged      |
+| gemini-3-flash-preview | 0.15 / 0.60    | 0.50 / 3.00    |
+| gpt-4o-mini            | 0.15 / 0.60    | unchanged      |
+| gpt-4o                 | 2.50 / 10.00   | unchanged      |
+| claude-sonnet-4-6      | 3.00 / 15.00   | unchanged      |
+| claude-haiku-4-5       | 1.00 / 5.00    | unchanged      |
+
+**Code changes**
+
+- `MODEL_COSTS` corrected as above.
+- **Thinking tokens.** `geminiUsage` (`providers.ts`) now adds `thoughtsTokenCount` to output
+  tokens. Gemini 3.x thinks by default and bills thinking at the output rate; before this,
+  every Gemini call omitted it.
+- **Grounding fee.** Google bills each Google Search query a grounded call runs at $14 per
+  1,000 (one request can run several). `geminiUsage` reads
+  `groundingMetadata.webSearchQueries`, and the router's `estimateCost` adds
+  `GEMINI_SEARCH_QUERY_COST` ($0.014) per query. The 5,000 free queries a month are not netted
+  off, so estimates err high until that allowance is used.
+- New `src/lib/ai/__tests__/cost-estimate.unit.test.ts`.
+
+**Verified locally:** lint and typecheck pass; `src/lib/ai` Jest suites pass (14 suites, 167
+tests). The full Jest run had two failures unrelated to this change:
+`dispatchers.unit.test.ts` (a 30 ms timing test; passes when run alone) and
+`vercel-runtime-externals.unit.test.ts` (`require(jsdom)` hits `ERR_REQUIRE_ESM`; fails
+identically with this change stashed, so it is this worktree's `node_modules`). Not deployed;
+no external resources touched.
+
+**Not changed (follow-ups, each a separate decision)**
+
+- Anthropic cache-write and cache-read tokens are still added to input at the base rate
+  (writes are 1.25×, reads 0.1×). Nothing enables prompt caching today, so this has no effect
+  yet.
+- `text-embedding-004` (`embeddings.ts`) is no longer on Google's pricing page (current:
+  Gemini Embedding 2, $0.20 per 1M). Embeddings are not costed at all. Run
+  `npm run audit:ai-models` to confirm it still answers.
+- Historical `ai_audit_log` and usage rows keep their old, lower estimates.
 
 ### Life areas F4: area badge and one-tap reclassify — 2026-09-29
 

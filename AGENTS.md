@@ -92,7 +92,7 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   breaker. Gemini is the default for every task and the only required key; Anthropic is an
   optional upgrade for `summarize-complex` and `research-synthesize` (Gemini fallback when the
   key is absent); OpenAI is assigned to nothing. `npm run audit:ai-models` checks that every
-  configured id is callable. Summaries use Gemini with a budget-admitted same-provider fallback
+  configured id is callable (Anthropic ids are undated aliases, resolved via GetModel). Summaries use Gemini with a budget-admitted same-provider fallback
   model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated

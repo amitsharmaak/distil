@@ -16,6 +16,7 @@ import {
   GEMINI_SUMMARY_FALLBACK_MODEL,
   PROVIDER_FALLBACK_MODELS,
   MODEL_COSTS,
+  GEMINI_SEARCH_QUERY_COST,
 } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
@@ -38,18 +39,20 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function estimateCost(model: string, tokensIn: number, tokensOut: number): number {
+export function estimateCost(model: string, usage: ProviderUsage): number {
+  const searchCost = (usage.searchQueries ?? 0) * GEMINI_SEARCH_QUERY_COST;
   const costs = MODEL_COSTS[model];
-  if (!costs) return 0;
-  const inputCost = (tokensIn / 1_000_000) * costs.input;
-  const outputCost = (tokensOut / 1_000_000) * costs.output;
-  return inputCost + outputCost;
+  if (!costs) return searchCost;
+  const inputCost = (usage.inputTokens / 1_000_000) * costs.input;
+  const outputCost = (usage.outputTokens / 1_000_000) * costs.output;
+  return inputCost + outputCost + searchCost;
 }
 
 function measuredUsage(usage: ProviderUsage, prompt: string, output: string): ProviderUsage {
   return {
     inputTokens: usage.inputTokens || estimateTokens(prompt),
     outputTokens: usage.outputTokens || estimateTokens(output),
+    searchQueries: usage.searchQueries,
   };
 }
 
@@ -221,12 +224,9 @@ class AIRouter {
     const result = await p.generateText(prompt, model, options);
 
     const latencyMs = Date.now() - start;
-    const { inputTokens: tokensIn, outputTokens: tokensOut } = measuredUsage(
-      result.usage,
-      prompt,
-      result.value
-    );
-    const costEstimate = estimateCost(model, tokensIn, tokensOut);
+    const usage = measuredUsage(result.usage, prompt, result.value);
+    const { inputTokens: tokensIn, outputTokens: tokensOut } = usage;
+    const costEstimate = estimateCost(model, usage);
 
     await this.persistUsage(
       {
@@ -344,7 +344,7 @@ class AIRouter {
       tokens_in: usage.inputTokens,
       tokens_out: usage.outputTokens,
       latency_ms: Date.now() - start,
-      cost_estimate: estimateCost(model, usage.inputTokens, usage.outputTokens),
+      cost_estimate: estimateCost(model, usage),
     };
     scheduleAIAfterResponse(async () => {
       await Promise.all([
@@ -383,12 +383,9 @@ class AIRouter {
 
     const latencyMs = Date.now() - start;
     const resultStr = JSON.stringify(result.value);
-    const { inputTokens: tokensIn, outputTokens: tokensOut } = measuredUsage(
-      result.usage,
-      prompt,
-      resultStr
-    );
-    const costEstimate = estimateCost(model, tokensIn, tokensOut);
+    const usage = measuredUsage(result.usage, prompt, resultStr);
+    const { inputTokens: tokensIn, outputTokens: tokensOut } = usage;
+    const costEstimate = estimateCost(model, usage);
 
     await this.persistUsage(
       {
@@ -481,7 +478,7 @@ class AIRouter {
     }
     const output = JSON.stringify(result.value);
     const usage = measuredUsage(result.usage, prompt, output);
-    const cost = estimateCost(model, usage.inputTokens, usage.outputTokens);
+    const cost = estimateCost(model, usage);
     const latencyMs = Date.now() - start;
     scheduleAIAfterResponse(async () => {
       await Promise.all([
@@ -529,7 +526,7 @@ class AIRouter {
       const usage = measuredUsage(result.usage, prompt, result.value);
       const tokensOut = usage.outputTokens;
       const measuredTokensIn = usage.inputTokens;
-      const costEstimate = estimateCost(model, measuredTokensIn, tokensOut);
+      const costEstimate = estimateCost(model, usage);
 
       await this.persistUsage(
         {

@@ -23,6 +23,8 @@ export interface GenerateOptions {
 export interface ProviderUsage {
   inputTokens: number;
   outputTokens: number;
+  /** Google Search queries a grounded Gemini call ran; each one is billed separately. */
+  searchQueries?: number;
 }
 
 export interface ProviderResult<T> {
@@ -55,12 +57,24 @@ export interface GeminiProvider extends AIProvider {
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
-function geminiUsage(response: {
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+/**
+ * Billable Gemini usage. Thinking tokens are reported apart from the answer
+ * (`thoughtsTokenCount`) but billed at the output rate, so they count as output.
+ */
+export function geminiUsage(response: {
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
+  candidates?: { groundingMetadata?: { webSearchQueries?: string[] } }[];
 }): ProviderUsage {
+  const usage = response.usageMetadata;
+  const searchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length;
   return {
-    inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
+    ...(searchQueries ? { searchQueries } : {}),
   };
 }
 
