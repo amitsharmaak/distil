@@ -29,6 +29,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `GET /api/v1/search` (no UI caller now) and the `FEATURE_SEARCH` flag. Checked by tests and in the
   local in-app browser with real items: phone and desktop layouts, the `/search` redirect, and
   the removed icon and sidebar entry. Not deployed.
+- **AI cost accounting corrected (PR [#69](https://github.com/amitsharmaak/distil/pull/69),
+  squash merged as `d3ec32e` on 2026-09-29; checkpoints "Consolidation of open PRs (2) —
+  2026-09-29" and "AI cost accounting: verified prices, thinking tokens, grounding fee —
+  2026-09-29"):** Amit asked for accurate per-call costs. Two Gemini rates were 3–5× too low,
+  Gemini thinking tokens were never counted, and grounded-search queries were not charged. All
+  three are fixed in code; recorded costs rise from the merge onward (earlier rows stay
+  under-counted). Next: open follow-ups are listed in the checkpoint.
 - **Tester onboarding: extension origin prefilled (PR
   [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
   checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
@@ -46,12 +53,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
   writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
   decisions in the checkpoint and picks a phase (recommended R1).
-- **Inline search, quick filters and AI life areas: F1–F3 merged, both stages applied to
-  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+- **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
+  Production (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
   [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
   [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 PR
-  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; checkpoints
-  "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
+  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; F4 PR
+  [#72](https://github.com/amitsharmaak/distil/pull/72), squash merged as `c68d622` on 2026-09-29
+  after the full gate; checkpoints "Consolidation of open PRs (2) — 2026-09-29", "Life areas F4: area badge and one-tap reclassify —
+  2026-09-29", "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
   2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
   classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
   2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
@@ -63,18 +73,20 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
   an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
   changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
-  `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
-  and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
-  his terminal scrollback and shell history during this release (see the checkpoint); (2)
-  confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
-  filter bar on `https://distilai.app/feed` on desktop and phone (it was verified by tests only;
-  see the F3 checkpoint). Next: F4 (area badge and one-tap reclassify) and F5 (filter bar on
-  Today) start from `main`. Separate follow-up after F7: move the area classifier
+  `cf0cf28`). Open items for Amit: the F3 bar on a phone, and the F4 area badge in a browser
+  (both verified by tests only). Amit decided on 2026-09-29 not to rotate the `neondb_owner`
+  password after its exposure in his terminal history (see the consolidation (2) checkpoint). **Seen on
+  Production on 2026-09-29** (Claude, through Amit's signed-in Chrome): the F3 filter bar renders
+  on desktop with the area switch and the five toggles, `?area=work` filters, and a capture from
+  that afternoon had been classified by F2 as Updates (the only classified item until F6). F4 is on
+  `main` (Production already has `life-areas`, so it works on deploy). Next: F5 (filter bar
+  on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
-  2026-09-29; checkpoints "Anthropic key added to Production — 2026-09-29", "Adaptive summaries S2:
+  2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
+  as `b5a5ce8`; checkpoints "Anthropic key added to Production — 2026-09-29", "Adaptive summaries S2:
   detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
   delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
   brief to stay a short overview, and the detailed view to add meaningful depth beyond the
@@ -91,8 +103,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   redeployed, and confirmed Detailed works. An authentication failure still does not fall back
   to Gemini; if the key is ever revoked, remove the variable (Detailed then uses Gemini). Open
   items: the local `.env.local` key is still the rejected one unless Amit replaced it;
-  `claude-haiku-4-5` shows as MISSING in the audit (Anthropic-only fallback, unused while Gemini
-  is configured; fix in progress in a separate session). S3 (depth on demand) starts from
+  the audit's `claude-haiku-4-5` MISSING report is fixed by PR
+  [#71](https://github.com/amitsharmaak/distil/pull/71) (`021ec07`). S3 (depth on demand) starts from
   `main` on Amit's decision.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
@@ -110,11 +122,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   migration and no notification bell — see the checkpoint for why both were avoided. Open item
   for Amit: the populated list was never exercised against a database, because this worktree's
   `.env.local` has no `DATABASE_URL`; the first look on Production is the real check.
-- **AI model audit accepts Anthropic aliases (branch `claude/haiku-alias-audit`; checkpoint
-  "AI model audit resolves Anthropic aliases — 2026-09-29"):** `npm run audit:ai-models`
+- **AI model audit accepts Anthropic aliases (PR
+  [#71](https://github.com/amitsharmaak/distil/pull/71), squash merged as `021ec07` on
+  2026-09-29; checkpoint "AI model audit resolves Anthropic aliases — 2026-09-29"):** `npm run audit:ai-models`
   reported `claude-haiku-4-5` as missing because Anthropic's ListModels returns only the dated
   snapshot. The ids stay undated aliases; the script now resolves an unlisted id with GetModel.
-  No runtime or cloud change. Next: merge on Amit's decision.
+  No runtime or cloud change. Nothing open.
 - **Model selection: Gemini default, Anthropic optional (PR
   [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
   on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
@@ -446,6 +459,38 @@ filters (Unread, High priority, Videos, X, Podcasts) took two rows he does not u
   `feed-search` and `life-areas` tenant stages.
 - **F5 note.** When Today gets the filter bar, it gets the same compact search and sheet layout.
 
+### Consolidation of open PRs (2) — 2026-09-29
+
+Amit authorized merging every open PR into `main`, resolving `docs/project-state.md` conflicts
+on other sessions' branches. Claude merged the docs-only PR first, then the smaller code changes,
+then F4. After each merge the next PR was behind `main`; Claude merged `main` into its branch in a
+scratch worktree (the only conflict each time was the checkpoint list in this file, resolved by
+keeping both sides unchanged), pushed without force, waited for the required checks and squash
+merged it. Vercel posted a status on every push. `main` is now `c68d622`, with no open PRs.
+
+| PR                                                    | What                                                         | Squash commit |
+| ----------------------------------------------------- | ------------------------------------------------------------ | ------------- |
+| [#70](https://github.com/amitsharmaak/distil/pull/70) | Record of the Anthropic key added to Production (docs only)  | `b5a5ce8`     |
+| [#71](https://github.com/amitsharmaak/distil/pull/71) | AI model audit resolves Anthropic aliases                    | `021ec07`     |
+| [#69](https://github.com/amitsharmaak/distil/pull/69) | Accurate per-call cost estimates                             | `d3ec32e`     |
+| [#72](https://github.com/amitsharmaak/distil/pull/72) | Life areas F4: area badge and one-tap reclassify (full gate) | `c68d622`     |
+
+**Notes**
+
+- **No model change.** Before merging, Claude read #71 and #69: neither changes which model any
+  task calls. #71 touches the audit script, a comment, a test and `AGENTS.md`; #69 the price
+  table and usage accounting. Because #69 raises `gemini-3.5-flash` to $1.50 / $9.00 per 1M
+  tokens and counts thinking tokens, `DISTIL_DAILY_AI_BUDGET` is reached sooner for the same
+  traffic.
+- **No migrations and no cloud changes.** #72 needs none; Vercel, Neon and environment
+  variables were not touched.
+- **`neondb_owner` password:** Amit decided not to rotate it; the open item is closed.
+- **Cleanup.** Removed the scratch worktrees and every clean worktree whose branch was merged
+  (#56, #59, #60, #62, #66, #69, #70, #71, #72 and `ask-distil-feature-critique`), and deleted 23
+  merged local branches (each squash-merged head was checked to be contained in its merged PR
+  head). Left in place: `feed-page-layout-redesign-e8b8a0` (uncommitted changes) and
+  `app-performance-investigation-917601` (created during this run, likely a live session).
+
 ### Anthropic key added to Production — 2026-09-29
 
 After the consolidation merged S2, Claude checked Vercel through Amit's Chrome (project
@@ -500,6 +545,113 @@ alias, and the Claude API reference recommends aliases, so the configured id was
   (OpenAI skipped, no key); `npm run check` passes (228 suites, 1725 tests) after `npm ci`, which replaced this worktree's stale jsdom 30 install. Before that, one harness test failed on a jsdom ESM `require`. The local `ANTHROPIC_API_KEY` now
   lists models, unlike the S2 note, which recorded it as rejected. The Production key was not
   checked.
+
+### AI cost accounting: verified prices, thinking tokens, grounding fee — 2026-09-29
+
+Amit asked for the real per-token price of every model in `src/lib/ai/ai-config.ts` so that
+per-call costs (audit log `cost`, `ai.usage` `costMicrousd`, the daily and rolling budgets) are
+accurate. Prices were read on 2026-09-29 from the official pages:
+`ai.google.dev/gemini-api/docs/pricing`, `developers.openai.com/api/docs/pricing` and
+`platform.claude.com/docs/en/about-claude/pricing` (standard paid tier, USD per 1M tokens).
+
+| Model                  | Was (in / out) | Now (in / out) |
+| ---------------------- | -------------- | -------------- |
+| gemini-3.5-flash-lite  | 0.30 / 2.50    | unchanged      |
+| gemini-3.5-flash       | 0.50 / 3.00    | 1.50 / 9.00    |
+| gemini-3.1-flash-lite  | 0.25 / 1.50    | unchanged      |
+| gemini-3-flash-preview | 0.15 / 0.60    | 0.50 / 3.00    |
+| gpt-4o-mini            | 0.15 / 0.60    | unchanged      |
+| gpt-4o                 | 2.50 / 10.00   | unchanged      |
+| claude-sonnet-4-6      | 3.00 / 15.00   | unchanged      |
+| claude-haiku-4-5       | 1.00 / 5.00    | unchanged      |
+
+**Code changes**
+
+- `MODEL_COSTS` corrected as above.
+- **Thinking tokens.** `geminiUsage` (`providers.ts`) now adds `thoughtsTokenCount` to output
+  tokens. Gemini 3.x thinks by default and bills thinking at the output rate; before this,
+  every Gemini call omitted it.
+- **Grounding fee.** Google bills each Google Search query a grounded call runs at $14 per
+  1,000 (one request can run several). `geminiUsage` reads
+  `groundingMetadata.webSearchQueries`, and the router's `estimateCost` adds
+  `GEMINI_SEARCH_QUERY_COST` ($0.014) per query. The 5,000 free queries a month are not netted
+  off, so estimates err high until that allowance is used.
+- New `src/lib/ai/__tests__/cost-estimate.unit.test.ts`.
+
+**Verified locally:** lint and typecheck pass; `src/lib/ai` Jest suites pass (14 suites, 167
+tests). The full Jest run had two failures unrelated to this change:
+`dispatchers.unit.test.ts` (a 30 ms timing test; passes when run alone) and
+`vercel-runtime-externals.unit.test.ts` (`require(jsdom)` hits `ERR_REQUIRE_ESM`; fails
+identically with this change stashed, so it is this worktree's `node_modules`). Not deployed;
+no external resources touched.
+
+**Not changed (follow-ups, each a separate decision)**
+
+- Anthropic cache-write and cache-read tokens are still added to input at the base rate
+  (writes are 1.25×, reads 0.1×). Nothing enables prompt caching today, so this has no effect
+  yet.
+- `text-embedding-004` (`embeddings.ts`) is no longer on Google's pricing page (current:
+  Gemini Embedding 2, $0.20 per 1M). Embeddings are not costed at all. Run
+  `npm run audit:ai-models` to confirm it still answers.
+- Historical `ai_audit_log` and usage rows keep their old, lower estimates.
+
+### Life areas F4: area badge and one-tap reclassify — 2026-09-29
+
+Amit asked to start F4 after recording the Anthropic key release (PR
+[#70](https://github.com/amitsharmaak/distil/pull/70)). Branch `claude/areas-f4-reclassify` from
+`d79aef3`. Implementation complete and verified by tests; not merged, not deployed, not yet seen
+in a browser.
+
+**What changed**
+
+- **Area on every item.** `area` and `manual_area` join `ITEM_SUMMARY_COLUMNS`. Every item
+  projection now carries `aiArea`, `manualArea` and the effective `area` (the correction wins).
+  This is safe because Production has the `life-areas` stage; F2 and F3 deliberately deferred it.
+- **Correction write** (`ItemRepository.setManualArea`): writes only `manual_area` and
+  `manual_area_at`, never the AI's columns. `null` clears both.
+- **Item state** (`PATCH /api/v1/items/:id/state`, `src/lib/phase2/reader-service.ts`):
+  - **Input:** accepts `area`, one of the four areas or `null`.
+  - **Clearing:** picking the AI's own area, or `null`, clears the correction instead of storing
+    one, so only real disagreements reach the classifier as examples. An unchanged choice writes
+    nothing.
+  - **GET response:** now also returns `area`, `aiArea` and `manualArea`.
+- **Area badge** (`src/components/feed/area-badge.tsx`):
+  - **Behaviour:** a small pill showing the area. One tap opens the four choices (the AI's own
+    pick is marked "AI pick"); a second tap saves at once, optimistically. On failure it rolls
+    back and says so in the menu.
+  - **Placement:** on the full feed card (only once an item has an area, so unclassified older
+    items stay uncluttered until F6) and always in the reader header ("Set area" when there is
+    none).
+  - **Inside the card link:** every click stops before the card's link, so choosing an area never
+    opens the item.
+- **Test harness.**
+  - **Earlier-stage suites:** the five integration suites that stopped before `life-areas`
+    (retrieval, lifecycle, knowledge backfill, tenant upserts, RLS) now apply every stage.
+  - **Bare-schema suites:** the two that run on the bare Phase 2 schema (`repositories`,
+    `knowledge-repositories`) add exactly the life-areas columns through the new
+    `addLifeAreaColumns` helper in `tests/support/postgres.ts`.
+
+**Deviations from the F4 brief**
+
+- No compact-view badge, to keep the one-line row uncluttered.
+- No item event for a correction. The correction is the item's own state, which
+  `listAreaCorrections` reads directly.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 229 suites / 1,733 tests passed.
+  - New `area-badge.component.test.tsx` (5 cases): the optimistic save goes through the state
+    API, picking the AI's own area is not reported as a correction, rollback on failure, "Set
+    area" for an unclassified item, and a click never reaches an enclosing link.
+  - `reader-service.unit.test.ts`: `area` validation, a disagreement is stored, the AI's own area
+    or `null` clears the correction, and an unchanged choice writes nothing.
+- `npm run test:integration`: all 13 PostgreSQL suites passed. `life-areas.integration.test.ts`
+  adds projection coverage: the AI area, then a correction (effective area, `listSummaries`,
+  corrections list), then clearing it back to the AI's area.
+- Not verified in a browser (no local-loop configuration, as recorded in F3).
+
+**Restart steps:** merge the F4 PR. Then F5 (filter bar on Today) and F6 (backfill; its
+Production run needs Amit's authorization).
 
 ### Consolidation of open PRs — 2026-09-29
 

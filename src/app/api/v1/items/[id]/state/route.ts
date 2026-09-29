@@ -42,6 +42,9 @@ export const GET = withRequestMetrics(async (request: Request, context: RouteCon
         readAt: item.readAt ?? null,
         readingProgress: item.readingProgress ?? 0,
         manualPriority: item.manualPriority ?? null,
+        area: item.area ?? null,
+        aiArea: item.aiArea ?? null,
+        manualArea: item.manualArea ?? null,
       },
     });
   } catch (error) {

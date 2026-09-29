@@ -58,6 +58,12 @@ export interface ContentItem {
   detectedMedia?: unknown[];
   /** 0-1 score of how information-rich the content is. */
   informationDensity?: number;
+  /** Effective life area: Amit's correction when set, otherwise the AI's; absent until classified. */
+  area?: LifeArea;
+  /** The AI's latest area (`items.area`). */
+  aiArea?: LifeArea;
+  /** Amit's correction (`items.manual_area`); always wins over the AI's area. */
+  manualArea?: LifeArea;
 }
 
 /**

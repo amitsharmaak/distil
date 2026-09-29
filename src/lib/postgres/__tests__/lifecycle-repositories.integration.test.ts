@@ -103,6 +103,15 @@ beforeAll(async () => {
     ownerId: alpha.userId,
     migrationsDirectory: tenantMigrations,
   });
+  // Item projections read columns from every later stage (life-areas: area, manual_area).
+  for (const stage of ["perf-indexes", "summary-structure", "feed-search", "life-areas"] as const) {
+    await applyTenantMigrationStage({
+      sql: harness.sql,
+      stage,
+      ownerId: alpha.userId,
+      migrationsDirectory: tenantMigrations,
+    });
+  }
   await harness.sql.unsafe(`
     CREATE ROLE ${runtimeRole} LOGIN PASSWORD '${runtimePassword}' NOSUPERUSER NOBYPASSRLS;
     GRANT distil_runtime TO ${runtimeRole};

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { createClaimEvidence } from "@/lib/knowledge/grounding";
 import { createContentVersionIdentity, sha256 } from "@/lib/knowledge/content-identity";
 import type { ContentItem } from "@/lib/types";
-import { PostgresTestHarness } from "../../../../tests/support/postgres";
+import { PostgresTestHarness, addLifeAreaColumns } from "../../../../tests/support/postgres";
 import { createPostgresRepositories } from "../repositories";
 
 jest.setTimeout(120_000);
@@ -28,6 +28,7 @@ const item = (id: string): ContentItem => ({
 beforeAll(async () => {
   await harness.start();
   await harness.migrate(migrations);
+  await addLifeAreaColumns(harness.sql);
 });
 afterEach(async () => harness.reset());
 afterAll(async () => harness.stop());

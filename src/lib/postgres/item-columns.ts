@@ -34,6 +34,9 @@ export const ITEM_SUMMARY_COLUMNS = [
   "processing_status",
   "rejection_reason",
   "information_density",
+  // Tenant stage life-areas (0013): the AI's area and Amit's correction.
+  "area",
+  "manual_area",
 ] as const;
 
 /** Bulky detail columns only the full item projection fetches. */

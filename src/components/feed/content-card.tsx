@@ -5,6 +5,7 @@ import { Play, Headphones } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkReadButton } from "@/components/feed/mark-read-button";
+import { AreaBadge } from "@/components/feed/area-badge";
 import { cn } from "@/lib/utils";
 import { ContentItem, ContentType } from "@/lib/types";
 import { detectStrategy } from "@/lib/content-strategies";
@@ -131,6 +132,9 @@ export function ContentCard({
             <Badge variant="secondary" className="text-[10px] text-muted-foreground">
               Analyzing…
             </Badge>
+          )}
+          {!isProcessing && item.area && (
+            <AreaBadge itemId={item.id} area={item.area} aiArea={item.aiArea} />
           )}
           <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
         </div>
