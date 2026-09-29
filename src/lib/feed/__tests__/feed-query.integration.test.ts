@@ -259,6 +259,32 @@ describe("PostgresFeedQuery", () => {
     expect(await ids({ search: "100%", sort: "relevance" })).toEqual([]);
   });
 
+  it("filters by effective area, letting Amit's correction override the AI", async () => {
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    await repos.items.insert(item("ai-work"));
+    await repos.items.insert(item("corrected-to-personal"));
+    await repos.items.insert(item("unclassified"));
+    const classification = {
+      confidence: 0.9,
+      reason: "r",
+      model: "m",
+      classifiedAt: "2026-09-29T00:00:00.000Z",
+    };
+    await repos.items.setAiArea("ai-work", { ...classification, area: "work" });
+    await repos.items.setAiArea("corrected-to-personal", { ...classification, area: "work" });
+    await harness.sql`
+      UPDATE public.items SET manual_area='personal', manual_area_at=now()
+      WHERE id='corrected-to-personal'`;
+    const ids = async (areas: ("work" | "personal" | "learning" | "updates")[]) =>
+      (await repos.feed.list({ areas, sort: "recent" })).items.map((entry) => entry.id).sort();
+
+    expect(await ids(["work"])).toEqual(["ai-work"]);
+    expect(await ids(["personal"])).toEqual(["corrected-to-personal"]);
+    expect(await ids(["work", "personal"])).toEqual(["ai-work", "corrected-to-personal"]);
+    expect(await ids(["learning"])).toEqual([]);
+    expect((await repos.feed.list({ sort: "recent" })).items).toHaveLength(3);
+  });
+
   it("filters by site, folding twitter.com into x.com", async () => {
     const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     await repos.items.insert(item("x-post", { url: "https://x.com/someone/status/1" }));

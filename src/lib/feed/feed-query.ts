@@ -2,7 +2,7 @@ import type { Sql } from "postgres";
 
 import { itemSummaryColumnsSql } from "@/lib/postgres/item-columns";
 import { mapItemSummary } from "@/lib/postgres/mappers";
-import type { ContentItem, ContentItemSummary, Priority } from "@/lib/types";
+import type { ContentItem, ContentItemSummary, LifeArea, Priority } from "@/lib/types";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 export const DEFAULT_FEED_PAGE_SIZE = 30;
@@ -26,6 +26,8 @@ export interface FeedFilters {
   search?: string;
   /** URL hosts without `www.`; `x.com` also covers twitter.com (generated `items.site`). */
   sites?: string[];
+  /** Effective life areas: Amit's correction when set, otherwise the AI's area. */
+  areas?: LifeArea[];
 }
 
 export interface FeedQuery extends FeedFilters {
@@ -390,6 +392,11 @@ export class PostgresFeedQuery {
     if (query.sites?.length)
       conditions.push(
         this.sql`i.site = ANY(${this.sql.array(query.sites.map(normalizeFeedSite))})`
+      );
+    // Area columns come from the life-areas tenant stage, also read only on request.
+    if (query.areas?.length)
+      conditions.push(
+        this.sql`COALESCE(i.manual_area, i.area) = ANY(${this.sql.array(query.areas)})`
       );
     const search = query.search?.trim() ? query.search.trim() : undefined;
     const tsQuery = search ? feedSearchTsQuery(search) : undefined;

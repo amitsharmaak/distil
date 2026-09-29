@@ -19,10 +19,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
 - **Inline search, quick filters and AI life areas: F1 and F2 merged, both stages applied to
-  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  Production, F3 implemented and not merged (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
   [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
-  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; checkpoints
-  "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
+  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 on branch
+  `claude/search-f3-filter-bar`; checkpoints "Inline search F3: filter bar on Feed —
+  2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
   classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
   2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
   page replaced by a search bar at the top of Today and Feed that filters as he types, with
@@ -36,8 +38,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
   and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
   his terminal scrollback and shell history during this release (see the checkpoint); (2)
-  confirm that a new capture on Production gets an area (not yet observed). Next: F3 (filter bar
-  on Feed) starts from `main`. Separate follow-up after F7: move the area classifier
+  confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
+  filter bar in a browser before or right after merging (it was verified by tests only; see the
+  F3 checkpoint). Next: Amit merges the F3 PR; F4 (area badge and one-tap reclassify) and F5
+  (filter bar on Today) can then start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
 - **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
@@ -519,6 +523,80 @@ been applied to Production at 09:53:39Z beforehand (checkpoint "summary-structur
 Production — 2026-09-29"), so the release order held. Per Amit, the Vercel Production
 deployment of `ea420d4` completed; Claude did not re-check the deployment. Old summaries render
 as v1 until regenerated.
+
+### Inline search F3: filter bar on Feed — 2026-09-29
+
+Amit asked to merge the release record (PR [#65](https://github.com/amitsharmaak/distil/pull/65),
+squash merged as `3d8a23a` after the Quick gate) and start F3. Branch
+`claude/search-f3-filter-bar` from `cf0cf28`, then fast-forwarded to `3d8a23a`. Implementation
+complete and verified by tests; not merged and not deployed. **Not yet seen in a browser** (see
+Verification).
+
+**What changed**
+
+- **Filter bar** (`src/components/feed/filter-bar.tsx`) at the top of `/feed`, three rows:
+  1. **Search:** a search field ("Search your items"; `/` focuses it; Esc or × clears it) and
+     the Filters button.
+  2. **Area switch:** All · Personal · Work · Learning · Updates, one at a time.
+  3. **Quick filters and chips:**
+     - Five toggles: Unread (on by default, as before), High priority, Videos, X and Podcasts.
+     - Each filter set in the sheet appears as a removable chip, so nothing hidden is ever
+       active without being shown.
+     - "Clear" appears whenever anything narrows the default view.
+
+  Rows 2 and 3 scroll sideways on phones instead of wrapping.
+
+- **Typing:**
+  - **Instantly:** each keystroke narrows the items already on screen (title, publication,
+    author).
+  - **After 250 ms:** a pause commits `q` to the URL once, and the server renders the real
+    result.
+  - **Short input:** text shorter than 2 characters is never sent.
+  - **Clearing:** removing the search also removes a `sort=relevance` from the URL.
+- **Quick-filter registry** (`src/lib/feed/quick-filters.ts`, client-safe): each toggle's URL
+  mapping, the area options, the removable-chip list and the clear-all update. F5 reuses it on
+  Today.
+- **Filters sheet** (`src/components/feed/feed-filters.tsx`, now `FeedFilterSheet`): now holds
+  sort, which gains "Best match" (relevance) while searching, plus every facet and the layout.
+  Sort and the unread toggle are no longer inline.
+- **One search path:**
+  - `FeedList` always calls `GET /api/v1/feed`. The legacy `/api/items?q=` branch is gone from
+    the island; the route itself stays until F7.
+  - `feedFilterKey` no longer special-cases search.
+  - `/feed` server-renders search results like any other filter. It parses exactly the request
+    the island would send (`feedRequestSearch(state)`), so the key and the data always agree.
+- **Area filter on the API:** `area` (repeatable) on `GET /api/v1/feed` filters on
+  `COALESCE(manual_area, area)`, referenced only when requested.
+
+**Deviations from the F3 brief, and why**
+
+- **Item projections still don't carry the area.** Filtering happens in SQL, so the list does
+  not need it yet. Adding `area`/`manual_area` to `ITEM_SUMMARY_COLUMNS` moves to F4, where the
+  badge first shows it. It also means updating the five integration suites that stop before the
+  `life-areas` stage, which belongs with that change.
+- **Search placeholder:** "Search your items".
+- **No header subtitle while searching:** the search field itself shows the query.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 226 suites / 1,700 tests passed.
+  - New `filter-bar.component.test.tsx` (11 cases): the debounce commits once per pause, short
+    input is never sent, clear and Esc work, the field follows URL changes, `/` focus (and not
+    from another text field), the area switch, the toggle-to-URL mapping, chips and Clear.
+  - `feed-list.component.test.tsx`: search goes through `/api/v1/feed` with area and site,
+    instant narrowing while typing, and relevance dropped when the search is cleared.
+  - `/feed` page tests: search server-renders with relevance, and a 1-character `q` is ignored.
+  - Feed query, route and contract tests for `area`.
+- `npm run test:integration`: all 13 PostgreSQL suites passed, including the effective-area
+  filter (the AI's area, overridden by a correction, and unclassified items excluded).
+- **Not verified in a browser.** No checkout has local-loop settings: the main `.env.local` is
+  still the pre-Phase-3 SQLite configuration, with no `DATABASE_URL` and no local auth secrets.
+  Setting that up needs Amit's local password choice and possibly `npm run db:local:reset`
+  (wipes the local database). Option: after merging, open `https://distilai.app/feed` on desktop
+  and phone and try a search, an area, and a couple of toggles.
+
+**Restart steps:** merge the F3 PR (Production already has both stages, so it works on deploy).
+F4 adds `area`/`manual_area` to the item projections and the badge. F5 puts the bar on Today.
 
 ### feed-search and life-areas applied to Production — 2026-09-29
 
