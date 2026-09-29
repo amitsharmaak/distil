@@ -24,7 +24,10 @@ const EXPORT_DATASETS = [
     "profile",
     `SELECT jsonb_build_object('id', id, 'primaryEmail', primary_email, 'displayName', display_name, 'createdAt', created_at) AS value FROM users ORDER BY id::text`,
   ],
-  ["items", `SELECT to_jsonb(t) - 'user_id' - 'search_vector' AS value FROM items t ORDER BY id`],
+  [
+    "items",
+    `SELECT to_jsonb(t) - 'user_id' - 'search_vector' - 'feed_search_vector' AS value FROM items t ORDER BY id`,
+  ],
   ["item-notes", `SELECT to_jsonb(t) - 'user_id' AS value FROM item_notes t ORDER BY item_id`],
   ["annotations", `SELECT to_jsonb(t) - 'user_id' AS value FROM annotations t ORDER BY id`],
   ["collections", `SELECT to_jsonb(t) - 'user_id' AS value FROM collections t ORDER BY id`],

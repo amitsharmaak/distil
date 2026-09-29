@@ -18,17 +18,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Inline search, quick filters and AI life areas: plan only, not started (branch
-  `claude/distil-search-filtering-redesign-d4f727`; checkpoint "Inline search, quick filters and
-  life areas — 2026-09-29"):** Amit wants the dedicated Search page replaced by a search bar at
-  the top of Today and Feed that filters as he types, with one-tap quick filters (Videos, X
-  links, …), and wants Distil to hold his personal, work and learning material with every item
-  sorted automatically by AI into one of four areas (Personal, Work, Learning, Updates), shown as
-  a filter and fixable with one tap. All open decisions are answered and recorded in the
-  checkpoint. Next: Amit picks one phase (F1–F7) per task; F1 and F2 can start independently from
-  `main`. Separate follow-up after F7: move the area classifier onto the model Amit called "the
-  new TypeSafe model GeV" (not yet identified; confirm the exact model before starting that
-  task).
+- **Inline search, quick filters and AI life areas: F1 implemented, not merged (plan merged as
+  PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 on branch
+  `claude/search-f1-feed-query`; checkpoints "Inline search F1: feed text search and site
+  facet — 2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit
+  wants the dedicated Search page replaced by a search bar at the top of Today and Feed that
+  filters as he types, with one-tap quick filters (Videos, X links, …), and wants Distil to hold
+  his personal, work and learning material with every item sorted automatically by AI into one
+  of four areas (Personal, Work, Learning, Updates), shown as a filter and fixable with one tap.
+  All open decisions are answered and recorded in the plan checkpoint. F1 adds `q`, `site` and
+  `sort=relevance` to `GET /api/v1/feed` with a new tenant stage `feed-search`
+  (`0012_feed_search.sql`); no UI changed. Next: Amit merges the F1 PR; the stage must be
+  applied to Production (needs his authorization) before any client sends `q` or `site`, which
+  first happens in F3. The plain feed does not depend on the stage, so the code can deploy first.
+  F2 can start from `main` in parallel. Separate follow-up after F7: move the area classifier onto
+  the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact model
+  before starting that task).
 - **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
   `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
   which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
@@ -350,6 +355,73 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Inline search F1: feed text search and site facet — 2026-09-29
+
+Amit asked to merge the plan (PR [#61](https://github.com/amitsharmaak/distil/pull/61), squash
+merged as `bdf877f` after the Quick gate passed) and start F1. Branch
+`claude/search-f1-feed-query` from `bdf877f`. Implementation complete and locally verified; not
+merged, not deployed, and the new tenant stage is not applied anywhere outside test databases.
+
+**What changed**
+
+- **API** (`src/lib/feed/feed-params.ts`): `GET /api/v1/feed` accepts `q` (2–200 characters,
+  trimmed), `site` (repeatable or comma list, up to 10 lowercase hosts matching
+  `^[a-z0-9.-]{1,253}$`) and `sort=relevance`. A request with `q` and no `sort` is ordered by
+  relevance; `sort=relevance` without `q` is a 400. The server-rendered `/feed` and `/` parse the
+  same schema but send neither parameter yet.
+- **Query** (`src/lib/feed/feed-query.ts`): `search` matches when the weighted text vector
+  matches an all-terms tsquery whose last term is a prefix, **or** the typed text appears
+  literally in the title, author or publication (`ILIKE`, wildcards escaped). The literal match
+  exists because stemming stores "learning" as `learn`, so a half-typed "learni" never matches
+  the index. Terms are only `\p{L}\p{N}` runs (no tsquery operator can come from the caller),
+  capped at eight, and PostgreSQL's English stop words are dropped in code because a
+  stop-word-only `to_tsquery` raises a NOTICE the runtime client would log on every keystroke.
+  Relevance is `ts_rank` plus 1 for a literal title match, rounded to six places and used as
+  the keyset cursor score, so pagination under relevance works like the other sorts. `sites`
+  filters `i.site = ANY(...)`, with `twitter.com` and mobile hosts folded into `x.com`.
+- **Tenant stage `feed-search`** (`src/lib/postgres/tenant-migrations/0012_feed_search.sql`):
+  adds the generated columns `items.feed_search_vector` (title A, author and publication B,
+  summary and topics C) and `items.site` (URL host without `www.`), a `(user_id, site)` btree,
+  and rebuilds the `tenant_api.items` view so the runtime role can see them. Registered in the
+  migrator, `scripts/migrate-tenant.ts`, `scripts/local-db-reset.ts`,
+  `scripts/perf/measure-web-vitals.ts`, the query-plan security test, `AGENTS.md`, the
+  backup-restore runbook and the Drizzle schema. The account export drops
+  `feed_search_vector` like `search_vector`.
+- **Release order:** the plain feed never references the new columns (a unit test asserts it),
+  so the code may deploy before the stage. The stage must be applied before a client sends `q`
+  or `site`; no client does until F3. Applying it to Production needs Amit's authorization.
+
+**Deviations from the F1 brief, and why**
+
+- The existing `items.search_vector` is **not** widened. It feeds the legacy `/api/items?q=`
+  path, and replacing a generated column means dropping it, which the `tenant_api.items` view
+  depends on. A new column is additive; F7 can drop the old one with the legacy path.
+- **No GIN index** on the new vector: `@@` is not leakproof, so under forced row-level security
+  it is evaluated above the security barrier and an index can never serve it (the same finding
+  as P7, recorded in `0010_perf_indexes.sql`). Per-tenant libraries are small, so the
+  sequential match over one tenant's rows is acceptable.
+- `site` is validated as a host pattern instead of an allowlist, so YouTube, Substack or any
+  other host needs no code change.
+- `src/lib/feed/feed-url.ts` (the client's filter key) is unchanged. Moving the Feed island onto
+  `q` belongs with the filter bar in F3; until then the island keeps its legacy search path.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint, typecheck and 224 suites / 1,664 tests passed.
+- `npm run test:integration` (Testcontainers, `postgres:16-alpine`): all 12 PostgreSQL suites
+  passed, including the new feed cases (prefix and stem matching, title-first ranking, author
+  match, search combined with content type, stop-word-only and `%` input, `twitter.com` folded
+  into `x.com`, keyset pagination under relevance without skips or repeats), the account
+  export, RLS and query-plan suites with the new stage applied.
+- Checked by hand in a throwaway `postgres:16-alpine`: the stop-word NOTICE, the stem mismatch
+  for half-typed words, and the host expression on real URL shapes.
+- Not done: the local dev loop against Amit's local database (it would need the stage applied
+  there and a signed-in browser; nothing user-visible changed in F1).
+
+**Restart steps:** merge the F1 PR; before F3 ships, Amit applies
+`npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>` to Production with his
+authorization and records it. F2 and F3 start from `main` after the merge.
 
 ### Inline search, quick filters and life areas — 2026-09-29
 
