@@ -18,6 +18,7 @@ export const TENANT_MIGRATION_STAGES = [
   "lifecycle",
   "returning-auth",
   "perf-indexes",
+  "summary-structure",
 ] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
@@ -28,6 +29,7 @@ const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   lifecycle: "0008_phase3_lifecycle.sql",
   "returning-auth": "0009_phase3_returning_auth.sql",
   "perf-indexes": "0010_perf_indexes.sql",
+  "summary-structure": "0011_summary_structure.sql",
 };
 
 interface AppliedMigrationRow {

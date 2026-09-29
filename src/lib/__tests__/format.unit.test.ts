@@ -1,4 +1,4 @@
-import { toPlainText, toSummaryDigest } from "../format";
+import { htmlToReadableText, toPlainText, toSummaryDigest } from "../format";
 
 describe("toPlainText", () => {
   it("returns an empty string for missing values", () => {
@@ -69,5 +69,29 @@ describe("toSummaryDigest", () => {
 
   it("returns an empty digest for missing input", () => {
     expect(toSummaryDigest(undefined)).toEqual({ lead: "", points: [] });
+  });
+});
+
+describe("htmlToReadableText", () => {
+  it("keeps paragraphs, headings and lists while dropping markup and scripts", () => {
+    const html =
+      '<article><h2 class="t">Launch <em>day</em></h2><p>First&nbsp;para &amp; more.</p>' +
+      "<script>track()</script><ul><li><p>One</p></li><li>Two</li></ul><p>Line<br>break</p></article>";
+    expect(htmlToReadableText(html)).toBe(
+      "## Launch day\n\nFirst para & more.\n\n- One\n- Two\n\nLine\nbreak"
+    );
+  });
+
+  it("returns an empty string for empty input", () => {
+    expect(htmlToReadableText(undefined)).toBe("");
+    expect(htmlToReadableText("<div> </div>")).toBe("");
+  });
+});
+
+describe("toSummaryDigest with content-aware briefs", () => {
+  it("uses the first listed section when there is no Key Points section", () => {
+    const brief =
+      "## TL;DR\n\nOverview.\n\n## Context\n\nA passage.\n\n## The steps\n\n1. First\n2. Second";
+    expect(toSummaryDigest(brief)).toEqual({ lead: "Overview.", points: ["First", "Second"] });
   });
 });

@@ -9,7 +9,7 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-28
+## Current handoff — 2026-09-29
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
@@ -18,14 +18,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Adaptive brief and detailed summaries: plan recorded, no phase started (branch
-  `claude/detailed-basic-summaries-987430`, docs only; checkpoint "Adaptive summaries: brief,
-  detailed delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece
-  instead of one fixed template, the brief to stay a short overview, and the detailed view to add
-  meaningful depth beyond the brief rather than more of the same. The checkpoint records how the
-  pipeline works today and three phase briefs, S1 (content-aware brief), S2 (detailed as a delta
-  over the brief) and S3 (go deeper on any point, and ask about the item), plus four open
-  decisions. Amit picks one phase per task; S1 comes first because S2 reads S1's stored output.
+- **Adaptive brief and detailed summaries: S1 implemented, not merged (branch
+  `claude/detailed-basic-summaries-987430`, PR [#59](https://github.com/amitsharmaak/distil/pull/59),
+  which also carries the plan; checkpoints "Adaptive summaries S1: content-aware brief —
+  2026-09-29" and "Adaptive summaries: brief, detailed delta and depth on demand — 2026-09-28"):**
+  Amit wants the summary to fit each piece instead of one fixed template, the brief to stay a
+  short overview, and the detailed view to add meaningful depth beyond the brief. He chose the
+  recommended answer to all four open decisions and asked for S1 on this branch. S1 is done
+  locally: the brief now picks a shape and up to three sections for the piece, records the
+  questions it leaves open, and is stored with its structured JSON and prompt version (new tenant
+  stage `summary-structure`, `0011_summary_structure.sql`). **Release order matters:** the
+  `summary-structure` stage must be applied to Production _before_ this branch reaches `main`,
+  because `main` auto-deploys while the pin is `unpinned` and the new code writes the new columns;
+  deployed first, every summary write would fail until the stage is applied. Applying it needs
+  Amit's task-specific authorization. Next: Amit reviews PR #59, authorizes and applies the stage
+  (or asks Claude to), then merges; S2 (detailed as a delta) is the next phase and needs only this
+  branch merged.
 - **Wispr Flow shared notes now capture (PR
   [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
   2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
@@ -333,6 +341,86 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Adaptive summaries S1: content-aware brief — 2026-09-29
+
+Amit chose the recommended answer to each open decision in the plan below (existing summaries
+stay until Regenerate; detailed routes through `summarize-complex` in S2; stacked detailed layout
+in S2; capture keeps generating only the brief) and asked for S1 on the plan's branch, so PR
+[#59](https://github.com/amitsharmaak/distil/pull/59) now carries the plan and S1 together.
+
+**What changed**
+
+- **Prompt** (`src/lib/prompts/summarize.ts`): `briefSummaryPrompt` replaces the fixed brief
+  template. The model sets `shape` (argument, news, how-to, research, conversation, meeting-note,
+  product, list, other) from the shape-hints table, writes a 1–3 sentence overview and at most
+  three sections with headings written for the piece (`format` bullets, steps, paragraph or
+  quotes, at most seven items in total), and lists 2–5 `openQuestions` the brief raises but does
+  not answer. `detailedSummaryPrompt` is the unchanged v1 template. `chunkNotesPrompt` replaces
+  the chunk mini-summaries: each part of a long document becomes specific notes, and the brief or
+  detailed prompt then runs over the notes, so long documents now honour the requested length
+  (they previously got the same generic synthesis at both lengths).
+- **Generator** (`src/lib/ai/summarize.ts`): article HTML is reduced to text with
+  `htmlToReadableText` (`src/lib/format.ts`; paragraphs, `## ` headings and `- ` lists kept)
+  before prompting and before the size estimate. Brief output is validated with zod and trimmed
+  to the caps instead of rejected (unknown shape → `other`, unknown format → `bullets`, empty
+  sections dropped); a missing overview or malformed section is still `invalid_output`. The
+  Gemini response schema constrains `shape` and `format` to enums. Rendering keeps `## TL;DR`
+  first, so feed cards and the reader's overview styling are unchanged; each section renders as
+  `## <heading>` with a bullet list, numbered list, prose or block quotes. Open questions are
+  stored, never rendered.
+- **Storage**: tenant stage `summary-structure` (`src/lib/postgres/tenant-migrations/0011_summary_structure.sql`)
+  adds nullable `ai_summaries.structured jsonb` and `prompt_version text` and rebuilds the
+  `tenant_api.ai_summaries` contract view. Finding: PostgreSQL froze that view's column list when
+  0007 created it, so 0010's `content_hash` was never visible to the runtime role; the rebuild
+  exposes it too. Every new summary row now records `structured`, `prompt_version`
+  (`summary-v2` brief, `summary-v1` detailed) and `content_hash` (SHA-256 of the prompt text).
+  `PostgresSummaries.upsert` writes the new columns only when given them, so older callers and
+  the integration fixtures that stop before the new stage are unaffected. The stage is wired into
+  `migrator.ts`, `scripts/migrate-tenant.ts`, `scripts/local-db-reset.ts`,
+  `scripts/perf/measure-web-vitals.ts`, the query-plans integration test, `AGENTS.md` and the
+  backup-restore runbook.
+- **Reader** (`src/components/feed/ai-summary-content.tsx`): sections are styled by their
+  markdown shape (bullet list, numbered steps, block quotes, prose) instead of by the four fixed
+  heading names; `TL;DR` and `Why This Matters` keep their treatment, so stored v1 summaries
+  render as before. `toSummaryDigest` (Today) falls back to the first listed section when there
+  is no Key Points section.
+
+**Verified locally**
+
+- `npm run check`: lint (0 errors, the 5 known warnings), typecheck, 224 suites / 1,646 tests
+  passed. New and updated tests: `prompts.unit`, `summarize.unit` (structured storage, prompt
+  version, caps, HTML stripping and task sizing, notes-based long documents at both lengths),
+  `ai-summary.component` (format-based styling, v1 still renders), `format.unit`,
+  `repositories.unit`, `tenant-migrator.unit`, `migration-invariants.unit`.
+- `npm run test:integration` (Testcontainers PostgreSQL, Docker): 12 suites / 47 tests passed,
+  including the query-plans security suite, which now applies `summary-structure`, and the
+  repository and tenant-upsert suites that write `ai_summaries`.
+- Real model, local Docker Postgres: the `summary-structure` stage was applied to Amit's local
+  database (additive; no reset), then a brief was regenerated for each of the four local items
+  through `generateSummary` with the tenant repositories (scratch script, not committed). Every
+  run succeeded and stored `summary-v2` with structured JSON: a Granola meeting note →
+  `meeting-note` (timeline-and-pricing and action-items sections, 2 s on
+  `gemini-3.5-flash-lite`); a short YouTube interview → `conversation` (2 s); two long items (an
+  X post embedding a video transcript and a long YouTube review, both over 8k estimated tokens)
+  → `conversation` and `product` via the notes path (9–11 s, synthesis on `gemini-3.5-flash`
+  because the local environment has no `ANTHROPIC_API_KEY`). Items were concrete (figures,
+  owners, dates) and no brief used a generic "Key Points" heading. All four chose `bullets`;
+  `steps` and `quotes` are covered by tests only.
+- Not verified: the reader was not viewed in a browser (this worktree's `.env.local` has no
+  local login hash); Production is untouched.
+
+**Release and restart steps**
+
+1. Amit authorizes applying `summary-structure` to Production:
+   `npm run db:tenant:migrate -- --stage summary-structure --amit-user-id <uuid>` with the
+   Production `DATABASE_MIGRATION_URL`. It must run **before** the merge, because `main`
+   auto-deploys and the new code writes the new columns.
+2. Merge PR #59 (Quick gate; add `full-ci` since a migration changed), then open one item on
+   Production and press Regenerate on its brief to see the new format; old summaries stay as
+   they are until regenerated.
+3. S2 (detailed as a delta over the brief) starts from `main` after the merge; it reads
+   `ai_summaries.structured.openQuestions`.
+
 ### Adaptive summaries: brief, detailed delta and depth on demand — 2026-09-28
 
 Amit's intent, in his words condensed: the current summary is one fixed template applied to
@@ -392,7 +480,7 @@ Three layers, each built on the one before it.
    anything empty. Alongside the visible brief it records, but does not show, the questions the
    brief raises and leaves unanswered ("how did they get that number", "what are the steps",
    "what is the counter-argument"). That list is what makes S2's delta possible.
-2. **Detailed (S2): only what the brief left out.** Detailed is generated *from* the stored brief:
+2. **Detailed (S2): only what the brief left out.** Detailed is generated _from_ the stored brief:
    the prompt shows the model the brief and says the reader has already read it. The model's job
    is to answer the brief's open questions and add the reasoning, mechanism, evidence, specifics
    (numbers, names, examples, steps), caveats and counterpoints that the brief compressed or
@@ -406,16 +494,16 @@ Three layers, each built on the one before it.
 
 Shape hints for S1 (a starting list; tune with real items):
 
-| Shape | What the reader needs |
-|---|---|
-| Argument, essay or opinion | the thesis, the main reasons, what the author concedes or dismisses |
-| News or announcement | what happened, who and when, what changes and for whom |
-| How-to or tutorial | the goal, the steps in order, prerequisites and pitfalls |
-| Research, data or report | the question, the method in a line, the findings with numbers, the limits |
-| Interview, podcast or video transcript | who is speaking, the main claims by segment, memorable lines |
-| Meeting or voice note (Granola, Wispr) | decisions, action items with owners, open questions |
-| Product or tool | what it does, how it differs, availability and cost |
-| List or roundup | the items, each with a one-line reason it is on the list |
+| Shape                                  | What the reader needs                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| Argument, essay or opinion             | the thesis, the main reasons, what the author concedes or dismisses       |
+| News or announcement                   | what happened, who and when, what changes and for whom                    |
+| How-to or tutorial                     | the goal, the steps in order, prerequisites and pitfalls                  |
+| Research, data or report               | the question, the method in a line, the findings with numbers, the limits |
+| Interview, podcast or video transcript | who is speaking, the main claims by segment, memorable lines              |
+| Meeting or voice note (Granola, Wispr) | decisions, action items with owners, open questions                       |
+| Product or tool                        | what it does, how it differs, availability and cost                       |
+| List or roundup                        | the items, each with a one-line reason it is on the list                  |
 
 #### Open decisions for Amit
 

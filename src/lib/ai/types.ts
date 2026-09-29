@@ -60,7 +60,42 @@ export interface ScoredItem {
   priority: "high" | "medium" | "low";
 }
 
-/** Structured output from AI summarization (JSON mode). */
+/** The kind of piece a brief summary was shaped for (summary-v2). */
+export const SUMMARY_SHAPES = [
+  "argument",
+  "news",
+  "how-to",
+  "research",
+  "conversation",
+  "meeting-note",
+  "product",
+  "list",
+  "other",
+] as const;
+export type SummaryShape = (typeof SUMMARY_SHAPES)[number];
+
+export const SUMMARY_SECTION_FORMATS = ["bullets", "steps", "paragraph", "quotes"] as const;
+export type SummarySectionFormat = (typeof SUMMARY_SECTION_FORMATS)[number];
+
+export interface SummarySection {
+  heading: string;
+  format: SummarySectionFormat;
+  items: string[];
+}
+
+/**
+ * Structured output of the content-aware brief (summary-v2): an overview plus sections chosen
+ * for this piece, and the questions the brief leaves open. The open questions are stored but
+ * not rendered; the detailed summary answers them.
+ */
+export interface BriefSummaryOutput {
+  shape: SummaryShape;
+  overview: string;
+  sections: SummarySection[];
+  openQuestions: string[];
+}
+
+/** Structured output of the detailed summary (JSON mode; the summary-v1 template). */
 export interface SummaryOutput {
   overview: string;
   keyPoints: string[];

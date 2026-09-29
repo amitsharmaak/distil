@@ -5,7 +5,7 @@
  * Test fixture: the TechCrunch "Claude Code voice mode" article.
  */
 
-import { summarizePrompt } from "@/lib/prompts/summarize";
+import { chunkNotesPrompt, summarizePrompt } from "@/lib/prompts/summarize";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { researchPlanPrompt, researchSynthesizePrompt } from "@/lib/prompts/research";
 import type { ContentItem } from "@/lib/types";
@@ -87,16 +87,53 @@ describe("summarizePrompt", () => {
     expect(prompt).toContain("Only title and metadata available");
   });
 
-  describe("brief format", () => {
-    it("requests Key Points section", () => {
-      const prompt = summarizePrompt(techCrunchItem, "brief");
-      expect(prompt).toContain("Key Points");
+  describe("brief format (content-aware)", () => {
+    const prompt = summarizePrompt(techCrunchItem, "brief");
+
+    it("asks the model to choose a shape from the hints rather than fill a fixed template", () => {
+      expect(prompt).toContain("There is no fixed template");
+      for (const shape of [
+        "argument",
+        "news",
+        "how-to",
+        "research",
+        "conversation",
+        "meeting-note",
+        "product",
+        "list",
+      ]) {
+        expect(prompt).toContain(`| ${shape} |`);
+      }
+      expect(prompt).toContain('"shape"');
     });
 
-    it("does not request Why This Matters or Notable Quotes", () => {
-      const prompt = summarizePrompt(techCrunchItem, "brief");
+    it("caps the brief and forbids generic or filler sections", () => {
+      expect(prompt).toContain("1-3 plain sentences");
+      expect(prompt).toContain("at most 3");
+      expect(prompt).toContain("At most 7 items across all sections");
+      expect(prompt).toContain('not "Key Points"');
+      expect(prompt).toContain("Never include an empty or filler section");
+    });
+
+    it("records open questions for the later detailed summary", () => {
+      expect(prompt).toContain('"openQuestions"');
+      expect(prompt).toContain("2-5 short questions");
+    });
+
+    it("does not request the v1 sections", () => {
       expect(prompt).not.toContain("Why This Matters");
       expect(prompt).not.toContain("Notable Quotes");
+      expect(prompt).not.toContain("keyPoints");
+    });
+
+    it("summarizes from chunk notes when given them", () => {
+      const fromNotes = summarizePrompt(techCrunchItem, "brief", {
+        kind: "notes",
+        text: "### Part 1\n- A specific note",
+      });
+      expect(fromNotes).toContain("Notes From Each Part Of A Long Document");
+      expect(fromNotes).toContain("- A specific note");
+      expect(fromNotes).not.toContain("Full Content");
     });
   });
 
@@ -106,13 +143,23 @@ describe("summarizePrompt", () => {
       expect(prompt).toContain("Key Points");
       expect(prompt).toContain("Why This Matters");
       expect(prompt).toContain("Notable Quotes");
+      expect(prompt).toContain("5-8 bullet points");
     });
 
-    it("requests more bullet points than brief (5-8 vs 3-5)", () => {
-      const brief = summarizePrompt(techCrunchItem, "brief");
-      const detailed = summarizePrompt(techCrunchItem, "detailed");
-      expect(brief).toContain("3-5 bullet points");
-      expect(detailed).toContain("5-8 bullet points");
+    it("carries the detailed instructions over chunk notes too", () => {
+      const prompt = summarizePrompt(techCrunchItem, "detailed", { kind: "notes", text: "- n" });
+      expect(prompt).toContain("5-8 bullet points");
+      expect(prompt).toContain("Notes From Each Part Of A Long Document");
+    });
+  });
+
+  describe("chunkNotesPrompt", () => {
+    it("asks for specific notes, not a mini-summary", () => {
+      const prompt = chunkNotesPrompt("Chunk body", 1, 4);
+      expect(prompt).toContain("part 2 of 4");
+      expect(prompt).toContain("Chunk body");
+      expect(prompt).toContain('"notes"');
+      expect(prompt).toContain("numbers, names, dates, steps in order");
     });
   });
 

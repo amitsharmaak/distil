@@ -104,3 +104,44 @@ describe("P7 performance index migration", () => {
     }
   });
 });
+
+describe("Adaptive summaries S1 migration", () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0011_summary_structure.sql"),
+    "utf8"
+  )
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  it("adds two nullable ai_summaries columns and rebuilds only that tenant view", () => {
+    expect(migration).toContain(
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure'))"
+    );
+    expect(migration).toMatch(
+      /ALTER TABLE ai_summaries\s+ADD COLUMN IF NOT EXISTS structured jsonb,\s+ADD COLUMN IF NOT EXISTS prompt_version text;/
+    );
+    expect(migration).not.toContain("NOT NULL");
+    // PostgreSQL froze the view's column list at creation; without the rebuild the runtime role
+    // cannot see the new columns.
+    expect(migration).toMatch(
+      /CREATE OR REPLACE VIEW tenant_api\.ai_summaries WITH \(security_barrier=true\) AS\s+SELECT \* FROM public\.ai_summaries\s+WHERE user_id = nullif\(current_setting\('app\.user_id', true\), ''\)::uuid\s+WITH CASCADED CHECK OPTION;/
+    );
+    expect(migration.match(/CREATE OR REPLACE VIEW/g)).toHaveLength(1);
+    expect(migration).toContain(
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_api.ai_summaries TO distil_runtime;"
+    );
+    expect(migration.match(/GRANT /g)).toHaveLength(1);
+    for (const forbidden of [
+      "CONCURRENTLY",
+      "DROP TABLE",
+      "DROP COLUMN",
+      "DROP VIEW",
+      "DISABLE ROW LEVEL",
+      "UPDATE ai_summaries",
+      "DELETE FROM",
+    ]) {
+      expect(migration).not.toContain(forbidden);
+    }
+  });
+});

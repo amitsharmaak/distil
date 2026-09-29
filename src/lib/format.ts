@@ -109,6 +109,39 @@ export function toPlainText(value: string | null | undefined): string {
     .trim();
 }
 
+/**
+ * Reduces reader HTML to text for a model prompt, keeping the structure a reader relies on:
+ * paragraphs stay separated by a blank line, headings become `## ` lines and list items `- `
+ * lines. Unlike toPlainText, whitespace between blocks is preserved.
+ */
+export function htmlToReadableText(value: string | null | undefined): string {
+  if (!value) return "";
+  const text = value
+    .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<(script|style)\b[\s\S]*$/gi, " ")
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
+    .replace(/<h[1-6]\b[^>]*>/gi, "\n\n## ")
+    .replace(/<li\b[^>]*>/gi, "\n- ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(?:td|th)\b[^>]*>/gi, " ")
+    .replace(
+      /<\/?(?:p|div|h[1-6]|ul|ol|li|tr|table|blockquote|section|article|pre|figure|figcaption|header|footer|aside|hr)\b[^>]*>/gi,
+      "\n\n"
+    )
+    .replace(/<[^>]*>/g, "")
+    .replace(/<[^>]*$/, "");
+  return decodeEntities(text)
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    // A list item or heading whose text sits in a nested block (<li><p>…</p></li>).
+    .replace(/(?<=^|\n)(-|##)\n+(?=[^\n])/g, "$1 ")
+    .replace(/^(?:-|##) *$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    // Consecutive list items read as one list, not one paragraph per item.
+    .replace(/(?<=^|\n)(- [^\n]*)\n\n(?=- )/g, "$1\n")
+    .trim();
+}
+
 export interface SummaryDigest {
   /** The TL;DR paragraph (or the whole summary when it has no sections). */
   lead: string;
@@ -134,9 +167,17 @@ export function toSummaryDigest(value: string | null | undefined, maxPoints = 4)
     sections.set(current, `${sections.get(current) ?? ""}${line}\n`);
   }
   const leadSource = sections.get("tldr") ?? sections.get("lead") ?? "";
-  const points = (sections.get("keypoints") ?? "")
+  // Content-aware briefs name their sections per piece; their first list stands in for key points.
+  const isListLine = (line: string) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(line);
+  const pointsSource =
+    sections.get("keypoints") ??
+    [...sections.entries()].find(
+      ([key, body]) => key !== "tldr" && key !== "lead" && body.split("\n").some(isListLine)
+    )?.[1] ??
+    "";
+  const points = pointsSource
     .split("\n")
-    .filter((line) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(line))
+    .filter(isListLine)
     .map((line) => toPlainText(line))
     .filter(Boolean)
     .slice(0, maxPoints);
