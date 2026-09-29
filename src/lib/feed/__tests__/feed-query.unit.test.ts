@@ -364,6 +364,17 @@ describe("feed ranking contracts", () => {
     expect(sql.statements[0]).not.toContain("feed_search_vector");
     expect(sql.statements[0]).not.toContain("i.site");
     expect(sql.statements[0]).not.toContain("ILIKE");
+    expect(sql.statements[0]).not.toContain("manual_area");
+  });
+
+  it("filters by the effective area: Amit's correction first, then the AI's", async () => {
+    const sql = fakeFeedSql([feedRow("work")]);
+    await new PostgresFeedQuery(sql as never, context).list({
+      areas: ["work", "learning"],
+      sort: "recent",
+      now,
+    });
+    expect(sql.statements[0]).toContain("COALESCE(i.manual_area, i.area) = ANY(?)");
   });
 
   it("filters by text and site and orders a search by relevance", async () => {

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { MAX_FEED_SEARCH_LENGTH, type FeedPage, type FeedQuery } from "@/lib/feed/feed-query";
 import type { RepositorySet } from "@/lib/repositories/ports";
+import { LIFE_AREAS } from "@/lib/types";
 
 import { multiValue, toSearchParams, type FeedSearchInput } from "./feed-url";
 import { TODAY_FEED_QUERY } from "./today-selection";
@@ -36,6 +37,7 @@ export const feedQuerySchema = z.object({
     )
     .max(10)
     .optional(),
+  area: z.array(z.enum(LIFE_AREAS)).max(LIFE_AREAS.length).optional(),
   sort: z.enum(["recent", "priority", "for_you", "relevance"]).default("for_you"),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().min(1).max(1024).optional(),
@@ -72,6 +74,7 @@ export function parseFeedQuery(input: FeedSearchInput): ParsedFeedQuery {
     dateTo: optional("dateTo"),
     q: optional("q"),
     site: list("site"),
+    area: list("area"),
     // A search is ordered by relevance unless the caller picked a sort.
     sort: optional("sort") ?? (params.get("q")?.trim() ? "relevance" : undefined),
     limit: optional("limit"),
@@ -107,6 +110,7 @@ export function feedListQuery(
     dateTo: data.dateTo,
     search: data.q,
     sites: data.site,
+    areas: data.area,
     sort: data.sort,
     limit: data.limit,
     cursor: data.cursor,
