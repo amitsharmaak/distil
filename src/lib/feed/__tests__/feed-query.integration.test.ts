@@ -65,6 +65,21 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
     baseline,
   });
+  // feed-search (0012) adds the columns search and the site facet read.
+  for (const stage of [
+    "lifecycle",
+    "returning-auth",
+    "perf-indexes",
+    "summary-structure",
+    "feed-search",
+  ] as const) {
+    await applyTenantMigrationStage({
+      sql: harness.sql,
+      stage,
+      ownerId: context.userId,
+      migrationsDirectory: tenantMigrations,
+    });
+  }
 });
 beforeEach(async () => {
   await harness.reset();
@@ -193,5 +208,90 @@ describe("PostgresFeedQuery", () => {
       );
       expect(row.rank.score).toBeCloseTo(explained.score, 5);
     }
+  });
+
+  it("searches as you type, ranks title matches first, and composes with other filters", async () => {
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    await repos.items.insert(
+      item("title-hit", { title: "Machine learning in production", summary: "Ops notes" })
+    );
+    await repos.items.insert(
+      item("summary-hit", { title: "Weekly roundup", summary: "A note on machine learning" })
+    );
+    await repos.items.insert(
+      item("topic-hit", { title: "Untitled", summary: "", topics: ["Learning"] })
+    );
+    await repos.items.insert(
+      item("author-hit", { title: "Essay", summary: "", author: "Grace Hopper", topics: [] })
+    );
+    await repos.items.insert(
+      item("video-hit", {
+        title: "Learning to cook",
+        contentType: "video",
+        url: "https://www.youtube.com/watch?v=1",
+      })
+    );
+    await repos.items.insert(item("miss", { title: "Gardening", summary: "Tomatoes" }));
+    const feed = repos.feed;
+    const ids = async (query: Parameters<typeof feed.list>[0]) =>
+      (await feed.list(query)).items.map((entry) => entry.id);
+
+    // A half-typed word matches through the prefix term, and the title outranks the summary.
+    expect(await ids({ search: "machine lear", sort: "relevance" })).toEqual([
+      "title-hit",
+      "summary-hit",
+    ]);
+    // Stemming: "learning" is stored as "learn"; the topic and every learning item match.
+    expect((await ids({ search: "learning", sort: "relevance" })).sort()).toEqual(
+      ["summary-hit", "title-hit", "topic-hit", "video-hit"].sort()
+    );
+    // Past the stem ("learni") only the literal title substring can match.
+    expect((await ids({ search: "learni", sort: "relevance" })).sort()).toEqual(
+      ["title-hit", "video-hit"].sort()
+    );
+    expect(await ids({ search: "hopper", sort: "relevance" })).toEqual(["author-hit"]);
+    expect(await ids({ search: "learning", contentTypes: ["video"], sort: "recent" })).toEqual([
+      "video-hit",
+    ]);
+    expect(await ids({ search: "the", sort: "relevance" })).toEqual([]);
+    expect(await ids({ search: "100%", sort: "relevance" })).toEqual([]);
+  });
+
+  it("filters by site, folding twitter.com into x.com", async () => {
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    await repos.items.insert(item("x-post", { url: "https://x.com/someone/status/1" }));
+    await repos.items.insert(item("tweet", { url: "https://mobile.twitter.com/someone/status/2" }));
+    await repos.items.insert(item("video", { url: "https://www.YouTube.com/watch?v=3" }));
+    await repos.items.insert(item("article", { url: "https://example.test/article" }));
+    const feed = repos.feed;
+    const ids = async (sites: string[]) =>
+      (await feed.list({ sites, sort: "recent" })).items.map((entry) => entry.id).sort();
+
+    expect(await ids(["x.com"])).toEqual(["tweet", "x-post"]);
+    expect(await ids(["twitter.com"])).toEqual(["tweet", "x-post"]);
+    expect(await ids(["youtube.com", "x.com"])).toEqual(["tweet", "video", "x-post"]);
+  });
+
+  it("keyset-paginates a relevance-ordered search without skipping or repeating", async () => {
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    for (let index = 0; index < 5; index += 1) {
+      await repos.items.insert(
+        item(`rust-${index}`, {
+          title: index % 2 ? "Rust" : "Notes",
+          summary: "rust ownership",
+          createdAt: `2026-09-0${index + 1}T00:00:00.000Z`,
+        })
+      );
+    }
+    const feed = repos.feed;
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await feed.list({ search: "rust", sort: "relevance", limit: 2, cursor });
+      seen.push(...page.items.map((entry) => entry.id));
+      cursor = page.nextCursor;
+    } while (cursor);
+    // Title matches (odd indexes) first, newest first within equal scores.
+    expect(seen).toEqual(["rust-3", "rust-1", "rust-4", "rust-2", "rust-0"]);
   });
 });

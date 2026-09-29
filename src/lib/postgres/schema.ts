@@ -325,6 +325,13 @@ export const items = pgTable(
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', coalesce(title, '') || ' ' || coalesce(summary, '')) || jsonb_to_tsvector('english', topics, '["string"]')`
     ),
+    // Tenant stage feed-search (0012); the feed reads these only for `q` and `site`.
+    feedSearchVector: tsvector("feed_search_vector").generatedAlwaysAs(
+      sql`setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(author, '') || ' ' || coalesce(publication, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(summary, '')), 'C') || setweight(jsonb_to_tsvector('english'::regconfig, coalesce(topics, '[]'::jsonb), '["string"]'), 'C')`
+    ),
+    site: text("site").generatedAlwaysAs(
+      sql`CASE WHEN lower(substring(url FROM '^[A-Za-z][A-Za-z0-9+.-]*://(?:[^/?#@]*@)?(?:[wW]{3}\.)?([^/?#:]+)')) IN ('twitter.com', 'mobile.twitter.com', 'x.com', 'mobile.x.com') THEN 'x.com' ELSE lower(substring(url FROM '^[A-Za-z][A-Za-z0-9+.-]*://(?:[^/?#@]*@)?(?:[wW]{3}\.)?([^/?#:]+)')) END`
+    ),
   },
   (t) => [
     uniqueIndex("items_user_id_id_idx").on(t.userId, t.id),
@@ -336,6 +343,7 @@ export const items = pgTable(
     index("items_archived_idx").on(t.archivedAt),
     index("items_last_opened_idx").on(t.lastOpenedAt.desc()),
     index("items_search_idx").using("gin", t.searchVector),
+    index("items_user_site_idx").on(t.userId, t.site),
     check("items_priority_check", sql`${t.priority} in ('high', 'medium', 'low')`),
     check(
       "items_processing_check",

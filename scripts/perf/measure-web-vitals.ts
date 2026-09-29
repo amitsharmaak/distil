@@ -209,6 +209,7 @@ async function prepareDatabase() {
   await stage("returning-auth");
   await stage("perf-indexes");
   await stage("summary-structure");
+  await stage("feed-search");
   await owner.sql`UPDATE users SET status='active' WHERE id=${userId}::uuid`;
   await owner.sql.unsafe(`
     CREATE ROLE ${runtimeRole} LOGIN PASSWORD '${runtimePassword}' NOSUPERUSER NOBYPASSRLS;
