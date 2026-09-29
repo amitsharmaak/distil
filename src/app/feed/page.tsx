@@ -6,14 +6,16 @@
  * feed page and the collection names, and hands both to the `FeedList` client
  * island. Filter changes are `router.replace` navigations (the server renders
  * the new page); load-more and the processing-status poll stay in the island
- * against the API. Search (`?q=`) and any environment without a server-side
- * user render the island without data, which then fetches as before.
+ * against the API. Search (`?q=`) renders on the server like any other filter;
+ * an environment without a server-side user renders the island without data,
+ * which then fetches as before.
  */
 
 import { FeedList, type FeedInitialPage } from "@/components/feed/feed-list";
 import {
   feedFilterKey,
   feedFilterState,
+  feedRequestSearch,
   loadFeedPage,
   parseFeedQuery,
 } from "@/lib/feed/feed-params";
@@ -24,12 +26,9 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 async function loadInitialPage(params: SearchParams): Promise<FeedInitialPage | null> {
   const state = feedFilterState(params);
-  if (state.searchQuery) return null;
-  const parsed = parseFeedQuery({
-    ...params,
-    limit: "100",
-    read: state.showRead ? undefined : "false",
-  });
+  // Parse exactly the request the island would send for this URL, so the
+  // server page and its key always describe the same query (search included).
+  const parsed = parseFeedQuery(feedRequestSearch(state, state.cursor));
   if (!parsed.ok) return null;
   const flags = readPhase2FeatureFlags();
   const loaded = await loadPageData("/feed", async (repositories) => {

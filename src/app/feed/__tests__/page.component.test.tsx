@@ -72,18 +72,47 @@ describe("server-rendered /feed page", () => {
     });
   });
 
-  it("renders the island without data for search results and when no server data is available", async () => {
-    loadPageData.mockResolvedValue(null);
+  it("server-renders a search with its area and site filters, ordered by relevance", async () => {
+    const repositories = fakeRepositories([{ id: "hit", title: "Durable queues" }]);
+    loadPageData.mockImplementation(async (_route: string, operation: (r: unknown) => unknown) =>
+      operation(repositories)
+    );
 
-    const search = (await FeedPage({
-      searchParams: Promise.resolve({ q: "durable queues" }),
+    const element = (await FeedPage({
+      searchParams: Promise.resolve({ q: " durable queues ", area: "work", site: "x.com" }),
     })) as IslandElement;
-    expect(search.props.initialPage).toBeNull();
-    expect(loadPageData).not.toHaveBeenCalled();
 
+    expect(repositories.feed.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: "durable queues",
+        areas: ["work"],
+        sites: ["x.com"],
+        sort: "relevance",
+        read: false,
+      })
+    );
+    expect(element.props.initialPage).toMatchObject({
+      key: "archive=exclude&sort=relevance&limit=100&q=durable+queues&read=false&site=x.com&area=work",
+      items: [{ id: "hit", title: "Durable queues" }],
+    });
+  });
+
+  it("renders the island without data when no server data is available", async () => {
+    loadPageData.mockResolvedValue(null);
     const fallback = (await FeedPage({ searchParams: Promise.resolve({}) })) as IslandElement;
     expect(fallback.props.initialPage).toBeNull();
     expect(loadPageData).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a one-character search instead of sending an invalid request", async () => {
+    const repositories = fakeRepositories([]);
+    loadPageData.mockImplementation(async (_route: string, operation: (r: unknown) => unknown) =>
+      operation(repositories)
+    );
+    await FeedPage({ searchParams: Promise.resolve({ q: "a", sort: "relevance" }) });
+    expect(repositories.feed.list).toHaveBeenCalledWith(
+      expect.objectContaining({ search: undefined, sort: "for_you" })
+    );
   });
 
   it("does not query for an invalid URL; the island reports the API's validation error", async () => {
