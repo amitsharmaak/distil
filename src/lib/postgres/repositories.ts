@@ -268,6 +268,12 @@ class PostgresItems implements ItemRepository {
         area_model=${v.model},area_classified_at=${v.classifiedAt}
       WHERE id=${id}`;
   }
+  async setManualArea(id: string, area: LifeArea | null, at: string) {
+    await this.sql`
+      UPDATE items
+      SET manual_area=${area},manual_area_at=${area === null ? null : at}
+      WHERE id=${id}`;
+  }
   async listAreaCorrections(limit: number): Promise<AreaCorrection[]> {
     const rows = await this.sql<Row[]>`
       SELECT title, url, source_type, author, publication, area, manual_area FROM items

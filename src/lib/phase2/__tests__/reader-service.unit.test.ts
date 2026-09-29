@@ -74,6 +74,65 @@ function fullRepositorySet(overrides: Record<string, unknown> = {}): RepositoryS
   });
 }
 
+describe("area corrections through item state", () => {
+  function areaRepositories(area: { aiArea?: string; manualArea?: string }) {
+    const item = {
+      id: "item-1",
+      title: "A saved article",
+      summary: "Summary",
+      sourceType: "manual" as const,
+      contentType: "article" as const,
+      topics: [],
+      url: "https://example.com/article",
+      priority: "medium" as const,
+      isRead: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      ...area,
+    };
+    const setManualArea = jest.fn().mockResolvedValue(undefined);
+    const repositories = repositorySet({
+      items: {
+        findById: jest.fn().mockResolvedValue(item),
+        update: jest.fn().mockImplementation(async (_id, patch) => ({ ...item, ...patch })),
+        setManualArea,
+      },
+    });
+    return { repositories, setManualArea };
+  }
+
+  it("accepts an area alone, and only the four areas or null", () => {
+    expect(stateSchema.safeParse({ area: "work" }).success).toBe(true);
+    expect(stateSchema.safeParse({ area: null }).success).toBe(true);
+    expect(stateSchema.safeParse({ area: "hobbies" }).success).toBe(false);
+  });
+
+  it("stores a real disagreement with the AI as a correction", async () => {
+    const { repositories, setManualArea } = areaRepositories({ aiArea: "updates" });
+    await updateItemState(repositories, "item-1", { area: "personal" });
+    expect(setManualArea).toHaveBeenCalledWith("item-1", "personal", expect.any(String));
+  });
+
+  it("clears the correction when the AI's own area or null is chosen", async () => {
+    const own = areaRepositories({ aiArea: "work", manualArea: "personal" });
+    await updateItemState(own.repositories, "item-1", { area: "work" });
+    expect(own.setManualArea).toHaveBeenCalledWith("item-1", null, expect.any(String));
+
+    const reset = areaRepositories({ aiArea: "work", manualArea: "personal" });
+    await updateItemState(reset.repositories, "item-1", { area: null });
+    expect(reset.setManualArea).toHaveBeenCalledWith("item-1", null, expect.any(String));
+  });
+
+  it("writes nothing when the choice matches what is already stored", async () => {
+    const same = areaRepositories({ aiArea: "work", manualArea: "personal" });
+    await updateItemState(same.repositories, "item-1", { area: "personal" });
+    expect(same.setManualArea).not.toHaveBeenCalled();
+
+    const agreed = areaRepositories({ aiArea: "work" });
+    await updateItemState(agreed.repositories, "item-1", { area: "work" });
+    expect(agreed.setManualArea).not.toHaveBeenCalled();
+  });
+});
+
 describe("Phase 2 reader service contracts", () => {
   it("rejects unknown state fields and non-milestone progress", () => {
     expect(() => parseBody({ isRead: true, typo: true }, stateSchema)).toThrow(ReaderError);

@@ -72,6 +72,8 @@ export interface ItemRepository {
   setAiArea(id: string, classification: AiAreaClassification): Promise<void>;
   /** Most recent items whose corrected area differs from the AI's, newest correction first. */
   listAreaCorrections(limit: number): Promise<AreaCorrection[]>;
+  /** Stores or clears (`null`) Amit's correction. Never touches the AI's columns. */
+  setManualArea(id: string, area: LifeArea | null, at: string): Promise<void>;
 }
 
 export interface ItemAreaState {

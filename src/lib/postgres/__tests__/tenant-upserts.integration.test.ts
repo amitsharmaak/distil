@@ -86,6 +86,21 @@ beforeAll(async () => {
     ownerId: alphaContext.userId,
     migrationsDirectory: tenantMigrations,
   });
+  // Item projections read columns from every later stage (life-areas: area, manual_area).
+  for (const stage of [
+    "returning-auth",
+    "perf-indexes",
+    "summary-structure",
+    "feed-search",
+    "life-areas",
+  ] as const) {
+    await applyTenantMigrationStage({
+      sql: harness.sql,
+      stage,
+      ownerId: alphaContext.userId,
+      migrationsDirectory: tenantMigrations,
+    });
+  }
   await harness.sql`
     INSERT INTO users (id,status) VALUES (${betaContext.userId}::uuid,'active')
   `;

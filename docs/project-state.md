@@ -42,11 +42,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
   decisions in the checkpoint and picks a phase (recommended R1).
 - **Inline search, quick filters and AI life areas: F1–F3 merged, both stages applied to
-  Production (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  Production, F4 implemented and not merged (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
   [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
   [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 PR
-  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; checkpoints
-  "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
+  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; F4 on branch
+  `claude/areas-f4-reclassify`; checkpoints "Life areas F4: area badge and one-tap reclassify —
+  2026-09-29", "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
   2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
   classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
   2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
@@ -60,11 +62,13 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
   `cf0cf28`). Open items for Amit: (1) rotate the `neondb_owner` password on `distil-production`
   and update Vercel's `DATABASE_MIGRATION_URL`, because the owner connection string was exposed in
-  his terminal scrollback and shell history during this release (see the checkpoint); (2)
-  confirm that a new capture on Production gets an area (not yet observed); (3) look at the F3
-  filter bar on `https://distilai.app/feed` on desktop and phone (it was verified by tests only;
-  see the F3 checkpoint). Next: F4 (area badge and one-tap reclassify) and F5 (filter bar on
-  Today) start from `main`. Separate follow-up after F7: move the area classifier
+  his terminal scrollback and shell history during this release (see the checkpoint); (2) the
+  F3 bar on a phone, and the F4 area badge in a browser (both verified by tests only). **Seen on
+  Production on 2026-09-29** (Claude, through Amit's signed-in Chrome): the F3 filter bar renders
+  on desktop with the area switch and the five toggles, `?area=work` filters, and a capture from
+  that afternoon had been classified by F2 as Updates (the only classified item until F6). Next: Amit
+  merges the F4 PR (Production already has `life-areas`, so it works on deploy); F5 (filter bar
+  on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
@@ -504,6 +508,64 @@ no external resources touched.
   Gemini Embedding 2, $0.20 per 1M). Embeddings are not costed at all. Run
   `npm run audit:ai-models` to confirm it still answers.
 - Historical `ai_audit_log` and usage rows keep their old, lower estimates.
+
+### Life areas F4: area badge and one-tap reclassify — 2026-09-29
+
+Amit asked to start F4 after recording the Anthropic key release (PR
+[#70](https://github.com/amitsharmaak/distil/pull/70)). Branch `claude/areas-f4-reclassify` from
+`d79aef3`. Implementation complete and verified by tests; not merged, not deployed, not yet seen
+in a browser.
+
+**What changed**
+
+- **Area on every item.** `area` and `manual_area` join `ITEM_SUMMARY_COLUMNS`. Every item
+  projection now carries `aiArea`, `manualArea` and the effective `area` (the correction wins).
+  This is safe because Production has the `life-areas` stage; F2 and F3 deliberately deferred it.
+- **Correction write** (`ItemRepository.setManualArea`): writes only `manual_area` and
+  `manual_area_at`, never the AI's columns. `null` clears both.
+- **Item state** (`PATCH /api/v1/items/:id/state`, `src/lib/phase2/reader-service.ts`):
+  - **Input:** accepts `area`, one of the four areas or `null`.
+  - **Clearing:** picking the AI's own area, or `null`, clears the correction instead of storing
+    one, so only real disagreements reach the classifier as examples. An unchanged choice writes
+    nothing.
+  - **GET response:** now also returns `area`, `aiArea` and `manualArea`.
+- **Area badge** (`src/components/feed/area-badge.tsx`):
+  - **Behaviour:** a small pill showing the area. One tap opens the four choices (the AI's own
+    pick is marked "AI pick"); a second tap saves at once, optimistically. On failure it rolls
+    back and says so in the menu.
+  - **Placement:** on the full feed card (only once an item has an area, so unclassified older
+    items stay uncluttered until F6) and always in the reader header ("Set area" when there is
+    none).
+  - **Inside the card link:** every click stops before the card's link, so choosing an area never
+    opens the item.
+- **Test harness.**
+  - **Earlier-stage suites:** the five integration suites that stopped before `life-areas`
+    (retrieval, lifecycle, knowledge backfill, tenant upserts, RLS) now apply every stage.
+  - **Bare-schema suites:** the two that run on the bare Phase 2 schema (`repositories`,
+    `knowledge-repositories`) add exactly the life-areas columns through the new
+    `addLifeAreaColumns` helper in `tests/support/postgres.ts`.
+
+**Deviations from the F4 brief**
+
+- No compact-view badge, to keep the one-line row uncluttered.
+- No item event for a correction. The correction is the item's own state, which
+  `listAreaCorrections` reads directly.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 229 suites / 1,733 tests passed.
+  - New `area-badge.component.test.tsx` (5 cases): the optimistic save goes through the state
+    API, picking the AI's own area is not reported as a correction, rollback on failure, "Set
+    area" for an unclassified item, and a click never reaches an enclosing link.
+  - `reader-service.unit.test.ts`: `area` validation, a disagreement is stored, the AI's own area
+    or `null` clears the correction, and an unchanged choice writes nothing.
+- `npm run test:integration`: all 13 PostgreSQL suites passed. `life-areas.integration.test.ts`
+  adds projection coverage: the AI area, then a correction (effective area, `listSummaries`,
+  corrections list), then clearing it back to the AI's area.
+- Not verified in a browser (no local-loop configuration, as recorded in F3).
+
+**Restart steps:** merge the F4 PR. Then F5 (filter bar on Today) and F6 (backfill; its
+Production run needs Amit's authorization).
 
 ### Consolidation of open PRs — 2026-09-29
 

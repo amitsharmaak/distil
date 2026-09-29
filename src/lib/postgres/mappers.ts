@@ -1,11 +1,13 @@
 import type { CaptureRecord, CaptureTokenRecord } from "@/lib/repositories/ports";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
-import type {
-  ContentItem,
-  ContentItemSummary,
-  ContentType,
-  Priority,
-  SourceType,
+import {
+  LIFE_AREAS,
+  type ContentItem,
+  type ContentItemSummary,
+  type ContentType,
+  type LifeArea,
+  type Priority,
+  type SourceType,
 } from "@/lib/types";
 
 type Row = Record<string, unknown>;
@@ -45,6 +47,25 @@ export function mapItemSummary(row: Row): ContentItemSummary {
     rejectionReason: row.rejection_reason == null ? undefined : String(row.rejection_reason),
     informationDensity:
       row.information_density == null ? undefined : Number(row.information_density),
+    ...areaFields(row),
+  };
+}
+
+function lifeArea(value: unknown): LifeArea | undefined {
+  return typeof value === "string" && (LIFE_AREAS as readonly string[]).includes(value)
+    ? (value as LifeArea)
+    : undefined;
+}
+
+/** The AI's area, Amit's correction, and the effective area (the correction wins). */
+function areaFields(row: Row): Pick<ContentItem, "area" | "aiArea" | "manualArea"> {
+  const aiArea = lifeArea(row.area);
+  const manualArea = lifeArea(row.manual_area);
+  const area = manualArea ?? aiArea;
+  return {
+    ...(area ? { area } : {}),
+    ...(aiArea ? { aiArea } : {}),
+    ...(manualArea ? { manualArea } : {}),
   };
 }
 

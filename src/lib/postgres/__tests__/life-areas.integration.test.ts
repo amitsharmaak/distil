@@ -186,6 +186,37 @@ describe("life-area item columns", () => {
     expect(await repos.items.listAreaCorrections(1)).toHaveLength(1);
   });
 
+  it("carries the AI area, the correction and the effective area on every item projection", async () => {
+    const repos = repositoriesFor(owner);
+    await repos.items.insert(item("projected"));
+    expect(await repos.items.findById("projected")).not.toHaveProperty("area");
+
+    await repos.items.setAiArea("projected", { ...classification, area: "updates" });
+    expect(await repos.items.findById("projected")).toMatchObject({
+      area: "updates",
+      aiArea: "updates",
+    });
+
+    await repos.items.setManualArea("projected", "personal", "2026-09-29T13:00:00.000Z");
+    const corrected = await repos.items.findById("projected");
+    expect(corrected).toMatchObject({
+      area: "personal",
+      aiArea: "updates",
+      manualArea: "personal",
+    });
+    const [summary] = await repos.items.listSummaries({ includeProcessing: true });
+    expect(summary).toMatchObject({ area: "personal", aiArea: "updates", manualArea: "personal" });
+    expect(await repos.items.listAreaCorrections(5)).toEqual([
+      expect.objectContaining({ title: "Title projected", correctedArea: "personal" }),
+    ]);
+
+    await repos.items.setManualArea("projected", null, "2026-09-29T14:00:00.000Z");
+    const [row] = await harness.sql`
+      SELECT manual_area, manual_area_at FROM public.items WHERE id='projected'`;
+    expect(row).toEqual({ manual_area: null, manual_area_at: null });
+    expect((await repos.items.findById("projected"))?.area).toBe("updates");
+  });
+
   it("rejects an area outside the four through the check constraints", async () => {
     const repos = repositoriesFor(owner);
     await repos.items.insert(item("x"));
