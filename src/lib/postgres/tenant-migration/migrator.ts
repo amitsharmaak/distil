@@ -20,6 +20,7 @@ export const TENANT_MIGRATION_STAGES = [
   "perf-indexes",
   "summary-structure",
   "feed-search",
+  "life-areas",
 ] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
@@ -32,6 +33,7 @@ const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   "perf-indexes": "0010_perf_indexes.sql",
   "summary-structure": "0011_summary_structure.sql",
   "feed-search": "0012_feed_search.sql",
+  "life-areas": "0013_life_areas.sql",
 };
 
 interface AppliedMigrationRow {

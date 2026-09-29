@@ -193,3 +193,56 @@ describe("Inline search F1 migration", () => {
     }
   });
 });
+
+describe("Life areas F2 migration", () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0013_life_areas.sql"),
+    "utf8"
+  )
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  it("adds nullable, checked area columns, one tenant-scoped index, and rebuilds only the items view", () => {
+    expect(migration).toContain(
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure','feed-search','life-areas'))"
+    );
+    for (const column of [
+      "area text",
+      "area_confidence double precision",
+      "area_reason text",
+      "area_model text",
+      "area_classified_at timestamptz",
+      "manual_area text",
+      "manual_area_at timestamptz",
+    ]) {
+      expect(migration).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+    expect(migration).not.toContain("NOT NULL");
+    expect(migration).not.toContain("DEFAULT");
+    expect(migration).toContain(
+      "CHECK (area IS NULL OR area IN ('personal','work','learning','updates'))"
+    );
+    expect(migration).toContain(
+      "CHECK (manual_area IS NULL OR manual_area IN ('personal','work','learning','updates'))"
+    );
+    expect(migration).toContain("ON items(user_id, (COALESCE(manual_area, area)));");
+    expect(migration.match(/CREATE INDEX/g)).toHaveLength(1);
+    expect(migration).toMatch(
+      /CREATE OR REPLACE VIEW tenant_api\.items WITH \(security_barrier=true\) AS\s+SELECT \* FROM public\.items\s+WHERE user_id = nullif\(current_setting\('app\.user_id', true\), ''\)::uuid\s+WITH CASCADED CHECK OPTION;/
+    );
+    expect(migration.match(/CREATE OR REPLACE VIEW/g)).toHaveLength(1);
+    expect(migration.match(/GRANT /g)).toHaveLength(1);
+    for (const forbidden of [
+      "CONCURRENTLY",
+      "DROP TABLE",
+      "DROP COLUMN",
+      "DROP VIEW",
+      "DISABLE ROW LEVEL",
+      "UPDATE items",
+      "DELETE FROM",
+    ]) {
+      expect(migration).not.toContain(forbidden);
+    }
+  });
+});

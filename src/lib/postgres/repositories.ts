@@ -1,5 +1,8 @@
 import type { Sql } from "postgres";
 import type {
+  AiAreaClassification,
+  AreaCorrection,
+  ItemAreaState,
   AgentRepository,
   CaptureRepository,
   CaptureTokenRepository,
@@ -53,7 +56,14 @@ import type {
   ItemContentVersion,
   KnowledgeBackfillCheckpoint,
 } from "@/lib/knowledge/types";
-import type { ContentItem, ContentItemSummary, Notification, Priority } from "@/lib/types";
+import type {
+  ContentItem,
+  ContentItemSummary,
+  LifeArea,
+  Notification,
+  Priority,
+  SourceType,
+} from "@/lib/types";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { normalizeUrl } from "@/lib/utils";
 import { mapCapture, mapCaptureToken, mapItem, mapItemSummary } from "./mappers";
@@ -238,6 +248,40 @@ class PostgresItems implements ItemRepository {
   }
   async updatePriorityScore(id: string, score: number, priority: Priority) {
     await this.sql`UPDATE items SET ai_priority_score=${score},priority=${priority} WHERE id=${id}`;
+  }
+  async findAreaState(id: string): Promise<ItemAreaState | undefined> {
+    const rows = await this.sql<Row[]>`
+      SELECT area, manual_area, area_classified_at FROM items WHERE id=${id}`;
+    const row = rows[0];
+    if (!row) return undefined;
+    return {
+      area: row.area == null ? undefined : (row.area as LifeArea),
+      manualArea: row.manual_area == null ? undefined : (row.manual_area as LifeArea),
+      areaClassifiedAt: row.area_classified_at == null ? undefined : iso(row.area_classified_at),
+    };
+  }
+  async setAiArea(id: string, v: AiAreaClassification) {
+    await this.sql`
+      UPDATE items
+      SET area=${v.area},area_confidence=${v.confidence},area_reason=${v.reason},
+        area_model=${v.model},area_classified_at=${v.classifiedAt}
+      WHERE id=${id}`;
+  }
+  async listAreaCorrections(limit: number): Promise<AreaCorrection[]> {
+    const rows = await this.sql<Row[]>`
+      SELECT title, url, source_type, author, publication, area, manual_area FROM items
+      WHERE manual_area IS NOT NULL AND manual_area IS DISTINCT FROM area
+      ORDER BY manual_area_at DESC NULLS LAST, id DESC
+      LIMIT ${limit}`;
+    return rows.map((row) => ({
+      title: String(row.title),
+      url: String(row.url),
+      sourceType: row.source_type as SourceType,
+      author: row.author == null ? undefined : String(row.author),
+      publication: row.publication == null ? undefined : String(row.publication),
+      aiArea: row.area == null ? undefined : (row.area as LifeArea),
+      correctedArea: row.manual_area as LifeArea,
+    }));
   }
 }
 
