@@ -18,22 +18,26 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
   ordinary capture and reading, adding items one at a time and checking capture, readable
   extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
-- **Inline search, quick filters and AI life areas: F1 implemented, not merged (plan merged as
-  PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 on branch
-  `claude/search-f1-feed-query`; checkpoints "Inline search F1: feed text search and site
-  facet — 2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit
-  wants the dedicated Search page replaced by a search bar at the top of Today and Feed that
-  filters as he types, with one-tap quick filters (Videos, X links, …), and wants Distil to hold
-  his personal, work and learning material with every item sorted automatically by AI into one
-  of four areas (Personal, Work, Learning, Updates), shown as a filter and fixable with one tap.
-  All open decisions are answered and recorded in the plan checkpoint. F1 adds `q`, `site` and
-  `sort=relevance` to `GET /api/v1/feed` with a new tenant stage `feed-search`
-  (`0012_feed_search.sql`); no UI changed. Next: Amit merges the F1 PR; the stage must be
-  applied to Production (needs his authorization) before any client sends `q` or `site`, which
-  first happens in F3. The plain feed does not depend on the stage, so the code can deploy first.
-  F2 can start from `main` in parallel. Separate follow-up after F7: move the area classifier onto
-  the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact model
-  before starting that task).
+- **Inline search, quick filters and AI life areas: F1 merged, F2 implemented and not merged
+  (plan PR [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
+  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 on branch
+  `claude/areas-f2-classification`; checkpoints "Life areas F2: AI area classification at
+  capture — 2026-09-29", "Inline search F1: feed text search and site facet — 2026-09-29" and
+  "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
+  page replaced by a search bar at the top of Today and Feed that filters as he types, with
+  one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
+  learning material with every item sorted automatically by AI into one of four areas (Personal,
+  Work, Learning, Updates), shown as a filter and fixable with one tap. All open decisions are
+  answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
+  `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
+  an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
+  changed. **Neither stage is applied to Production yet**; both need Amit's authorization, and
+  neither code path depends on its stage (F1's plain feed never reads the new columns, and F2's
+  classifier fails softly), so the code can deploy first. Both stages must be applied before F3.
+  Next: Amit merges the F2 PR, then applies `feed-search` and `life-areas` to Production in that
+  order. F3 starts from `main` after that. Separate follow-up after F7: move the area classifier
+  onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
+  model before starting that task).
 - **Adaptive brief and detailed summaries: S1 released; S2 implemented, not merged (branch
   `claude/adaptive-summaries-s2-delta-91757a`, PR
   [#60](https://github.com/amitsharmaak/distil/pull/60); checkpoint "Adaptive summaries S2:
@@ -513,6 +517,88 @@ been applied to Production at 09:53:39Z beforehand (checkpoint "summary-structur
 Production — 2026-09-29"), so the release order held. Per Amit, the Vercel Production
 deployment of `ea420d4` completed; Claude did not re-check the deployment. Old summaries render
 as v1 until regenerated.
+
+### Life areas F2: AI area classification at capture — 2026-09-29
+
+Amit asked to merge F1 (PR [#63](https://github.com/amitsharmaak/distil/pull/63): Quick gate and
+the full gate passed, squash merged as `76471e5`) and start F2. Branch
+`claude/areas-f2-classification` from `76471e5`. Implementation complete and locally verified;
+not merged, not deployed, and the new tenant stage is not applied anywhere outside test
+databases. No UI changed.
+
+**What changed**
+
+- **Tenant stage `life-areas`** (`src/lib/postgres/tenant-migrations/0013_life_areas.sql`): seven
+  nullable columns on `items`. The AI's answer goes in `area`, `area_confidence`, `area_reason`,
+  `area_model` and `area_classified_at`. Amit's correction goes in `manual_area` and
+  `manual_area_at`, which F4 writes. Check constraints limit both area columns to the four areas
+  and confidence to 0–1. An expression index on `(user_id, COALESCE(manual_area, area))` serves
+  the F3 filter. The stage rebuilds `tenant_api.items` and is registered everywhere
+  `feed-search` is.
+- **Classifier** (`src/lib/ai/classify-area.ts`, prompt `src/lib/prompts/classify-area.ts`,
+  version `area-v1`): one call per item on the new AI task `classify-area` (Gemini 3.5 Flash-Lite;
+  per-provider fallbacks as for `auto-tag`) through the tenant AI router, so the tenant budget
+  and accounting apply. Gemini structured output returns `{area, confidence, reason}`, checked by
+  a zod mirror.
+  - **Inputs:** title, how it was saved, content type, site, author, publication, topics, the
+    brief's overview, the first 2,000 characters of readable text, and up to 20 of Amit's most
+    recent corrections as examples.
+  - **Output handling:** an area outside the four is rejected and nothing is stored. Confidence
+    is clamped and the reason trimmed to 200 characters.
+  - **Idempotent:** it skips an item that already has an AI area unless forced, so a redelivered
+    queue message costs nothing. It never writes `manual_area`.
+- **Wiring** (`src/lib/queue/capture-consumer.ts`): runs after the brief, so it can read it, but
+  independently of it, in its own try/catch. A failure logs `capture_area_skipped` and never
+  fails the capture. New default-on kill switch `FEATURE_AREA_CLASSIFICATION` (`AGENTS.md`
+  updated).
+- **Repository** (`ItemRepository`): `findAreaState`, `setAiArea`, `listAreaCorrections`
+  (tenant-scoped; a correction is a set `manual_area` that differs from `area`, newest first).
+  Registered as `area-classification` in `docs/authorization-matrix.json`.
+
+**Deviations from the F2 brief, and why**
+
+- **The connector save path is not wired.** Gmail, Slack and publisher connectors are off in
+  hosted deployments (`FEATURE_CONNECTORS=false`), and their legacy `processContent` pipeline has
+  no tenant AI capability by design (see the comment in `src/lib/intelligence/pipeline.ts`).
+  Every Production item arrives through the capture queue, which is wired. Anything else is
+  covered by the F6 backfill.
+- **Item projections do not select the area yet.** Adding `area` and `manual_area` to
+  `ITEM_SUMMARY_COLUMNS` would make every item read depend on the new stage. It moves to F3,
+  where the UI first needs it, so F2 can deploy before its stage like F1.
+- **`area_model` and `manual_area_at` were added** beyond the brief. The first records which
+  model answered, for the follow-up model task. The second orders corrections, and adding it now
+  avoids a second migration in F4.
+
+**Prompt check against the real model (local Gemini key, synthetic items only, no captured
+content).** Eight invented items, two per area, including a Granola meeting note, a school
+permission slip, a dental confirmation, a transformer explainer, a lecture video, a
+quarterly-results news item, an X post about a launch, and a management essay. The first run got
+7 of 8. The miss was the management essay, classified Work where Amit's intent is Learning
+("general advice about doing a job well"). The Work and Learning definitions now say that
+explicitly. A re-run of that item and the Granola note gave Learning (0.95) and Work (1.0). The
+other six were not re-run, to stay inside the free-tier limit of 20 calls per model per day;
+the change touched only the Work/Learning boundary.
+
+**Verification (locally verified 2026-09-29)**
+
+- `npm run check`: lint (5 warnings, 0 errors), typecheck, 225 suites / 1,682 tests passed.
+- `npm run test:integration`: all 13 PostgreSQL suites passed. That includes the new
+  `src/lib/postgres/__tests__/life-areas.integration.test.ts`: writes through the tenant view,
+  a correction survives AI reclassification and ordinary updates, corrections list is newest
+  first and excludes agreements and other tenants, and the check constraints reject a fifth area
+  or confidence above 1.
+- Not done: a capture through the local dev loop, which needs the stage on Amit's local database
+  and a signed-in browser.
+
+**Risk to watch:** the capture callback now makes one more model call after the brief (about 1–2
+s on Flash-Lite; timeout 15 s). A long item whose brief already takes most of the Vercel Hobby
+60 s budget could run out of time. A redelivered message then finds the brief cached and the
+area classifier idempotent.
+
+**Restart steps:** merge the F2 PR. Before F3, Amit applies both stages to Production with his
+authorization, in order:
+`npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>`, then
+`--stage life-areas`. Record both. Then F3 starts from `main`.
 
 ### Inline search F1: feed text search and site facet — 2026-09-29
 
