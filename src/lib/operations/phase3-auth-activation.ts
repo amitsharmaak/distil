@@ -6,7 +6,6 @@ export interface Phase3AuthActivationFinding {
 const DISABLED_DURING_AUTH_REHEARSAL = [
   "FEATURE_CONNECTORS",
   "FEATURE_KNOWLEDGE_UI",
-  "FEATURE_SEARCH",
   "FEATURE_PERSONALIZATION",
   "FEATURE_DIGESTS",
 ] as const;

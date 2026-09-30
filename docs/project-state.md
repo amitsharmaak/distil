@@ -482,7 +482,7 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
 `.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
-`origin/main` `1d2831a` merged after Preview verification (no rebase). Implementation commit
+`origin/main` `6901bc9` merged after Preview verification (no rebase). Implementation commit
 `2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
 SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
 own hash. No database, environment variable, Production deployment or open PR was changed.
@@ -551,6 +551,68 @@ own hash. No database, environment variable, Production deployment or open PR wa
   create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
   repeat the timing set and confirm Research, Save and Settings remain absent from initial
   prefetches and one Feed filter navigation still produces one RSC request.
+
+### Inline search F7: legacy search path retired — 2026-09-30
+
+Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`, then merged with
+`origin/main` at `9c93a95`, at `4f1ee3e` after A1 removed Ask Distil, and at `35c3009` after
+F6). Completes F7 after the UI part landed in #75. Implementation complete and locally verified;
+not deployed.
+
+- **Callers checked first.** No caller of `GET /api/items?q=` or `GET /api/v1/search` remains:
+  the browser extension posts only to `/api/v1/captures`, the iPhone Shortcut
+  (`docs/iphone-shortcut.md`) posts only to `/api/v1/captures`, the UI has no `/search` links and
+  no `/api/items` list fetch. The only references were the routes' own tests, the Phase 2 e2e
+  mock, the authorization matrix and the route-surface fixture.
+- **`GET /api/items`.** The `q` branch is gone. A request carrying `q` (even empty) now gets
+  **400** with CORS headers and a message pointing to `GET /api/v1/feed?q=`, rather than a
+  silently unfiltered list; the other filters are unchanged. The route otherwise ignores unknown
+  parameters, so `q` is the one explicit rejection. The SQLite compatibility and Wave 2 security
+  tests were rewritten for this.
+- **`GET /api/v1/search` deleted** with its contract test. Its authorization-matrix entry is
+  removed and the `/search` page entry now records "redirects to /feed" with no feature gate.
+  Counts recomputed from the tree after merging F6 (`35c3009`, which adds
+  `/api/v1/areas/backfill`): 91 API route files, 19 pages, 123 route surfaces in the fixture; the
+  harness assertions match.
+- **`FEATURE_SEARCH` removed from code**: `readPhase2FeatureFlags` no longer has `search`; the
+  Phase 3 activation preflight no longer lists it; tests, `.env.local.example`, the web-vitals
+  script, the Phase 2 e2e flag list and AGENTS.md updated. **Amit:** delete any leftover
+  `FEATURE_SEARCH` variable in Vercel yourself; nothing reads it now, so leaving it is harmless.
+- **Retrieval code deleted (no production caller once Ask and the two routes were gone).** Checked
+  first that `src/lib/ai/research.ts`, `grounding.ts`, chunking at capture, the knowledge jobs,
+  the backfill and every script use none of it.
+  - `src/lib/ai/search.ts` (`hybridSearch`, semantic item search) and its unit test.
+  - `src/lib/knowledge/retrieval.ts` (`searchPassages`, `PostgresPassageSearchStore` with
+    `searchKeyword` / `listRecent`, the `searchSemantic` store type, `validateEmbeddingSpace`,
+    the passage types) with its unit test and its PostgreSQL integration test (the tenant canary
+    for a store nothing calls any more); the `export *` in `src/lib/knowledge/index.ts`.
+  - `repositories.passages` (`RepositorySet` in `src/lib/repositories/ports.ts` and
+    `src/lib/postgres/repositories.ts`), `EmbeddingRepository.count()`, and the `query` filter
+    of `ItemFilters` with its full-text clause in the PostgreSQL items list (only `hybridSearch`
+    passed it). Repository unit and integration tests adjusted.
+  - `docs/authorization-matrix.json`: the `retrieval.ts` direct-query entry and the
+    `legacy-hybrid-search` and `passage-retrieval` search paths.
+- **What stays, and why.** `content_chunks`, `chunkContent` and the chunk writes at capture, the
+  knowledge jobs and backfill, `grounding.ts`, all schema (including `items.search_vector` and
+  `item_embeddings`; no migration), `embeddings.find` / `upsert` / `listRecent` (used by
+  `src/lib/database.ts`), and the legacy SQLite `src/lib/db.ts` `ItemFilters.query` (compatibility
+  code only). `src/lib/ai/embeddings.ts` (`generateEmbedding`, `embedItem`, `findSimilarItems`)
+  stays: it was already without a production importer before this branch, and embedding writes
+  are out of scope; candidate for a separate cleanup. The `/search` → `/feed?…` redirect stays.
+- **Docs.** AGENTS.md §3 has a Search bullet: one search surface, the Feed/Today header search on
+  `GET /api/v1/feed`, and a record of what F7 retired; `FEATURE_SEARCH` is out of the flag list.
+  `docs/ARCHITECTURE.md` says the same ("Why there is one search surface").
+- **Verification.** `npm run check` passes (232 suites, 1,830 tests after the F6 merge; the 5 lint warnings
+  predate this branch), `tests/harness` passes, `npm run audit:phase3-security` passes, and the
+  PostgreSQL `repositories.integration` suite passes (9 tests) against a Testcontainers database.
+  Grep finds no `FEATURE_SEARCH`, `/api/v1/search`, `DISTIL_PHASE2_SEARCH`, `hybridSearch`,
+  `searchPassages`, `PassageSearchStore` or `knowledge/retrieval` outside this file and the
+  historical notes. The `/search` redirect unit test passes. In `tests/e2e/phase2.spec.ts` (run
+  before the A1 merge, all Phase 2 flags on, desktop and mobile Chromium, port 3107, local Docker
+  database with the auth variables blank as in CI) the `/search?q=padel` → `/feed?q=padel` step
+  passes; the test then fails at the later `/feed/phase2-fixture` reader step with 500
+  `AccessDeniedError: unauthenticated`. That failure predates this change: the same reader step
+  on `origin/main` (`9c93a95`) returns the same 500. No migration, env var or cloud change.
 
 ### Performance P8: Neon HTTP proxy identity lookup — 2026-09-30
 
