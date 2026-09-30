@@ -28,6 +28,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
+- **Keyboard navigation: audited, plan K1–K4 recorded, nothing implemented (branch
+  `claude/distil-keyboard-shortcuts-5b189c`, docs only; checkpoint "Keyboard navigation: audit and
+  phased plan (K1–K4) — 2026-09-30"):** Amit finds the app hard to use from the keyboard. Audit:
+  three undocumented shortcuts exist (`/`, `r`, arrows), two swallow browser shortcuts (`⌘R`,
+  `⌥←`), rows cannot be walked without tabbing, buttons sit inside links, most icon buttons have
+  no accessible name. Plan: **K1** shortcut registry + `?` help dialog + `g`-navigation + bug
+  fixes; **K2** `j`/`k` row navigation on Feed and Today with the row markup fixed; **K3** reader
+  shortcuts plus Mark unread and Copy link; **K4** Research/Settings keys, keyboard-only e2e,
+  polish. The checkpoint holds the full key map, five decisions and a paste-ready code prompt.
+  Next: Amit answers the five decisions and picks a phase (recommended K1).
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -534,6 +544,306 @@ Vercel setting, plan, deployment, environment variable, database, or application
   Free with the mandatory five-minute suspension and leave Vercel Fluid enabled. The final
   Production sample met the route-commit target without a cloud change, but cold-start variance
   and the unmeasured full RSC stream remain the risk; no always-warm guarantee is claimed.
+
+### Keyboard navigation: audit and phased plan (K1–K4) — 2026-09-30
+
+**Why.** Amit finds the app "not very keyboard friendly" and asked for a full audit of the UI, a
+design for seamless keyboard navigation with shortcuts, a Gmail-style way to see every shortcut
+(`?`), and a code prompt to implement it. This checkpoint is the audit and the plan only. Branch
+`claude/distil-keyboard-shortcuts-5b189c` (worktree `distil-keyboard-shortcuts-5b189c`) from
+`main` `b1a62fb`; docs only, no code changed, nothing touched in Vercel or Neon.
+
+**Evidence.** Every UI file under `src/app` and `src/components` was read at `b1a62fb` for key
+handlers (`onKeyDown`, `keydown`, `KeyboardEvent`, `tabIndex`, `aria-keyshortcuts`, `kbd`,
+`focus-visible`), for clickable elements that are not buttons or links, and for the handler each
+user action calls. The two shortcut bugs below were re-read line by line. No live browser pass
+was made; the plan's verification steps include one.
+
+#### How the keyboard works today (verified against `main` at `b1a62fb`)
+
+- **Three shortcuts exist, all page-local and undocumented.** `/` focuses the search box on
+  Today and Feed (`src/components/feed/filter-bar.tsx:105-114`, ignores editable targets and
+  modifiers; `Esc` clears then blurs, `:142-148`; the only `<kbd>` hint in the app is `:168-173`).
+  `←`/`→` open the previous/next item on the reader page
+  (`src/components/feed/article-navigation.tsx:18-29`). `r` marks the open item read and moves on
+  (`src/components/feed/detail-action-bar-content.tsx:88-103`; tooltip "Mark as read (R)" `:222`).
+- **Two of them have modifier bugs.** The `r` handler checks no modifier, so **Cmd/Ctrl+R is
+  swallowed** (`preventDefault`) and marks the item read instead of reloading. The arrow handler
+  checks no modifier either, so Alt/Cmd+Arrow (browser back/forward) also changes item, it does
+  not skip `contentEditable` or `<select>`, and `filter` is missing from its effect deps (`:30`).
+- **No infrastructure.** No hotkeys library, no `cmdk`, no command palette, no `Kbd` component,
+  no `aria-keyshortcuts`, no `tabIndex`, no roving focus, no skip link, no toasts. Radix ships via
+  the unified `radix-ui` package (^1.4.3); `src/components/ui/` has dialog, sheet, popover,
+  dropdown-menu, tooltip, tabs, select and the rest but no command or kbd primitive.
+- **Where a global listener belongs.** `src/components/layout/app-shell.tsx:30-50` is the client
+  shell for every signed-in page (auth routes return early at `:18-26`), already knows
+  `pathname` and `isReaderPath`, and owns the sidebar-collapsed state (`:16`). `ThemeProvider`
+  (`src/components/layout/theme-provider.tsx:12-55`) is the pattern for a client-only preference:
+  `localStorage` + `useSyncExternalStore` + a custom event.
+- **Navigation.** `sidebar.tsx:19-25`: Today `/`, Feed `/feed`, Research `/research`, Save
+  `/save`, Settings `/settings`; theme toggle `:92`; collapse `:97-104`. `mobile-nav.tsx:8-13`
+  omits Research. Topbar shows the date or a "Back to feed" link (`topbar.tsx:24`).
+- **Lists.** Feed renders `ContentCard` rows (`feed-list.tsx:303-311`) and a "Load more" button
+  (`:316-322`); Today renders `TodayItem` links (`today-prototype.tsx:33-58`) in "Priority
+  Reading" and "Worth Revisiting", or one "Unread matches" list when filtered. Every row is a
+  `next/link` `<Link>`, so `Tab` reaches it and `Enter` opens it, but there is no way to move
+  between rows without tabbing through every control in between.
+- **Buttons nested inside links (invalid HTML, broken tab order).** The card `<Link>`
+  (`content-card.tsx:213`) wraps `AreaBadge` (`:137`) and `MarkReadButton` (`:197`); the compact
+  `<Link>` (`:100`) wraps `MarkReadButton` (`:81`). Both inner controls stop the link's click with
+  `preventDefault` + `stopPropagation` (`area-badge.tsx:74`, `mark-read-button.tsx:21`).
+- **Icon-only controls without an accessible name** (a Tooltip is a description, not a name):
+  previous/next links and their disabled twins (`detail-action-bar-content.tsx:117-143`), View
+  original (`:153-157`), Like (`:170`), Dislike (`:189`), Mark read (`:210`);
+  `mark-read-button.tsx:65-79` has only `title`; the collapsed sidebar links (`sidebar.tsx:72-85`)
+  have no label and no `aria-current` (`mobile-nav.tsx:29` has it).
+- **Toggles without state.** The Summary/Original and Brief/Detailed pills and Regenerate
+  (`ai-summary-content.tsx:299,311,329,342,360`) have no `type`, no `aria-pressed` and no
+  focus-visible style. `today-prototype.tsx:179` nests a `<main>` inside the shell's `<main>`.
+- **Actions a shortcut can call (handlers exist).** Feed: `FeedList.handleMarkRead`
+  (`feed-list.tsx:236`), `AreaBadge.choose` (`area-badge.tsx:49`), `fetchItems(nextCursor, true)`
+  (`feed-list.tsx:318`), `replaceFilters` (`feed-list.tsx:224`, `today-experience.tsx:139`), the
+  Filters sheet `open`/`setOpen` inside `FeedFilterSheet` (`feed-filters.tsx:282-294`), card/compact
+  layout (`feed-filters.tsx:255-270`). Reader: `handleMarkRead` (`detail-action-bar-content.tsx:66`),
+  `handleRate` (`:49`), View original (`:154`), Deep research dialog (`:162`,
+  `deep-research.tsx:33-36`), `setViewMode` (`ai-summary-content.tsx:299,311`),
+  `handleLengthChange` (`:280`), `generate(len, true)` (`:244`). Research: `handleScan`
+  (`research/page.tsx:75`), `<DeepResearch>` (`:174`); report Copy as Markdown
+  (`report-toolbar.tsx:31/41`), back link (`research/[id]/page.tsx:232`). Theme:
+  `useTheme().toggle` (`theme-provider.tsx:47`).
+- **Actions that do not exist yet.** Mark **unread** has no UI although
+  `PATCH /api/v1/items/:id/state` accepts `isRead: false`. Copy link does not exist. Notifications
+  and the reader-view overlay (`reader-view*.tsx`, `notification-panel.tsx`, `feedback-buttons.tsx`)
+  are dead code with no live importer; the plan ignores them.
+- **Tests.** Jest 30 + Testing Library; component tests live in `__tests__/` beside the
+  component as `*.component.test.tsx` with a `/** @jest-environment jsdom */` docblock
+  (`src/components/feed/__tests__/filter-bar.component.test.tsx` already tests `/` and `Esc`).
+  Playwright e2e in `tests/e2e/*.spec.ts`; `@axe-core/playwright` is installed.
+
+#### Target design
+
+- **One shortcut registry, one listener.** A pure module `src/lib/shortcuts/` defines the
+  shortcut table (id, keys, label, group, scope), normalises `KeyboardEvent`s, matches two-key
+  sequences (`g` then `f`) with a one-second window, and decides when to stay silent: editable
+  targets, IME composition, any modifier not declared by the shortcut, an open Radix dialog or
+  sheet, or `event.defaultPrevented`. A `ShortcutsProvider` mounted in `AppShell` owns the single
+  `window` listener; pages and components register handlers with a `useShortcut` hook, so the
+  help dialog always lists exactly the shortcuts that work on the current screen.
+- **Gmail's vocabulary, because Amit named it.** Single letters, `g`-prefixed navigation,
+  `j`/`k` for rows, `?` for help, `/` for search, `u` to go back to the list, `Esc` to close or
+  clear. Mac and Windows/Linux get the same keys; modifiers are shown as `⌘`/`Ctrl` only where a
+  modifier is genuinely part of the shortcut.
+- **Rows get real focus.** `j`/`k` move keyboard focus to the row's `<Link>` and scroll it into
+  view, so `Enter` opens natively, the existing `focus-visible` ring shows the position, and row
+  actions (`r`, `a`) read the item id from `document.activeElement.closest("[data-item-id]")`.
+  No separate "selected" state to keep in sync. `j` past the last row on Feed presses Load more.
+- **Discoverable.** `?` (and `⌘/` / `Ctrl+/`) opens a Shortcuts dialog grouped by context with
+  `<Kbd>` chips, the current screen's group first. A "Keyboard shortcuts ?" entry sits at the
+  bottom of the sidebar. Every button with a shortcut shows the key in its tooltip and in
+  `aria-keyshortcuts`. A switch in the dialog turns single-key shortcuts off (stored like the
+  theme, in `localStorage`); `?`, `Esc`, `/` and `⌘/` always work.
+- **Accessibility fixes ride along.** The nested-button rows are restructured, icon-only
+  controls get `aria-label`s, toggles get `aria-pressed`, the sidebar gets `aria-current`, and
+  the reader page gets `Shift+U` mark unread and `Shift+C` copy link because keyboard users
+  need both and they are one-line calls.
+
+**Full shortcut map (proposed; Amit may rename keys before K1 starts).**
+
+| Context     | Key                                                       | Action                                                    | Calls into                          |
+| ----------- | --------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------- |
+| Everywhere  | `?` or `⌘/` `Ctrl+/`                                      | Open / close the Shortcuts dialog                         | new `ShortcutsHelpDialog`           |
+| Everywhere  | `/`                                                       | Focus search (on other pages: go to `/feed` and focus)    | `filter-bar.tsx:110`                |
+| Everywhere  | `g` `t` / `g` `f` / `g` `r` / `g` `s` / `g` `,` / `g` `a` | Go to Today / Feed / Research / Save / Settings / Account | `router.push`                       |
+| Everywhere  | `[`                                                       | Collapse or expand the sidebar                            | `app-shell.tsx:16`                  |
+| Everywhere  | `Shift+T`                                                 | Toggle dark / light                                       | `theme-provider.tsx:47`             |
+| Everywhere  | `Esc`                                                     | Close dialog or sheet; clear then blur search             | Radix, `filter-bar.tsx:142`         |
+| Today, Feed | `j` / `k`                                                 | Focus next / previous row (`j` at the end: Load more)     | new `useRowNavigation`              |
+| Today, Feed | `Enter` or `o`                                            | Open focused row                                          | native link / `router.push`         |
+| Feed        | `r`                                                       | Mark focused row read                                     | `feed-list.tsx:236`                 |
+| Today, Feed | `a`                                                       | Change the focused row's life area                        | `area-badge.tsx:77` trigger         |
+| Today, Feed | `f`                                                       | Open the Filters sheet                                    | `feed-filters.tsx:282`              |
+| Today, Feed | `u`                                                       | Toggle unread-only                                        | `replaceFilters({ showRead })`      |
+| Feed        | `c`                                                       | Toggle card / compact layout                              | `feed-filters.tsx:255-270`          |
+| Reader      | `j` / `k` or `→` / `←`                                    | Next / previous item                                      | `article-navigation.tsx:22-26`      |
+| Reader      | `u` or `Esc` (no dialog open)                             | Back to the list                                          | Topbar back link target             |
+| Reader      | `r`                                                       | Mark read and advance (existing, fixed)                   | `detail-action-bar-content.tsx:66`  |
+| Reader      | `Shift+U`                                                 | Mark unread (new button)                                  | `PATCH …/state { isRead: false }`   |
+| Reader      | `o`                                                       | Open original in a new tab                                | `detail-action-bar-content.tsx:154` |
+| Reader      | `s`                                                       | Toggle AI summary / original                              | `ai-summary-content.tsx:299,311`    |
+| Reader      | `d`                                                       | Toggle brief / detailed                                   | `ai-summary-content.tsx:280`        |
+| Reader      | `Shift+S`                                                 | Regenerate summary                                        | `ai-summary-content.tsx:244`        |
+| Reader      | `+` / `-`                                                 | Like / dislike summary                                    | `detail-action-bar-content.tsx:49`  |
+| Reader      | `a`                                                       | Change life area                                          | `feed/[id]/page.tsx:247` badge      |
+| Reader      | `Shift+D`                                                 | Deep research on this item                                | `deep-research.tsx:36`              |
+| Reader      | `Shift+C`                                                 | Copy link (new)                                           | `navigator.clipboard`               |
+| Research    | `n` / `Shift+S`                                           | New research / Scan for suggestions                       | `research/page.tsx:174,75`          |
+| Report      | `u` / `Shift+C` / `Shift+D`                               | Back / Copy as Markdown / Research further                | `report-toolbar.tsx:41,45`          |
+| Settings    | `1` / `2`                                                 | Capture / Account tab                                     | `settings/page.tsx:24-31`           |
+
+#### Plan — four PR-sized phases, each its own task from current `main`
+
+Each phase is one `claude/<task>` branch and PR with its own dated checkpoint and handoff update.
+Re-verify every `file:line` above against current `main` before starting a phase. Existing
+behaviour (`/`, `r`, arrows) keeps working throughout; nothing needs a migration or a new API.
+
+**K1 — Shortcut engine, help dialog and bug fixes (recommended first).** Goal: one registry,
+one listener, `?` help, global navigation, and the two modifier bugs fixed, with every existing
+shortcut migrated so the help dialog is truthful from day one.
+
+- **Files:** new `src/lib/shortcuts/{types,registry,match,sequence}.ts` (pure, unit-tested); new
+  `src/components/shortcuts/shortcuts-provider.tsx`, `use-shortcut.ts`,
+  `shortcuts-help-dialog.tsx`, `shortcuts-preference.ts` (localStorage, `ThemeProvider` pattern);
+  new `src/components/ui/kbd.tsx`; edit `app-shell.tsx` (mount provider + dialog, `[` collapse),
+  `sidebar.tsx` (footer entry "Keyboard shortcuts ?", `aria-current`, collapsed `aria-label`s),
+  `filter-bar.tsx`, `article-navigation.tsx`, `detail-action-bar-content.tsx` (register through
+  `useShortcut`; delete their private listeners), `theme-toggle.tsx` (`Shift+T`).
+- **Approach:** `useShortcut({ id, keys, label, group, scope }, handler)` registers on mount and
+  unregisters on unmount; the provider keeps a `Map` in a ref and re-renders only the help
+  dialog. Matching uses `event.key` for letters and `event.code` for punctuation so `?` and `/`
+  behave on non-US layouts; a shortcut declares `shift: true` explicitly, and any undeclared
+  `meta`/`ctrl`/`alt` makes the engine ignore the event (this fixes `⌘R` and `⌥←`). The engine
+  is silent when `isEditableTarget` (move the helper from `filter-bar.tsx:40-48` into the lib),
+  when `event.isComposing`, when `event.defaultPrevented`, and when a `[role="dialog"]` or Radix
+  sheet is open (a `useShortcutsSuspended()` counter the dialog and sheet components increment).
+  `g` sequences: the first key arms a one-second timer and shows nothing; the second key fires.
+  The help dialog is a shadcn `Dialog` listing the registered shortcuts grouped by `group`, the
+  current scope first, each key as a `<Kbd>`; a switch labelled "Single-key shortcuts" writes the
+  preference; `?`, `⌘/`, `Esc` and `/` bypass the preference. On pages without a search box `/`
+  navigates to `/feed?focus=search` and `FilterBar` focuses when it sees the param.
+- **Tests:** unit tests for `match` (letters, `?` vs `/`, shift, ignored modifiers, editable
+  targets, composing, defaultPrevented) and `sequence` (arm, fire, timeout, wrong second key);
+  component tests for the provider (`g` `f` pushes `/feed`; `⌘R` reaches the browser; `r` still
+  marks read; `?` opens and `Esc` closes the dialog; preference off silences `r` but not `?`),
+  and for the dialog (groups, current scope first, every registered shortcut listed). Update
+  `filter-bar.component.test.tsx` for the moved helper.
+- **Verification:** `npm run check` (Quick gate); in the local in-app browser at desktop, 375 px
+  and dark: `?` on Today, Feed, reader, Research and Settings shows the right groups; `g` `f`,
+  `g` `t`, `[`, `Shift+T`; `⌘R` reloads on the reader page; `⌥←` goes back in history; typing `?`
+  or `/` in the Save form does nothing.
+- **Limitations:** no row navigation yet; the help dialog shows only what K1 registered.
+
+**K2 — Row navigation on Feed and Today.** Goal: read the list without a mouse: `j`/`k`,
+`Enter`/`o`, `r`, `a`, `f`, `u`, `c`, and Load more at the end, plus the row markup fixed.
+
+- **Files:** new `src/components/shortcuts/use-row-navigation.ts`; edit `feed-list.tsx`,
+  `content-card.tsx`, `today-prototype.tsx`, `today-experience.tsx`, `mark-read-button.tsx`,
+  `area-badge.tsx`, `feed-filters.tsx` (expose `open` control via a ref or callback prop).
+- **Approach:** each row root gets `data-item-id` and `data-row`; `useRowNavigation(containerRef)`
+  finds `[data-row] a[href]` in DOM order, focuses the next/previous one on `j`/`k` (starting
+  from `document.activeElement` if it is inside a row, else the first visible row), calls
+  `scrollIntoView({ block: "nearest" })`, and on `j` past the last row clicks Load more when it
+  exists. `o` clicks the focused link; `Enter` is native. `r` and `a` resolve the focused row's id
+  and call `handleMarkRead(id)` or open that row's `AreaBadge` popover (expose `openFor(id)` via
+  a small context or a `ref` map). Restructure `ContentCard` so the `<Link>` covers the title
+  and summary and the `AreaBadge` and `MarkReadButton` are siblings inside an `<article>` (the
+  "stretched link" pattern: `relative` article, link with `after:absolute after:inset-0`, action
+  buttons `relative z-10`), removing the `preventDefault`/`stopPropagation` workarounds. Give
+  `MarkReadButton` an `aria-label`. `f` opens the Filters sheet; `u` toggles `showRead`; `c`
+  toggles card/compact on Feed. Today's two sections share one navigation order.
+- **Tests:** component tests on Feed and Today for `j`/`k` focus order, `Enter`/`o` open, `r`
+  marks the focused row, `a` opens the area popover for the focused row, `j` at the end calls
+  Load more, `f` opens the sheet, `u` toggles the filter, `?` lists the list group; a
+  `ContentCard` test that the link and the buttons are siblings (no `a button`).
+- **Verification:** Quick gate; local browser at desktop, 375 px and dark on Feed (card and
+  compact) and Today; run `axe` from the e2e helpers on `/feed` and confirm no
+  "interactive-controls-nested" violation remains.
+- **Limitations:** rows added by Load more are picked up because the hook reads the DOM, but focus
+  stays on the button until the user presses `j` again.
+
+**K3 — Reader shortcuts and the two missing actions.** Goal: read, judge and move on from an
+item without touching the mouse, with every action visible in a tooltip.
+
+- **Files:** edit `detail-action-bar-content.tsx`, `detail-action-bar.tsx`,
+  `article-navigation.tsx`, `ai-summary-content.tsx`, `ai-summary.tsx`, `deep-research.tsx`,
+  `video-transcript-button.tsx`, `feed/[id]/page.tsx`, `topbar.tsx`.
+- **Approach:** register `j`/`k` as aliases of the arrows; `u` and (when no dialog is open) `Esc`
+  push the Topbar's `backHref`; add a **Mark unread** button (`Shift+U`) that PATCHes
+  `{ isRead: false }` and flips the local `read` state, shown only when the item is read; `o`
+  opens the original in a new tab; `s`, `d`, `Shift+S` call the summary component's handlers
+  (lift them into `AISummary` state or expose via a small context so the action bar and the
+  content share them); `+`/`-` call `handleRate`; `a` opens the page's `AreaBadge`; `Shift+D`
+  opens the Deep research dialog; `Shift+C` copies `location.href` and shows a short inline
+  "Copied" state on the button. Add `aria-label` and `aria-keyshortcuts` to every icon button and
+  put the key in each tooltip ("Next item · J"); give the summary toggles `type="button"`,
+  `aria-pressed` and a focus-visible ring.
+- **Tests:** component tests for each key, for `Esc` not firing while the Deep research dialog is
+  open, for `⌘R`/`⌥←` passthrough, for the unread PATCH body and state flip, and for tooltips
+  and `aria-keyshortcuts` values matching the registry.
+- **Verification:** Quick gate; local browser reading three consecutive items end to end with
+  the keyboard only, at desktop and 375 px, light and dark; the transcript button and video embed
+  are unaffected.
+- **Limitations:** `Esc` inside the Radix Tooltip closes the tooltip first; a second `Esc` goes
+  back. Acceptable.
+
+**K4 — Research, Settings, e2e walkthrough and polish.** Goal: the remaining screens, an
+automated keyboard-only regression test, and a settings entry for the preference.
+
+- **Files:** `research/page.tsx`, `research/[id]/page.tsx`, `report-toolbar.tsx`,
+  `settings/page.tsx`, `mobile-nav.tsx`, `today-prototype.tsx` (nested `<main>` → `<section>`),
+  new `tests/e2e/keyboard.spec.ts`, `docs/user-guide.md` (or the existing help page if one exists
+  at the time) with the shortcut table.
+- **Approach:** `n`, `Shift+S` on Research; `u`, `Shift+C`, `Shift+D` on the report; `1`/`2` for
+  the Settings tabs; a "Keyboard shortcuts" card in Settings → Account that mirrors the dialog's
+  switch and links to it. Playwright: sign in with the e2e fixture, then drive Today → `g` `f` →
+  `j` `j` `Enter` → `r` → `u` → `?` with the keyboard only, asserting focus and URL at each step,
+  desktop and mobile projects; run `@axe-core/playwright` on Feed, reader and the open dialog.
+- **Tests:** the e2e spec above plus component tests for the Research and Settings keys.
+- **Verification:** Full gate (`npm run check:full`) because e2e changes; local browser check of
+  Settings and Research.
+- **Limitations:** the mobile nav gains no shortcuts (touch devices rarely have keyboards); iPad
+  with a keyboard gets the desktop behaviour because the listener does not check width.
+
+#### Decisions for Amit (recommendation first)
+
+1. **Key vocabulary.** (A, recommended) Gmail-style as tabled above: `g`-sequences, `j`/`k`, `u`
+   back, `?` help. (B) Arrow keys only, no letters, fewer shortcuts but nothing to learn.
+   (C) A `⌘K` command palette (adds `cmdk`) instead of, or in addition to, single keys.
+2. **Where the on/off preference lives.** (A, recommended) `localStorage` per browser, like the
+   theme, with the switch in the `?` dialog and Settings. (B) Server-side in
+   `PUT /api/v1/preferences` (schema change in `src/lib/digests/service.ts:30-37`, follows the
+   account).
+3. **Row restructure scope.** (A, recommended) Fix the nested-button markup in K2 as part of row
+   navigation, since the same rows are being edited. (B) A separate accessibility-only task first.
+4. **Merge authorization.** (A, recommended) As for R1–R3: Claude may squash-merge each K phase
+   after green gates and a local browser check; each merge auto-deploys while the pin is
+   `unpinned`. (B) Amit reviews and merges each PR himself.
+5. **Order.** (A, recommended) K1 → K2 → K3 → K4, one phase per session. K2 and K3 both depend on
+   K1 and could run in parallel worktrees if Codex takes one; K4 depends on all three.
+
+#### Code prompt (paste into a fresh session; change `K1` to the phase being implemented)
+
+```
+Read AGENTS.md, then in docs/project-state.md read the Current handoff section and the
+checkpoint "Keyboard navigation: audit and phased plan (K1–K4) — 2026-09-30". Implement
+phase K1 exactly as that phase brief describes, on a fresh claude/<task> branch from
+origin/main (use /start-task keyboard-k1). Decisions already taken: <paste Amit's numbered
+answers, e.g. "1A 2A 3A 4A 5A">.
+
+Rules for this task:
+- Re-verify every file:line the checkpoint cites before editing; the plan was written
+  against main b1a62fb and lines may have moved.
+- Keep the existing shortcuts (/, r, arrow keys) working while migrating them to the
+  registry; fix the Cmd/Ctrl+R and Alt/Cmd+Arrow modifier bugs.
+- Every shortcut must be registered through the single registry so the ? dialog lists it;
+  never add a private window keydown listener.
+- Shortcuts must be silent in inputs, textareas, selects, contentEditable, during IME
+  composition, when a dialog or sheet is open, and for any modifier the shortcut did not
+  declare.
+- Every icon-only button you touch gets aria-label and aria-keyshortcuts, and its tooltip
+  shows the key.
+- Follow the repo's test conventions (Jest + Testing Library, __tests__/*.component.test.tsx
+  with the jsdom docblock; pure logic in src/lib gets unit tests). Cover each shortcut, the
+  modifier passthrough, and the editable-target silence.
+- Verify in the local in-app browser at desktop width, 375 px and dark mode using the local
+  Docker Postgres loop; do not touch Production, Vercel or Neon.
+- Run npm run check (Quick gate; K4 uses check:full). Then append a dated checkpoint to
+  docs/project-state.md (what changed with file paths, tests run and results, local
+  verification evidence, limitations, exact next phase) and update the keyboard handoff
+  bullet. Open the PR with /finish-task. Report implementation complete, verified locally,
+  and not deployed as three separate statements.
+```
+
+**Not implemented, not deployed. Nothing changed in Vercel or Neon.**
 
 ### Performance P9: 60-second read-only provider session cache — 2026-09-30
 
