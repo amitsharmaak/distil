@@ -45,6 +45,18 @@ describe("estimateCost", () => {
     expect(GEMINI_SEARCH_QUERY_COST).toBeCloseTo(0.014);
   });
 
+  it("prices Anthropic cache writes at 1.25× and cache reads at 0.1× of the input rate", () => {
+    // claude-sonnet-4-6: $3.00 in. 1M uncached + 1M written + 1M read = 3.00 + 3.75 + 0.30.
+    expect(
+      estimateCost("claude-sonnet-4-6", {
+        inputTokens: 3_000_000,
+        outputTokens: 0,
+        cacheWriteTokens: 1_000_000,
+        cacheReadTokens: 1_000_000,
+      })
+    ).toBeCloseTo(7.05);
+  });
+
   it("charges nothing for tokens on an unpriced model", () => {
     expect(estimateCost("unknown-model", { inputTokens: 1000, outputTokens: 1000 })).toBe(0);
   });
