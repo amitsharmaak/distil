@@ -61,7 +61,6 @@
   "GET /api/v1/items/:id/state",
   "GET /api/v1/items/status",
   "GET /api/v1/preferences",
-  "GET /api/v1/search",
   "OPTIONS /api/items",
   "OPTIONS /api/items/:id",
   "OPTIONS /api/notifications",

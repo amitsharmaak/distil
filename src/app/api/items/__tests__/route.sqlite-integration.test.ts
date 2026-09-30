@@ -29,19 +29,6 @@ jest.mock("@/lib/auth/tenant-route", () => {
 
 jest.mock("@/lib/capture/composition", () => ({ composeCaptureRoutes: jest.fn() }));
 
-// Keep route search deterministic even if developer API keys are present.
-// The route contract only needs the repository-backed keyword result here;
-// semantic-provider behavior is covered by its own unit tests.
-jest.mock("@/lib/ai/search", () => {
-  const actualDb = jest.requireActual<typeof import("@/lib/db")>("@/lib/db");
-  return {
-    hybridSearch: jest.fn(
-      async (_repositories: unknown, query: string, filters: import("@/lib/db").ItemFilters = {}) =>
-        actualDb.getItems({ ...filters, query })
-    ),
-  };
-});
-
 import { NextRequest } from "next/server";
 
 // Import DB helpers to set up and tear down test data.
@@ -228,59 +215,18 @@ describe("GET /api/items", () => {
   });
 });
 
-// ── GET /api/items — search ───────────────────────────────────────────────────
+// ── GET /api/items — retired search parameter ────────────────────────────────
 
-describe("GET /api/items — search", () => {
-  it("?q=<term> returns only items whose title matches", async () => {
-    await insertItem(makeItem({ id: "s1", title: "TypeScript tutorial for beginners" }));
-    await insertItem(makeItem({ id: "s2", title: "Cooking recipes for dinner" }));
+describe("GET /api/items — retired q parameter", () => {
+  it.each(["TypeScript", ""])("rejects ?q=%p with 400 instead of an unfiltered list", async (q) => {
+    await insertItem(makeItem({ id: "q1", title: "TypeScript tutorial for beginners" }));
 
-    const req = makeRequest("http://localhost:3000/api/items?q=TypeScript");
-    const res = await GET(req);
+    const res = await GET(makeRequest(`http://localhost:3000/api/items?q=${q}`));
     const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(body.total).toBe(1);
-    expect(body.items[0].id).toBe("s1");
-  });
-
-  it("?q= (empty string) returns all items without FTS filtering", async () => {
-    await insertItem(makeItem({ id: "e1", title: "First item" }));
-    await insertItem(makeItem({ id: "e2", title: "Second item" }));
-
-    const req = makeRequest("http://localhost:3000/api/items?q=");
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.total).toBe(2);
-  });
-
-  it("?q=<nomatch> returns empty items array and total: 0", async () => {
-    await insertItem(makeItem({ id: "n1", title: "Completely unrelated content" }));
-
-    const req = makeRequest("http://localhost:3000/api/items?q=xyznonexistentterm");
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.items).toEqual([]);
-    expect(body.total).toBe(0);
-  });
-
-  it("?q=<term>&source=<sourceType> applies both filters (intersection)", async () => {
-    await insertItem(makeItem({ id: "i1", title: "JavaScript news", sourceType: "gmail" }));
-    await insertItem(makeItem({ id: "i2", title: "JavaScript news", sourceType: "slack" }));
-    await insertItem(makeItem({ id: "i3", title: "Python tutorial", sourceType: "gmail" }));
-
-    const req = makeRequest("http://localhost:3000/api/items?q=JavaScript&source=gmail");
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.total).toBe(1);
-    expect(body.items[0].id).toBe("i1");
-    expect(body.items[0].sourceType).toBe("gmail");
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/\/api\/v1\/feed\?q=/);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 });
 

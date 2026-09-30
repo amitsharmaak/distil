@@ -67,7 +67,7 @@ describe("PostgreSQL repository contracts", () => {
     );
   });
 
-  it("atomically deduplicates normalized URLs and supports full text search", async () => {
+  it("atomically deduplicates normalized URLs", async () => {
     const repos = createPostgresRepositories(harness.sql);
     const original = await repos.items.insert(
       item("one", "https://example.com/story?utm_source=x")
@@ -75,7 +75,7 @@ describe("PostgreSQL repository contracts", () => {
     const duplicate = await repos.items.insert(item("two", "https://example.com/story"));
     expect(duplicate.id).toBe(original.id);
     await repos.items.insert(item("three", "https://example.com/other", "Unrelated"));
-    expect((await repos.items.list({ query: "PostgreSQL" })).map((x) => x.id)).toEqual(["one"]);
+    expect((await repos.items.list()).map((x) => x.id).sort()).toEqual(["one", "three"]);
   });
 
   it("preserves JSON fields, ordering, summaries, and cascades", async () => {

@@ -109,7 +109,6 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       "lifecycle",
       "agent",
       "feed",
-      "passages",
       "digestExperience",
     ]);
 
@@ -122,7 +121,6 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ).resolves.toHaveLength(1);
     await expect(
       repos.items.list({
-        query: "  durable testing  ",
         contentType: "article",
         priority: "high",
         isRead: false,
@@ -132,7 +130,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ).resolves.toHaveLength(1);
     await expect(repos.items.findById("missing")).resolves.toBeUndefined();
     await expect(repos.items.listRejected()).resolves.toEqual({ items: [], total: 0 });
-    expect(fake.queries.some((query) => query.includes("websearch_to_tsquery"))).toBe(true);
+    expect(fake.queries.some((query) => query.includes("websearch_to_tsquery"))).toBe(false);
     expect(fake.queries.some((query) => query.includes("CASE i.priority"))).toBe(true);
     expect(fake.queries.some((query) => query.includes("ai_priority_score"))).toBe(true);
   });
@@ -475,8 +473,6 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     });
     await expect(r.embeddings.find("missing")).resolves.toBeUndefined();
     await r.embeddings.upsert("item-1", [0.2], "embed-2");
-    respond({ count: 1 });
-    await expect(r.embeddings.count()).resolves.toBe(1);
     respond({ item_id: "item-1", embedding: [0.2] });
     await expect(r.embeddings.listRecent()).resolves.toEqual([
       { itemId: "item-1", embedding: [0.2] },
