@@ -76,9 +76,10 @@ function cookieValue(cookieHeader: string, name: string): string | undefined {
 }
 
 /**
- * Validate the same HS256 signature and expiry the SDK will enforce before
- * selecting its cache path. Known misses go straight to one uncached provider
- * check instead of the SDK's two-fetch reactive-mint path.
+ * Validate the same HS256 signature and expiry the SDK will enforce, plus the
+ * locally approved maximum lifetime, before selecting its cache path. Known
+ * misses go straight to one uncached provider check instead of the SDK's
+ * two-fetch reactive-mint path.
  */
 async function hasValidSessionData(
   cookieHeader: string,
@@ -94,16 +95,25 @@ async function hasValidSessionData(
     const header = decodeJsonBase64Url(protectedHeader) as { alg?: unknown; typ?: unknown };
     const payload = decodeJsonBase64Url(encodedPayload) as {
       exp?: unknown;
+      iat?: unknown;
       session?: unknown;
       user?: unknown;
     };
+    const nowSeconds = Math.floor(now.getTime() / 1000);
     if (
       header.alg !== "HS256" ||
       header.typ !== "JWT" ||
       typeof payload !== "object" ||
       payload === null ||
       typeof payload.exp !== "number" ||
-      payload.exp <= Math.floor(now.getTime() / 1000) ||
+      !Number.isFinite(payload.exp) ||
+      typeof payload.iat !== "number" ||
+      !Number.isFinite(payload.iat) ||
+      payload.iat < 0 ||
+      payload.iat > nowSeconds ||
+      payload.exp <= payload.iat ||
+      payload.exp - payload.iat > NEON_SESSION_DATA_TTL_SECONDS ||
+      payload.exp <= nowSeconds ||
       typeof payload.session !== "object" ||
       payload.session === null ||
       typeof payload.user !== "object" ||

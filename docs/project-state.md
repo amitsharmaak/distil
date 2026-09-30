@@ -495,8 +495,10 @@ before the fast path, then current `origin/main` `02759a9` (P10) was merged with
 branch HEAD before this checkpoint update was `0ad5e00`.
 
 Neon Auth's signed `session_data` cookie now has Amit's chosen 60-second TTL. Only ordinary
-`GET`/`HEAD` page and RSC requests with an unexpired cache-shaped cookie let the SDK validate and
-use that signed cache. Whenever proxy session verification applies, every non-GET request, every
+`GET`/`HEAD` page and RSC requests with a valid signed cookie whose `iat`/`exp` lifetime is at most
+60 seconds let the SDK validate and use that cache. Pre-release 300-second cookies go directly
+through one uncached check and are refreshed under the new TTL. Whenever proxy session
+verification applies, every non-GET request, every
 `/api/*` path (including auth, captures, capture-token and lifecycle APIs), and `/account` stays
 on `disableCookieCache=true`; the existing public and specialized-auth bypasses are unchanged. A
 missing, expired or malformed cache goes straight to the same single uncached SDK handler call
@@ -509,13 +511,15 @@ account-status, deletion-pending recovery and fail-closed behavior are unchanged
 read-only page/RSC request can continue for at most 60 seconds. Mutations, API reads and writes,
 the Account shell and all lifecycle-sensitive operations continue to observe provider revocation
 on their next request. P9 validates the cookie's HS256 signature, JWT header, payload shape and
-expiry before selecting cached mode; the SDK validates it again before returning the session. A
-well-shaped token with a fresh expiry but the wrong signature is routed directly to one
+issuance time, expiry and at-most-60-second lifetime before selecting cached mode; the SDK validates
+it again before returning the session. A well-shaped token with a fresh expiry but the wrong
+signature, or a correctly signed legacy 300-second token, is routed directly to one
 `disableCookieCache=true` handler call, avoiding the SDK's two-fetch reactive-mint path.
 
-**Locally verified:** focused auth and frozen-boundary coverage passed (5 suites, 83 tests), the
-final security suite passed (42 suites, 419 tests), and `npm run check` after merging `02759a9`
-passed (lint with the five existing warnings and zero errors, typecheck, 233 suites / 1,849 tests).
+**Locally verified:** focused auth and frozen-boundary coverage passed (5 suites, 84 tests), the
+final security suite passed (42 suites, 419 tests), and `npm run check` after merging R3 and adding
+the legacy-cookie lifetime guard passed (lint with the five existing warnings and zero errors,
+typecheck, 234 suites / 1,898 tests).
 The first full run correctly failed only because the reviewed `src/lib/auth/neon-proxy.ts` digest
 changed with the policy comments; the 15 centrally protected mutation surfaces and their ordering
 were re-reviewed, the frozen digest was updated, and no route inventory, surface count or

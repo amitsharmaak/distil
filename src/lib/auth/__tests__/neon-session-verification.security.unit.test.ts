@@ -21,10 +21,15 @@ const providerSession = {
   session: { id: "40000000-0000-4000-8000-000000000004", createdAt: "2026-09-17T12:00:00.000Z" },
 };
 
-async function sessionDataToken(expiresAt: Date, secret = cookieSecret) {
+async function sessionDataToken(
+  expiresAt: Date,
+  secret = cookieSecret,
+  issuedAt = new Date(expiresAt.getTime() - 30_000)
+) {
   const protectedHeader = encodeJsonBase64Url({ alg: "HS256", typ: "JWT" });
   const payload = encodeJsonBase64Url({
     ...providerSession,
+    iat: Math.floor(issuedAt.getTime() / 1000),
     exp: Math.floor(expiresAt.getTime() / 1000),
   });
   const signingInput = `${protectedHeader}.${payload}`;
@@ -32,8 +37,8 @@ async function sessionDataToken(expiresAt: Date, secret = cookieSecret) {
   return `${signingInput}.${encodeBase64Url(signature)}`;
 }
 
-async function cachedCookies(expiresAt: Date, secret = cookieSecret) {
-  return `${sessionCookie}; ${sessionDataCookieName}=${await sessionDataToken(expiresAt, secret)}`;
+async function cachedCookies(expiresAt: Date, secret = cookieSecret, issuedAt?: Date) {
+  return `${sessionCookie}; ${sessionDataCookieName}=${await sessionDataToken(expiresAt, secret, issuedAt)}`;
 }
 
 function handlerSource(respond: (request: Request) => Response) {
@@ -176,6 +181,28 @@ describe("Neon session verification through the SDK route handler", () => {
       expect(result.headers.get("set-cookie")).toBe(refreshedCookie);
     }
   );
+
+  it("routes a signed legacy 300-second cache through exactly one uncached provider call", async () => {
+    const issuedAt = new Date();
+    const cookies = await cachedCookies(
+      new Date(issuedAt.getTime() + 300_000),
+      cookieSecret,
+      issuedAt
+    );
+    const providerCall = jest.fn(() => okResponse(providerSession, refreshedCookie));
+    const { source, GET } = handlerSource(providerCall);
+
+    const result = await verifyNeonSession(
+      source,
+      new NextRequest("https://distil.example/feed", { headers: { cookie: cookies } }),
+      cookieSecret
+    );
+
+    expect(GET).toHaveBeenCalledTimes(1);
+    expect(providerCall).toHaveBeenCalledTimes(1);
+    expect(new URL(GET.mock.calls[0][0].url).searchParams.get("disableCookieCache")).toBe("true");
+    expect(result.headers.get("set-cookie")).toBe(refreshedCookie);
+  });
 
   it("classifies only signed, unexpired ordinary GET/HEAD page requests as cache eligible", async () => {
     const now = new Date("2026-09-30T12:00:00.000Z");
