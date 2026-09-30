@@ -467,9 +467,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
 `.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
 `origin/main` `0d7d34b4` merged after Preview verification (no rebase). Implementation commit
-`2df6b4b` changes only the sidebar, Feed client island and their component tests. The final
-branch SHA is the commit following this checkpoint update. No database, environment variable,
-Production deployment or open PR was changed.
+`2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
+SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
+own hash. No database, environment variable, Production deployment or open PR was changed.
 
 - **Sidebar prefetches.** Before P10, every visible desktop-sidebar link used Next's default
   prefetch. The 2026-09-29 Production trace saw nine first-load prefetches: Feed, Research, Ask,
@@ -490,8 +490,9 @@ Production deployment or open PR was changed.
 - **Local verification.** `npm ci` ran before edits. Focused sidebar and Feed component suites
   passed (23 tests), `npm run check:quick` passed (4 related suites / 33 tests), and the pre-merge
   `npm run check` passed: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites /
-  1,738 tests. The final post-merge full-gate result is recorded below. The
-  local in-app browser at `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately
+  1,738 tests. After merging current `origin/main`, `npm run check` passed again: lint 0 errors /
+  5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. The local
+  in-app browser at `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately
   selects it, increments the active count and commits `/feed?area=work`; closing the sheet shows
   the Work chip. The local worktree has no `.env.local`, so feed API calls returned the expected
   unconfigured-local error and real list rows were not available. The pending/dimmed list and
@@ -824,6 +825,7 @@ disclosures, the full view with legacy and object sources) and the updated
 3. `[n]` markers are not yet rendered as superscript citations — that is R2's UI work; the
    sources list already numbers titled source objects.
 4. Not merged, not deployed; nothing changed in Vercel or Neon.
+
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
 Amit's feedback on the F3 filter bar: the search spanned the page, and the area switch and quick
