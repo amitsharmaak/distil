@@ -462,6 +462,75 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Inline search F5: filter bar on Today — 2026-09-30
+
+Phase F5 of "Inline search, quick filters and life areas — 2026-09-29", built on the redesigned
+header and sheet from PR #75. Branch `claude/search-f5-today-bar` from `10f367f`.
+Implementation complete and verified by tests; not merged, not deployed, not yet checked in a
+browser with a signed-in user.
+
+**What changed**
+
+- **Today's header** is the same `FilterBar` as the Feed: the "Your reading habit / Today" title
+  on the left, the compact search pill (placeholder "Search unread"; accessible name, `/` and
+  Esc unchanged) and the Filters button on the right, and removable chips when a filter is on.
+- **When Today switches to results** (`isTodayFiltered` in `src/lib/feed/today-selection.ts`):
+  when `hasActiveFilters` is true for the URL read as Today reads it. That means a search of
+  2+ characters, an area, or any facet (type, X, priority, source, topic, collection, dates).
+  A sort alone does not count, and `read`, `showRead`, `archive` and `cursor` are ignored
+  (`todayFilterState` forces unread and active). With none of these, Today is the unchanged
+  fixed selection: the same query, the same sections and the same fallback request.
+- **Results mode:**
+  - The two sections are replaced by one "Unread matches" list: unread, active items, at most
+    20 (`TODAY_RESULTS_LIMIT`; the count shows "First N" when more exist).
+  - Order: by priority unless a sort was chosen, or by relevance while searching.
+  - A "Search everything →" link goes to `/feed` with the same parameters, minus the ones
+    Today ignores, plus `read=true`, so the wider search covers read items too. Archived items
+    stay out, as on the Feed by default. **Deviation, for review:** the brief said "same
+    parameters"; without `read=true` the Feed would show the same unread set.
+  - Empty state: "Nothing unread matches “…”" (with "with these filters" when a filter is also
+    on), or "No unread items match these filters.". The link stays visible.
+  - Typing narrows the on-screen items at once, as on the Feed; the debounced `q` then goes
+    to `/?q=…`.
+- **Server rendering:** `src/app/page.tsx` reads `searchParams`. When filtered, it parses
+  `todayResultsSearch(state)` through the Feed's `parseFeedQuery` and runs `loadFeedPage` in the
+  same single tenant transaction as before. It also reads the collection list (for the sheet's
+  Collection group and chip names), which is one extra query on every Today load. The page hands
+  over a keyed `TodayView`; the client uses it only when the key matches its URL, and otherwise
+  fetches the same query from `/api/v1/feed`, like the Feed island does.
+- **Sheet on Today** (`FeedFilterSheet` gains `unreadQueue` and `showSort`; `viewMode` is now
+  optional):
+  - **Kept:** Area, Type (with X posts), Priority, Source, Topic (from the items on screen),
+    Collection, and Date added.
+  - **Hidden:** "Unread only" and Archive, because Today is always the unread, active queue.
+    Also hidden: the layout toggle, because Today has one card layout.
+  - **Sort** shows only in results mode, because the default sections have a fixed order.
+- **Shared code, not forked:** `nextFeedUrl` moved into `quick-filters.ts` as
+  `filtersUrl(pathname, …)`, which both pages use (`nextFeedUrl` is kept as a wrapper).
+
+**Checks (locally verified 2026-09-30)**
+
+- `npm run check`: lint 0 errors (the 5 existing warnings), typecheck clean, 232 suites /
+  1,772 tests passed.
+  - New `src/lib/feed/__tests__/today-selection.unit.test.ts`: the filtered-mode rule, Today's
+    scope and sort, results query, view key, link parameters, view mapping and `filtersUrl`.
+  - `today-experience.component.test.tsx`: default, sort-only, filtered and empty states; link
+    parameters; the client fallback query; typing narrows then commits `/?q=`; Clear.
+  - The `/` page test covers the server-rendered default, Today-ignored parameters, search with
+    filters and filter-only priority order.
+  - A `FeedFilterSheet` test covers the Today variant.
+- A dev server on port 3105 rendered `/`, `/?q=news&area=work` and a filter-only URL without
+  errors. The requests were anonymous, so they got the client-fetch fallback; no signed-in
+  browser check was done.
+
+**Orchestrator review (Claude, main session, 2026-09-30):** `read=true` on "Search everything →"
+is kept (the link is meant to widen the search beyond the unread queue). Checked in the local
+in-app browser (Docker Postgres, signed-in local owner, real items) at 1280 px and 375 px, light
+and dark: default Today unchanged, `?q=` results, filters-only and empty-result states, chips
+with Clear, the phone bottom sheet, no horizontal scroll at 375 px, and the link landing on
+`/feed?q=…&read=true`. Minor, shared with Feed: the sheet's Area segment labels truncate at 375 px.
+PR [#79](https://github.com/amitsharmaak/distil/pull/79). No migration and no environment change.
+
 ### Deep research R2: grounded numbered citations — 2026-09-30
 
 **Scope: engine and UI halves.** Branch `claude/research-r2-citations` from `main` `10f367f`,
