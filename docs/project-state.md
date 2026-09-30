@@ -9,15 +9,26 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-29
+## Current handoff — 2026-09-30
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
-  ordinary capture and reading, adding items one at a time and checking capture, readable
-  extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Active objective:** Execute the app-slowness plan P8–P11 from the checkpoint "App slowness:
+  live diagnosis and phased plan (P8–P11) — 2026-09-29", with Codex as integration owner. P8 and
+  P10 start in parallel from fresh `origin/main`; P9 starts only after P8 is released; P11 is a
+  recorded no-change decision. Phase 4 (mobile) remains unauthorized.
+- **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
+  `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
+  trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
+  auth/account-sensitive paths, and missing/expired caches remain uncached. (3B) P11 stays on the
+  Neon Free plan and accepts occasional cold wakes; no Neon setting, Vercel setting, or paid plan
+  change is authorized. Read-only reconnaissance found `distil-production` fixed at 0.25 CU with
+  mandatory scale-to-zero after five idle minutes, while Vercel Fluid Compute is already enabled.
+  (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
+  green and its Preview reading meets the phase goal; each merge auto-deploys because the release
+  pin is `unpinned`. This authorization is limited to this P8–P11 task.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -54,16 +65,26 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability: plan merged, nothing implemented (PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62), squash merged as `0726cc0` on
-  2026-09-29; checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
-  poorly rendered content). Root causes: the source list is a regex scrape of every URL in the
-  raw findings (41 listed, 8 cited in the local sample), prompts ask for URLs everywhere, one
-  4,096-token synthesis compresses the findings to ~800 words in a fixed four-heading template,
-  and the page is one small-type card with no navigation. Phases, one per task: **R1** readable
-  page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
-  writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
-  decisions in the checkpoint and picks a phase (recommended R1).
+- **Deep research readability R1–R4: in progress (orchestrated by Claude from worktree
+  `deep-research-readability-r1-r4-846d48`; plan PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62), checkpoint "Deep research readability:
+  diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat,
+  thin and poorly rendered content; baseline local run `5a9cf55a`: 789 words, 41 sources listed,
+  8 cited, one small-type card). **Decisions (Amit, 2026-09-30; task-specific authorization for
+  this task only):** (1) order R1 → R2 → R3; (2) storage in the existing `research_reports`
+  text columns, no migration; (3) R3 target 1,500–2,500 words with TL;DR and key takeaways on
+  top; (4) R4 decided after R3 (ask again then; a Production migration would need separate
+  approval); (5) Claude may squash merge each phase to `main` (auto-deploys to Production) once
+  its gates are green and it is checked locally, then confirm the deployment and
+  `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
+  only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
+  memory, labelled on the page). Phase branches: `claude/research-r1-page`,
+  `claude/research-r2-citations`, `claude/research-r3-adaptive`.
+  **R1 (readable page, UI only)** done: checked locally on `5a9cf55a` at desktop, 375 px and
+  dark mode (checkpoint "Deep research R1: readable report page — 2026-09-30"); squash merged
+  to `main` (auto-deploys to Production). **R2** engine half done on its branch (not merged; it
+  must not ship without its UI half, since object sources would break the old page); UI half
+  next, on top of R1. Then R3.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
@@ -429,6 +450,99 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research R1: readable report page — 2026-09-30
+
+**Why.** Phase R1 of "Deep research readability: diagnosis and phased plan — 2026-09-29": make
+existing reports easy to read without any engine change. Branch `claude/research-r1-page` from
+`origin/main` `10f367f`; feature commit `3ea0ec9`. UI only — no engine, prompt, provider, route
+or schema change. Implementation complete, verified by tests and in the local in-app browser
+(orchestrator, 2026-09-30); merged and deployed as recorded in the Current handoff.
+
+**References re-checked on `10f367f` before editing.** `page.tsx:372` was the `prose prose-sm`
+body card, `:379-402` the sources card, `:66` `extractExecutiveSummary`; `Markdown`
+(`src/components/markdown.tsx`) already took a `components` prop. Finding while checking: the
+`prose` classes were inert — `@tailwindcss/typography` is not installed — so the old body had no
+reading typography at all. The new page uses the item reader's `.distil-reader` styles instead.
+
+**What changed**
+
+- `src/app/research/[id]/page.tsx`: a completed report renders `ResearchReportView`; the
+  queued/running stepper, failed state, loading and error states, SSE and polling are unchanged.
+  `sources` is typed `unknown` and normalised in the view.
+- `src/components/research/report-markdown.ts` (pure): strips the leading duplicate H1 (a summary
+  H1 is kept and demoted), demotes later H1s to H2, drops `---`/`***`/`___` rules (not setext
+  underlines, table rules or fenced code); rewrites parenthesised citation groups
+  ("([A](u), [B](u))", "(Source: [C](u))", "(https://…)") into bare links marked as citations;
+  lifts the first TL;DR / Summary / Executive Summary section (heading levels 1–3); extracts
+  `##`/`###` headings with a stable slug function (de-duplicated `x`, `x-2`, …; `tldr` reserved)
+  and their source line; counts words without URLs and markup (230 wpm).
+- `report-body.tsx`: markdown in `.distil-reader` typography via the existing `Markdown`
+  `components` prop — `h2`/`h3` get the TOC ids by source line (`node.position`), so ids always
+  match the TOC; citation links and bare autolinks render as a small muted domain chip with the
+  lucide `ExternalLink` icon (href kept, `target=_blank`, `rel="noopener noreferrer"`, full title
+  on hover and in the accessible name); other prose links keep their text; tables scroll inside
+  their own bordered container (code blocks already scroll via `.distil-reader pre`).
+- `report-toc.tsx`: "On this page" — sticky right rail on `lg` with the current section
+  highlighted (IntersectionObserver, skipped where unavailable), collapsible disclosure on smaller
+  screens that closes after a tap; hidden when there are fewer than two entries.
+- `research-sources.ts` + `research-sources-list.tsx`: one `normalizeSources` helper accepts the
+  legacy `string[]`, R2's `{ id, url, title, domain, grounded }` objects, or a JSON string of
+  either (invalid and repeated URLs dropped). `splitSources` puts sources whose URL appears in the
+  report (or whose `[n]` marker does) under "Cited in this report (n)" in text order — plus any
+  linked URL missing from the stored list — and the rest under "Other links the research touched
+  (n)". Both disclosures are collapsed by default; rows show domain + short path (title + domain
+  for R2 objects, with their number).
+- `report-toolbar.tsx`: Copy as Markdown (copies the stored markdown unchanged, "Copied!" for 2 s)
+  and Research further (same `DeepResearch` dialog) as one compact ghost-button toolbar.
+- `research-report-view.tsx`: header ("Deep research" eyebrow, the question in the reader's serif
+  display size, "Completed <date> · N sections · ~M min read · K sources", where K is the cited
+  count, or the total when nothing is cited), toolbar, mobile TOC, TL;DR callout, body, sources;
+  reading column `max-w-2xl` (the item reader's width) inside a `max-w-5xl` grid with a 13rem rail.
+  Theme tokens only (`muted`, `border`, `primary`, `foreground`), so dark mode follows the theme.
+
+**Before / after against the `5a9cf55a` baseline** (structure derived from the code and the
+recorded shape of that report — 789 words, 41 sources listed / 8 cited; not rendered here):
+
+|              | Before                                                                  | After                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Body         | one `prose-sm` card (typography plugin absent, so effectively unstyled) | card-free reading column in `.distil-reader` serif, 1.1875rem, reader width                                           |
+| Title        | question in the header **and** the model's `# Research Report: …` H1    | question once, in the header                                                                                          |
+| Rules        | `---` between every section                                             | removed                                                                                                               |
+| Summary      | "Executive Summary" card, regex on `##`/`#` only                        | TL;DR callout from TL;DR / Summary / Executive Summary at levels 1–3                                                  |
+| Navigation   | none                                                                    | "On this page" from `##`/`###` (rail on desktop, disclosure on phones)                                                |
+| Inline links | full link text, two parenthesised links per bullet                      | small domain chips, parentheses removed                                                                               |
+| Header stats | start/complete timestamps and status badges                             | "Completed <date> · N sections · ~3 min read · 8 sources" (789 words / 230 wpm ≈ 3; expected, confirm in the browser) |
+| Sources      | 41 raw truncated URLs, always open                                      | collapsed; "Cited in this report (8)" first, "Other links the research touched (32)" behind a second disclosure       |
+| Actions      | two outline buttons above the summary                                   | one compact toolbar under the header                                                                                  |
+
+**Verification (local, this worktree).** `npm run check` passes: lint 0 errors (the 5 known
+warnings, none in changed files), typecheck clean, Jest **234 suites / 1,785 tests passed**. The
+research page suites grow from 16 to 66 tests: `report-markdown.unit` (slugs and de-duplication,
+H1/rule stripping incl. setext/table/code safety, citation compaction, TL;DR variants, headings
+with duplicates, a report with no summary heading, stats), `research-sources.unit` (legacy
+`string[]`, object sources, JSON string, dedupe, cited/other split, `[n]` markers),
+`report-components.component` (heading ids by line, link chips, TOC variants, sources
+disclosures, the full view with legacy and object sources) and the updated
+`page.component` suite. No dev server, no live model calls, no database access.
+
+**Gaps and next steps.**
+
+1. **Browser verification done (orchestrator, local loop, report `5a9cf55a`, 2026-09-30):**
+   dev server from this worktree against the local Docker Postgres with a throwaway local login
+   hash passed through the process environment (Amit's `.env.local` untouched). Measured:
+   header "Completed 21 Sept 2026 · 3 sections · ~3 min read · 8 sources"; one H1 (the question);
+   no `<hr>` in the body; 779 words rendered in the article; domain chips inline; TOC rail on
+   desktop (1280 px) highlights the current section; "Sources · 8 cited, 32 more" collapsed
+   ("Other" is 32, not 33 — one stored URL was a duplicate after normalisation); 375 px mobile:
+   no horizontal scroll, collapsible "On this page · 10 parts"; dark mode (app theme toggle)
+   legible, chips included. Screenshots were taken in the session (not stored).
+2. Citation compaction is regex-based: links in unusual shapes (URLs containing parentheses, a
+   citation group split across lines) stay as ordinary links. Harmless; R2 replaces URLs in the
+   text with `[n]` markers.
+3. `[n]` markers are not yet rendered as superscript citations — that is R2's UI work; the
+   sources list already numbers titled source objects.
+4. Not merged, not deployed; nothing changed in Vercel or Neon.
 
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
