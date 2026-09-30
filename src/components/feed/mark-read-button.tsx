@@ -54,6 +54,7 @@ export function MarkReadButton({ itemId, isRead, onRead, showLabel = false }: Ma
         size="sm"
         className="gap-1.5 text-muted-foreground pointer-events-none"
         disabled
+        aria-label="Marked as read"
       >
         <Check className="h-3.5 w-3.5" />
         Read
@@ -73,6 +74,7 @@ export function MarkReadButton({ itemId, isRead, onRead, showLabel = false }: Ma
       onClick={handleClick}
       disabled={loading}
       title="Mark as read"
+      aria-label="Mark as read"
     >
       <Check className="h-3.5 w-3.5" />
       {showLabel && "Mark as read"}

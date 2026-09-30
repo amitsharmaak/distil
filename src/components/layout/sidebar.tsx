@@ -11,10 +11,13 @@ import {
   ChevronLeft,
   ChevronRight,
   FlaskConical,
+  Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { useShortcutsHelp } from "@/components/shortcuts/shortcuts-provider";
+import { Kbd } from "@/components/ui/kbd";
 
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
@@ -34,6 +37,7 @@ export function Sidebar({
   const pathname = usePathname();
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = controlledCollapsed ?? internalCollapsed;
+  const help = useShortcutsHelp();
 
   function setCollapsed(next: boolean) {
     if (controlledCollapsed === undefined) setInternalCollapsed(next);
@@ -73,6 +77,8 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               prefetch={item.prefetch}
+              aria-current={isActive ? "page" : undefined}
+              aria-label={collapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                 isActive
@@ -86,6 +92,25 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      {/* Keyboard shortcuts */}
+      <div className="px-3 pb-1">
+        <button
+          type="button"
+          onClick={() => help.setOpen(true)}
+          aria-label={collapsed ? "Keyboard shortcuts" : undefined}
+          aria-keyshortcuts="?"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <Keyboard className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && (
+            <>
+              <span>Keyboard shortcuts</span>
+              <Kbd className="ml-auto">?</Kbd>
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Theme toggle */}
       <div className="px-3 pb-1">

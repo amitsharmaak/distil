@@ -88,4 +88,17 @@ describe("AreaBadge", () => {
     fireEvent.click(screen.getByRole("button", { name: /Change area/ }));
     expect(onLinkClick).not.toHaveBeenCalled();
   });
+
+  it("is controlled when open is provided and reports close", async () => {
+    const onOpenChange = jest.fn();
+    render(<AreaBadge itemId="item-1" area="work" open onOpenChange={onOpenChange} />);
+    expect(await screen.findByRole("menuitem", { name: /Personal/ })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it("stays closed while controlled open is false", () => {
+    render(<AreaBadge itemId="item-1" area="work" open={false} />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 });

@@ -1,11 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Archive, FlaskConical, KeyRound, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TokenSettings } from "@/components/capture/token-settings";
 import { CaptureDiagnostics } from "@/components/capture/capture-diagnostics";
+import { KeyboardShortcutsCard } from "@/components/settings/keyboard-shortcuts-card";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
+
+const CAPTURE_TAB: ShortcutDef = {
+  id: "settings.tab.capture",
+  keys: [{ key: "1" }],
+  label: "Capture tab",
+  group: "Settings",
+  scope: "settings",
+};
+const ACCOUNT_TAB: ShortcutDef = {
+  id: "settings.tab.account",
+  keys: [{ key: "2" }],
+  label: "Account tab",
+  group: "Settings",
+  scope: "settings",
+};
 
 /**
  * Settings keeps only what the hosted product uses: capture tokens and a
@@ -14,6 +33,10 @@ import { CaptureDiagnostics } from "@/components/capture/capture-diagnostics";
  * (their routes and APIs still exist, unlinked).
  */
 export default function SettingsPage() {
+  const [tab, setTab] = useState("capture");
+  useShortcut(CAPTURE_TAB, () => setTab("capture"));
+  useShortcut(ACCOUNT_TAB, () => setTab("account"));
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -21,12 +44,22 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Configure your Distil preferences</p>
       </div>
 
-      <Tabs defaultValue="capture">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="capture" className="gap-1.5">
+          <TabsTrigger
+            value="capture"
+            className="gap-1.5"
+            aria-keyshortcuts="1"
+            title="Capture (1)"
+          >
             <KeyRound className="h-3.5 w-3.5" /> Capture
           </TabsTrigger>
-          <TabsTrigger value="account" className="gap-1.5">
+          <TabsTrigger
+            value="account"
+            className="gap-1.5"
+            aria-keyshortcuts="2"
+            title="Account (2)"
+          >
             <UserRound className="h-3.5 w-3.5" /> Account
           </TabsTrigger>
         </TabsList>
@@ -48,6 +81,8 @@ export default function SettingsPage() {
               <Link href="/account">Open account centre</Link>
             </Button>
           </div>
+
+          <KeyboardShortcutsCard />
 
           <div className="rounded-xl border border-border bg-card p-5 space-y-3">
             <h3 className="text-sm font-semibold">Library</h3>

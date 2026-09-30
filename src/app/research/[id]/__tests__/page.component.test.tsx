@@ -6,11 +6,15 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import ResearchPage from "../page";
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 
 const mockUseParams = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useParams: () => mockUseParams(),
+  usePathname: () => "/research/research-1",
+  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
 }));
 
 jest.mock("next/link", () => ({
@@ -143,7 +147,7 @@ describe("ResearchPage", () => {
   it("shows the loading shell while the initial report request is pending", () => {
     fetchMock.mockReturnValue(new Promise(() => undefined));
 
-    const { container } = render(<ResearchPage />);
+    const { container } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(container.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
     expect(fetchMock).toHaveBeenCalledWith("https://distil.test/api/ai/research/research-1");
@@ -153,7 +157,7 @@ describe("ResearchPage", () => {
   it("does not fetch when the route has no research id", () => {
     mockUseParams.mockReturnValue({});
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(MockEventSource.instances).toHaveLength(0);
@@ -162,7 +166,7 @@ describe("ResearchPage", () => {
   it("renders the request error and a route back to the feed", async () => {
     fetchMock.mockResolvedValue(responseFor(makeReport(), false));
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByRole("heading", { name: "Error" })).toBeInTheDocument();
     expect(screen.getByText("Report not found")).toBeInTheDocument();
@@ -173,7 +177,7 @@ describe("ResearchPage", () => {
   it("uses the generic error message for a non-Error rejection", async () => {
     fetchMock.mockRejectedValue("offline");
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Failed to load report")).toBeInTheDocument();
   });
@@ -186,7 +190,7 @@ describe("ResearchPage", () => {
     });
     fetchMock.mockResolvedValue(responseFor(report));
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(
       await screen.findByRole("heading", { level: 1, name: report.query })
@@ -225,7 +229,7 @@ describe("ResearchPage", () => {
       )
     );
 
-    const { unmount } = render(<ResearchPage />);
+    const { unmount } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Top line only.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "TL;DR" })).toHaveTextContent("Top line only.");
@@ -235,7 +239,7 @@ describe("ResearchPage", () => {
 
     unmount();
     fetchMock.mockResolvedValue(responseFor(makeReport({ report: "No summary here." })));
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("No summary here.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "TL;DR" })).not.toBeInTheDocument();
@@ -260,7 +264,7 @@ describe("ResearchPage", () => {
       )
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Sources (1)")).toBeInTheDocument();
     expect(screen.getByText("A post")).toBeInTheDocument();
@@ -269,7 +273,7 @@ describe("ResearchPage", () => {
   it("copies the complete markdown and restores the button label after two seconds", async () => {
     jest.useFakeTimers();
     fetchMock.mockResolvedValue(responseFor(makeReport({ report: "Markdown to copy" })));
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
     const copyButton = await screen.findByRole("button", { name: /Copy as Markdown/ });
 
     await act(async () => {
@@ -283,12 +287,54 @@ describe("ResearchPage", () => {
     expect(screen.getByRole("button", { name: /Copy as Markdown/ })).toBeInTheDocument();
   });
 
+  it("Shift+C copies the markdown", async () => {
+    fetchMock.mockResolvedValue(responseFor(makeReport({ report: "Markdown to copy" })));
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByRole("button", { name: /Copy as Markdown/ });
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: "C", shiftKey: true });
+      await Promise.resolve();
+    });
+
+    expect(writeTextMock).toHaveBeenCalledWith("Markdown to copy");
+    expect(screen.getByRole("button", { name: /Copied!/ })).toBeInTheDocument();
+  });
+
+  it("Shift+D opens the research further dialog trigger", async () => {
+    fetchMock.mockResolvedValue(responseFor(makeReport()));
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    const trigger = await screen.findByRole("button", { name: /Research further/ });
+    const onClick = jest.fn();
+    trigger.addEventListener("click", onClick);
+
+    fireEvent.keyDown(document.body, { key: "D", shiftKey: true });
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("u goes back to the item, or to the research list without one", async () => {
+    mockPush.mockClear();
+    fetchMock.mockResolvedValue(responseFor(makeReport()));
+    const first = render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByRole("link", { name: /Back/ });
+    fireEvent.keyDown(document.body, { key: "u" });
+    expect(mockPush).toHaveBeenLastCalledWith("/feed/item-1");
+    first.unmount();
+
+    fetchMock.mockResolvedValue(responseFor(makeReport({ itemId: null })));
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByRole("link", { name: /Back/ });
+    fireEvent.keyDown(document.body, { key: "u" });
+    expect(mockPush).toHaveBeenLastCalledWith("/research");
+  });
+
   it("renders a failed report without opening a stream", async () => {
     fetchMock.mockResolvedValue(
       responseFor(makeReport({ status: "failed", report: "Provider failed" }))
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Provider failed")).toBeInTheDocument();
     expect(screen.getByText("failed")).toBeInTheDocument();
@@ -298,7 +344,7 @@ describe("ResearchPage", () => {
   it("uses the fallback message for a failed report without details", async () => {
     fetchMock.mockResolvedValue(responseFor(makeReport({ status: "failed", report: "" })));
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Research failed. Please try again.")).toBeInTheDocument();
   });
@@ -318,7 +364,7 @@ describe("ResearchPage", () => {
       )
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Research in progress")).toBeInTheDocument();
     expect(screen.getByText("Researching (2/4): Why?")).toBeInTheDocument();
@@ -365,7 +411,7 @@ describe("ResearchPage", () => {
       responseFor(makeReport({ status: "pending", progress: "not-json" }))
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Planning research questions...")).toBeInTheDocument();
     const stream = MockEventSource.instances[0];
@@ -394,7 +440,7 @@ describe("ResearchPage", () => {
       )
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     const current = await screen.findByText("Deepening (2/2): What about battery?");
     expect(current.className).toContain("font-medium");
@@ -418,7 +464,7 @@ describe("ResearchPage", () => {
       )
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect((await screen.findByText("Outlining the report...")).className).toContain("font-medium");
     act(() => {
@@ -435,7 +481,7 @@ describe("ResearchPage", () => {
       responseFor(makeReport({ status: "researching", progress: { stage: "researching" } }))
     );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Researching (0/1)")).toBeInTheDocument();
   });
@@ -447,7 +493,7 @@ describe("ResearchPage", () => {
         responseFor(makeReport({ status: "completed", report: "Final report" }))
       );
 
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
     expect(await screen.findByText("Research in progress")).toBeInTheDocument();
     const stream = MockEventSource.instances[0];
 
@@ -469,7 +515,7 @@ describe("ResearchPage", () => {
       .mockResolvedValueOnce(
         responseFor(makeReport({ status: "completed", report: "Polled report" }))
       );
-    const { unmount } = render(<ResearchPage />);
+    const { unmount } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
     await screen.findByText("Research in progress");
     const stream = MockEventSource.instances[0];
 
@@ -508,7 +554,7 @@ describe("ResearchPage", () => {
       .mockResolvedValueOnce(
         responseFor(makeReport({ status: "completed", report: "After timeout" }))
       );
-    render(<ResearchPage />);
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
     await screen.findByText("Research in progress");
     const stream = MockEventSource.instances[0];
 
@@ -525,7 +571,7 @@ describe("ResearchPage", () => {
 
   it("closes an open stream during unmount cleanup", async () => {
     fetchMock.mockResolvedValue(responseFor(makeReport({ status: "running" })));
-    const { unmount } = render(<ResearchPage />);
+    const { unmount } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
     await screen.findByText("Research in progress");
     const stream = MockEventSource.instances[0];
 
@@ -540,7 +586,7 @@ describe("ResearchPage", () => {
         resolveRequest = resolve;
       })
     );
-    const { unmount } = render(<ResearchPage />);
+    const { unmount } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     unmount();
     await act(async () => {

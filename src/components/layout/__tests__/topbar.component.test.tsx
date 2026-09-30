@@ -2,8 +2,17 @@
  * @jest-environment jsdom
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import { Topbar } from "../topbar";
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/feed/one",
+  useRouter: () => ({ push: mockPush }),
+}));
+
+const render = (ui: React.ReactElement) => rtlRender(<ShortcutsProvider>{ui}</ShortcutsProvider>);
 
 jest.mock("@/components/layout/theme-toggle", () => ({
   ThemeToggle: ({ collapsed }: { collapsed?: boolean }) => (
@@ -15,6 +24,7 @@ jest.mock("@/components/layout/theme-toggle", () => ({
 
 describe("Topbar", () => {
   beforeEach(() => {
+    mockPush.mockClear();
     jest.spyOn(Date.prototype, "toLocaleDateString").mockReturnValue("Wednesday, January 15");
   });
 
@@ -44,5 +54,22 @@ describe("Topbar", () => {
 
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
     expect(screen.queryByText("Wednesday, January 15")).not.toBeInTheDocument();
+  });
+
+  it("u and Escape go back on reader routes; nothing on other routes", () => {
+    const { unmount } = render(<Topbar backHref="/feed" />);
+    fireEvent.keyDown(window, { key: "u" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(mockPush).toHaveBeenCalledTimes(2);
+    expect(mockPush).toHaveBeenCalledWith("/feed");
+    expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "u Escape"
+    );
+    unmount();
+    mockPush.mockClear();
+    render(<Topbar />);
+    fireEvent.keyDown(window, { key: "u" });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

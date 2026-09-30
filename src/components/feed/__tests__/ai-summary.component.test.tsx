@@ -1,6 +1,20 @@
 /** @jest-environment jsdom */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { AISummary } from "../ai-summary";
+import { AISummary as RawAISummary } from "../ai-summary";
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/feed/one",
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
+function AISummary(props: React.ComponentProps<typeof RawAISummary>) {
+  return (
+    <ShortcutsProvider>
+      <RawAISummary {...props} />
+    </ShortcutsProvider>
+  );
+}
 jest.mock("react-markdown", () => ({
   __esModule: true,
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -170,4 +184,49 @@ it("drops the detailed summary when the brief is regenerated, and takes a new br
   });
   fireEvent.click(screen.getByText("Brief"));
   expect(await screen.findByText("Newest brief.")).toBeVisible();
+});
+
+it("s, d and Shift+S drive the summary controls and expose their keys", async () => {
+  jest.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    json: async () => ({ summary: "Regenerated" }),
+  } as Response);
+  render(
+    <AISummary
+      itemId="one"
+      ogSummary="original"
+      initialBriefSummary="Brief text"
+      initialDetailedSummary="Detailed text"
+    />
+  );
+  const aiBtn = await screen.findByRole("button", { name: /AI Summary/ });
+  expect(aiBtn).toHaveAttribute("type", "button");
+  expect(aiBtn).toHaveAttribute("aria-pressed", "true");
+  expect(aiBtn).toHaveAttribute("aria-keyshortcuts", "s");
+  expect(screen.getByRole("button", { name: /Regenerate/ })).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Shift+S"
+  );
+
+  fireEvent.keyDown(window, { key: "d" });
+  expect(await screen.findByText("Detailed text")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Detailed/ })).toHaveAttribute("aria-pressed", "true");
+
+  fireEvent.keyDown(window, { key: "s" });
+  expect(screen.getByRole("button", { name: /Original/ })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.keyDown(window, { key: "s" });
+  expect(screen.getByRole("button", { name: /AI Summary/ })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  fireEvent.keyDown(window, { key: "S", shiftKey: true });
+  await waitFor(() =>
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/ai/summarize",
+      expect.objectContaining({
+        body: JSON.stringify({ itemId: "one", length: "detailed", force: true }),
+      })
+    )
+  );
 });

@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 
 import {
@@ -37,16 +38,6 @@ const pillClass = (selected: boolean) =>
       : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
   );
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  );
-}
-
 export interface FilterBarProps {
   filters: FeedFilterState;
   onChange: (updates: FilterUpdates) => void;
@@ -70,6 +61,9 @@ export function FilterBar({
   label = "Search your items",
 }: FilterBarProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [draft, setDraft] = React.useState(filters.searchQuery);
   const committed = filters.searchQuery;
 
@@ -98,16 +92,15 @@ export function FilterBar({
     return () => clearTimeout(timer);
   }, [draft, committed]);
 
-  // "/" focuses the search from anywhere on the page that is not a text field.
+  // The global "/" shortcut sends people from other pages here with ?focus=search.
   React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (isEditableTarget(event.target)) return;
-      event.preventDefault();
-      inputRef.current?.focus();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    if (searchParams.get("focus") !== "search") return;
+    inputRef.current?.focus();
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("focus");
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clearSearch = () => {
@@ -133,6 +126,7 @@ export function FilterBar({
             />
             <input
               ref={inputRef}
+              data-search-input
               type="search"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
