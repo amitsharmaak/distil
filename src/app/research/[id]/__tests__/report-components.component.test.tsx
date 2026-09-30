@@ -3,7 +3,8 @@
  */
 
 import React from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render as baseRender, screen, within } from "@testing-library/react";
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 import type { Components, ExtraProps } from "react-markdown";
 
 import {
@@ -35,7 +36,12 @@ jest.mock("@/components/markdown", () => ({
   },
 }));
 
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/research/r1",
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+}));
+
+const render = (ui: React.ReactElement) => baseRender(ui, { wrapper: ShortcutsProvider });
 
 function nodeAt(line: number): ExtraProps["node"] {
   return { position: { start: { line } } } as unknown as ExtraProps["node"];

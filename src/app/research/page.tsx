@@ -1,15 +1,33 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileQuestion, Scan, Sparkles } from "lucide-react";
+import { FileQuestion, Scan, Search, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeepResearch } from "@/components/feed/deep-research";
 import { config } from "@/lib/config";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { Kbd } from "@/components/ui/kbd";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
+
+const NEW_RESEARCH: ShortcutDef = {
+  id: "research.new",
+  keys: [{ key: "n" }],
+  label: "New research",
+  group: "Research",
+  scope: "research",
+};
+const SCAN: ShortcutDef = {
+  id: "research.scan",
+  keys: [{ key: "s", shift: true }],
+  label: "Scan for suggestions",
+  group: "Research",
+  scope: "research",
+};
 
 interface ResearchReportListItem {
   id: string;
@@ -42,6 +60,7 @@ export default function ResearchListPage() {
   } | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
+  const newResearchRef = useRef<HTMLButtonElement>(null);
 
   const fetchReports = useCallback(async () => {
     try {
@@ -127,6 +146,19 @@ export default function ResearchListPage() {
     }
   }
 
+  useShortcut(NEW_RESEARCH, (e) => {
+    e.preventDefault();
+    newResearchRef.current?.click();
+  });
+  useShortcut(
+    SCAN,
+    (e) => {
+      e.preventDefault();
+      void handleScan();
+    },
+    !scanning && !loading
+  );
+
   function getStatusBadgeVariant(status: string) {
     if (status === "completed") return "text-green-600 border-green-200";
     if (status === "failed") return "text-red-600 border-red-200";
@@ -156,6 +188,9 @@ export default function ResearchListPage() {
           onClick={handleScan}
           disabled={scanning || loading}
           className="gap-2 shrink-0"
+          aria-label="Scan for topics"
+          aria-keyshortcuts="Shift+S"
+          title="Scan for suggestions (Shift+S)"
         >
           <Scan className="h-4 w-4" />
           {scanning ? "Scanning…" : "Scan for topics"}
@@ -171,7 +206,20 @@ export default function ResearchListPage() {
           <p className="text-xs text-muted-foreground">
             Run deep research on anything—Distil will search the web and write a cited report.
           </p>
-          <DeepResearch defaultQuery="" />
+          <DeepResearch defaultQuery="">
+            <Button
+              ref={newResearchRef}
+              variant="default"
+              className="gap-2"
+              aria-keyshortcuts="n"
+              title="New research (n)"
+            >
+              <Search className="h-4 w-4" /> Deep Research
+              <Kbd className="hidden bg-primary-foreground/20 text-primary-foreground sm:inline-flex">
+                n
+              </Kbd>
+            </Button>
+          </DeepResearch>
         </CardContent>
       </Card>
 
