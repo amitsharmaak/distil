@@ -165,7 +165,7 @@ describe("account service composition", () => {
     const previousUser = process.env.DISTIL_LEGACY_USER_ID;
     delete process.env.DISTIL_LEGACY_USER_ID;
     try {
-      const request = new Request("https://distil.example/feed?p10_probe=1", {
+      const request = new Request("https://distil.example/feed?p10=1", {
         headers: {
           "x-trace-id": context.requestId,
           [P10_PREVIEW_PROBE_HEADER]: P10_PREVIEW_PROBE_VALUE,
