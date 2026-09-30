@@ -89,6 +89,12 @@ export const RESEARCH_SECTION_FORMATS = ["prose", "table", "steps", "bullets"] a
 export type ResearchSectionFormat = (typeof RESEARCH_SECTION_FORMATS)[number];
 
 const CITE_RULE = `Cite with the bracketed numbers from the "Sources:" line of the finding a claim comes from, right after the claim, for example "... in 2025 [2]" or "... [1][3]". Use only numbers that appear in those lines. Never write URLs or links.`;
+/**
+ * Per-claim citation for the section writer: each finding lists its sources by number and title,
+ * so the writer picks the one(s) behind each claim instead of repeating the whole list (the
+ * 2026-09-30 probe cited both of a finding's sources on nearly every sentence).
+ */
+const SECTION_CITE_RULE = `${CITE_RULE} Cite only the source or sources that support that specific claim, chosen by their titles; do not attach every source of a finding to each sentence. When no single source clearly fits, cite the one whose title fits best.`;
 const NO_SOURCES_RULE = `No sources are available for these findings. Do not add citation numbers, URLs or links.`;
 
 /**
@@ -109,7 +115,7 @@ ${findings}
 ## Instructions
 1. "shape": the kind of report this question needs, one of ${RESEARCH_REPORT_SHAPES.join(", ")}.
    - explainer: how something works; comparison: options side by side; landscape: the approaches or players in a field; decision: whether or which to choose; how-to: steps to do something; timeline: how something developed.
-2. "tldr": 2-3 sentences that directly answer the research question with the most important specifics.
+2. "tldr": 2-3 short sentences, at most 60 words in total, that directly answer the research question with the most important specifics.
 3. "takeaways": 3-5 key takeaways. Each is one sentence carrying a concrete fact from the findings (a figure, date, name or measured result), not advice.
 4. "sections": 3-6 sections that together answer the question, in reading order, each with:
    - "heading": written for this question and specific to its content (not "Introduction", "Analysis", "Key Findings" or "Conclusion").
@@ -184,7 +190,7 @@ Write the body of the section "${heading}": 250-450 words for a knowledgeable re
 - Keep the specific facts, figures, dates and named examples from the findings; do not generalise them away. Use only these findings; where they disagree or are thin, say so.
 - Stay on this section's purpose; the other sections cover their own headings.
 - ${FORMAT_RULES[input.format]}
-- ${input.hasSources ? CITE_RULE : NO_SOURCES_RULE}
+- ${input.hasSources ? SECTION_CITE_RULE : NO_SOURCES_RULE}
 - Do not repeat the heading and do not start with a heading; the heading is added for you. Use ### subheadings only if the section clearly needs them, never # or ##.
 - No introduction to the report, no conclusion or summary of the whole report, no Sources or References list.
 

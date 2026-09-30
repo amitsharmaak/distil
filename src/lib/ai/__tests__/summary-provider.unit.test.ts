@@ -299,3 +299,18 @@ it("limits Anthropic SDK retries when the caller bounds the attempts", async () 
     { timeout: 40_000, maxRetries: 0 }
   );
 });
+it("applies a Gemini thinking level and budget given through providerOverrides", async () => {
+  mockGenerateContent.mockResolvedValue({ response: { text: () => "answer" } });
+  await new GeminiProviderImpl("key").generateText("synthetic", "gemini-3.5-flash", {
+    maxTokens: 2_000,
+    providerOverrides: { gemini: { maxTokens: 5_000, thinking: "low" } },
+  });
+  expect(mockGetModel).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      generationConfig: expect.objectContaining({
+        maxOutputTokens: 5_000,
+        thinkingConfig: { thinkingLevel: "low" },
+      }),
+    })
+  );
+});

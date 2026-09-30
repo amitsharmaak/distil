@@ -52,6 +52,23 @@ const SAFE_FIELDS = new Set([
 ]);
 
 /**
+ * Numeric counters (how many sources, sections, words…). Only finite, non-negative integers are
+ * kept; any other value, including a string, is dropped, so these fields cannot carry content.
+ */
+const COUNT_FIELDS = new Set([
+  "sources",
+  "redirects",
+  "overCap",
+  "unresolved",
+  "cited",
+  "sections",
+  "placeholders",
+  "takeaways",
+  "caveats",
+  "words",
+]);
+
+/**
  * Pino redaction is a defence-in-depth backstop for known sensitive paths.
  * The formatter below is stricter: it drops every non-allowlisted field.
  */
@@ -140,6 +157,12 @@ export function sanitizeLogObject(value: unknown): Record<string, unknown> {
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(value)) {
+    if (COUNT_FIELDS.has(key)) {
+      if (typeof nested === "number" && Number.isSafeInteger(nested) && nested >= 0) {
+        sanitized[key] = nested;
+      }
+      continue;
+    }
     if (!SAFE_FIELDS.has(key)) continue;
     if (key === "err" || key === "error") {
       sanitized[key] = sanitizeLogError(nested);

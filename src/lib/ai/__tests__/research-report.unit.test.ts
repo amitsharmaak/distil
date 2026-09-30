@@ -6,6 +6,8 @@ import {
   IncompleteSectionError,
   InvalidOutlineError,
   isUsableFinding,
+  limitTldr,
+  MAX_TLDR_WORDS,
   MAX_REPORT_SECTIONS,
   parseOutline,
   sectionPlaceholder,
@@ -328,5 +330,39 @@ describe("helpers", () => {
     expect(long.length).toBeLessThanOrEqual(RESEARCH_ITEM_CONTEXT_MAX_CHARS + 1);
     expect(long.endsWith("…")).toBe(true);
     expect(itemPlanContext({ title: "", summary: null, fullContent: null })).toBeUndefined();
+  });
+});
+
+describe("limitTldr", () => {
+  const sentence = (n: number, lead: string) =>
+    `${lead} ${Array.from({ length: n - 1 }, (_, i) => `w${i}`).join(" ")} [1].`;
+
+  it("keeps a short TL;DR unchanged, citation markers not counted", () => {
+    const tldr = `${sentence(25, "One")} ${sentence(30, "Two")}`;
+    expect(limitTldr(tldr)).toBe(tldr);
+  });
+
+  it("drops whole sentences past 60 words", () => {
+    const tldr = `${sentence(30, "One")} ${sentence(25, "Two")} ${sentence(20, "Three")}`;
+    expect(limitTldr(tldr)).toBe(`${sentence(30, "One")} ${sentence(25, "Two")}`);
+  });
+
+  it("cuts a single overlong sentence at the limit with an ellipsis", () => {
+    const trimmed = limitTldr(sentence(90, "Long"));
+    expect(trimmed.endsWith("…")).toBe(true);
+    expect(trimmed.split(" ")).toHaveLength(MAX_TLDR_WORDS);
+  });
+
+  it("is applied on assembly", () => {
+    const outline: ResearchOutline = {
+      shape: "explainer",
+      tldr: `${sentence(40, "One")} ${sentence(40, "Two")}`,
+      takeaways: [],
+      sections: [{ heading: "A", purpose: "", findings: [0], sourceIds: [], format: "prose" }],
+      caveats: [],
+    };
+    expect(assembleReport(outline, ["Body"])).toBe(
+      `## TL;DR\n\n${sentence(40, "One")}\n\n## A\n\nBody\n`
+    );
   });
 });

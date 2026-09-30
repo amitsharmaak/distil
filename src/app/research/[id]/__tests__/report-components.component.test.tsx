@@ -640,7 +640,8 @@ describe("stored R3 report fixture", () => {
       ["What to watch", "#what-to-watch"],
       ["Caveats and open questions", "#caveats-and-open-questions"],
     ]);
-    expect(screen.getByTestId("report-stats")).toHaveTextContent("5 sections");
+    // Key takeaways and Caveats are framing: the header counts the three body sections.
+    expect(screen.getByTestId("report-stats")).toHaveTextContent("3 sections");
     expect(screen.getByTestId("report-stats")).toHaveTextContent("2 sources");
     expect(screen.getByText("Sources (2)")).toBeInTheDocument();
     expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();

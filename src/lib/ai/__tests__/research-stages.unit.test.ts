@@ -5,7 +5,7 @@ jest.mock("../router", () => ({
 }));
 jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
 
-import { createTenantAIRouter, getEffectiveModel } from "../router";
+import { createTenantAIRouter } from "../router";
 import { getTenantRepositories } from "@/lib/database";
 import { createResearchRunMessageV1 } from "@/lib/contracts/tenant-jobs";
 import { consumeResearchRunMessage } from "@/lib/queue/research-consumer";

@@ -539,10 +539,9 @@ the stepper's fixed four stages in `src/app/research/[id]/page.tsx`. All as the 
 - **Provider.** `GenerateOptions.thinking` (`"low" | "high"`): Gemini 3 models get
   `generationConfig.thinkingConfig.thinkingLevel`, Gemini 2.5 Flash/Pro a `thinkingBudget`
   (1,024 / 8,192), other models and providers ignore it (the SDK type predates the field; the API
-  accepted it live). `maxAttempts` now also bounds the Anthropic SDK's own retries
-  (`maxRetries: maxAttempts - 1`; unchanged when a caller does not pass it), so a timed-out
-  Sonnet request is not retried twice more inside the same invocation — the SDK default of two
-  retries could by itself push a 50 s call far past the 60 s lease.
+  accepted it live). It can be given per provider through the hotfix's `providerOverrides`
+  (which now accepts `thinking` besides `maxTokens` and `rejectTruncated`); the outline and write
+  calls set it only for Gemini.
 - **Stepper** (`/research/[id]`): Planning → Researching → Deepening → **Outlining** →
   **Writing (2/5): <heading>**. A legacy `synthesizing` view shows as Outlining. Progress is
   parsed by one helper for the read route (a JSON string), SSE events, objects, and defensively a
@@ -552,21 +551,25 @@ the stepper's fixed four stages in `src/app/research/[id]/page.tsx`. All as the 
   and the Deepening step never showed its counts, so the page looked stuck on research; now a
   finished step reads "Researched sub-questions" and the current one "Deepening (2/2): <gap>".
 
-**Lease budget (every outline and write stage, both providers).** Provider timeout 40 s
-(`RESEARCH_TIMEOUTS_MS.outline` / `.write`), one provider attempt (`maxAttempts: 1`), and a
-hard stage deadline of 42 s (`withStageDeadline`) that rejects even if an SDK does not abort;
-the deadline counts as a failed attempt and is retried by redelivery. Around the call: report
-read, an optional status write, one state write (or the assembled report), and the consumer's
-publish of the next message — well under 3 s together, so a stage ends by ~45 s, ≥15 s inside
-the 60 s lease. Output budgets per provider (`RESEARCH_REPORT_MAX_TOKENS`, chosen by the
-provider `research-synthesize` routes to): Anthropic (`claude-sonnet-4-6`, no extended thinking,
-~60–80 tokens/s) outline 2,500 and write 2,000 tokens ≈ 31–42 s and 25–33 s even at the cap,
-while a real outline (~1,000 tokens) or 450-word section (~650 tokens) should take ~12–16 s and ~8–11
-s; Gemini (`gemini-3.5-flash`, low thinking, ~230 tokens/s measured) outline 6,000 and write
-5,000 ≈ 26 s and 22 s at the cap. `rejectTruncated: true` on both calls. The underlying HTTP
-request is not cancelled by the deadline (no abort signal is plumbed through `GenerateOptions`);
-the separate hotfix `claude/research-r2-synth-timeout` works on real aborts and will need to be
-merged with this branch (it touches the synthesize stage this branch removes).
+**Lease budget (one mechanism, after merging the R2 hotfix `eaed15c`).** Every stage, including
+outline and write, runs under the hotfix's `withStageDeadline`: the attempt is written to the
+state before the stage starts (so a delivery Vercel kills still counts), the stage gets an
+`AbortSignal` that reaches the SDK's HTTP request, and at the deadline the signal is aborted and
+the attempt fails. The deadline is now **45 s** for all stages (the hotfix had 50 s; R3's
+separate 42 s outline/write deadline and its own Anthropic retry cap are gone). Outline and
+write calls: provider timeout 40 s, `maxAttempts: 1` (the SDKs get `maxRetries: 0` through the
+hotfix's `sdkRequestOptions`), `rejectTruncated: true`, and per-provider budgets via
+`providerOverrides` (`RESEARCH_OUTLINE_OPTIONS`, `RESEARCH_WRITE_OPTIONS`): default (Anthropic
+`claude-sonnet-4-6`, no extended thinking, and GPT; ~60–80 tokens/s) outline 2,500 and write
+2,000 tokens ≈ 31–42 s and 25–33 s even at the cap, while a real outline (~1,000 tokens) or
+450-word section (~650 tokens) should take ~12–16 s and ~8–11 s (estimated); Gemini
+(`gemini-3.5-flash`, low thinking, ~230 tokens/s measured) outline 6,000 and write 5,000 ≈ 26 s
+and 22 s at the cap. Invocation: report read + attempt write (<1 s) + stage ≤ 45 s + state or
+assembled-report write and next publish (<2 s) ≈ ≤ 48 s, ≥ 12 s inside the 60 s lease. Search
+stages keep their 45 s provider timeout, so the deadline now also bounds a slow grounded answer
+plus its redirect resolution at 45 s. Exhausted attempts, including every delivery killed
+before it could record its failure, degrade instead of failing the report: an outline becomes
+the deterministic fallback outline, a section the placeholder.
 
 **Run state version 3 and compatibility.** `research_reports.progress` adds `outline` (the
 normalised outline) and `sections` (`string | null` per outline section); stored reports are
@@ -611,43 +614,62 @@ is lifted, the TOC lists Key takeaways, each section and its `###`, and Caveats)
 renumbered sources as in R2; no single call above ~16 s on either provider in the normal case.
 To confirm with the orchestrator's full run.
 
-**Verification.** `npm run check`: lint 0 errors (5 known warnings, none in changed files),
-typecheck clean, Jest **237 suites / 1,879 tests** passed (from 236 / 1,840). New or updated:
-`research-stages.unit` (full stage walk plan → search × 2 → gaps → deepen → outline → write × 2
-with call options, prompts, views and the exact assembled markdown and renumbered sources;
-resume mid-write; a redelivered `synthesize` message through `consumeResearchRunMessage` runs
-the outline and publishes `write` 0; v2 run waiting for synthesis; v2 and v1 resume; v1 at
-synthesis through outline and write; invalid outline retried then deterministic fallback;
-exhausted section → placeholder citing its sources and the report completes; short answer
-retried; all-written state assembles without a model call; stage ordering; provider budgets;
-deadline race and a hung write counted as an attempt), `research-report.unit` (new: outline
-normalisation, F-number mapping, caps, rejections, fallback outline, section cleaning, assembly
-shape and renumbering, placeholders, plan context), `prompts.unit` (plan prompt shapes; outline
-and section prompts replace the synthesis prompt tests), `summary-provider.unit` (thinking
-config mapping, sent only when asked; Anthropic `maxRetries`), `tenant-jobs.security.unit`
+**After the hotfix merge (same branch, follow-ups from the orchestrator).**
+
+- Merge of `origin/main` (`eaed15c`, PR #84): conflicts in `research.ts`, `providers.ts`, the
+  stage tests and this file, resolved as described under Lease budget. The hotfix's deadline
+  tests now run against a write stage (abort at the deadline, late answer not stored, last attempt
+  → placeholder and completed report, killed delivery counted, all deliveries killed → placeholder
+  without a model call, outline → fallback outline without a model call, search degrade).
+- Logger: R2's `research_grounding_sources` counts were dropped by the allowlist. `logger.ts`
+  gains a separate counter allowlist (`sources`, `redirects`, `overCap`, `unresolved`, `cited`,
+  `sections`, `placeholders`, `takeaways`, `caveats`, `words`) that keeps only non-negative safe
+  integers — a string (e.g. a URL) in those fields is dropped. The grounding event now logs its
+  counts; `research_outline_planned` and `research_report_assembled` log shape as `code` and the
+  counts in those fields instead of the earlier packed string.
+- TL;DR: the outline prompt asks for 2–3 short sentences, at most 60 words; assembly trims a
+  longer TL;DR to whole sentences within 60 words (`limitTldr`; citation markers not counted; a
+  single overlong sentence is cut with an ellipsis).
+- Header count: R1's "N sections" counts only body `##` sections; TL;DR / Summary, "Key
+  takeaways" and "Caveats (and open questions)" are excluded (`isBodySectionHeading`). Legacy
+  four-heading reports keep their count (Executive Summary was already lifted out).
+- Citations: the section prompt asks to cite only the source(s) that support each claim, chosen
+  by their titles (each finding's Sources line already lists number, title and domain), not every
+  source of a finding. No extra model calls.
+
+**Verification.** `npm run check` after the merge and follow-ups: lint 0 errors (5 warnings, all
+in files this branch does not change), typecheck clean, Jest **238 suites / 1,932 tests** passed.
+Before the merge: 237 / 1,879. Covered in addition to the list below: logger counters
+(`logger.security.unit`), `limitTldr` and assembly trimming (`research-report.unit`), section count
+for R3 and legacy reports (`report-markdown.unit`, `report-components.component` now "3
+sections"), per-claim citation wording (`prompts.unit`), Gemini thinking through
+`providerOverrides` (`summary-provider.unit`), outline/write options and the 45 s deadline
+(`research-stages.unit`). No live calls after the merge.
+
+Earlier coverage: `research-stages.unit` (full stage walk plan → search × 2 → gaps → deepen →
+outline → write × 2 with call options, prompts, views and the exact assembled markdown and
+renumbered sources; resume mid-write; a redelivered `synthesize` message through
+`consumeResearchRunMessage` runs the outline and publishes `write` 0; v2 run waiting for
+synthesis; v2 and v1 resume; v1 at synthesis through outline and write; invalid outline retried
+then deterministic fallback; exhausted section → placeholder citing its sources and the report
+completes; short answer retried; all-written state assembles without a model call; stage
+ordering), `research-report.unit` (outline normalisation, F-number mapping, caps, rejections,
+fallback outline, section cleaning, assembly shape and renumbering, placeholders, plan context),
+`prompts.unit`, `summary-provider.unit` (thinking config mapping), `tenant-jobs.security.unit`
 (research message steps, `write` needs an index, `synthesize` accepted, idempotency keys),
 `page.component` (Outlining / Writing labels, legacy `synthesizing`, string-encoded and
 double-encoded progress), `report-components.component` (an R3-shaped stored report: TL;DR
 callout, body starts at Key takeaways, table and placeholder citations linked, TOC entries,
-"5 sections", sources).
+sources).
 
 **Gaps and next steps.**
 
 1. No full run yet (orchestrator's). Check: word count and section count, Sonnet timings per
-   stage against the budget above, and the stepper on Production-shaped progress.
-2. Merge with the synthesize-timeout hotfix: expect conflicts in `research.ts` (this branch
-   deletes the synthesize stage) and possibly `providers.ts`; keep the hotfix's abort plumbing
-   and apply it to the outline and write calls.
-3. The logger's field allowlist drops R2's `research_grounding_sources` counts (`sources`,
-   `redirects`, `overCap`, `unresolved` are not allowlisted), so those numbers never reach the
-   logs. R3's `research_outline_planned` / `research_report_assembled` events pack their counts
-   into the allowlisted `count` and `code` fields instead. A small follow-up could allowlist a
-   few numeric count fields.
-4. The header's "N sections" now counts Key takeaways and Caveats too (5 for a three-section
-   report). Harmless; adjust in the UI if it reads oddly.
-5. The outline prompt could hold the TL;DR to ~60 words; per-fact source attribution would need
-   the search notes to carry citations (not in scope).
-6. R4 (research notes drill-down) remains a separate decision.
+   stage against the budget above, citation spread per claim, TL;DR length, and the stepper on
+   Production-shaped progress.
+2. Per-fact source attribution beyond the prompt would need the search notes to carry
+   citations (not in scope).
+3. R4 (research notes drill-down) remains a separate decision.
 
 ### Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30
 

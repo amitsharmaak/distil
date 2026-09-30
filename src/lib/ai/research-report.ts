@@ -26,6 +26,8 @@ export const MAX_TAKEAWAYS = 5;
 export const MAX_CAVEATS = 4;
 /** A section body shorter than this is treated as a failed write and retried. */
 export const MIN_SECTION_WORDS = 60;
+/** The TL;DR is trimmed to whole sentences within this many words on assembly. */
+export const MAX_TLDR_WORDS = 60;
 const MAX_HEADING_CHARS = 120;
 const MAX_LINE_CHARS = 600;
 
@@ -381,11 +383,36 @@ export function isSectionPlaceholder(body: string): boolean {
 }
 
 /**
+ * Keeps the TL;DR within {@link MAX_TLDR_WORDS} words (citation markers not counted): whole
+ * sentences while they fit; a first sentence that is already too long is cut at the limit with
+ * an ellipsis.
+ */
+export function limitTldr(tldr: string, maxWords = MAX_TLDR_WORDS): string {
+  const text = tldr.replace(/\s+/g, " ").trim();
+  if (countSectionWords(text) <= maxWords) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    if (countSectionWords([...kept, sentence].join(" ")) > maxWords) break;
+    kept.push(sentence);
+  }
+  if (kept.length > 0) return kept.join(" ");
+  const words = text.split(" ");
+  let cut = "";
+  for (let end = 1; end <= words.length; end++) {
+    const candidate = words.slice(0, end).join(" ");
+    if (countSectionWords(candidate) > maxWords) break;
+    cut = candidate;
+  }
+  return `${cut.replace(/[,;:.]+$/, "")}…`;
+}
+
+/**
  * The report as stored: `## TL;DR`, `## Key takeaways`, one `##` per section, then
  * `## Caveats and open questions`. Citations still use catalog ids; the caller renumbers them.
  */
 export function assembleReport(outline: ResearchOutline, sections: string[]): string {
-  const parts = [`## ${TLDR_HEADING}`, outline.tldr];
+  const parts = [`## ${TLDR_HEADING}`, limitTldr(outline.tldr)];
   if (outline.takeaways.length > 0) {
     parts.push(
       `## ${TAKEAWAYS_HEADING}`,

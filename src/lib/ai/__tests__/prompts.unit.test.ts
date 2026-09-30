@@ -332,7 +332,7 @@ describe("researchOutlinePrompt", () => {
     ]) {
       expect(prompt).toContain(shape);
     }
-    expect(prompt).toMatch(/"tldr": 2-3 sentences/);
+    expect(prompt).toContain('"tldr": 2-3 short sentences, at most 60 words');
     expect(prompt).toMatch(/3-5 key takeaways\. Each is one sentence carrying a concrete fact/);
     expect(prompt).toMatch(/"sections": 3-6 sections/);
     expect(prompt).toContain('"format": "table" when the content compares');
@@ -379,6 +379,8 @@ describe("researchSectionPrompt", () => {
     expect(prompt).toContain("never # or ##");
     expect(prompt).toContain('bracketed numbers from the "Sources:" line');
     expect(prompt).toContain("no Sources or References list");
+    expect(prompt).toContain("Cite only the source or sources that support that specific claim");
+    expect(prompt).toContain("do not attach every source of a finding to each sentence");
   });
 
   it("describes the section format", () => {

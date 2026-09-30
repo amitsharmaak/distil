@@ -891,9 +891,13 @@ async function completeReport(
     {
       event: "research_report_assembled",
       jobId: report.id,
-      count: countSectionWords(cited.report),
-      // Counts only, packed into one allowlisted identifier field.
-      code: `shape-${outline.shape}.sections-${sections.length}.placeholders-${placeholders}.cited-${cited.sources.length}-of-${catalog.sources.length}${outline.fallback ? ".fallback" : ""}`,
+      // Counts and the shape enum only.
+      code: outline.fallback ? `${outline.shape}-fallback` : outline.shape,
+      words: countSectionWords(cited.report),
+      sections: sections.length,
+      placeholders,
+      cited: cited.sources.length,
+      sources: catalog.sources.length,
     },
     "Research report assembled"
   );
@@ -1032,8 +1036,10 @@ async function executeStage(
         {
           event: "research_outline_planned",
           jobId: report.id,
-          count: outline.sections.length,
-          code: `shape-${outline.shape}.takeaways-${outline.takeaways.length}.caveats-${outline.caveats.length}`,
+          code: outline.shape,
+          sections: outline.sections.length,
+          takeaways: outline.takeaways.length,
+          caveats: outline.caveats.length,
         },
         "Research outline planned"
       );
