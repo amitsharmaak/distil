@@ -96,13 +96,13 @@ describe("temporary P10 measurement harness", () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&p10warmup=1",
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&p10measure=1&p10warmup=1",
       { cache: "no-store" }
     );
     for (let call = 2; call <= 5; call += 1) {
       expect(fetchMock).toHaveBeenNthCalledWith(
         call,
-        "/api/v1/feed?archive=exclude&sort=for_you&limit=100",
+        "/api/v1/feed?archive=exclude&sort=for_you&limit=100&p10measure=1",
         { cache: "no-store" }
       );
     }

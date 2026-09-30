@@ -9,9 +9,11 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import {
+  P10_PREVIEW_MEASURE_PARAM,
+  P10_PREVIEW_MEASURE_VALUE,
+} from "@/lib/auth/p10-preview-measurement";
 
-export const P10_MEASURE_PARAM = "p10measure";
-export const P10_MEASURE_VALUE = "1";
 const P10_WARMUP_PARAM = "p10warmup";
 const TARGET_PATHS = new Set(["/feed", "/api/v1/feed"]);
 const TIMING_NAMES = new Set([
@@ -35,7 +37,7 @@ function rounded(milliseconds: number): number {
 }
 
 export function p10MeasurementEnabled(searchParams: Pick<URLSearchParams, "get">): boolean {
-  return searchParams.get(P10_MEASURE_PARAM) === P10_MEASURE_VALUE;
+  return searchParams.get(P10_PREVIEW_MEASURE_PARAM) === P10_PREVIEW_MEASURE_VALUE;
 }
 
 /** Strip the URL query and reject every cross-origin or non-target resource. */
@@ -55,7 +57,7 @@ export function p10MeasurementRecord(
     url.origin !== pageOrigin ||
     !TARGET_PATHS.has(url.pathname) ||
     (!isFeedRsc && !isFeedApi) ||
-    url.searchParams.get(P10_WARMUP_PARAM) === P10_MEASURE_VALUE
+    url.searchParams.get(P10_WARMUP_PARAM) === P10_PREVIEW_MEASURE_VALUE
   ) {
     return null;
   }
@@ -71,7 +73,14 @@ export function p10MeasurementRecord(
 
 function warmupPath(apiPath: string): string {
   const url = new URL(apiPath, window.location.origin);
-  url.searchParams.set(P10_WARMUP_PARAM, P10_MEASURE_VALUE);
+  url.searchParams.set(P10_PREVIEW_MEASURE_PARAM, P10_PREVIEW_MEASURE_VALUE);
+  url.searchParams.set(P10_WARMUP_PARAM, P10_PREVIEW_MEASURE_VALUE);
+  return `${url.pathname}${url.search}`;
+}
+
+function measuredApiPath(apiPath: string): string {
+  const url = new URL(apiPath, window.location.origin);
+  url.searchParams.set(P10_PREVIEW_MEASURE_PARAM, P10_PREVIEW_MEASURE_VALUE);
   return `${url.pathname}${url.search}`;
 }
 
@@ -116,7 +125,7 @@ export function P10MeasurementHarness({ apiPath }: { apiPath: string }) {
       await warmup.arrayBuffer();
       for (let sample = 1; sample <= 4; sample += 1) {
         setRunStatus(`API sample ${sample}/4…`);
-        const response = await fetch(apiPath, { cache: "no-store" });
+        const response = await fetch(measuredApiPath(apiPath), { cache: "no-store" });
         await response.arrayBuffer();
       }
       setRunStatus("Four API samples complete");

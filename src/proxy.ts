@@ -17,6 +17,11 @@ import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
 import { instrumentNeonProxyDependencies } from "@/lib/auth/auth-metrics";
 import {
+  P10_PREVIEW_MEASURE_HEADER,
+  P10_PREVIEW_MEASURE_PARAM,
+  P10_PREVIEW_MEASURE_VALUE,
+} from "@/lib/auth/p10-preview-measurement";
+import {
   PROXY_TIMING_HEADER,
   runWithRequestMetrics,
   serverTimingHeader,
@@ -106,6 +111,16 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
   if (!neonFoundation.enabled) {
     const authError = await checkAuth(request);
     if (authError) return finish(authError);
+    // TEMPORARY: allow only the P10 measurement page and its matching API
+    // request to use an empty Preview tenant. Inbound copies of this internal
+    // header were stripped above; Neon-authenticated requests never receive it.
+    const isP10MeasurementRoute = pathname === "/feed" || pathname === "/api/v1/feed";
+    if (
+      isP10MeasurementRoute &&
+      request.nextUrl.searchParams.get(P10_PREVIEW_MEASURE_PARAM) === P10_PREVIEW_MEASURE_VALUE
+    ) {
+      requestHeaders.set(P10_PREVIEW_MEASURE_HEADER, P10_PREVIEW_MEASURE_VALUE);
+    }
   } else {
     try {
       const dependencies = instrumentNeonProxyDependencies({
