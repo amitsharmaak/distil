@@ -36,7 +36,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   no accessible name. Plan: **K1** shortcut registry + `?` help dialog + `g`-navigation + bug
   fixes; **K2** `j`/`k` row navigation on Feed and Today with the row markup fixed; **K3** reader
   shortcuts plus Mark unread and Copy link; **K4** Research/Settings keys, keyboard-only e2e,
-  polish. The checkpoint holds the full key map, five decisions and a paste-ready code prompt.
+  polish. The checkpoint holds the full key map, five decisions, a single-session code prompt and an
+  orchestrated prompt (main thread delegates all execution to small worker models).
   Next: Amit answers the five decisions and picks a phase (recommended K1).
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
@@ -810,7 +811,7 @@ automated keyboard-only regression test, and a settings entry for the preference
 5. **Order.** (A, recommended) K1 → K2 → K3 → K4, one phase per session. K2 and K3 both depend on
    K1 and could run in parallel worktrees if Codex takes one; K4 depends on all three.
 
-#### Code prompt (paste into a fresh session; change `K1` to the phase being implemented)
+#### Single-session code prompt (paste into a fresh session; change `K1` to the phase being implemented)
 
 ```
 Read AGENTS.md, then in docs/project-state.md read the Current handoff section and the
@@ -841,6 +842,136 @@ Rules for this task:
   verification evidence, limitations, exact next phase) and update the keyboard handoff
   bullet. Open the PR with /finish-task. Report implementation complete, verified locally,
   and not deployed as three separate statements.
+```
+
+#### Orchestrated code prompt (main thread delegates; paste into a fresh Codex or Claude session)
+
+Use this variant when the main session should stay light enough to finish a phase without
+context compaction. The main thread never reads source files or writes code; small worker
+models do every read, edit, test and browser check and return short structured reports.
+
+```
+You are the ORCHESTRATOR for one phase of the Distil keyboard-navigation plan. You do not
+implement anything yourself. You decompose the phase, brief worker subagents (use the
+smallest capable model available to you for each worker; reserve the larger model only for
+the code-review worker), integrate their results, run the gates through workers, and record
+the outcome. Your own context must stay small: never open a source file, never paste a diff
+or a test log into your context, never ask a worker for file contents. Read only AGENTS.md
+(§2, §6, §7.1, §8) and, in docs/project-state.md, the Current handoff section and the
+checkpoint "Keyboard navigation: audit and phased plan (K1–K4) — 2026-09-30", down to and
+including the brief for the phase below. Stop reading there.
+
+Phase to implement: K1        <- change to K2, K3 or K4
+Decisions already taken by Amit: <paste his numbered answers, e.g. "1A 2A 3A 4A 5A">
+Base: fresh branch from origin/main via /start-task keyboard-k1 (or the equivalent by hand:
+worktree + branch claude/keyboard-k1 or codex/keyboard-k1, npm ci).
+
+== Orchestrator rules ==
+1. Every worker brief is self-contained: the worker will not see this conversation. Each
+   brief states the goal, the exact files it owns, the files it must not touch, the
+   interfaces it must implement or consume (copied verbatim from the contract below), the
+   tests it must add, the repo rules that apply, and the report format.
+2. File ownership is exclusive: two concurrent workers never own the same file. Sequence
+   workers whose ownership would overlap.
+3. Workers report in at most 300 words using exactly this shape, and nothing else:
+     STATUS: done | blocked | partial
+     FILES: <paths created/edited, one line each, with +/- line counts>
+     TESTS: <command run> -> <pass/fail counts>
+     INTERFACES: <any exported name that differs from the contract, or "as specified">
+     RISKS: <up to 3 bullets>
+     NEXT: <what a follow-up worker must know>
+   If a report exceeds that shape, do not read it; re-ask for the shape.
+4. You verify with commands whose output is one line: `git status --short | wc -l`,
+   `git diff --stat | tail -1`, `npm run check > /tmp/check.log 2>&1; echo $?`. A worker,
+   not you, reads any log and returns the failing test names and a one-line cause each.
+5. One integration commit per workstream, made by you, message
+   "feat(shortcuts): <workstream> (K1)", with the attribution trailer the environment
+   requires. You never rebase; sync with `git merge origin/main` if needed.
+6. If a worker reports blocked twice on the same item, stop and report to Amit; do not
+   attempt the fix yourself.
+7. Nothing here touches Production, Vercel or Neon. Local Docker Postgres only.
+
+== Workstreams (run W1 and W2 in parallel, then W3, then W4 and W5 in parallel, then W6) ==
+Adapt this decomposition for K2–K4 from the phase brief: pure logic first, UI components
+next, wiring into existing files last, then verification, review and docs. The K1 split:
+
+W1 engine (owns src/lib/shortcuts/** and its __tests__). Implement the contract below as pure
+   modules with Jest unit tests: key normalisation (event.key for letters, event.code for
+   punctuation so ? and / work on non-US layouts), explicit `shift`, any undeclared
+   meta/ctrl/alt => no match, isEditableTarget (move the helper out of
+   src/components/feed/filter-bar.tsx:40-48 by copying; W3 deletes the original),
+   isComposing and defaultPrevented => no match, two-key sequences with a 1 s window.
+W2 UI (owns src/components/shortcuts/**, src/components/ui/kbd.tsx and their __tests__).
+   Implement ShortcutsProvider, useShortcut, useShortcutsSuspended, ShortcutsHelpDialog
+   (shadcn Dialog; groups by `group`, current scope first; each key a <Kbd>; a switch
+   "Single-key shortcuts" backed by src/components/shortcuts/shortcuts-preference.ts using the
+   localStorage + useSyncExternalStore + custom-event pattern of
+   src/components/layout/theme-provider.tsx:12-55). W2 compiles against the contract's type
+   signatures only; it must not import W1's implementation until W3.
+W3 wiring (owns app-shell.tsx, sidebar.tsx, theme-toggle.tsx, filter-bar.tsx,
+   article-navigation.tsx, detail-action-bar-content.tsx, topbar.tsx and their tests).
+   Mount the provider and dialog in AppShell after the auth-route early return; register `?`,
+   `Cmd/Ctrl+/`, `/` (on pages without a search box push /feed?focus=search and make
+   FilterBar focus on that param), the `g` sequences, `[` collapse, `Shift+T` theme; migrate
+   the three existing shortcuts to useShortcut and delete their private window listeners,
+   which fixes Cmd+R and Alt+Arrow; add the sidebar footer entry "Keyboard shortcuts  ?",
+   aria-current on nav links, aria-label on collapsed icon links; add aria-label and
+   aria-keyshortcuts to the icon buttons in detail-action-bar-content.tsx and put the key in
+   each tooltip. Update filter-bar.component.test.tsx for the moved helper.
+W4 gate (owns nothing; read-only plus /tmp). Run `npm run check`, report the one-line result
+   and, on failure, failing test names with a one-line cause each. Re-run after fixes.
+W5 browser verification (owns nothing). Start the local loop (Docker Postgres, `npm run dev`
+   via the in-app browser preview tools), sign in with the local fixture user, and check at
+   desktop, 375 px and dark mode: `?` on Today, Feed, a reader page, Research, Settings
+   shows the right groups; `g` `f`, `g` `t`, `[`, `Shift+T` work; Cmd+R reloads on the
+   reader page; Alt+Left goes back in history; `?` and `/` typed into the Save form do
+   nothing. Report each check as pass/fail with one line of evidence (URL or focused element).
+W6 review + docs (owns docs/project-state.md only; use the larger model). First review
+   `git diff origin/main` for: private keydown listeners left behind, shortcuts not
+   registered through the registry, missing modifier checks, missing aria-label or
+   aria-keyshortcuts on touched icon buttons, secrets or content in logs. Report findings in
+   the standard shape; you dispatch a fix worker for anything real. Then append a dated
+   checkpoint under Current handoff (what changed with paths, tests and results, W5's
+   evidence, limitations, exact next phase) and update the "Keyboard navigation" handoff
+   bullet, in the checkpoint style of the neighbouring entries, keeping Prettier happy.
+
+== Interface contract (paste verbatim into W1, W2 and W3 briefs) ==
+// src/lib/shortcuts/types.ts
+export type ShortcutScope = "global" | "list" | "reader" | "research" | "settings";
+export type ShortcutKey = { key: string; shift?: boolean; mod?: boolean }; // mod = Cmd on Mac, Ctrl elsewhere
+export type ShortcutDef = {
+  id: string;                 // e.g. "nav.feed"
+  keys: ShortcutKey[];        // 1 key, or 2 for a sequence like g then f
+  label: string;              // "Go to Feed"
+  group: string;              // "Navigation" | "Lists" | "Reading" | ...
+  scope: ShortcutScope;
+  alwaysOn?: boolean;         // ignores the single-key preference (?, Esc, /, mod+/)
+};
+// src/lib/shortcuts/match.ts
+export function isEditableTarget(target: EventTarget | null): boolean;
+export function eventToKey(e: KeyboardEvent): ShortcutKey | null; // null when undeclared modifiers present
+export function keyEquals(a: ShortcutKey, b: ShortcutKey): boolean;
+// src/lib/shortcuts/sequence.ts
+export class SequenceMatcher {
+  constructor(defs: () => ShortcutDef[], windowMs?: number);
+  feed(key: ShortcutKey, now?: number): ShortcutDef | null; // returns the matched def or null
+  reset(): void;
+}
+// src/components/shortcuts/shortcuts-provider.tsx
+export function ShortcutsProvider(props: { children: React.ReactNode }): JSX.Element;
+export function useShortcut(def: ShortcutDef, handler: (e: KeyboardEvent) => void, enabled?: boolean): void;
+export function useShortcutsSuspended(suspended: boolean): void; // dialogs and sheets call this while open
+export function useRegisteredShortcuts(): ShortcutDef[];        // for the help dialog
+export function useShortcutsHelp(): { open: boolean; setOpen: (v: boolean) => void };
+// src/components/ui/kbd.tsx
+export function Kbd(props: { children: React.ReactNode; className?: string }): JSX.Element;
+
+== Finish ==
+When W4 is green, W5 is all-pass and W6 has no open findings: push the branch, open the PR
+with /finish-task (title "feat(shortcuts): K1 shortcut engine and help dialog", body from the
+W6 checkpoint summary), and report to Amit in three separate statements: implementation
+complete, verified locally (which checks), not deployed. Do not merge unless Amit's decision
+4A is among the decisions above, and even then only after the PR gates are green.
 ```
 
 **Not implemented, not deployed. Nothing changed in Vercel or Neon.**
