@@ -19,9 +19,9 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/research", label: "Research", icon: FlaskConical },
-  { href: "/save", label: "Save", icon: BookmarkPlus },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/research", label: "Research", icon: FlaskConical, prefetch: false },
+  { href: "/save", label: "Save", icon: BookmarkPlus, prefetch: false },
+  { href: "/settings", label: "Settings", icon: Settings, prefetch: false },
 ];
 
 export function Sidebar({
@@ -72,6 +72,7 @@ export function Sidebar({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={item.prefetch}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                 isActive
