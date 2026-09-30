@@ -174,7 +174,7 @@ function main(argv) {
     const sameDay = new Map();
     for (const e of entries) {
       const k = `${e.meta.topic} ${e.meta.date}`;
-      if (sameDay.has(k) && !(e.meta.time && sameDay.get(k).meta.time)) {
+      if (sameDay.has(k) && !e.meta.time && !sameDay.get(k).meta.time) {
         console.warn(
           `warning: ${e.file} and ${sameDay.get(k).file} share a topic and date; add "time:" to order them`
         );
