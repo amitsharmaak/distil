@@ -641,6 +641,10 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
     await this
       .sql`INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
   }
+  async replaceActive(v: Parameters<CaptureTokenRepository["replaceActive"]>[0]) {
+    await this
+      .sql`WITH revoked AS (UPDATE capture_tokens SET revoked_at=${v.createdAt} WHERE revoked_at IS NULL RETURNING id) INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},NULL,NULL)`;
+  }
   async findActiveByHash(hash: string) {
     const r = await this.sql<
       Row[]
