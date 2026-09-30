@@ -96,6 +96,8 @@ describe("central structured logger redaction", () => {
         overCap: 0,
         unresolved: 1,
         words: 1_812,
+        wordsBefore: 3_760,
+        trimmed: "a paragraph",
         cited: "https://private.example.test/a",
         sections: -1,
         placeholders: 1.5,
@@ -108,6 +110,7 @@ describe("central structured logger redaction", () => {
       overCap: 0,
       unresolved: 1,
       words: 1_812,
+      wordsBefore: 3_760,
     });
   });
 });

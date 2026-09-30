@@ -3,9 +3,11 @@
  * per-section writer's output handling, and assembly into one markdown document.
  *
  * The outline stage produces a {@link ResearchOutline} (shape, TL;DR, key takeaways,
- * 3-6 sections with the findings and sources each draws on, caveats). One write
- * stage per section fills its body; assembly adds the fixed headings and runs no
- * model call. Everything here is pure; `research.ts` runs the stages.
+ * 3-4 sections with the findings and sources each draws on, caveats). One write
+ * stage per section fills its body, within a per-section word budget
+ * ({@link sectionWordBudget}); assembly adds the fixed headings, caps the whole report at
+ * {@link MAX_REPORT_WORDS} ({@link capReportSections}) and runs no model call. Everything here
+ * is pure; `research.ts` runs the stages.
  *
  * SERVER-SIDE ONLY.
  */
@@ -21,7 +23,17 @@ import {
 } from "@/lib/prompts/research";
 import type { SourceCatalog } from "./research-sources";
 
-export const MAX_REPORT_SECTIONS = 6;
+/**
+ * Sections an outline keeps (Amit, 2026-09-30, after Production run `4d1cbcb5` wrote six
+ * sections and 3,760 words). A run outlined before the cap may still hold up to six; its
+ * sections are all written and the assembly cap keeps the report within {@link MAX_REPORT_WORDS}.
+ */
+export const MAX_REPORT_SECTIONS = 4;
+/** Words in the whole assembled report (citation markers not counted). */
+export const MAX_REPORT_WORDS = 2_500;
+/** Bounds on the per-section word budget given to the section writer. */
+export const MAX_SECTION_WORDS = 550;
+export const MIN_SECTION_BUDGET_WORDS = 200;
 export const MAX_TAKEAWAYS = 5;
 export const MAX_CAVEATS = 4;
 /** A section body shorter than this is treated as a failed write and retried. */
@@ -245,7 +257,8 @@ function withCitation(sentence: string, ids: number[]): string {
 
 /**
  * The outline used when the model's outline failed its attempts: one section per usable
- * finding in research order (deepening answers beyond the section cap join the last section),
+ * finding in research order, at most {@link MAX_REPORT_SECTIONS} (findings beyond the cap, and
+ * repeated questions, join the last section with their sources, so nothing is dropped),
  * a TL;DR and takeaways built from the findings' first facts, and a caveat saying so.
  */
 export function fallbackOutline(
@@ -426,4 +439,120 @@ export function assembleReport(outline: ResearchOutline, sections: string[]): st
     parts.push(`## ${CAVEATS_HEADING}`, outline.caveats.map((caveat) => `- ${caveat}`).join("\n"));
   }
   return `${parts.join("\n\n")}\n`;
+}
+
+/** Word range the section writer is asked for: "about min-max words, never more than max". */
+export interface SectionWordBudget {
+  min: number;
+  max: number;
+}
+
+/**
+ * Words the report spends outside its section bodies: the headings, the TL;DR (as trimmed on
+ * assembly), the key takeaways and the caveats, all known once the outline exists.
+ */
+export function reportFrameWords(outline: ResearchOutline): number {
+  return countSectionWords(
+    assembleReport(
+      outline,
+      outline.sections.map(() => "")
+    )
+  );
+}
+
+/**
+ * The per-section budget: what {@link MAX_REPORT_WORDS} leaves after the outline's frame
+ * ({@link reportFrameWords}), shared equally by the outline's sections, rounded down to ten and
+ * clamped to {@link MIN_SECTION_BUDGET_WORDS}..{@link MAX_SECTION_WORDS}. The lower end of the
+ * range is three quarters of the maximum. A typical frame is 250-350 words, so four sections get
+ * ~540-550 words each, three or two sections 550 (the clamp), and a six-section outline stored
+ * before the cap ~360.
+ */
+export function sectionWordBudget(outline: ResearchOutline): SectionWordBudget {
+  const count = Math.max(1, outline.sections.length);
+  const available = MAX_REPORT_WORDS - reportFrameWords(outline);
+  const share = Math.floor(available / count / 10) * 10;
+  const max = Math.min(MAX_SECTION_WORDS, Math.max(MIN_SECTION_BUDGET_WORDS, share));
+  return { min: Math.round((max * 0.75) / 10) * 10, max };
+}
+
+/** Markdown blocks separated by blank lines; blank lines inside a code fence do not split. */
+function splitBlocks(body: string): string[] {
+  const blocks: string[] = [];
+  let current: string[] = [];
+  let inFence = false;
+  for (const line of body.split("\n")) {
+    if (FENCE.test(line)) inFence = !inFence;
+    if (!inFence && !line.trim()) {
+      if (current.length > 0) blocks.push(current.join("\n"));
+      current = [];
+      continue;
+    }
+    current.push(line);
+  }
+  if (current.length > 0) blocks.push(current.join("\n"));
+  return blocks;
+}
+
+const TABLE_LINE = /^\s{0,3}\|/;
+
+/**
+ * Drops the last block of a section body that may go: never a table (the block, with any lead-in
+ * line attached to it, stays whole), never the only block left. A `###` subheading left dangling
+ * at the end is dropped with it. Returns `null` when nothing can be dropped.
+ */
+function dropTrailingBlock(body: string): string | null {
+  const blocks = splitBlocks(body);
+  for (let index = blocks.length - 1; index >= 1; index--) {
+    if (blocks[index]!.split("\n").some((line) => TABLE_LINE.test(line))) continue;
+    blocks.splice(index, 1);
+    while (blocks.length > 1 && ATX.test(blocks.at(-1)!) && !blocks.at(-1)!.includes("\n")) {
+      blocks.pop();
+    }
+    return blocks.join("\n\n");
+  }
+  return null;
+}
+
+export interface CappedReportSections {
+  sections: string[];
+  /** Words of the assembled report before and after trimming (citation markers not counted). */
+  wordsBefore: number;
+  wordsAfter: number;
+  /** Sections that lost at least one block. */
+  trimmed: number;
+}
+
+/**
+ * Keeps the assembled report within `maxWords`: while it is over, the longest section that can
+ * lose a block drops its last paragraph or list block (whole blocks only; tables and a section's
+ * only block are kept, see {@link dropTrailingBlock}). Stops early when nothing more can go.
+ */
+export function capReportSections(
+  outline: ResearchOutline,
+  sections: string[],
+  maxWords = MAX_REPORT_WORDS
+): CappedReportSections {
+  const bodies = [...sections];
+  const count = () => countSectionWords(assembleReport(outline, bodies));
+  const wordsBefore = count();
+  const trimmed = new Set<number>();
+  let total = wordsBefore;
+  while (total > maxWords) {
+    const order = bodies
+      .map((body, index) => ({ index, words: countSectionWords(body) }))
+      .sort((a, b) => b.words - a.words || a.index - b.index);
+    let dropped = false;
+    for (const { index } of order) {
+      const shorter = dropTrailingBlock(bodies[index]!);
+      if (shorter === null) continue;
+      bodies[index] = shorter;
+      trimmed.add(index);
+      dropped = true;
+      break;
+    }
+    if (!dropped) break;
+    total = count();
+  }
+  return { sections: bodies, wordsBefore, wordsAfter: total, trimmed: trimmed.size };
 }
