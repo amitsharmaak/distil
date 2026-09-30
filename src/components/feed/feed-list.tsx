@@ -30,7 +30,7 @@ import {
   normalizeSearchQuery,
   type FeedFilterState,
 } from "@/lib/feed/feed-url";
-import { activeFilterChips, type FilterUpdates } from "@/lib/feed/quick-filters";
+import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
 import type { ContentItemSummary } from "@/lib/types";
 
 export interface FeedInitialPage {
@@ -52,20 +52,7 @@ function requestPath(state: FeedFilterState, cursor?: string): string {
 }
 
 export function nextFeedUrl(current: URLSearchParams, updates: FilterUpdates): string {
-  const params = new URLSearchParams(current);
-  for (const [name, value] of Object.entries(updates)) {
-    params.delete(name);
-    if (Array.isArray(value)) value.forEach((entry) => params.append(name, entry));
-    else if (value) params.set(name, value);
-  }
-  // Relevance only exists for a search; dropping the search drops that sort too.
-  if (!normalizeSearchQuery(params.get("q") ?? "")) {
-    params.delete("q");
-    if (params.get("sort") === "relevance") params.delete("sort");
-  }
-  params.delete("cursor");
-  const search = params.toString();
-  return search ? `/feed?${search}` : "/feed";
+  return filtersUrl("/feed", current, updates);
 }
 
 function searchParamsForFeedUrl(url: string): URLSearchParams {

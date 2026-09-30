@@ -18,6 +18,12 @@ export interface GenerateOptions {
   timeoutMs?: number;
   responseSchema?: ResponseSchema;
   maxAttempts?: number;
+  /**
+   * Throw `invalid_output` instead of returning text when the model stopped at the output-token
+   * limit (Gemini `MAX_TOKENS`, OpenAI `length`, Anthropic `max_tokens`). For callers that must
+   * not store a cut-off answer, e.g. a thinking model spending the budget on reasoning.
+   */
+  rejectTruncated?: boolean;
 }
 
 export interface ProviderUsage {
@@ -46,12 +52,22 @@ export interface AIProvider {
   ): Promise<ProviderResult<T>>;
 }
 
+/** One web source Google Search grounding attached to a Gemini answer. */
+export interface GroundingSource {
+  /** Usually a `vertexaisearch.cloud.google.com/grounding-api-redirect/…` link. */
+  url: string;
+  /** Usually the publisher's domain rather than the page title; may be empty. */
+  title: string;
+}
+
+/** A grounded answer: the text plus the web sources the model searched. */
+export interface SearchProviderResult extends ProviderResult<string> {
+  sources: GroundingSource[];
+}
+
 /** Gemini provider — supports generateTextWithSearch for web grounding. */
 export interface GeminiProvider extends AIProvider {
-  generateTextWithSearch(
-    prompt: string,
-    options?: GenerateOptions
-  ): Promise<ProviderResult<string>>;
+  generateTextWithSearch(prompt: string, options?: GenerateOptions): Promise<SearchProviderResult>;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -76,6 +92,49 @@ export function geminiUsage(response: {
     outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
     ...(searchQueries ? { searchQueries } : {}),
   };
+}
+
+/**
+ * Answer text of a Gemini response without thought parts. `response.text()` joins every text
+ * part, including `thought: true` parts a thinking model may return; those are reasoning, not
+ * answer. Falls back to `response.text()` (which also raises on blocked responses).
+ */
+export function geminiText(response: {
+  text(): string;
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+}): string {
+  const all = response.text();
+  const parts = response.candidates?.[0]?.content?.parts;
+  if (!parts?.some((part) => part.thought === true)) return all;
+  return parts
+    .filter((part) => part.thought !== true && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+}
+
+interface GroundingChunkShape {
+  web?: { uri?: unknown; title?: unknown };
+}
+
+/**
+ * Web sources from `groundingMetadata.groundingChunks` of the first candidate,
+ * de-duplicated by URL. Chunks without an http(s) `web.uri` are skipped.
+ */
+export function parseGroundingSources(response: {
+  candidates?: { groundingMetadata?: { groundingChunks?: unknown } }[];
+}): GroundingSource[] {
+  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+  const seen = new Set<string>();
+  const sources: GroundingSource[] = [];
+  for (const chunk of chunks as GroundingChunkShape[]) {
+    const uri = chunk?.web?.uri;
+    if (typeof uri !== "string" || !/^https?:\/\//i.test(uri) || seen.has(uri)) continue;
+    seen.add(uri);
+    const title = typeof chunk.web?.title === "string" ? chunk.web.title.trim() : "";
+    sources.push({ url: uri, title });
+  }
+  return sources;
 }
 
 function parseJSON<T>(text: string): T {
@@ -108,7 +167,13 @@ export class GeminiProviderImpl implements GeminiProvider {
     const result = await m.generateContent(prompt, {
       timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     });
-    return { value: result.response.text(), usage: geminiUsage(result.response) };
+    if (
+      options?.rejectTruncated &&
+      result.response.candidates?.[0]?.finishReason === "MAX_TOKENS"
+    ) {
+      throw new AIProviderError("invalid_output", this.name, model);
+    }
+    return { value: geminiText(result.response), usage: geminiUsage(result.response) };
   }
 
   async generateJSON<T>(
@@ -151,7 +216,7 @@ export class GeminiProviderImpl implements GeminiProvider {
   async generateTextWithSearch(
     prompt: string,
     options?: GenerateOptions
-  ): Promise<ProviderResult<string>> {
+  ): Promise<SearchProviderResult> {
     const m = this.genai.getGenerativeModel({
       model: GEMINI_SEARCH_MODEL,
       generationConfig: {
@@ -172,7 +237,11 @@ export class GeminiProviderImpl implements GeminiProvider {
           shouldRetry: isRetryableProviderFailure,
         }
       );
-      return { value: result.response.text(), usage: geminiUsage(result.response) };
+      return {
+        value: result.response.text(),
+        usage: geminiUsage(result.response),
+        sources: parseGroundingSources(result.response),
+      };
     } catch (error) {
       throw toAIProviderError(error, this.name, GEMINI_SEARCH_MODEL);
     }
@@ -204,6 +273,9 @@ export class OpenAIProviderImpl implements AIProvider {
     const content = completion.choices[0]?.message?.content;
     if (!content) {
       throw new Error("OpenAI returned empty response");
+    }
+    if (options?.rejectTruncated && completion.choices[0]?.finish_reason === "length") {
+      throw new AIProviderError("invalid_output", this.name, model);
     }
     return {
       value: content,
@@ -260,6 +332,9 @@ export class AnthropicProviderImpl implements AIProvider {
     const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {
       throw new Error("Anthropic returned empty response");
+    }
+    if (options?.rejectTruncated && message.stop_reason === "max_tokens") {
+      throw new AIProviderError("invalid_output", this.name, model);
     }
     return {
       value: textBlock.text,
