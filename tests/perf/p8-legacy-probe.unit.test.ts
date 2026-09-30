@@ -86,7 +86,7 @@ describe("P8 legacy Preview connection probe", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "https://distil.example/login?next=%2Ffeed%3Fp8_probe%3D1"
+      "https://distil.example/login?next=%2Ffeed%3Fp8%3D1"
     );
     expect(fakes.loadRepositories).not.toHaveBeenCalled();
     expect(fakes.findAccountByIdentity).not.toHaveBeenCalled();

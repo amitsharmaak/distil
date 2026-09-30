@@ -37,7 +37,7 @@ const CONNECTOR_API_PREFIXES = [
 /** Headers only this proxy may set; anything inbound under them is dropped. */
 const INTERNAL_HEADER_PREFIX = "x-distil-";
 const TRACE_HEADER = "x-trace-id";
-export const P8_PROXY_PROBE_QUERY = "p8_probe";
+export const P8_PROXY_PROBE_QUERY = "p8";
 const P8_PROXY_PROBE_SUBJECT = "urn:distil:perf-probe:p8:missing";
 
 function connectorsDisabled(pathname: string): boolean {
