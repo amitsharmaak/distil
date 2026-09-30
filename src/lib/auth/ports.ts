@@ -61,12 +61,15 @@ export interface InvitationRepositoryPort {
   ): Promise<LinkedAccount | undefined>;
 }
 
-export interface AuthIdentityRepositoryPort {
-  findAccountByEmail(email: string): Promise<LinkedAccount | undefined>;
+export interface AuthIdentityLookupPort {
   findAccountByIdentity(input: {
     provider: ProviderIdentity["provider"];
     providerSubject: string;
   }): Promise<LinkedAccount | undefined>;
+}
+
+export interface AuthIdentityRepositoryPort extends AuthIdentityLookupPort {
+  findAccountByEmail(email: string): Promise<LinkedAccount | undefined>;
 }
 
 export interface AuthRepositoryPort extends InvitationRepositoryPort, AuthIdentityRepositoryPort {}

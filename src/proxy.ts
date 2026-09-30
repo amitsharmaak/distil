@@ -13,7 +13,7 @@ import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
 import { getNeonProxyProvider } from "@/lib/auth/neon-server";
 import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
 import { readAuthEnvironment } from "@/lib/auth/environment";
-import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
+import { getProxyAuthRepositoryPort } from "@/lib/auth/proxy-repository-runtime";
 import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
 import {
   instrumentNeonProxyDependencies,
@@ -125,7 +125,7 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
         ? async () => {
             authenticatedP8Probe = true;
             try {
-              const repositories = await getAuthRepositoryPort();
+              const repositories = await getProxyAuthRepositoryPort();
               await measureP8ProxyIdentityLookup(repositories, {
                 provider: "neon",
                 providerSubject: P8_PROXY_PROBE_SUBJECT,
@@ -155,7 +155,7 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
       const dependencies = instrumentNeonProxyDependencies({
         provider: getNeonProxyProvider(),
         // Lazy: public and specialized paths never open the database.
-        repositories: getAuthRepositoryPort,
+        repositories: getProxyAuthRepositoryPort,
       });
       const authorization = await authorizeNeonProxy(request, traceId, {
         provider: dependencies.provider,

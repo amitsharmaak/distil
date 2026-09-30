@@ -74,6 +74,9 @@ jest.mock("@/lib/auth/neon-server", () => ({
 jest.mock("@/lib/auth/repository-runtime", () => ({
   getAuthRepositoryPort: async () => fakes.authRepositories,
 }));
+jest.mock("@/lib/auth/proxy-repository-runtime", () => ({
+  getProxyAuthRepositoryPort: async () => fakes.authRepositories,
+}));
 jest.mock("@/lib/database", () => ({
   getTenantRepositories: async (auth: AuthContext) =>
     createPostgresRepositoryAccess(fakes.tenantSql).getTenantRepositories(auth),

@@ -20,8 +20,8 @@ const repositories = {
   findAccountByIdentity: fakes.findAccountByIdentity,
 } as unknown as AuthRepositoryPort;
 
-jest.mock("@/lib/auth/repository-runtime", () => ({
-  getAuthRepositoryPort: async () => {
+jest.mock("@/lib/auth/proxy-repository-runtime", () => ({
+  getProxyAuthRepositoryPort: async () => {
     fakes.loadRepositories();
     return repositories;
   },

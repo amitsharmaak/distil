@@ -1,4 +1,4 @@
-import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import type { AuthIdentityLookupPort } from "@/lib/auth/ports";
 import type { NeonProxyProvider } from "@/lib/auth/neon-proxy";
 import type { ProviderIdentityPort } from "@/lib/auth/request-context";
 import {
@@ -13,7 +13,7 @@ export const PROXY_PROVIDER_PHASE = "proxy-auth-provider";
 export const PROXY_CONNECTION_PHASE = "proxy-auth-connect";
 export const PROXY_DATABASE_PHASE = "proxy-auth-db";
 
-type IdentityLookupInput = Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0];
+type IdentityLookupInput = Parameters<AuthIdentityLookupPort["findAccountByIdentity"]>[0];
 
 /**
  * postgres.js invokes its debug hook from the pooled connection's async
@@ -50,9 +50,9 @@ async function measureP8QueryPhase<T>(
  * connection. The second result is the real lookup result.
  */
 export async function measureP8ProxyIdentityLookup(
-  repositories: AuthRepositoryPort,
+  repositories: AuthIdentityLookupPort,
   input: IdentityLookupInput
-): ReturnType<AuthRepositoryPort["findAccountByIdentity"]> {
+): ReturnType<AuthIdentityLookupPort["findAccountByIdentity"]> {
   const metrics = currentRequestMetrics();
   try {
     await measureP8QueryPhase(metrics, PROXY_CONNECTION_PHASE, () =>
@@ -75,8 +75,8 @@ export async function measureP8ProxyIdentityLookup(
  */
 export function instrumentNeonProxyDependencies(dependencies: {
   provider: NeonProxyProvider;
-  repositories: () => Promise<AuthRepositoryPort>;
-}): { provider: NeonProxyProvider; repositories: () => Promise<AuthRepositoryPort> } {
+  repositories: () => Promise<AuthIdentityLookupPort>;
+}): { provider: NeonProxyProvider; repositories: () => Promise<AuthIdentityLookupPort> } {
   const { provider, repositories } = dependencies;
   const instrumentedProvider: NeonProxyProvider = {
     verifySession: (request) =>
@@ -85,9 +85,9 @@ export function instrumentNeonProxyDependencies(dependencies: {
         return provider.verifySession(request);
       }),
   };
-  // A Proxy rather than a spread: the PostgreSQL adapter is a class instance
+  // A Proxy rather than a spread: repository adapters are class instances
   // whose methods live on the prototype and would not survive `{ ...repositories }`.
-  const instrument = (target: AuthRepositoryPort): AuthRepositoryPort =>
+  const instrument = (target: AuthIdentityLookupPort): AuthIdentityLookupPort =>
     new Proxy(target, {
       get(port, property) {
         if (property === "findAccountByIdentity") {
