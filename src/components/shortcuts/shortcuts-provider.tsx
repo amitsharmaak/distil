@@ -39,7 +39,7 @@ const EMPTY: ShortcutDef[] = [];
 
 export function scopeForPathname(pathname: string): ShortcutScope {
   const path = pathname.replace(/\/+$/, "") || "/";
-  if (path === "/feed" || path === "/today") return "list";
+  if (path === "/" || path === "/feed" || path === "/today") return "list";
   if (path.startsWith("/feed/")) return "reader";
   if (path === "/research" || path.startsWith("/research/")) return "research";
   if (path === "/settings" || path.startsWith("/settings/")) return "settings";

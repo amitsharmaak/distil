@@ -4,7 +4,12 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { ShortcutDef, ShortcutKey } from "@/lib/shortcuts/types";
 import { useGlobalShortcuts } from "../use-global-shortcuts";
 import { DetailActionBar } from "@/components/feed/detail-action-bar-content";
-import { ShortcutsProvider, useShortcut, useShortcutsSuspended } from "../shortcuts-provider";
+import {
+  ShortcutsProvider,
+  scopeForPathname,
+  useShortcut,
+  useShortcutsSuspended,
+} from "../shortcuts-provider";
 import { ShortcutsHelpDialog } from "../shortcuts-help-dialog";
 import { readSingleKeyShortcuts, setSingleKeyShortcuts } from "../shortcuts-preference";
 
@@ -265,3 +270,15 @@ function global_fetch() {
   global.fetch = f as unknown as typeof fetch;
   return f;
 }
+
+describe("scopeForPathname", () => {
+  it("maps routes to scopes", () => {
+    expect(scopeForPathname("/")).toBe("list");
+    expect(scopeForPathname("/today")).toBe("list");
+    expect(scopeForPathname("/feed")).toBe("list");
+    expect(scopeForPathname("/feed/abc")).toBe("reader");
+    expect(scopeForPathname("/research/1")).toBe("research");
+    expect(scopeForPathname("/settings")).toBe("settings");
+    expect(scopeForPathname("/archive")).toBe("global");
+  });
+});
