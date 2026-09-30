@@ -9,9 +9,10 @@ sources of truth rather than duplicating them.
    architecture, commands, testing and code conventions, branch/worktree rules, what to record,
    and authorization boundaries. It is the authoritative description of how the system is built
    today.
-2. **`docs/project-state.md`** — the canonical roadmap, progress and handoff document. Read the
-   **Current handoff** section and the latest dated checkpoints before doing anything, and update
-   it after material progress and before handoff. Progress lives only there.
+2. **`docs/state/log/`** — the append-only state log. Run `npm run state` to print the current
+   handoff (latest entry per open topic) before doing anything, and add a new entry after
+   material progress and before handoff. Progress lives only there; never edit an existing entry.
+   `docs/project-state.md` is the frozen roadmap and history through 2026-09-30.
 
 Conversation history is not shared between agents. Repository files are the shared memory.
 
@@ -22,7 +23,7 @@ Conversation history is not shared between agents. Repository files are the shar
   complete. Legacy SQLite code in `src/lib/db.ts` is compatibility only.
 - `main` is the integration and release branch. Work on short-lived `claude/<task>` or
   `worktree-<task>` branches from current `origin/main`, one branch per session, include the
-  state-file update in the same branch, and never overwrite another agent's or Amit's
+  state-log entry in the same branch, and never overwrite another agent's or Amit's
   uncommitted work. `AGENTS.md` §7.1 is the routine; `/start-task <name>` and `/finish-task`
   script it.
 - Releases, cloud mutations, invitations and data deletion need task-specific authorization from

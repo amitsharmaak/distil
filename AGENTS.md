@@ -2,9 +2,10 @@
 
 This file is the shared entry point for every coding agent (Claude Code, Codex) and for Amit. It
 describes what Distil is, how the current system is built, how to verify work, and how agents
-coordinate. It records no progress: **`docs/project-state.md` is the only place that tracks status,
-decisions, evidence and next steps.** Read that file at the start of every session and update it
-before every handoff.
+coordinate. It records no progress: **the state log in `docs/state/log/` is the only place that
+tracks status, decisions, evidence and next steps.** Run `npm run state` at the start of every
+session and add a log entry before every handoff. `docs/project-state.md` is the frozen history
+through 2026-09-30.
 
 ## 1. What Distil is
 
@@ -24,15 +25,16 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
 
 ## 2. Session protocol
 
-1. Read `docs/project-state.md`: the **Current handoff** section first, then the latest dated
-   checkpoints. Treat older sections as historical evidence, not instructions.
+1. Run `npm run state` and read the latest entry of every open topic (`docs/state/README.md`
+   explains the format). Read `docs/project-state.md` only for the roadmap and for plans and
+   checkpoints that a log entry points to; treat it as historical evidence, not instructions.
 2. Verify locally what the state file claims before acting on it: `git status`, branch, HEAD,
    `git worktree list`, and whether a dev server or test container is actually running. Do not
    assume recorded external state (deployments, Neon branches, CI runs) is still current.
 3. Work on a short-lived branch from current `main` (see §7). Never overwrite uncommitted work by
    the other agent or by Amit; if the tree is dirty, stop and ask.
-4. After material progress and before handoff, update `docs/project-state.md` (§8) in the same
-   branch as the code change. Unfinished work must be recorded as unfinished.
+4. After material progress and before handoff, add a new entry to `docs/state/log/` (§8) in the
+   same branch as the code change. Unfinished work must be recorded as unfinished.
 5. Keep secrets, credentials, connection strings, personal data and captured content out of files,
    commits and output. Record variable names and masked resource identifiers only.
 
@@ -210,12 +212,12 @@ Do not repeat accepted checks without a new risk.
   auto-deleted. Historical phase branches are gone; five `archive/*` and `production/*` tags
   preserve milestones.
 - Create short-lived branches from current `main` named `<agent>/<task>` (`codex/...` or
-  `claude/...`). Include the `docs/project-state.md` update in the same branch. Delete the branch
-  after verified integration.
+  `claude/...`). Include the state-log entry in the same branch. Delete the branch after
+  verified integration.
 - When both agents work concurrently, each uses its own `git worktree` and a non-overlapping
-  ownership list recorded in the handoff section. One agent is the named **integration owner** and
-  is the only one who reconciles `docs/project-state.md` conflicts and merges to `main`. Agents
-  commit; they do not merge or rebase each other's branches.
+  ownership list recorded in a state-log entry. One agent is the named **integration owner** and
+  is the only one who merges to `main`. Agents commit; they do not merge or rebase each other's
+  branches.
 - Never `git stash`, reset, checkout over, or delete another party's uncommitted changes or
   worktrees. If a worktree is dirty and not yours, leave it and report it.
 
@@ -238,22 +240,26 @@ from two sessions, stale worktrees) came from three habits. The routine below re
   `git config rerere.enabled true` (set locally on 2026-09-16) replays repeated resolutions.
 - **Never reuse a merged branch.** After the squash merge, remove the worktree and delete the
   local branch; the remote branch is auto-deleted.
-- **Keep the state file conflict-free.** Each task appends its own dated checkpoint directly
-  below the Current handoff section and edits handoff bullets only for its own objective,
-  decisions, blockers and next steps. Do not rewrite other tasks' bullets; whichever branch
-  merges second keeps both checkpoints in date order.
+- **Keep the state log conflict-free (adopted 2026-09-30).** Each task adds **new files** to
+  `docs/state/log/` and never edits an existing entry, so concurrent branches cannot conflict on
+  state. The handoff is derived (`npm run state`), not maintained. If a branch opened before
+  2026-09-30 conflicts on the frozen `docs/project-state.md`, keep `main`'s version and move the
+  branch's handoff bullet or checkpoint into a new log entry.
 - **Skills.** `/start-task <name>` and `/finish-task` in `.claude/skills/` script the start and
-  end of this routine for Claude Code (worktree, branch, `npm ci`, state checkpoint,
+  end of this routine for Claude Code (worktree, branch, `npm ci`, state-log entry,
   `npm run check`, PR, squash merge on request, cleanup). Codex follows the same steps by hand.
 - `.worktreeinclude` copies `.env.local` into every Claude-created worktree; run `npm ci` there
   before the dev server or tests.
 
-## 8. What to record in `docs/project-state.md`
+## 8. What to record in the state log
 
-Keep the roadmap and principles stable near the top. Maintain the **Current handoff** section
-(active objective, owner, branch/worktree, progress, decisions, blockers, verification, exact next
-steps). Below it, append dated checkpoints; never rewrite historical evidence. Each checkpoint
-states:
+Progress lives in `docs/state/log/`, one file per task checkpoint, named
+`YYYY-MM-DD-<topic>[-<slug>].md` with the frontmatter described in `docs/state/README.md`
+(`topic`, `title`, `date`, `status`, optional `branch`, `pr`, `time`). Entries are append-only:
+add a newer entry for the same `topic` instead of editing an old one; the latest entry per topic
+is the current state and its `## Next` section is the handoff. `npm run state:check` (part of
+`npm run lint`) validates every entry. Long plans are written once, in the entry that records
+them; the phases that execute them link back to that file. Each entry states:
 
 - what changed and why, with commit SHAs and PR links;
 - tests run and results, separating **locally verified** facts from **previously recorded

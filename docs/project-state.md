@@ -1,574 +1,532 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-30 (Asia/Kolkata)
+Frozen on 2026-09-30 (Asia/Kolkata). Progress is now recorded in `docs/state/log/`; see below.
 
-This is the canonical, durable restart point for the Distil project across development sessions.
-Keep the product roadmap stable near the top and continuously update the active-phase status,
-decisions, resources, evidence, blockers, and exact next steps below it. Read this file before
-resuming work, and update it whenever material progress or a roadmap decision is made. It
-intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
-provider keys.
+This file is the historical record of the Distil project through 2026-09-30: the product roadmap,
+principles, phase execution records and every dated checkpoint written before the state log was
+introduced. It is evidence, not a task list, and it is no longer edited. It intentionally contains
+no passwords, tokens, database connection strings, session secrets, or AI provider keys.
 
-## Current handoff — 2026-09-30
+## Current handoff — moved to `docs/state/` on 2026-09-30
 
-This section is the only forward-looking instruction block in this file. Everything from
-"Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
-reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
+The handoff is no longer a section of this file. It is derived from the append-only state log:
 
-- **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
-  and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
-  recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
-- **One capture token per account (PR [#90](https://github.com/amitsharmaak/distil/pull/90),
-  squash merged on 2026-09-30 at Amit's request after green CI; checkpoint "Single capture token —
-  2026-09-30"):** Amit found named per-client tokens overkill; capture sources are not tracked per
-  token. Settings → Capture now manages one token: generate, copy once, regenerate (which revokes
-  every earlier token, legacy ones included). Storage is unchanged (hash only, no reveal). Locally
-  verified (`npm run check`, `npm run test:integration`); the merge auto-deploys, but Production
-  was not checked here. Production's two legacy tokens keep working until Amit first regenerates;
-  he then pastes the new token into the extension and the iPhone Shortcut.
-- **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
-  `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
-  trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
-  auth/account-sensitive paths, and missing/expired caches remain uncached. (3B) P11 stays on the
-  Neon Free plan and accepts occasional cold wakes; no Neon setting, Vercel setting, or paid plan
-  change is authorized. Read-only reconnaissance found `distil-production` fixed at 0.25 CU with
-  mandatory scale-to-zero after five idle minutes, while Vercel Fluid Compute is already enabled.
-  (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
-  green and its Preview reading meets the phase goal; each merge auto-deploys because the release
-  pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **Keyboard navigation: K1–K4 merged and deployed, PR
-  [#101](https://github.com/amitsharmaak/distil/pull/101) (branch `claude/keyboard-k1`, worktree
-  `k1-prompt-455dd8`; checkpoints "Release: PR #101 (keyboard navigation K1–K4) to Production —
-  2026-09-30", "Keyboard navigation K1–K4 … — 2026-09-30" and "Keyboard navigation: audit and phased
-  plan (K1–K4) — 2026-09-30"):** Amit's decisions: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch
-  in localStorage; row markup fix inside K2; agent squash-merges after green gates and a local
-  browser check; order K1 → K2 → K3 → K4). For this task 4A/5A (merge per phase, one phase per
-  session) are superseded by "Amit, in chat, 2026-09-30: finish all four phases, then merge and
-  deploy to Production together": all four phases sit on one branch in PR #101 and ship as one
-  squash merge, which auto-deploys (release pin `unpinned`). Shipped: shortcut engine, `?` help
-  dialog and single-key switch, `g`-navigation (K1); `j`/`k`/`o` row navigation on Feed and Today
-  with the nested-button row markup fixed (K2); reader keys plus Mark unread (Shift+U) and Copy link
-  (Shift+C) (K3); Research, report and Settings keys, a Settings shortcuts card, a keyboard-only e2e
-  spec and `docs/user-guide.md` (K4). Verified locally: in-app browser on the local loop and
-  keyboard e2e 12 passed. Full gate at `ddb3547`: `npm run check` 244 suites / 1,999 tests, 0 lint
-  errors, 4 warnings; `npm run test:integration` 4 suites / 12 tests; `npm run test:extension` 12
-  passed; `npm run build` compiled; `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in
-  desktop-chromium, mobile-chromium and mobile-webkit, while `smoke`, `save` and `phase2` failed
-  (15) only because the e2e server inherits `.env.local` auth and feature variables, which
-  reproduces on `origin/main` `eaec1d2` and does not apply in CI (no `.env.local`); stages ran
-  separately because `check:full` stops at the first failing stage; e2e (anonymous env): 33 passed,
-  0 failed, 9 skipped (the DB-gated keyboard tests skip there). Squash merged by Amit on 2026-09-30
-  as `67f722c` after green CI (required check `quality-gate` passed on head `739d1f1`);
-  auto-deployed to Production (GitHub deployment for `67f722c`, created 2026-09-30T13:48:20Z, status
-  success). Production smoke check not yet done. Next: Amit runs the Production smoke check (`?`,
-  `g f`, `j`/`k`, Shift+U, ⌘R, ⌥←) and reports; on a bug, fix on a new branch from `main`; otherwise
-  the keyboard plan is closed and this bullet can be retired at the next handoff rewrite.
-- **Collections feature removed in code (branch `codex/remove-collections`, PR
-  [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
-  (code only) — 2026-09-30"):** the pages, API routes, UI controls,
-  feed filter/query plumbing, repository port/implementation, personalization events and
-  read-item resurfacing exceptions are removed. The `collections` and `collection_items` tables,
-  existing data, schema/migrations, and lifecycle export/deletion support are intentionally
-  unchanged. Local deterministic gate and production build pass; this branch is not merged or
-  deployed and made no database or cloud change. Next: review the PR. A future table drop requires
-  Amit's explicit approval and a Production-data check first.
-- **Feed header, Filters sheet redesign and Search page retired (PR
-  [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
-  search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
-  long, the filter pills too prominent, the Filters sheet poorly designed, and the separate Search
-  page redundant. The search is now a compact pill beside the Feed title. Every filter lives in a
-  redesigned sheet: a side panel on desktop, a bottom sheet on phones. The top-bar search icon,
-  the sidebar Search entry and the Search page UI are gone, and `/search?…` redirects to
-  `/feed?…`. This covers the UI part of F7. Still open from F7: the `/api/items` `q` branch,
-  `GET /api/v1/search` (no UI caller now) and the `FEATURE_SEARCH` flag. Checked by tests and in the
-  local in-app browser with real items: phone and desktop layouts, the `/search` redirect, and
-  the removed icon and sidebar entry. Not yet checked on Production.
-- **App slowness P8–P11 released (PRs [#78](https://github.com/amitsharmaak/distil/pull/78),
-  [#80](https://github.com/amitsharmaak/distil/pull/80) and
-  [#87](https://github.com/amitsharmaak/distil/pull/87); checkpoints "Performance P8",
-  "Performance P9", "Performance P10" and "Performance P11" below):** P8's Neon HTTP adapter
-  removed the proxy lookup's per-request Postgres connection while retaining the same
-  security-definer lookup and authorization semantics (`1d2831a`). P10 removed rare-route
-  prefetches and made Feed filters optimistic (`02759a9`). P9 uses Neon Auth's signed cookie only
-  for ordinary GET/HEAD page and RSC reads, enforces the approved 60-second lifetime even across
-  pre-release 300-second cookies, and leaves every mutation, API, Account and lifecycle path on
-  exactly one uncached provider check (`c4506c4`). All three releases passed their applicable
-  Quick/Full/Vercel gates. P9 Production deployment `dpl_CfuuRwXgf6BzbMBc4qRfn1AK4Ca8` is Ready,
-  serves `distilai.app`, and `/api/health` returns 200. Preview could not exercise P9 because the
-  Preview environment intentionally has legacy auth rather than the Production Neon Auth
-  configuration; Amit explicitly authorized the green-gate merge and immediate Production
-  validation instead. Production loaded an authenticated Feed successfully. Same-method warm
-  Feed filter URL commits measured 693, 630 and 747 ms; the browser-control overhead dominates
-  these readings, so they do not isolate P9's expected 80–250 ms server-side saving. P11 retains
-  Neon Free's mandatory five-minute suspend and Vercel Fluid Compute; no cloud setting or plan
-  changed. After more than six idle minutes, a Production Feed-filter route committed in
-  1,332 ms; that single route-commit sample meets P11's under-1.5-second target but is not a claim
-  that the previously observed 6.7–8.5-second full-stream tail is eliminated. Next: merge the
-  docs-only P11 closure; no performance implementation remains in this plan.
-- **AI cost accounting corrected (PR [#69](https://github.com/amitsharmaak/distil/pull/69),
-  squash merged as `d3ec32e` on 2026-09-29; checkpoints "Consolidation of open PRs (2) —
-  2026-09-29" and "AI cost accounting: verified prices, thinking tokens, grounding fee —
-  2026-09-29"):** Amit asked for accurate per-call costs. Two Gemini rates were 3–5× too low,
-  Gemini thinking tokens were never counted, and grounded-search queries were not charged. All
-  three are fixed in code; recorded costs rise from the merge onward (earlier rows stay
-  under-counted). Next: open follow-ups are listed in the checkpoint.
-- **Tester onboarding: extension origin prefilled (PR
-  [#66](https://github.com/amitsharmaak/distil/pull/66), squash merged as `bd06a58` on 2026-09-29;
-  checkpoint "Extension origin defaults to Production — 2026-09-29"):** Amit wants to let a trusted tester try the full flow. The browser
-  extension Options page now prefills `https://distilai.app`, so a tester only pastes their own
-  capture token. Capture tokens are bound to one user and must never be shared between accounts.
-  Next: Amit issues the tester's invitation himself (Production mutation) and shares
-  a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability R1–R3: done and deployed; R4 dropped (orchestrated by Claude
-  from worktree `deep-research-readability-r1-r4-846d48`; plan PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62); checkpoints "Deep research R1: readable
-  report page", "Deep research R2: grounded numbered citations", "Deep research R2 hotfix:
-  synthesis fits the 60 s function" and "Deep research R3: adaptive, deeper report", all
-  2026-09-30):** Amit found reports hard to consume (baseline local run `5a9cf55a`: 789 words,
-  fixed four-heading template, 41 sources listed / 8 cited, one small-type card). **Decisions
-  (Amit, 2026-09-30, task-specific):** order R1 → R2 → R3; storage in the existing
-  `research_reports` text columns (no migration); 1,500–2,500 words with TL;DR and key
-  takeaways; Claude may squash merge each phase after green gates and a local check; R2's
-  grounded path by fixtures was acceptable; **R4 (research-notes drill-down) dropped
-  permanently — do not re-propose it.** **Shipped (each deployed to Production, deployment
-  success, `/api/health` 200):** R1 PR [#81](https://github.com/amitsharmaak/distil/pull/81)
-  `8280fdc` (reading column, TL;DR, TOC, domain chips, collapsed cited/other sources); R2 PR
-  [#83](https://github.com/amitsharmaak/distil/pull/83) `0592c27` (grounding sources, `[n]`
-  citations, cited-only numbered source objects, superscript UI); R2 hotfix PR
-  [#84](https://github.com/amitsharmaak/distil/pull/84) `eaed15c` (the Anthropic SDK retried a
-  timed-out 50 s synthesis inside the 60 s function; one attempt per call, hard stage deadline,
-  per-provider budgets, killed deliveries counted); R3 PR
-  [#85](https://github.com/amitsharmaak/distil/pull/85) `5c879ea` (outline → one write per
-  section → assembly, run state v3, stepper fixed). **Result vs baseline (local run `10b849b6`,
-  same question, Gemini):** 1,951 words; TL;DR 51 words, 5 takeaways, 4 question-specific
-  sections with a table, caveats; 25 sources, all grounded and all cited, no URLs in the text;
-  slowest stage 28 s; checked at desktop, 375 px and dark mode. Search grounding turned out to
-  work on the free-tier key, so grounded sources were verified live locally, not only by
-  fixtures. **Production evidence:** run `8bb4d982` (R2) failed on the synthesis timeout that
-  #84 fixed. Run `8b17dcaf` (R3, at Amit's request, 13:14–13:23 local) completed its stages,
-  stepper and 19 grounded sources, but every section write was refused by the app's own daily
-  AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
-  spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
-  **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
-  report on Production. **Daily AI budget raised to $2 (Amit, 2026-09-30):** Claude replaced
-  the Production `DISTIL_DAILY_AI_BUDGET` value with `2` through the Vercel CLI (previous value
-  not read; the env pull that would have exposed all secrets was refused) and it took effect with
-  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **R3 verified on Production (2026-09-30, at
-  Amit's request, through his Chrome):** run `4d1cbcb5` (baseline question) completed in 5.5
-  min: 3,760 words, TL;DR 26 words, 6 question-specific sections with 2 tables, 23 sources all
-  grounded and all cited (34 catalogued), no URLs in the text, no placeholders; section writes
-  took 18–31 s each against the 45 s stage deadline, and no "Task timed out" in the logs. The
-  page renders as locally (TOC rail with sub-headings, superscript citations). Note: length
-  overshot the 1,500–2,500-word target (six sections at the top of the 250–450-word range plus
-  tables). **Capped (Amit, 2026-09-30):** at most 4 sections and 2,500 words per report, PR
-  [#100](https://github.com/amitsharmaak/distil/pull/100) `13e1632` (checkpoint "Deep research:
-  cap reports at 4 sections and 2,500 words — 2026-09-30"); not yet seen on a live run.
-  **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
-  marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
-  2026-09-30").
-- **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
-  checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
-  Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
-  read, move on) and asked for the code to be deleted with no redirect. `/ask` and
-  `POST /api/v1/answers` are gone, along with the grounded-answer pipeline, the `knowledge-answer`
-  AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
-  `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
-  `next build` succeeds without either route. Merged and deployed on Amit's authorization
-  (2026-09-30). The `FEATURE_ANSWERS` Production variable was deleted from Vercel on 2026-09-30
-  (Claude, at Amit's request in chat; no redeploy needed since nothing reads it).
-- **Inline search, quick filters and AI life areas: F1–F7 complete and deployed (plan PR
-  [#61](https://github.com/amitsharmaak/distil/pull/61); F1 [#63](https://github.com/amitsharmaak/distil/pull/63),
-  F2 [#64](https://github.com/amitsharmaak/distil/pull/64), F3 [#67](https://github.com/amitsharmaak/distil/pull/67),
-  F4 [#72](https://github.com/amitsharmaak/distil/pull/72), Feed header and Search page UI
-  [#75](https://github.com/amitsharmaak/distil/pull/75); F5 [#79](https://github.com/amitsharmaak/distil/pull/79)
-  squash merged as `0d7d34b`, F6 [#82](https://github.com/amitsharmaak/distil/pull/82) as `35c3009`, F7
-  [#86](https://github.com/amitsharmaak/distil/pull/86) as `6901bc9`, all on 2026-09-30; checkpoints "Inline search F7:
-  legacy search path retired — 2026-09-30", "Life areas F6: area backfill — 2026-09-30", "Inline
-  search F5: filter bar on Today — 2026-09-30" and the plan "Inline search, quick filters and life
-  areas — 2026-09-29"):** Amit wanted one search bar on Today and Feed instead of a Search page,
-  one-tap quick filters, and every item sorted by AI into Personal, Work, Learning or Updates,
-  fixable with one tap.
-  - **Today has the filter bar (F5).** Same compact search pill and Filters sheet as Feed. With a
-    query, quick filter or area, Today shows one "Unread matches" list and "Search everything →"
-    (to `/feed` with the same parameters plus `read=true`, which on the Feed page means "Read
-    included"); otherwise Today is unchanged. Checked locally at 1280 px and 375 px, light and dark.
-  - **Every item has an area (F6).** Tenant job `items.area-backfill` with a real handler, started
-    by `POST /api/v1/areas/backfill` (counts via `GET`). **Local:** 4 items → Work 1, Learning 1,
-    Updates 2 (0 failed). **Production** (one run, authorized by Amit, 2026-09-30 06:56Z, 2
-    chained batches in ~33 s): 23 classified, 0 skipped, 0 failed, 0 left unclassified; library
-    now Personal 0 · Work 4 · Learning 11 · Updates 9 (one item was already classified at capture).
-    Cost: 23 flash-lite calls (local run: ~$0.001 for 4). No corrections yet.
-  - **One search surface (F7, rescoped after A1 removed Ask).** The Feed/Today header search on
-    `GET /api/v1/feed` is the only search. Removed: the Search page (PR #75; `/search?…` redirects
-    to `/feed?…`), `GET /api/v1/search`, the `/api/items` `q` branch (now 400 with a pointer),
-    `FEATURE_SEARCH`, and, with Ask gone, the now-callerless `hybridSearch`, `searchPassages` /
-    passage store, `repositories.passages` and the `ItemFilters.query` clause. Kept:
-    `content_chunks`, chunking, grounding, all schema. Nothing stays "for Ask" because Ask no
-    longer exists. The leftover `FEATURE_SEARCH` and `FEATURE_ANSWERS` variables (Production
-    only) were deleted from Vercel project `project-evgf1` on 2026-09-30 by Claude through Amit's
-    signed-in Chrome, at his request in chat. No redeploy was triggered; nothing reads them, and
-    the next deploy drops them. The other `FEATURE_*` variables are unchanged.
-  - **Classifier model follow-up (decision 12): still open.** Question to Amit: which exact
-    provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
-    with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
-    and compare a small local sample against flash-lite per area.
-  - **Minor open items:** the local e2e `phase2.spec.ts` reader step fails on a dev server
-    without sign-in (CI's production-build e2e passes). Closed: the Area label truncation at
-    375 px (checkpoint "Filters sheet: segment labels fit on phones — 2026-09-30") and the unused
-    `src/lib/ai/embeddings.ts` (checkpoint "Unused embeddings module removed — 2026-09-30").
-    **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
-    spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
-    backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
-    himself (he later asked Claude to delete it and `FEATURE_ANSWERS`, done 2026-09-30); the model
-    follow-up is excluded unless Amit names the model id.
-- **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
-  (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
-  2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
-  as `b5a5ce8`; checkpoints "Anthropic key added to Production — 2026-09-29", "Adaptive summaries S2:
-  detailed as a delta over the brief — 2026-09-29"; plan in "Adaptive summaries: brief, detailed
-  delta and depth on demand — 2026-09-28"):** Amit wants the summary to fit each piece, the
-  brief to stay a short overview, and the detailed view to add meaningful depth beyond the
-  brief. S1 (content-aware brief) was squash merged as `ea420d4` (PR
-  [#59](https://github.com/amitsharmaak/distil/pull/59)) on 2026-09-29 and deployed to
-  Production after the `summary-structure` stage was applied there at 09:53:39Z (checkpoint
-  "Release: PR #59 to Production — 2026-09-29"). S2 makes Detailed a delta over the stored
-  brief: it shows the brief once, a "Going deeper" divider, then only what the brief left out,
-  and it is rebuilt when the brief is regenerated. No schema change. Verified locally with
-  `npm run check` and on the four local items (all four pass the new delta check; per-item
-  verdicts in the S2 checkpoint), on the Gemini fallback because the local `ANTHROPIC_API_KEY`
-  is rejected. **Production:** Vercel had no `ANTHROPIC_API_KEY` when S2 deployed, so Detailed
-  ran on Gemini at first. Amit then added a new key (audit: `claude-sonnet-4-6` ok) and
-  redeployed, and confirmed Detailed works. An authentication failure still does not fall back
-  to Gemini; if the key is ever revoked, remove the variable (Detailed then uses Gemini). Open
-  items: the local `.env.local` key is still the rejected one unless Amit replaced it;
-  the audit's `claude-haiku-4-5` MISSING report is fixed by PR
-  [#71](https://github.com/amitsharmaak/distil/pull/71) (`021ec07`). S3 (depth on demand) starts from
-  `main` on Amit's decision.
-- **Wispr Flow shared notes now capture (PR
-  [#57](https://github.com/amitsharmaak/distil/pull/57), squash merged as `4824f76` on
-  2026-09-24 after the full gate; checkpoints "Wispr Flow shared notes rejected by the durable
-  worker — 2026-09-24" and "Release: PR #57 to Production — 2026-09-24"):** a
-  `notes.wisprflow.ai/shared/<slug>` link was silently rejected by the durable worker because the
-  page is an empty client-rendered shell. `src/lib/wispr.ts` reads the note from Wispr's public
-  share API and renders its markdown to reader HTML. Open items for Amit: confirm the Production
-  deployment and re-share the original link — its old receipt is `rejected` and cannot be
-  retried, so re-saving is what creates a fresh capture.
-- **Capture diagnostics in Settings (branch `claude/capture-failure-notifications`, not yet
-  merged; checkpoint "Capture diagnostics in Settings — 2026-09-24"):** Settings → Capture now
-  lists the captures that never produced an item, each with its reason and a Retry or Save again
-  action, read from `capture_requests` via `GET /api/v1/captures?status=rejected,failed`. No
-  migration and no notification bell — see the checkpoint for why both were avoided. Open item
-  for Amit: the populated list was never exercised against a database, because this worktree's
-  `.env.local` has no `DATABASE_URL`; the first look on Production is the real check.
-- **AI model audit accepts Anthropic aliases (PR
-  [#71](https://github.com/amitsharmaak/distil/pull/71), squash merged as `021ec07` on
-  2026-09-29; checkpoint "AI model audit resolves Anthropic aliases — 2026-09-29"):** `npm run audit:ai-models`
-  reported `claude-haiku-4-5` as missing because Anthropic's ListModels returns only the dated
-  snapshot. The ids stay undated aliases; the script now resolves an unlisted id with GetModel.
-  No runtime or cloud change. Nothing open.
-- **Model selection: Gemini default, Anthropic optional (PR
-  [#55](https://github.com/amitsharmaak/distil/pull/55), squash merged as `e7f0b34` and live
-  on Production since 2026-09-22; checkpoints "Gemini-default model selection — 2026-09-22" and
-  "Release: PR #55 to Production — 2026-09-22"):** every task in `src/lib/ai/ai-config.ts` now
-  prefers Gemini except `summarize-complex` and `research-synthesize`, which prefer Claude
-  Sonnet and fall back to Gemini when `ANTHROPIC_API_KEY` is absent. OpenAI is assigned to
-  nothing. Open items for Amit: run `npm run audit:ai-models` with the Production keys (or
-  confirm `claude-sonnet-4-6` is enabled on the Production Anthropic project), since the Claude
-  ids were never checked live; optionally remove `OPENAI_API_KEY` from Vercel, which nothing on
-  the default path reads any more; the first Production summary and research run after the
-  release have not been observed yet.
-- **Deep research on Vercel: Steps 1 and 2 merged and live (PR
-  [#51](https://github.com/amitsharmaak/distil/pull/51), squash merged as `60a9438` on
-  2026-09-21 after the full gate; Production deployed it before 08:43Z — see "Release: PR #51 to
-  Production — 2026-09-21" and "Deep research on a queue worker and the search facade —
-  2026-09-21" below):**
-  deep research (restored in PR [#49](https://github.com/amitsharmaak/distil/pull/49), `dc875da`,
-  live since 2026-09-21) could not finish on Vercel Hobby because one run was 6–10 sequential
-  model calls inside a single 60 s `after()` invocation, and its "search" calls never reached
-  Gemini's search-grounded path. This branch (Step 1) moves a run onto the Vercel Queue topic
-  `research-runs`: `startResearch` publishes one message and the consumer
-  `src/app/api/queue/research-runs/route.ts` runs one resumable stage per message (plan, one
-  search per sub-question, gaps, one deepening question per gap, synthesize), persisting stage
-  state and partial findings in `research_reports.progress`; a redelivered message resumes at the
-  first unfinished stage. Locally the same consumer runs in-process under
-  `DISTIL_CAPTURE_DISPATCH=inline`. (Step 2) adds `generateTextWithSearch` to the tenant router,
-  backed by `generateTenantTextWithSearch` (tenant budget, deferred accounting, Gemini
-  `GEMINI_SEARCH_MODEL` with retry) and used by the search and deepening stages; it degrades to
-  plain `research-search` routing when Gemini is absent or refuses grounding for quota. Finding:
-  the local `GEMINI_API_KEY` project is on the Gemini free tier, where every search-grounded call
-  is refused (429 quota) and plain calls are capped at 20 requests per model per day, so real web
-  grounding could not be exercised locally; one full run completed through all nine stages in
-  57 s with 41 memory-recalled sources. Next steps: (1) Amit merges the PR (label `full-ci`) and,
-  before the first Production run, confirms the `research-runs` queue topic exists in the Vercel
-  project (Storage → Queues; the `experimentalTriggers` entry in `vercel.json` registers the
-  consumer on deploy, exactly as `capture-requests` is registered); no environment variable is
-  needed for the queue itself. (2) For grounded sources, the Production `GEMINI_API_KEY` must
-  belong to a Google AI project with billing enabled (Google Search grounding is not on the free
-  tier); otherwise research keeps working from model memory and logs
-  `research_search_grounding_fallback`. (3) One signed-in run on Production, then record the
-  outcome. **Both done on 2026-09-21 through Amit's Chrome (checkpoint "Production verification
-  and the retry directive — 2026-09-21"):** the `research-runs` consumer appeared under
-  Observability → Queues on the first message, and a signed-in run completed end to end in 13
-  minutes with 43 sources; the Production Gemini key is also free-tier (every search logged the
-  grounding fallback), and each transient Gemini 503 cost about five minutes because the platform
-  redelivers a thrown callback on its own backoff. The follow-up that asks the queue for a 60 s
-  redelivery explicitly is merged as PR [#53](https://github.com/amitsharmaak/distil/pull/53)
-  (`ef579e6`, live on Production since 2026-09-22; checkpoint "Release: PR #53 to Production —
-  2026-09-22"). Open decision for Amit: a billing-enabled Google AI project for real web
-  grounding. No further step is pending on deep research.
-- **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
-  merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
-  Production — 2026-09-21" below):** Amit asked for the deep
-  research feature back. It was unlinked from navigation in `509fccc` (#16, UI simplification)
-  and deleted as dead routes in `f295124` (#24, P4); the library, prompts, proactive scanner,
-  tables and repositories were never removed. This branch restores the eight
-  `/api/ai/research/**` routes, `/research` and `/research/[id]`, the reader's Deep Research
-  dialog and the desktop sidebar link, and fixes the latent bugs found on the way (see the
-  checkpoint "Deep research restored — 2026-09-21"). Decisions taken with Amit: restore plus bug
-  fixes (real web grounding is the separate phase brief below the checkpoint); on mobile the
-  four-tab bar stays and Research is reached from Settings → Account → Library. Next steps: open
-  the PR to `main` with the `full-ci` label (auth surfaces changed), merge after the gates; Amit
-  decides the release. **Status on 2026-09-21: works locally (third run completed in 77 s with a
-  summary and 48 sources); expected to fail on Production as is. Superseded by the bullet above
-  once its branch merges.** Two reasons: (1) a run is
-  6–10 sequential model calls and the project is on Vercel Hobby, whose 60 s cap also bounds
-  `after()`, so a 77 s run is killed mid-way and the stale guard marks it failed after 15 min —
-  the UI does not hang, but no report arrives; (2) the search steps call the tenant router's
-  plain `generateText`, which never reaches Gemini's search-grounded path, so sources come from
-  model memory (true locally too). Ordered plan, each its own task: **Step 1** move the run onto
-  a Vercel Queue consumer (`research-runs` topic, one resumable stage per message — plan, each
-  search, gaps, synthesis — persisting to `research_reports.progress`, same pattern as
-  `src/app/api/queue/capture-requests/route.ts`; this is the durable tenant-scoped job the
-  authorization-matrix note asks for); **Step 2** tenant-scoped `generateTextWithSearch` for the
-  search steps (phase brief under the checkpoint). Stopgap instead of Step 1: Vercel Pro raises
-  the cap to 300 s, which fits most runs but keeps one long function with no retry. Steps 1
-  and 2 are implemented on `claude/deep-research-vercel-ea8b82` (bullet above).
-- **Performance overhaul complete: every phase P0–P7 merged and released (P5 as PR
-  [#36](https://github.com/amitsharmaak/distil/pull/36), `715c06f`, 2026-09-18), and P7's
-  `perf-indexes` stage applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
-  Production — 2026-09-18"):** the
-  checkpoint "Performance analysis and phased plan — 2026-09-16" below records a verified analysis
-  and eight PR-sized phases P0–P7. Amit picks one phase per task, in order, each on its own
-  `claude/<task>` branch with a dated checkpoint. P0 (measurement baseline) merged as PR
-  [#21](https://github.com/amitsharmaak/distil/pull/21) (`f1cb2ac`). P1 (one auth verification
-  per request and a signed identity handoff) merged as PR
-  [#22](https://github.com/amitsharmaak/distil/pull/22) (`f2e4155`) and is live on Production;
-  see the checkpoints "Performance P1 released — 2026-09-17" (live numbers) and "Performance P1:
-  one auth verification per request — 2026-09-17" (design and local before/after) below. Codex
-  completed P4 on `codex/perf-bundle` (owns `src/components/**`, `src/app/layout.tsx`,
-  `next.config.ts`, `tsconfig.json`, `public/**`, `src/lib/ai/**`, the legacy route deletions and
-  the route counts in `docs/authorization-matrix.json`), based on `53edd84`; its checkpoint below
-  records the target exception and release verification. P2 (one shared pool, one tenant
-  transaction per request with the verification folded into one statement, summary projections
-  and keyset neighbours) merged as PR [#26](https://github.com/amitsharmaak/distil/pull/26)
-  (`a06d0d7`) and is live on Production; see the checkpoints "Performance P2: database
-  round-trip diet — 2026-09-17" (design and local before/after), "PR review, merges and
-  cleanup — 2026-09-17" (integration, gates, release) and "Performance P2 released —
-  2026-09-17" (live Production numbers) below. P6 (AI cost and latency: per-capture brief
-  summary, accounting off the critical path, answer cache, provider bounds) merged as PR
-  [#30](https://github.com/amitsharmaak/distil/pull/30) (`637d923`) and is live on Production;
-  see "Performance P6: AI cost and latency — 2026-09-17" (design and local evidence) and
-  "Performance P6 released — 2026-09-17" (release, what is still unverified) below. P3
-  (`codex/perf-client-network`, Codex) merged as PR
-  [#32](https://github.com/amitsharmaak/distil/pull/32) (`b815e6d`) after its Quick and Full
-  gates passed; Claude reviewed and merged it as integration owner at Amit's request; see
-  "Performance P3: client payload and network — 2026-09-17" below. P7 (`claude/perf-indexes`)
-  is implemented, locally verified and merged with `main` at `b815e6d` (code merged cleanly; only
-  this file conflicted); see "Performance P7: indexes — 2026-09-17" below for the RLS planner
-  finding that reduced it to one index plus the `content_hash` column; its `perf-indexes`
-  migration was applied to Production on 2026-09-18 (checkpoint "P7 migration applied to
-  Production — 2026-09-18"). P5 merged as PR [#36](https://github.com/amitsharmaak/distil/pull/36)
-  and its live numbers are in "Performance P5 live numbers — 2026-09-18".
-- **Owner:** Amit decides direction. Claude Code and Codex work from repository files only.
-  The concurrent P2/P4 pair and the concurrent P3/P7 pair (Codex owned `src/components/**`,
-  `src/app/**`, `src/lib/public-config.ts`, `next.config.ts`, `docs/authorization-matrix.json`,
-  `tests/e2e/**`; Claude owned the PostgreSQL migration, schema, feed-query, scripts and
-  harness/security test paths) are integrated by Claude as integration owner. No ownership split
-  is in force once P7 merges.
-- **Branch / worktree:** `main` at `6446972` (#39, P5 live numbers) on 2026-09-18, after
-  `0c15e4b` (#38, P7 migration record), `022a41f` (#37, P5 release record), `715c06f` (squash
-  merge of PR [#36](https://github.com/amitsharmaak/distil/pull/36), P5) and `1115133`
-  (#35) and `1cc670e` (#34, the jsdom runtime fix) on 2026-09-17,
-  after `16c4c31` (#33, P7), `b815e6d` (#32, P3), `58a4a9c` (#31), `637d923` (#30, P6),
-  `eb557a7` (#29), `c85f336` (#28), `a06d0d7` (#26, P2), `0d5e689` (#27, local loop),
-  `9f0caf6` (#25) and `f295124` (#24, P4). No PR is open.
-  Every merged task branch and worktree is deleted; the main checkout
-  (`/Users/amitsharma/Projects/distil`) is on `main`. The only remaining Claude worktree besides
-  the one that wrote this checkpoint is `.claude/worktrees/jabra-evolve-mic-test-7167d1`
-  (branch `claude/jabra-evolve-mic-test-7167d1`, clean, no commits beyond `22cd7aa`, unrelated
-  to Distil work; left for Amit to remove). Task branches follow the parallel-session routine in
-  `AGENTS.md` §7.1 (one session per branch, branch from `origin/main`, merge not rebase,
-  `/start-task` and `/finish-task`).
-  Production serves `6446972` (docs-only on top of release `715c06f`, P5) on `distilai.app`
-  (Vercel Production deployment created 2026-09-18T11:49Z, status `success`, Quick gate green,
-  `/api/health` 200, checked 2026-09-18); `715c06f` was deployment `6518568715`; before it
-  `1cc670e` (jsdom fix, deployment `6508492409`); the
-  P3 (`b815e6d`) and P7 (`16c4c31`, deployment `6506943120`) merges auto-deployed before it.
-  The Production library holds one item, captured by Claude from Amit's session on 2026-09-17
-  ("How to Do Great Work", `261ff287-d316-4db9-bc5d-0771b881f90c`); archive or keep it.
-  Release pin `DISTIL_PHASE3_PRODUCTION_SHA` = `unpinned` since 2026-09-16 (iteration phase):
-  every push to `main` auto-deploys to Production through Vercel's Git integration; the P4
-  (`6498811802`), local-loop (`6499086682`) and P2 deployments all arrived that way. The legacy
-  alias `distil-pv-1850.vercel.app` is not a project domain, so it does not follow automatic
-  deployments and must be re-aliased explicitly (`npx vercel alias set <deployment>
-distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still points at the P1
-  release `f2e4155` and was not re-aliased today. No manual deploy, migration or
-  environment-variable change was made today.
-- **Local iteration loop (merged 2026-09-17, PR
-  [#27](https://github.com/amitsharmaak/distil/pull/27), `0d5e689`):** Amit captures articles
-  into a laptop-only PostgreSQL (Docker, in-process capture worker, legacy password login) and
-  ships fixes to Production in batches. Runbook `docs/runbooks/local-development.md`; checkpoint
-  "Local development loop — 2026-09-17" below. Local data is independent of Production and is
-  wiped with `npm run db:local:reset`.
-- **Progress at this checkpoint (password login, 2026-09-11 to 2026-09-16, complete and
-  deployed):**
-  - Email/password sign-in added alongside magic links, no 2FA (PR #7, `7278326`): hosted Neon
-    Auth credential provider behind Distil-gated routes `POST /api/auth/sign-in/password`,
-    `/api/auth/password/request-reset`, `/api/auth/password/reset`, `/api/auth/password/change`;
-    no local password storage; 12-character minimum; per-IP and per-account rate limits;
-    anti-enumeration preserved; first password set through the provider's emailed reset link;
-    account center can change the password (revokes other sessions) or request a setup link.
-    ADR 0004.
-  - Neon Auth "Sign-in with Email" enabled for the Production branch
-    (`br-damp-wildflower-b3kw15cu`) via the console on 2026-09-16; other provider settings left
-    as found.
-  - Sign-in redirect bug fixed (PR #11, `ec9758a`): a successful password sign-in now performs a
-    full navigation (`src/lib/browser-navigation.ts`) because the app shell's prefetches had
-    cached the anonymous redirect to the sign-in page.
-  - Dedicated `https://distilai.app/sign-in` page (PR #12, `847a068`); `/invite` is invitation
-    acceptance only and forwards to `/sign-in` without a token; every login redirect targets
-    `/sign-in`; anonymous pages render without the authenticated shell.
-  - Releases: `7278326` (`dpl_37haDb3zFz1moUGpw7LS7JECyyBH`), `ec9758a`
-    (`dpl_GYe6JtxFxX1NpydW6K7MmX2wrT6G`), `847a068` (`dpl_EP5sasTc2PWDzdgRRrGSmrHcZWRB`), each
-    through the exact-SHA gate with both origins re-aliased.
-  - Smoke evidence: Amit set a password through the emailed link and the sign-in route returned
-    200 for his credentials (Vercel runtime logs, 2026-09-16) before the redirect fix; after the
-    fix, both origins serve the release and route anonymous requests to `/sign-in`. Amit decided
-    on 2026-09-16 not to change the password or run the remaining smoke now; landing on Today
-    after password sign-in, the change-password form and the magic-link fallback on the final
-    release are therefore unverified by a person and remain an optional check, not a blocker.
-- **Integration (2026-09-16):** branch `claude/integrate-tiering-ui` combines the two open task
-  branches on top of `main`: `claude/test-tiering` (PR
-  [#15](https://github.com/amitsharmaak/distil/pull/15), Tier 0 `check:quick`, Tier 1 `check` as
-  the only required CI check, Tier 2 nightly "Full gate", release pin may be `unpinned`) and
-  `claude/ui-simplification` (PR [#8](https://github.com/amitsharmaak/distil/pull/8), simplified
-  navigation, reader chrome, top bar, settings and feed toolbar). The only conflict was this
-  file; the UI branch's own record is kept as the checkpoint "UI simplification — 2026-09-11"
-  below. Merged to `main` through the integration PR and released to Production the same day
-  (see the checkpoint "Tiering and UI simplification released; pin unpinned" below).
-- **Decisions recorded here:** `AGENTS.md` describes architecture; `CLAUDE.md` holds only
-  Claude-specific notes; progress is recorded only in this file. Task branches are named
-  `<agent>/<task>` (`codex/...` or `claude/...`). Concurrent work requires separate worktrees and a
-  written ownership split in this section.
-- **Performance decisions (Amit, in chat, 2026-09-16):** (1) authentication keeps exactly one
-  uncached provider check per request, so a revoked session is still rejected on the next request;
-  the variant that trusts the signed session cookie for GETs is not pursued. (2) Delete the
-  unlinked `/sources`, `/topics`, `/research` routes, the never-called AI modules
-  (`src/lib/ai/tagger.ts`, `src/lib/agent/workflows/triage.ts`, `src/lib/agent/insight-detection.ts`,
-  `runAgent` in `src/lib/agent/orchestrator.ts`, `src/lib/ai/client.ts`,
-  `src/lib/ai/circuit-breaker.ts`), `src/lib/notifications.ts` and the unmounted
-  `src/components/agent/agent-status-panel.tsx`. (3) Generate one budget-admitted flash-lite brief
-  summary per capture in the queue worker, cached under a content hash; on-demand regeneration in
-  the reader stays; nightly digests were not selected. (4) Execute all phases P0 → P7 in order, one
-  phase per task. Defaults applied unless Amit says otherwise: no cross-tenant article cache; add
-  `babel-plugin-react-compiler` at the end of P4; running the P7 index migration in Production is a
-  separate approval.
-- **Blockers / open items (all non-blocking):**
-  - P4 reduced the shared first-load bundle from 169.3 to 132.8 KB gzip but did not reach the
-    brief's under-120 KB target: 130.7 KB is Next.js/React/Turbopack framework code before the
-    remaining Distil shell. The reader target is met at 155.0 KB gzip. This is a recorded P4
-    deviation, not a reason to move framework code or touch P3/P5-owned paths.
-  - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
-    `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
-  - Known functional gap found during the performance analysis: the tenant job types
-    `regenerate_intelligence_summary`, `digest_run` and `knowledge_backfill` are enqueued but no
-    handler is registered (`src/lib/jobs/tenant-runtime.ts` completes them as "No tenant handler
-    registered"), so the nightly digest cron in `vercel.json` is write-only. Amit chose not to add
-    digest work now; either register handlers or stop enqueuing in a later task.
-  - Resolved 2026-09-16: the concurrent docs branches `claude/pwa-reinstall-notes` (PR #18,
-    `735ee4d`) and `claude/perf-plan` (PR #19, `22cd7aa`) both merged; both checkpoints kept.
-  - Two files of the branch-workflow tooling could not be written by Claude Code because the
-    auto-mode classifier refused them: the shared `.claude/settings.json` (permission allowlist,
-    `worktree.baseRef`) and `.claude/skills/finish-task/SKILL.md`. Amit adds them by hand from
-    the checkpoint "Branch workflow tooling — 2026-09-16" below.
-- **Verification of the integration branch (locally verified 2026-09-16, full gate on the
-  combined tree at `54e8263`):** `npm run lint` 0 errors / 10 baseline warnings, Prettier clean;
-  `tsc --noEmit` clean; `npm test` 201 suites / 1446 tests passed; `npm run test:integration`
-  (Docker PostgreSQL) 12 suites / 44 tests passed; `npm run test:e2e` 27 passed / 3 skipped
-  across desktop-chromium, mobile-chromium and mobile-webkit; `npm run test:extension` 11
-  passed; `npm run build` succeeded. Codex/Claude sessions are not shared, so this is the only
-  record of that run.
-- **Verification of the preceding releases (locally verified 2026-09-16 unless noted):** every PR
-  (#7, #9, #10, #11, #12, #13) passed the full quality gate (static, unit/component/contract,
-  security, PostgreSQL integration, coverage, web/mobile and extension E2E, production build) and
-  the exact-head `main` run after each merge. Local: `npm test` 201 suites / 1440 tests,
-  `tsc --noEmit`, lint (0 errors, 10 baseline warnings), Prettier. Production: health 200 with
-  `cache-control: no-store` on both origins; `/sign-in`, `/invite`, `/reset-password` 200; the
-  password routes answer 403 without an allowed Origin; anonymous `/feed` redirects to
-  `/sign-in`. The local `.env.local` has no `DATABASE_URL`, so a local `npm run dev` runs the
-  legacy SQLite path and is not representative of Production; Postgres integration tests need
-  Docker or `DISTIL_TEST_POSTGRES_URL`.
-- **Previously recorded external state (not re-checked today):** Production library
-  holds the 2026-09-17 capture plus the 2026-09-19 Shortcut capture; one user and two capture
-  tokens (browser extension and `iPhone Shortcut`, the latter created 2026-09-19); Neon Auth
-  project `distil-preview-db` with the single existing user.
-- **Optional password-login check (deferred by Amit on 2026-09-16):** sign in at
-  `https://distilai.app/sign-in`, confirm the Today page loads, change the password once from
-  `/account`, and confirm "Email me a magic link instead" still works. If the emailed reset link
-  ever lands somewhere other than `/reset-password?token=...`, adjust the page first.
-- **Operational note:** Amit added local, gitignored Claude Code permission rules on 2026-09-16 so
-  Claude Code can merge green PRs, update the release pin, deploy and re-alias without a manual
-  step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
-  unchanged: releases still happen only when Amit asks.
-- **Exact next steps:**
-  1. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
-     live capture and the jsdom runtime fix — 2026-09-17") extracted and indexed correctly, but
-     the P6 brief summary was skipped with `AIProviderError AI_AUTHENTICATION`: the Gemini API
-     key in Vercel's Production environment is rejected by the provider. Replace
-     `GEMINI_API_KEY` in Vercel (Production) with a valid key, redeploy (or push any commit), then
-     open the reader for the existing item and request a brief summary; expect a summary and no
-     `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
-     secrets. Until then every capture lands without a generated summary (extractive brief only)
-     and on-demand summaries fail the same way.
-  2. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
-     migration applied to Production — 2026-09-18" below). `ai_summaries.content_hash` now exists
-     there; wiring it into the summary cache key is P6's deferred item and a small follow-up.
-  3. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
-     simplified shell and P3's same-origin client have now been exercised by Claude through the
-     in-app browser but not seen by a person), and make one browser-extension capture (the
-     in-app `/save` path is verified; the extension path is not). Done 2026-09-19: the iPhone
-     Shortcut is re-pointed at the apex with a Production token and its capture verified
-     (checkpoint "iPhone Shortcut re-pointed at Production — 2026-09-19" below). The 2026-09-19 extension capture of an X post
-     reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
-     the durable worker — 2026-09-19"); fixed and released as PR #42 on 2026-09-20 (checkpoint
-     "Release: PR #42 to Production — 2026-09-20").
-  4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
-     treat it as the first task of the next session.
-  5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
-     2026-09-18"). The remaining performance work is not in the plan, each a separate
-     decision: the RLS/ordering architecture question from P7 (ordered index scans cannot cross
-     the security barrier; adding the two unused indexes anyway would be a one-file `0011`
-     stage), the ~130 ms `proxy-auth-db` lookup (`distil_resolve_auth_identity`, a SECURITY
-     DEFINER lookup on `auth_identities`, the largest fixed per-request cost), and the
-     multi-second Vercel + Neon cold start on the first request of a session.
-  6. Other engineering candidates, each as its own short-lived branch with a state update: the
-     dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
-     now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
-     the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
-     explicit decision.
+- `docs/state/README.md` explains the format and rules (one new file per task checkpoint, never
+  edit another entry, latest entry per topic wins).
+- `npm run state` prints the current handoff: the latest entry of every open topic with its
+  `## Next` steps. `npm run state -- --all` includes closed topics; `--topic <name>` prints one
+  topic's history.
+- The handoff as it stood when this file was frozen is preserved verbatim in
+  `docs/state/log/2026-09-30-handoff-snapshot.md`.
 
-### Release: PR #101 (keyboard navigation K1–K4) to Production — 2026-09-30
+Everything below this line is history. Plans recorded here (for example X1–X3, D1–D3, I1–I3) are
+still executed from these checkpoints; their progress is recorded in the state log under the
+topic named in their seed entry.
 
-PR [#101](https://github.com/amitsharmaak/distil/pull/101) (keyboard navigation K1–K4, branch
-`claude/keyboard-k1`) was squash merged by Amit on 2026-09-30 as `67f722c` after green CI: the
-required check `quality-gate` passed on head `739d1f1` (the other CI jobs are skipped on PRs). The
-merge auto-deployed because the release pin is `unpinned`: the GitHub deployment record for
-`67f722c` (environment Production, created 2026-09-30T13:48:20Z) has status success, and
-`https://distilai.app` responds. This was the first deploy of K1–K4, shipped together per "Amit,
-in chat, 2026-09-30: finish all four phases, then merge and deploy to Production together". The
-Production smoke check (`?`, `g f`, `j`/`k`, Shift+U, ⌘R, ⌥←) is not yet done; Amit said in chat
-he will run it later and report any bugs. No cloud resource was touched apart from the automatic
-Vercel deploy; nothing changed in Neon.
+### iPhone Shortcut without a visible token: design and phased plan (D1–D3) — 2026-09-30
+
+**Why.** Amit asked for the best way for a user to get the iPhone Shortcut "without having to
+worry about the token"; tokens should be abstracted away from the user completely. Today
+(`docs/iphone-shortcut.md`) a user copies the account capture token from Settings → Capture,
+builds the Shortcut by hand from a 9-step recipe, and pastes `Bearer <token>` into a header.
+Every regeneration means editing the Shortcut again. This checkpoint is the design and the plan
+only. Branch `claude/iphone-shortcut-token-abstraction-e945a7` (worktree
+`iphone-shortcut-token-abstraction-e945a7`) from `main` `67f722c`; docs only, no code changed,
+nothing touched in Vercel or Neon.
+
+**Evidence (verified against `main` at `67f722c`).**
+
+- Capture auth is bearer-only: `authenticateCaptureToken`
+  (`src/lib/auth/authenticate.ts:26-75`) requires `Authorization: Bearer dst_cap_…`, resolves the
+  owner pre-context through the SECURITY DEFINER function `distil_resolve_capture_token`
+  (`src/lib/auth/capture-token-identity.ts:31-41`, defined in
+  `src/lib/postgres/tenant-migrations/0008_phase3_lifecycle.sql:142-158`), then re-checks the hash
+  inside the tenant transaction and rate-limits per token id (60/minute).
+- Apple's **Get Contents of URL** action does not send Safari's cookies, so the Shortcut cannot
+  ride on the web session; the phone must hold a credential of its own. The only tokenless design
+  is one that opens Distil in Safari on every share (option B below).
+- One token per account since PR #90: `issueCaptureToken` (`src/lib/auth/capture-tokens.ts:25-44`)
+  calls `replaceActive`, whose CTE revokes **every** active token for the tenant
+  (`src/lib/postgres/repositories.ts:558-561`). `capture_tokens` has `name`, `token_hash`,
+  `token_prefix`, `created_at`, `last_used_at`, `revoked_at` and a partial unique index on active
+  hashes (`src/lib/postgres/schema.ts:1324-1341`); no `kind`. A silently issued phone credential
+  therefore cannot reuse today's issuance without revoking the browser extension's token.
+  The Chrome extension plan X1–X3 (checkpoint "Chrome extension: token-free sign-in and Web
+  Store listing — plan X1–X3 — 2026-09-30", merged to `main` as `3a310ac` while this brief was
+  being written) plans exactly the column this needs: `capture_tokens.kind` (`manual` |
+  `browser`) plus a nullable `label`, migration `0014_browser_connections.sql`, and a
+  kind-scoped `replaceActive`. This plan builds on it rather than duplicating it; X1's sentence
+  "the existing manual token stays for the iPhone Shortcut" is superseded once D3 ships.
+- `DELETE /api/v1/capture-tokens/:id` exists with no UI caller
+  (`src/app/api/v1/capture-tokens/[id]/route.ts:13`; `CaptureTokenRepository.revoke`,
+  `src/lib/repositories/ports.ts:302`). `GET`/`POST /api/v1/capture-tokens` are session-only and
+  origin-checked (`src/app/api/v1/capture-tokens/route.ts`).
+- Pre-context rate limiting exists for login, keyed `login:${ip}` (`src/lib/auth/service.ts:23`,
+  `LOGIN_RATE_LIMIT` 10 per 15 minutes in `src/lib/auth/constants.ts`).
+- Settings → Capture renders `TokenSettings` then `CaptureDiagnostics`
+  (`src/app/settings/page.tsx:68-69`); `TokenSettings` lists `active[0]` as "the" token and shows
+  a note when older tokens are still active (`src/components/capture/token-settings.tsx:74-110`).
+- iOS only imports **signed** shortcuts. Signing needs `shortcuts sign` on macOS or an iCloud
+  share from a device, so Distil cannot mint a personalised `.shortcut` file per user server-side.
+- Shortcuts can persist state itself: **Save File** / **Get File** in the app's own iCloud Drive
+  folder (`Shortcuts/Distil/`), with **Error If Not Found** off on read.
+
+**Options considered.**
+
+- **A — Device pairing with a short code (recommended).** One public, token-free Shortcut shared
+  once as an iCloud link. On first run it asks for a pairing code shown in Distil, exchanges it
+  for a phone-only credential, stores that in its iCloud Drive folder and never prompts again.
+  The user sees a code once and never a token. Distil lists the phone as a paired device with
+  Disconnect. This is the RFC 8628 "TV login" shape, driven by the user typing the code because a
+  Shortcut that opens Safari and waits for approval is unreliable.
+- **B — Tokenless: the Shortcut opens `https://distilai.app/save?url=…` in Safari.** No backend
+  change; the signed-in web page auto-submits. Rejected as the primary path: it opens Distil on
+  every share, which the runbook deliberately avoids, and it depends on the Safari session, not the
+  installed web app's separate cookie jar. Kept as a fallback if A is not wanted.
+- **C — Personalised Shortcut download per user.** Rejected: needs a Mac-based signing service
+  to save the user one paste.
+
+**Target design (option A).**
+
+- **A third token kind.** X1's `capture_tokens.kind` gains the value `phone` (issued only by
+  pairing, never displayed, one row per paired phone, X1's `label` column holding the device
+  name). The visible token stays `manual`, `replaceActive` stays scoped to `manual` as X1
+  specifies, and `TokenSettings` lists only `manual`. Capture auth is unchanged: every kind is a
+  `dst_cap_` bearer token, hash-only storage, same per-token rate limit, same
+  `actorKind: "capture-token"`, so captures, exports, deletion and RLS need no change. If D1
+  runs before X1 (decision 5), D1 carries the `kind`/`label` migration in X1's exact shape with
+  the `CHECK` extended to `('manual','browser','phone')`, and X1 then only extends nothing.
+- **Pairing codes.** New tenant-owned table `shortcut_pairings` (`user_id`, `id`, `code_hash`,
+  `created_at`, `expires_at`, `attempts`, `consumed_at`, `token_id` nullable). Codes are eight
+  Crockford base32 characters shown as `XXXX-XXXX` (about 10^12 possibilities; six digits would
+  need an aggressive IP limit to be safe), valid for ten minutes, single use, at most one pending
+  code per user (creating a new one expires the previous), hashed like tokens.
+- **Routes.** `POST /api/v1/shortcut-pairings` (session + `requireAllowedOrigin`) returns the
+  plaintext code and `expiresAt`. `POST /api/v1/shortcut-pairings/exchange` (no session; body
+  `{ code, deviceName? }`) resolves the owner pre-context through a new SECURITY DEFINER function
+  `distil_resolve_shortcut_pairing(code_hash)` modelled on `distil_resolve_capture_token`
+  (EXECUTE only for the runtime role), opens the tenant transaction, re-checks hash, expiry and
+  `consumed_at`, mints a `phone` token, marks the code consumed, and returns `{ token }` once.
+  Wrong or expired codes return `401 UNAUTHORIZED` with no hint; the endpoint is rate-limited
+  `pairing:${ip}` like login. `DELETE /api/v1/capture-tokens/:id` becomes Disconnect.
+- **Settings → Capture, "iPhone" card** (new component beside `TokenSettings`): a "Get the
+  Shortcut" link (iCloud share URL from `NEXT_PUBLIC_IOS_SHORTCUT_URL`; the card hides the link
+  when unset), a "Pair this iPhone" button that shows the code with a countdown and the two-line
+  instruction "Run Save to Distil once and type this code", and a list of paired devices
+  ("iPhone · paired 30 Sep · last used today") each with Disconnect. `TokenSettings` keeps its
+  copy, but the sentence "One token for every capture client: browser extension, iPhone
+  Shortcut, scripts" drops the Shortcut.
+- **The Shortcut.** Read `Shortcuts/Distil/token.txt`; if empty, **Ask for Input** "Enter the
+  code shown in Distil → Settings → Capture", POST it to the exchange route, save the returned
+  token to the file, notify "iPhone paired". Then the existing capture request with the stored
+  token in the header. On `UNAUTHORIZED` (disconnected or revoked) delete the file and notify
+  "Distil disconnected this iPhone. Share again to pair." so the next share re-pairs without
+  any editing. No token, origin or account detail lives in the Shortcut itself, so the same
+  iCloud link serves every user and may be shared publicly.
+
+**Decisions needed from Amit before D1 starts** (reply with letters, e.g. `1A 2A 3A 4A`):
+
+1. Shape: (A) device pairing as designed; (B) tokenless Safari open, no backend; (C) both, with B
+   as an extra "Save via Safari" Shortcut.
+2. Pairing code: (A) eight base32 characters `XXXX-XXXX`, ten minutes; (B) six digits, five
+   minutes, stricter IP limit.
+3. Device credential lifetime: (A) until disconnected, like the account token; (B) expires after
+   90 idle days and re-pairs automatically.
+4. Shortcut distribution: (A) Amit signs and shares one iCloud link from his iPhone and sets
+   `NEXT_PUBLIC_IOS_SHORTCUT_URL` in Vercel (an env-var change he authorizes and makes himself);
+   (B) the runbook keeps the build-it-yourself recipe and only the pairing step changes.
+5. Order against the Chrome plan: (A) X1 first, then D1 adds the `phone` kind on top of X1's
+   columns (migration `0015_phone_pairing.sql`); (B) D1 first, carrying X1's `kind`/`label`
+   migration as `0014` so X1 shrinks to routes and pages.
+
+#### Plan — three PR-sized phases, each its own task from current `main`
+
+Each phase is one `claude/<task>` branch and PR with its own dated checkpoint and handoff update.
+Re-verify every `file:line` above against current `main` before starting a phase. The existing
+account token and the current Shortcut keep working throughout; Amit's phone re-pairs only in D3.
+
+**D1 — Data and API: token kinds and pairing exchange.** Goal: a phone can obtain its own
+credential from a code without touching the account token.
+
+- **Files:** new tenant migration (`0015_phone_pairing.sql` after X1, or `0014` carrying X1's
+  columns per decision 5): extend the `kind` `CHECK` with `'phone'`; `shortcut_pairings` with RLS
+  policies matching the other tenant tables; `distil_resolve_shortcut_pairing`; partial unique
+  index on pending codes per user; manifest entry in `src/lib/postgres/tenant-migration/manifest.ts`;
+  `schema.ts`; `ports.ts` (`CaptureTokenRecord.kind`/`label` if X1 has not added them, new
+  `ShortcutPairingRepository`); `repositories.ts`; new `src/lib/auth/shortcut-pairing.ts`
+  (code generation, hashing, `exchangePairingCode`); new
+  `src/lib/auth/shortcut-pairing-identity.ts` (pre-context resolver); new routes
+  `src/app/api/v1/shortcut-pairings/route.ts` and `…/exchange/route.ts`; `lifecycle/exports.ts`
+  and account deletion include `shortcut_pairings`; `docs/runbooks` note for the new function.
+- **Approach:** `issueCaptureToken` gains `kind` and `label` parameters (defaults unchanged;
+  X1's `issueBrowserConnection` is the sibling);
+  the exchange route mirrors `authenticateCaptureToken`'s two-step lookup so the pre-context
+  read is exact-key only. Wrong codes increment `attempts`; after five the code is consumed.
+- **Tests:** repository SQL shape; unit tests for code generation and exchange (expired,
+  consumed, wrong, attempt cap, happy path returns plaintext once); route contract tests
+  (session required to create; exchange needs no session but is rate-limited; UNAUTHORIZED gives
+  no hint); RLS integration test proving regeneration of the account token leaves device tokens
+  active and vice versa, and that disconnecting one phone leaves browser connections and the
+  manual token alone; `test:phase3-isolation` migration invariants for the new table and
+  function.
+- **Verification:** `npm run check`, `npm run test:integration`, `npm run db:tenant:verify` on
+  the local Docker Postgres. Applying `0014` to Production is a Neon mutation and needs Amit's
+  task-specific authorization at release time.
+
+**D2 — Settings: pair, list and disconnect.** Goal: the whole phone setup is visible and
+reversible in Settings → Capture with no token string on screen.
+
+- **Files:** new `src/components/capture/iphone-shortcut-card.tsx` and test, placed next to
+  X1's "Connected browsers" card so Settings → Capture reads manual token / browsers / iPhone;
+  `token-settings.tsx` (filter to `manual`, copy change); `settings/page.tsx`;
+  `GET /api/v1/capture-tokens` returns `kind` and `label` so the card can list `phone` rows;
+  keyboard help entry if the card gets a focusable action (K4 card lists Settings keys).
+- **Tests:** component tests for pairing (code shown, countdown, expiry state, new code replaces
+  old), device list and Disconnect (calls `DELETE`, row disappears), and the hidden link when the
+  env var is unset; route test for `kind` and `label` in the list payload.
+- **Verification:** `npm run check`; local in-app browser at desktop, 375 px and dark; pair
+  once end-to-end against the local API with `curl` standing in for the Shortcut.
+
+**D3 — The Shortcut, the runbook and the real device.** Goal: a new user installs one link, types
+one code, and shares articles.
+
+- **Files:** `docs/iphone-shortcut.md` rewritten around install → pair → share, with the
+  build-it-yourself recipe kept as an appendix for people who prefer it; `docs/user-guide.md`
+  section; `AGENTS.md` §3 capture-clients sentence; `browser-extension` README sentence about
+  the account token staying for the extension only; `docs/vercel-deployment.md` gains
+  `NEXT_PUBLIC_IOS_SHORTCUT_URL`.
+- **Approach:** Amit builds the pairing Shortcut on his iPhone from the D3 recipe, shares it as
+  an iCloud link, sets the env var (his mutation) and pairs his phone; his legacy Shortcut token
+  is then revoked by the next account-token regeneration or a Disconnect.
+- **Verification (real device, Amit):** the existing acceptance checklist plus: first share
+  prompts for the code and reports "iPhone paired"; second share saves without prompting;
+  Disconnect in Settings makes the next share prompt again; a wrong code reports failure and does
+  not pair; the same iCloud link installs cleanly on a second phone signed into a different
+  account and pairs to that account only.
+
+### Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30
+
+**Why.** Amit wants the browser extension on the Chrome Web Store, and he wants users never to
+see or handle a capture token: install the extension, sign in to Distil, start saving. Today the
+extension is load-unpacked only and its Options page asks for an origin and a pasted token from
+Settings → Capture. This checkpoint is the design and the phased plan only. Branch
+`claude/chrome-extension-web-store-fb0101` (worktree `chrome-extension-web-store-fb0101`) from
+`main` `eaec1d2`; docs only, no code changed, nothing touched in Vercel, Neon or the Web Store.
+
+**Evidence (code read at `eaec1d2`).**
+
+- Tokens are stored hash-only (`src/lib/auth/capture-tokens.ts`, `capture_tokens.token_hash`),
+  shown once at generation, one active token per account since PR #90; `replaceActive` revokes
+  every active token for the tenant. So the server cannot "hand out" the existing token: a
+  browser can only receive a token minted for it at connect time. The 2026-09-30 decision
+  already rejected reversible storage.
+- `POST /api/v1/captures` accepts either a `dst_cap_` bearer token or a cookie session
+  (`src/lib/auth/authenticate.ts`); the extension uses the bearer path from its service worker.
+  Extension fetches carry `Origin: chrome-extension://<id>`; host permissions bypass CORS, and
+  the route is a public Neon path, so the bearer path works from the extension today.
+- Returning-user sign-in always lands on `/`: password sign-in navigates to `/` in
+  `sign-in-card.tsx`, and `createReturningMagicLinkCompletionHandler` (`magic-link.ts`) redirects
+  to `/` with no `next`. Only the invitation flow carries a safe `nextPath` through a sealed
+  cookie (`invite-state.ts`, `safeNextPath`). A connect page therefore needs its own way back
+  after sign-in (X1 adds it).
+- Chrome's `externally_connectable` validator on Chromium `main` accepts any parseable match
+  pattern (`extensions/common/manifest_handlers/externally_connectable.cc`, read on
+  2026-09-30); `http://localhost:3000/*` is valid alongside `https://distilai.app/*`, so the
+  same handoff works for local development. The extension test harness
+  (`tests/support/browser/extension.ts`) launches the unpacked extension in Chromium and can
+  fulfil `http://localhost:3000/...` pages with `context.route`, so the handoff is testable
+  without a dev server.
+- The Chrome Web Store keeps an extension id stable across unpacked and store builds when the
+  manifest carries a `key` field; the store uses that id on first upload. Without it the dev id
+  differs from the store id, and the connect page would not know which extension to message.
+
+#### Target design
+
+**User experience.** Install from the Web Store. The Options page (also opened by the popup
+when nothing is connected) shows one button, **Sign in to Distil**. It opens
+`https://distilai.app/extension/connect` in a tab. If the user is not signed in, the normal
+sign-in card appears there (password or magic link); after sign-in the page comes back to
+itself. The page says "Connect this browser to Distil?" with the account email and a **Connect**
+button. On click, Distil mints a browser connection token and passes it to the extension; the tab
+shows "Connected. You can close this tab." and the extension's popup switches to "Ready to
+save." No token is ever displayed, copied or pasted. Settings → Capture gains a **Connected
+browsers** list (label, connected date, last used, **Disconnect**). If a connection is
+disconnected or otherwise rejected, the extension's popup shows **Sign in again**; clicking it
+reruns the connect flow, and when the web session is still alive the page reconnects with one
+click. The existing manual capture token stays for the iPhone Shortcut and scripts.
+
+**Token model (X1).** Browser connections are ordinary `capture_tokens` rows with a new
+`kind` column (`manual` | `browser`, default `manual`) and a nullable `label` column
+("Chrome on macOS", from the user agent at connect time). The capture route needs no change:
+`authenticateCaptureToken` resolves any active row by hash, per-token rate limits and
+`last_used_at` keep working. `replaceActive` becomes kind-scoped: regenerating the manual token
+revokes only manual rows, and connecting a browser revokes nothing (each browser holds its own
+token, so disconnecting one leaves the others working). Migration `0014_browser_connections.sql`
+(`ALTER TABLE capture_tokens ADD COLUMN kind text NOT NULL DEFAULT 'manual' CHECK (kind IN
+('manual','browser')), ADD COLUMN label text`), manifest entry in
+`src/lib/postgres/tenant-migration/manifest.ts` (`migrationColumns: ["kind", "label"]`), schema
+in `schema.ts`, verified by `npm run db:tenant:verify`. The token plaintext keeps the `dst_cap_`
+prefix so `authenticate.ts` is untouched. Tokens do not expire; they are revoked from Settings.
+Signing out of the web app does not disconnect a browser (same as a phone app), which is what
+makes offline replay reliable.
+
+**Handoff (X1 server side, X2 extension side).** OAuth-style state nonce plus Chrome's
+`externally_connectable` page-to-extension messaging:
+
+1. The extension generates a 32-byte random `state`, stores `{ state, origin, startedAt }` as
+   `distilPendingConnect` in `chrome.storage.local`, and opens
+   `<origin>/extension/connect?state=<state>` in a new tab. It never sends its id; the page
+   knows the pinned id.
+2. `/extension/connect` is a public Neon path (rendered signed-out) so it can host the sign-in
+   card inline. Signed-out: it renders `SignInCard` with `next="/extension/connect?state=…"`;
+   password sign-in navigates to `next`, and `request-link` seals `next` in a short-lived
+   cookie (`pending-sign-in-next`, same sealing as `invite-state.ts`, value through
+   `safeNextPath`) that `createReturningMagicLinkCompletionHandler` reads and clears. Signed-in:
+   it shows the account email and the Connect button.
+3. Connect calls `POST /api/v1/extension/connections` (session cookie, `requireAllowedOrigin`,
+   body `{ label }`) → `201 { connection: { id, label, createdAt }, token }`. The route is added
+   to `docs/authorization-matrix.json` (`route_session`, `user_session`, owner scope,
+   resources `capture_tokens`) with the usual adversarial tests; `GET` lists the caller's
+   browser connections without hashes; `DELETE /api/v1/extension/connections/:id` revokes one
+   (owner only, foreign id → 404).
+4. The page delivers the token with
+   `chrome.runtime.sendMessage(DISTIL_EXTENSION_ID, { type: "distil-connect", state, origin, token, connection })`
+   and waits for `{ ok: true }`. `DISTIL_EXTENSION_ID` is one constant in
+   `src/lib/extension/constants.ts` (client-safe; the id is public). If `chrome.runtime` is
+   undefined on the page, the extension is not installed or not allowed for this origin; the page
+   shows the Web Store link instead of minting anything.
+5. The extension's `onMessageExternal` listener accepts the message only when
+   `sender.url` origin equals the pending `origin`, `state` equals the pending state, and the
+   pending record is younger than 10 minutes. It then stores `{ origin, token, connectionId,
+label, accountKey }` (the queue namespace `accountKey` becomes a hash of origin +
+   connectionId), clears the pending record, replays the queue and answers `{ ok: true }`. Any
+   mismatch answers `{ ok: false }` and the page tells the user to start again from the
+   extension. This nonce is what stops a crafted link from planting an attacker's token in the
+   victim's extension (login CSRF). The explicit Connect click and the pinned extension id are
+   what stop a crafted link from sending the victim's token elsewhere.
+6. On `401`/`403` from the capture route the extension clears the token, keeps the queue,
+   and shows **Sign in again** (popup and Options). Reconnecting mints a new token for the same
+   browser; the queue for the previous connection is replayed only when the new token belongs to
+   the same account, which the page confirms by returning the account id in `connection` and the
+   extension compares before adopting the old queue (otherwise the old queue stays paused, as
+   today).
+
+**Why not the alternatives.** (a) Cookie-based capture (`credentials: "include"` from the
+extension): the API's CSRF rule rejects mutations whose Origin is not an allowed app origin,
+sessions expire independently of the extension, and third-party cookie partitioning makes it
+unreliable; it would also break offline replay after a web sign-out. (b)
+`chrome.identity.launchWebAuthFlow`: the auth window cannot complete a magic-link sign-in that
+finishes in another tab. (c) OAuth device-code polling (extension polls the server with a code
+the page approved): no extension id coupling, but it needs a short-lived table holding token
+plaintext and a polling loop; keep as fallback if `externally_connectable` proves awkward.
+(d) Handing the extension the single account token: needs reversible storage (rejected on
+2026-09-30) or would revoke the iPhone Shortcut's token on every connect.
+
+#### Decisions for Amit (answer inline; recommended option first)
+
+1. **Token model:** (A, recommended) separate per-browser connection tokens plus the existing
+   manual token for the Shortcut; (B) one token per account minted by connect, revoking the
+   Shortcut's token each time the extension connects.
+2. **Handoff:** (A, recommended) `externally_connectable` + state nonce, pinned extension id;
+   (B) device-code polling with a new short-lived table.
+3. **Connection lifetime:** (A, recommended) never expires, revocable in Settings, re-sign-in
+   only after revocation; (B) expires after N days with silent reconnect while the web session
+   lives (adds a refresh endpoint; more moving parts, little gain for a personal tool).
+4. **Web Store visibility:** (A, recommended) unlisted first (link-only for invited testers),
+   public later; (B) public from the first submission. Both need the privacy policy page and
+   store assets.
+5. **Custom origin:** (A, recommended) keep an "Advanced" field on the Options page for
+   `http://localhost:3000` and self-hosted origins; (B) production only, no field.
+
+#### Plan — three PR-sized phases, each its own task from current `main`
+
+**X1 — Server: browser connections and the connect page (recommended first).** Goal: a signed-in
+user can open `/extension/connect`, click Connect, and the page hands a token to a pinned
+extension id; the manual token and Shortcut keep working. Files: migration
+`src/lib/postgres/tenant-migrations/0014_browser_connections.sql`, `schema.ts`, migration
+`manifest.ts`, `repositories.ts` (`replaceActive` kind-scoped, `list` by kind),
+`repositories/ports.ts`, `capture-tokens.ts` (`issueBrowserConnection`), routes
+`src/app/api/v1/extension/connections/route.ts` and `[id]/route.ts`, page
+`src/app/extension/connect/page.tsx` (+ client component), `neon-proxy.ts` `PUBLIC_PATHS`,
+returning-user `next` (sealed cookie in `magic-link.ts`, `next` prop on `SignInCard`),
+`src/lib/extension/constants.ts`, Settings "Connected browsers" card next to `TokenSettings`,
+`docs/authorization-matrix.json`, `AGENTS.md` §3 auth bullet, `docs/vercel-deployment.md` if a
+variable is added (none expected). Tests: migration/manifest unit, repository SQL shape, RLS
+integration (connect and disconnect are tenant-scoped; regenerate leaves browser rows), route
+contracts (origin required, foreign id 404, no hash in `GET`), `safeNextPath` on the sealed
+cookie, component test for the connect page states (signed-out, no extension, connect, done),
+Settings card. Verification: `npm run check`, `npm run test:integration`, `npm run
+db:tenant:verify` against local Docker Postgres, connect page opened in the local in-app browser
+with a stub `chrome.runtime`. Deploying X1 is a Production migration and needs Amit's
+authorization; the migration is additive and safe for the old extension.
+
+**X2 — Extension 2.0: sign-in flow, no token field.** Goal: install, click Sign in, connect,
+save. Files: `browser-extension/manifest.json` (`version` 2.0.0, `key` pinned, host permission
+`https://distilai.app/*`, `externally_connectable.matches` for `https://distilai.app/*` and
+`http://localhost:3000/*`, optional host permissions retained for custom origins),
+`background.js` (pending-connect state, `onMessageExternal`, token clearing on auth failure,
+queue namespace by connection id), `options.*` (Sign in / Signed in as / Disconnect, Advanced
+origin field, no token input), `popup.*` ("Sign in again" state), README. Generate the key once
+with `openssl genrsa 2048 | openssl rsa -pubout -outform DER | base64` and record the resulting
+id in `src/lib/extension/constants.ts` (X1 ships a placeholder that X2 replaces, or X2 opens a
+one-line follow-up PR on the app). Tests: harness specs for the whole handoff using
+`context.route` to serve a fake `/extension/connect` page that posts the message with the right
+and the wrong state, for the 401 → "Sign in again" → reconnect path, and for the queue
+namespace on reconnect; `npm run test:extension`. Verification: local Docker loop with X1
+deployed locally (`http://localhost:3000`), then Production once X1 is live.
+
+**X3 — Chrome Web Store listing.** Goal: a link Amit can send to an invited tester. Files:
+`scripts/pack-extension.ts` (`npm run extension:pack` → `dist/distil-extension-<version>.zip`,
+manifest version check), `src/app/privacy/page.tsx` as a public path (what the extension
+collects: page URL, title, selected text, only when the user saves; token stored locally; no
+analytics), `browser-extension/STORE.md` with the listing text, single-purpose statement and
+per-permission justifications (`activeTab`, `alarms`, `contextMenus`, `storage`, host
+permission for `distilai.app`), and the screenshots list Amit captures. Amit does the store
+steps himself (developer account, one-time fee, upload, unlisted visibility, submit for review);
+after approval, README and the Settings card link to the store page, and the "load unpacked"
+instructions move to a development section. Verification: the packed zip loads in Chrome from
+`chrome://extensions` and passes the X2 harness; review outcome recorded here with the store
+item id.
+
+**Single-session code prompt (paste into a fresh session after answering the decisions).**
+"Read AGENTS.md, then in docs/project-state.md the Current handoff and the checkpoint 'Chrome
+extension: token-free sign-in and Web Store listing — plan X1–X3'. Amit's decisions are: <fill
+in 1–5>. Implement phase <X1|X2|X3> exactly as its brief describes, on a new branch from
+origin/main, with the tests listed, run `npm run check` (and `npm run test:integration` for
+X1, `npm run test:extension` for X2), update the state file (handoff bullet and a dated
+checkpoint), and open a PR. Do not deploy, migrate Production, or touch the Web Store."
+
+### Admin invitations from Settings: phased plan (I1–I3) — 2026-09-30
+
+**Why.** Amit onboarded a colleague on 2026-09-30 and asked for an admin to be able to send
+invitations from the Settings section instead of the CLI. What the manual run needed today: the
+operator UUID had to be looked up in the Neon SQL editor (`users.primary_email`, not `email`);
+`npm run auth:invite` does not read `.env.local`, so `DATABASE_URL` had to be passed inline, and
+without it the script fails with the misleading "Authentication repositories are unavailable"
+(the real cause, a missing URL, is swallowed in `src/lib/auth/repository-runtime.ts:15-25`);
+the printed `invitationUrl` was then pasted by hand. This checkpoint is the plan only. Branch
+`claude/distil-onboarding-docs-a2addc` from `main` `eaec1d2`; docs only, no code changed,
+nothing touched in Vercel or Neon. The same branch adds `docs/onboarding.md`, the guide shared
+with new users (sign-in, capture token, extension load-unpacked, Shortcut, Home Screen install).
+
+**How invitations work today (verified at `eaec1d2`).**
+
+- **Issue.** Only `scripts/auth-invitations.ts` (`npm run auth:invite -- issue <email>
+<operator-uuid> <reason> <origin>`). It calls `executeInvitationCommand`
+  (`src/lib/auth/invitations.ts`), which stores a row in `invitations` (normalized + hashed
+  email, salted token hash, `issued_by_actor_id`, `issuance_reason`, 7-day `expires_at`,
+  `INVITATION_TTL_MS`) and returns `<origin>/invite#token=<id>.<secret>` once. The secret is
+  never stored, so a link cannot be re-shown; a lost link means revoke and issue again.
+  `issued_by_actor_id` is any UUID with no foreign key; nothing checks that it is an admin.
+- **Accept.** The invitee opens `/invite` (`src/app/invite/page.tsx`), enters the email, and
+  `POST /api/auth/invitations/request-link` validates token and email match, claims a dispatch
+  slot and sends a Neon Auth magic link; `/api/auth/invitations/complete` consumes the row and
+  links the identity (`consumeInvitationAndLinkIdentity`). Returning users sign in at
+  `/sign-in`. No email is sent at issue time; the link itself is delivered by hand.
+- **Revoke.** CLI only (`revoke <invitation-uuid> <operator-uuid> <reason>`), used by the
+  tenant-isolation runbook.
+- **No admin concept.** `users` has `status` only (`0005_phase3_tenant_expand.sql:20-30`).
+  `docs/authorization-matrix.json` defines a `platform_admin` principal ("explicit audited
+  maintenance only; normal sessions never imply this principal") and scopes `invitations` to
+  `operator-control-plane` with "operator reason and audit required". `operator_audit_events`
+  exists (`0008_phase3_lifecycle.sql:102`) but is revoked from the runtime role and written only
+  through the control-plane client (`DATABASE_CONTROL_PLANE_URL`, `getControlPlaneRepositories`).
+- **Repository port.** `InvitationRepositoryPort` (`src/lib/auth/ports.ts:39`) has create, find
+  by id, revoke and the dispatch claim methods; there is no list.
+- **Settings.** `src/app/settings/page.tsx` has two tabs, Capture (`TokenSettings`, the
+  generate/copy-once/regenerate pattern to reuse) and Account.
+
+#### Plan
+
+**I1 — Admin identity and API (recommended first, with I2).**
+
+- Admin designation: `DISTIL_ADMIN_USER_IDS` (comma-separated user UUIDs) read through
+  `src/lib/auth/environment.ts`; helper `isPlatformAdmin(userId)`. No schema change. Amit's
+  Production UUID goes into Vercel by Amit (env change, his authorization). Alternative: a
+  `users.role` column (decision 1).
+- Routes under `src/app/api/v1/admin/invitations/`: `POST` (body `{ email, note? }`) issues via
+  `executeInvitationCommand` with `issuedByActorId` = the session user, `reason` =
+  `settings:<note or "invited from Settings">`, `appOrigin` from `readApplicationOrigin`;
+  returns `{ invitationId, invitationUrl, expiresAt }` once. `GET` lists invitations (id,
+  masked email, status, issued by, expires, accepted at); needs a new
+  `listInvitations` port method and Postgres implementation. `DELETE /:id` revokes with a
+  reason. All three: `resolveRequestAuthContext` + `requireAllowedOrigin` + admin check, 403 for
+  everyone else, 404-shaped when `FEATURE_NEON_AUTH` is off. Cap: 20 issues per admin per day.
+- Audit: the `invitations` row already records actor and reason. When
+  `DATABASE_CONTROL_PLANE_URL` is configured, also write an `operator_audit_events` row
+  (`invitation.issue` / `invitation.revoke`); skip silently when it is not (decision 3).
+- Tests: unit for the admin helper and command mapping; route tests for 403/200/429; a
+  repository test for `listInvitations`. Update `docs/authorization-matrix.json` (invitations
+  gain `self-admin-session` as an allowed issuer path) and `AGENTS.md` §Auth.
+- Small fix in passing: `scripts/auth-invitations.ts` should surface the underlying error and
+  say "set DATABASE_URL" when it is empty.
+
+**I2 — Settings → Invitations tab.**
+
+- Third tab, rendered only when the account payload says `isAdmin` (server-derived; the API is
+  the real gate). Form: email, optional note, **Send invitation** button. Result card copies
+  `TokenSettings`: "Copy this link now, it will not be shown again", Copy button, expiry date.
+- List below: masked email, status chip (pending / accepted / revoked / expired), issued date,
+  expiry, **Revoke…** with a reason prompt. Empty state explains that invitees open the link
+  and request a magic link with the invited address.
+- Component tests mirror `token-settings.component.test.tsx`; one Playwright smoke run behind
+  the admin allowlist in the local Docker loop.
+
+**I3 — Capture diagnostics out of the main Capture tab.**
+
+- Today `CaptureDiagnostics` (`src/components/capture/capture-diagnostics.tsx`) is mounted
+  under the token panel in Settings → Capture (`src/app/settings/page.tsx`) and shows every
+  rejected or failed capture with Retry / Save again. It was added on 2026-09-24 as an
+  "internal diagnostics" surface after Amit declined a notification bell (checkpoint "Capture
+  diagnostics in Settings — 2026-09-24"). Amit now finds it noisy on the main Settings view and
+  is unsure it belongs in the app at all.
+- Why a plain "only outside production" gate is wrong: the failures it lists live in the
+  Production database. `NODE_ENV` is `production` on distilai.app and `development` only in
+  the local Docker loop, so an environment gate would hide the panel exactly where the data is.
+  The app has no runtime debug mode today (`src/lib/config.ts` exposes `FEATURE_CONNECTORS`
+  and `NODE_ENV` only; no client-visible debug flag).
+- Options (decision 4): (A) **Troubleshooting tab, admin-only** — a third Settings tab rendered
+  only when the account payload says `isAdmin` (the I1 allowlist), with the diagnostics panel
+  unchanged inside it; the tab shows a count badge only when failures exist. No new mechanism,
+  and it matches the original "internal diagnostics" framing. Non-admins see nothing.
+  (B) **Troubleshooting tab for everyone** — same move, no gate; failures stay visible to all
+  users but out of the way. (C) **Remove the panel and its `?status=` filter** — failures go
+  silent again; the retry route stays for the capture receipt page. Recommended: A.
+- Work (small): move the component into the new tab, add the tab trigger, gate on `isAdmin`,
+  update `settings/__tests__` and the diagnostics component tests; no API change.
+
+#### Decisions (answered by Amit in chat, 2026-09-30)
+
+All four recommended options were chosen: (1A) env allowlist `DISTIL_ADMIN_USER_IDS`, no
+migration; (2A) any email may be invited; (3A) the `invitations` row is the record, and
+`operator_audit_events` is written only when `DATABASE_CONTROL_PLANE_URL` is configured;
+(4A) capture diagnostics move into an admin-only Troubleshooting tab. Implementation of I1–I3
+is not yet authorized; Amit starts it as its own task with the code prompt below.
+
+#### Decisions as asked
+
+1. **Admin designation:** (A) `DISTIL_ADMIN_USER_IDS` env allowlist, no migration
+   (recommended); (B) `users.role` column with a tenant migration.
+2. **Who may be invited:** (A) any email (recommended); (B) restrict to listed domains.
+3. **Audit:** (A) rely on the `invitations` row and write `operator_audit_events` only when the
+   control-plane URL is configured (recommended); (B) require the control-plane URL in
+   Production first.
+4. **Capture diagnostics:** (A) admin-only Troubleshooting tab (recommended); (B) Troubleshooting
+   tab for everyone; (C) remove the panel.
+
+#### Single-session code prompt (I1 + I2 + I3)
+
+> Implement I1, I2 and I3 from the checkpoint "Admin invitations from Settings: phased plan
+> (I1–I3) — 2026-09-30" in `docs/project-state.md`, on a fresh `claude/admin-invitations` branch
+> from `origin/main`. Read `src/lib/auth/invitations.ts`, `src/lib/auth/ports.ts`,
+> `src/lib/postgres/auth-repository.ts`, `src/app/api/v1/account/route.ts` (auth pattern),
+> `src/components/capture/token-settings.tsx` (copy-once UI) and `src/app/settings/page.tsx`
+> first. Add the admin allowlist helper, the three admin routes, the `listInvitations` port
+> method, the Invitations tab, the admin-only Troubleshooting tab holding `CaptureDiagnostics`,
+> tests, the matrix and `AGENTS.md` updates, and the CLI error fix.
+> Verify with `npm run check` and `npm run test:integration` against local Docker Postgres with
+> your local user in `DISTIL_ADMIN_USER_IDS`. Do not touch Vercel or Neon. Record a checkpoint
+> and handoff bullet before opening the PR.
 
 ### Keyboard navigation K4: Research, Settings, e2e and user guide — 2026-09-30
 
