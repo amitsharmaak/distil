@@ -5740,7 +5740,8 @@ Not deployed. Both bugs move from the deferred backlog to fixed once the PR merg
 ### Collections feature removed (code only) — 2026-09-30
 
 Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with current
-`origin/main` in `816bbe4`; PR [#98](https://github.com/amitsharmaak/distil/pull/98).
+`origin/main` in `816bbe4` and `a552c36`; PR
+[#98](https://github.com/amitsharmaak/distil/pull/98).
 
 - **Removed:** the two `/collections` pages; seven reviewed collection API methods across three
   route files; collection list/detail/editor UI; reader membership controls; Feed/Today collection
@@ -5756,7 +5757,7 @@ Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with 
   `createCaptureCollectionHandlers` REST-list helper. No migration, data deletion, database call,
   environment change or deployment occurred.
 - **Locally verified after merging current `origin/main`:** `npm run check` passed with 235 suites
-  and 1,893 tests (zero failures; five pre-existing lint warnings, zero errors); `npm run build`
+  and 1,894 tests (zero failures; five pre-existing lint warnings, zero errors); `npm run build`
   passed with Next.js 16.3.4 and emitted neither removed page; `npm run perf:bundle -- --write`
   deterministically regenerated `docs/perf/route-bundle-stats.baseline.json` without the two
   removed routes, and a second `npm run perf:bundle` reported zero delta. The requested final
