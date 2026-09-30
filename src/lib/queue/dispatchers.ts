@@ -143,6 +143,46 @@ export class FakeTenantJobDispatcher implements TenantJobDispatcher {
   }
 }
 
+/**
+ * Local-development dispatcher for tenant jobs: runs the account-lifecycle
+ * consumer in the same process, detached from the caller, so `next dev` needs
+ * no queue credentials. A `failed` result is redelivered after a delay, as the
+ * hosted queue does, at most `maxDeliveries` times in all.
+ */
+export class InlineTenantJobDispatcher implements TenantJobDispatcher {
+  constructor(
+    private readonly consume: (message: TenantJobEnvelopeV1) => Promise<string>,
+    private readonly onError: (error: unknown) => void = () => undefined,
+    private readonly retryDelayMs = 2_000,
+    private readonly maxDeliveries = 3
+  ) {}
+
+  async dispatch(
+    message: TenantJobEnvelopeV1,
+    options: { idempotencyKey: string; delaySeconds?: number }
+  ): Promise<void> {
+    const copy = structuredClone(message);
+    setTimeout(() => this.run(copy, 1), (options.delaySeconds ?? 0) * 1_000);
+  }
+
+  private run(message: TenantJobEnvelopeV1, delivery: number): void {
+    this.consume(message).then(
+      (result) => {
+        if (result === "failed" && delivery < this.maxDeliveries) {
+          setTimeout(() => this.run(message, delivery + 1), this.retryDelayMs);
+        }
+      },
+      (error: unknown) => {
+        if (delivery < this.maxDeliveries) {
+          setTimeout(() => this.run(message, delivery + 1), this.retryDelayMs);
+          return;
+        }
+        this.onError(error);
+      }
+    );
+  }
+}
+
 /** Production dispatcher for tenant-scoped lifecycle work. */
 export class VercelTenantJobDispatcher implements TenantJobDispatcher {
   constructor(
