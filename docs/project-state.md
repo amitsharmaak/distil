@@ -481,8 +481,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 ### Inline search F7: legacy search path retired — 2026-09-30
 
 Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`, then merged with
-`origin/main` at `9c93a95` and at `4f1ee3e`, after A1 removed Ask Distil). Completes F7 after the
-UI part landed in #75. Implementation complete and locally verified; not deployed.
+`origin/main` at `9c93a95`, at `4f1ee3e` after A1 removed Ask Distil, and at `35c3009` after
+F6). Completes F7 after the UI part landed in #75. Implementation complete and locally verified;
+not deployed.
 
 - **Callers checked first.** No caller of `GET /api/items?q=` or `GET /api/v1/search` remains:
   the browser extension posts only to `/api/v1/captures`, the iPhone Shortcut
@@ -496,8 +497,9 @@ UI part landed in #75. Implementation complete and locally verified; not deploye
   tests were rewritten for this.
 - **`GET /api/v1/search` deleted** with its contract test. Its authorization-matrix entry is
   removed and the `/search` page entry now records "redirects to /feed" with no feature gate.
-  Counts recomputed from the merged tree: 90 API route files, 19 pages, 121 route surfaces in the
-  fixture; the harness assertions match.
+  Counts recomputed from the tree after merging F6 (`35c3009`, which adds
+  `/api/v1/areas/backfill`): 91 API route files, 19 pages, 123 route surfaces in the fixture; the
+  harness assertions match.
 - **`FEATURE_SEARCH` removed from code**: `readPhase2FeatureFlags` no longer has `search`; the
   Phase 3 activation preflight no longer lists it; tests, `.env.local.example`, the web-vitals
   script, the Phase 2 e2e flag list and AGENTS.md updated. **Amit:** delete any leftover
@@ -526,7 +528,7 @@ UI part landed in #75. Implementation complete and locally verified; not deploye
 - **Docs.** AGENTS.md §3 has a Search bullet: one search surface, the Feed/Today header search on
   `GET /api/v1/feed`, and a record of what F7 retired; `FEATURE_SEARCH` is out of the flag list.
   `docs/ARCHITECTURE.md` says the same ("Why there is one search surface").
-- **Verification.** `npm run check` passes (230 suites, 1,806 tests; the 5 lint warnings
+- **Verification.** `npm run check` passes (232 suites, 1,830 tests after the F6 merge; the 5 lint warnings
   predate this branch), `tests/harness` passes, `npm run audit:phase3-security` passes, and the
   PostgreSQL `repositories.integration` suite passes (9 tests) against a Testcontainers database.
   Grep finds no `FEATURE_SEARCH`, `/api/v1/search`, `DISTIL_PHASE2_SEARCH`, `hybridSearch`,
@@ -537,6 +539,82 @@ UI part landed in #75. Implementation complete and locally verified; not deploye
   passes; the test then fails at the later `/feed/phase2-fixture` reader step with 500
   `AccessDeniedError: unauthenticated`. That failure predates this change: the same reader step
   on `origin/main` (`9c93a95`) returns the same 500. No migration, env var or cloud change.
+
+### Life areas F6: area backfill — 2026-09-30
+
+Branch `claude/areas-f6-backfill` from `10f367f` (merged with `origin/main` at `8280fdc`).
+Implementation complete, verified by tests and by a local run against the Docker Postgres; not
+merged, not deployed, and not run on Production. No migration and no new environment variable.
+
+**What changed**
+
+- **Tenant job `items.area-backfill`** (`src/lib/jobs/area-backfill.ts`): classifies the tenant's
+  ready items with no AI area and no correction, in batches (default 20, max 50), through the
+  same `classifyItemArea` function and `classify-area` task as capture.
+  - **Title and summary only** (decision 7): `classifyItemArea` gained an `input: "title-summary"`
+    mode that sends the title, the brief's overview (else the stored summary) and the item's
+    metadata, never body text. Correction examples are read once per batch.
+  - **Registered handler.** Added to the account-lifecycle allowlist
+    (`src/lib/lifecycle/queue-runtime.ts`), so the queue callback runs it instead of completing
+    it as "No tenant handler registered".
+  - **Idempotent and resumable.** Progress is the items themselves: a classified item leaves the
+    candidate set. A run walks candidates in id order with a cursor and chains the next batch as
+    a new job whose id is derived from the run and batch number, so a redelivered batch
+    re-enqueues the same job. Each batch stops at a 40 s time budget (callback limit 60 s).
+  - **Failures and budget.** One item's failure is counted and skipped for the rest of that run
+    (the next run retries it). Tenant budget exhaustion (`AIQuotaExceededError`) or a provider
+    quota refusal stops the run cleanly with status `budget-exhausted` and enqueues nothing more.
+  - **Counts only.** Each batch writes its counts into its own job payload
+    (`jobs.recordResult`) and logs `area_backfill_batch` with counts and ids; the logger
+    allowlist gained those counter names.
+- **Trigger and observation** (`src/app/api/v1/areas/backfill/route.ts`, signed-in user only):
+  - `POST` (Origin-checked; body optional `{batchSize, maxBatches}`) starts a run for the caller
+    and returns `{started, runId, jobId, unclassified}`, or `{started:false, reason}` with
+    `nothing-to-do` or `already-running` (a run that moved in the last 10 minutes).
+  - `GET` returns `{counts: {byArea, unclassified, corrected}, runs: [{runId, status, batches,
+totals: {classified, skipped, failed, byArea}}]}`. Counts only, never content.
+- **Repository:** `items.listAreaBackfillCandidates`, `items.countAreas`, `jobs.recordResult`,
+  `jobs.listRecentByType`. **Local dispatch:** `InlineTenantJobDispatcher` and
+  `resolveTenantJobDispatcher` run tenant jobs in the dev process under
+  `DISTIL_CAPTURE_DISPATCH=inline` (Vercel Queue `account-lifecycle` otherwise); the
+  local-development runbook table says so.
+- **Authorization:** `/api/v1/areas/backfill` (GET, POST, owner) and the `area-backfill` AI path
+  in `docs/authorization-matrix.json`; the account-lifecycle callback now lists `items`,
+  `ai_summaries`, `usage_counters` and `audit_log`. Route-surface fixture and harness counts
+  updated.
+
+**Verification (locally verified 2026-09-30)**
+
+- `npm run check` (after merging `origin/main`): lint (5 pre-existing warnings, 0 errors),
+  typecheck, 236 suites / 1,809 tests passed. New: `area-backfill.unit.test.ts` (skips classified and manually set items, batch size
+  and chaining, a failed item is counted and retried by the next run, resume after a crashed
+  batch without paying twice, budget and quota exhaustion stop cleanly, time budget, max batches,
+  strict payload, start/already-running/nothing-to-do, counts-only overview), a registration
+  test in `queue-runtime.unit.test.ts`, title-summary tests in `classify-area.unit.test.ts`, and
+  `areas/backfill/__tests__/route.contract.test.ts`.
+- `life-areas.integration.test.ts` (PostgreSQL): candidates and counts are tenant-scoped and skip
+  classified, corrected and non-ready items; `recordResult` and `listRecentByType` see only the
+  caller's jobs. 7/7 passed.
+- **Local run** (Docker Postgres, `next dev` on :3106, inline dispatch, signed in with a
+  throwaway local test password): before, 4 ready items, all unclassified, 0 corrected.
+  `POST {batchSize: 2}` started a run; a second POST returned `already-running`. The run
+  finished in 3 batches (2, 2, 0), all three jobs `completed` with no error. After: personal 0,
+  work 1, learning 1, updates 2; skipped 0; failed 0; unclassified 0. Four `classify-area` calls
+  on Gemini 3.5 Flash-Lite, 2,083 input and 168 output tokens, estimated $0.001. A further POST
+  returned `nothing-to-do`.
+
+**Production run (needs Amit's authorization for that run).** After this branch is merged and
+deployed, from a signed-in `https://distilai.app` tab (browser console, same origin):
+`await (await fetch("/api/v1/areas/backfill", {method: "POST"})).json()` to start, then
+`await (await fetch("/api/v1/areas/backfill")).json()` until the newest run's status is
+`completed`, `budget-exhausted` or `max-batches-reached`. Vercel logs show
+`area_backfill_batch` per batch. Re-running is safe; it picks up whatever is still unclassified.
+
+**Risks:** one Flash-Lite call per item, so a large library uses that many requests of the
+tenant's daily `ai.requests` quota (a budget stop is clean; re-run the next day). A batch that
+dies after enqueueing its successor but before finishing can overlap with that successor for a
+few items; `classifyItemArea` skips already-classified items, so the cost is at most a duplicate
+call. The account-lifecycle queue now also carries the backfill jobs.
 
 ### Ask Distil removed (A1) — 2026-09-30
 

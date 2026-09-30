@@ -72,6 +72,19 @@ export interface ItemRepository {
   listAreaCorrections(limit: number): Promise<AreaCorrection[]>;
   /** Stores or clears (`null`) Amit's correction. Never touches the AI's columns. */
   setManualArea(id: string, area: LifeArea | null, at: string): Promise<void>;
+  /**
+   * Ready items the area backfill still has to classify (no AI area, no
+   * correction), in id order after `afterId`. Ids only, never content.
+   */
+  listAreaBackfillCandidates(input: { afterId?: string; limit: number }): Promise<string[]>;
+  /** Ready items per effective area, plus how many have none and how many Amit corrected. */
+  countAreas(): Promise<AreaCounts>;
+}
+
+export interface AreaCounts {
+  byArea: Record<LifeArea, number>;
+  unclassified: number;
+  corrected: number;
 }
 
 export interface ItemAreaState {
@@ -662,6 +675,20 @@ export interface JobQueueRepository {
   cancelAll(reason: string, at: string): Promise<number>;
   isCancellationRequested(id: string): Promise<boolean>;
   getStats(): Promise<{ pending: number; running: number; completed: number; failed: number }>;
+  /** Merges `result` into the job's payload so a finished job keeps its own counts. */
+  recordResult?(id: string, result: Record<string, unknown>): Promise<void>;
+  /** The tenant's most recent jobs of one type, newest first. */
+  listRecentByType?(jobType: string, limit: number): Promise<JobQueueSummary[]>;
+}
+
+export interface JobQueueSummary {
+  id: string;
+  status: string;
+  attempts: number;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
 }
 
 export interface JobQueueRecord extends Record<string, unknown> {
