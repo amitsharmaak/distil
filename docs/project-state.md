@@ -485,6 +485,40 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Performance P11: cold-start settings retained — 2026-09-30
+
+P11 is a docs-only no-change phase on branch `codex/perf-p11-cold-start`, created from current
+`origin/main` `5c879ea`. Amit chose decision 3B: stay on the existing free plans and accept
+occasional cold wakes. The signed-in provider consoles were re-checked read-only; no Neon or
+Vercel setting, plan, deployment, environment variable, database, or application code changed.
+
+- **Neon.** The `distil-production` primary compute is fixed at 0.25 CU on the Free plan. Its
+  scale-to-zero drawer reports suspension after five minutes of inactivity and requires a paid
+  upgrade to configure the setting. The Vercel-managed Neon integration lists Launch at
+  $0.106/CU-hour plus $0.35/GB-month of storage. Keeping this 0.25-CU compute always active on
+  Launch would therefore cost about **$19.35/month** for compute at 730 hours/month, plus storage
+  and any other metered usage. A longer suspend timeout would cost proportionally to the extra
+  active time but would still leave a cold wake after a sufficiently long idle period.
+- **Vercel.** The linked project is on Hobby and Fluid Compute is already enabled. Hobby includes
+  4 active CPU hours, 360 GB-hours of provisioned memory and one million invocations; Fluid pauses
+  between requests, so leaving it enabled does not create an always-warm charge. There is no P11
+  Vercel-side change to make, and disabling Fluid would work against the phase objective.
+- **Accepted idle evidence.** P8's preserved HTTP Preview, after at least six minutes without
+  shared-database traffic, measured first Neon HTTP lookup **764.0 ms**, identical repeated lookup
+  **31.4 ms**, and proxy total **827.2 ms**. P10's preserved Preview, after at least six minutes
+  idle, measured the first `/feed` RSC at **6,668.3 ms** end to end with only **9.8 ms** in the
+  proxy; its follow-up resource was **289.6 ms** with **1.5 ms** in the proxy.
+- **Verification.** `npm ci` completed before the documentation edit. `npm run check` passes on
+  current `origin/main`: lint has zero errors and the five existing warnings, TypeScript is clean,
+  and all 234 suites / 1,884 tests pass. `git diff --check` is clean.
+- **Decision and remaining risk.** Always-on Neon would target the roughly 0.7-second database
+  wake visible in P8, not the much larger Vercel/page cold tail isolated by P10. It therefore
+  would be unlikely to meet P11's under-1.5-second idle target by itself, making the approximately
+  $19/month upgrade a poor trade at Distil's current usage. The accepted decision is to keep Neon
+  Free with the mandatory five-minute suspension and leave Vercel Fluid enabled. The integration
+  owner still needs to record the final post-P9 Production idle reading; until then, no final
+  post-P9 whole-system cold-start claim is made.
+
 ### Deep research R3: adaptive, deeper report — 2026-09-30
 
 **Scope: engine (plus the stepper).** Branch `claude/research-r3-adaptive` from `origin/main`
