@@ -20,10 +20,17 @@ describe("eventToKey", () => {
     });
   });
 
-  it("uses code for punctuation on non-US layouts", () => {
-    expect(eventToKey(ev({ key: "ß", code: "Slash" }))).toEqual({ key: "/" });
-    expect(eventToKey(ev({ key: "_", code: "Slash", shiftKey: true }))).toEqual({ key: "?" });
+  it("uses the layout character for punctuation", () => {
+    expect(eventToKey(ev({ key: "?", code: "Minus", shiftKey: true }))).toEqual({ key: "?" });
+    expect(eventToKey(ev({ key: "-", code: "Slash" }))).toEqual({ key: "-" });
+    expect(eventToKey(ev({ key: "?", code: "Slash", shiftKey: true }))).toEqual({ key: "?" });
     expect(eventToKey(ev({ key: "[", code: "BracketLeft" }))).toEqual({ key: "[" });
+  });
+
+  it("falls back to the physical position for dead keys", () => {
+    expect(eventToKey(ev({ key: "Dead", code: "Slash" }))).toEqual({ key: "/" });
+    expect(eventToKey(ev({ key: "Dead", code: "Slash", shiftKey: true }))).toEqual({ key: "?" });
+    expect(eventToKey(ev({ key: "Unidentified", code: "KeyA" }))).toBeNull();
   });
 
   it("keeps named keys verbatim", () => {

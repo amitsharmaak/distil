@@ -109,6 +109,18 @@ describe("shortcuts provider", () => {
     expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
   });
 
+  it("only lets help shortcuts act while the help dialog is open", () => {
+    const h = setup([T]);
+    fireEvent.keyDown(window, { key: "?" });
+    expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "t" });
+    expect(h.t).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "?", shiftKey: true });
+    expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+    fireEvent.keyDown(window, { key: "t" });
+    expect(h.t).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores undeclared modifiers without preventing default", () => {
     const h = setup([T, REFRESH]);
     const notPrevented = fireEvent.keyDown(window, { key: "t", metaKey: true });

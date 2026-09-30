@@ -53,13 +53,17 @@ export function eventToKey(e: KeyboardEvent): ShortcutKey | null {
   if (other) return null;
 
   const out: ShortcutKey = { key: "" };
-  const punct = PUNCTUATION[e.code];
-  if (punct) {
+  const k = e.key;
+  if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(k)) return null;
+  if (!k || k === "Dead" || k === "Unidentified") {
+    // Layout gave no character: fall back to the US physical position.
+    const punct = PUNCTUATION[e.code];
+    if (!punct) return null;
     out.key = punct[e.shiftKey ? 1 : 0];
+  } else if (k.length === 1 && k !== " " && !/[\p{L}\p{N}]/u.test(k)) {
+    // Printable punctuation: the layout already folded shift into the character.
+    out.key = k;
   } else {
-    const k = e.key;
-    if (!k || k === "Dead" || k === "Unidentified") return null;
-    if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(k)) return null;
     out.key = k.length === 1 ? k.toLowerCase() : k;
     out.shift = e.shiftKey;
   }

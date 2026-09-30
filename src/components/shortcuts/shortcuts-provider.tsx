@@ -61,7 +61,7 @@ function createRegistry(): Registry {
   return {
     register(ref) {
       const id = ref.current.def.id;
-      if (entries.has(id) && !warned && process.env.NODE_ENV !== "production") {
+      if (entries.has(id) && !warned) {
         warned = true;
         console.warn(`Duplicate shortcut id "${id}"; last registration wins.`);
       }
@@ -105,12 +105,14 @@ export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
   const help = useMemo(() => ({ open: helpOpen, setOpen: setHelpOpen }), [helpOpen]);
 
   useEffect(() => {
+    let helpOnly = false;
     const matcher = new SequenceMatcher(() => {
       const singleKey = readSingleKeyShortcuts();
       const defs: ShortcutDef[] = [];
       for (const ref of registry.entries.values()) {
         const { def, enabled } = ref.current;
         if (!enabled) continue;
+        if (helpOnly && !def.id.startsWith("help.")) continue;
         if (!singleKey && !def.alwaysOn && !def.keys[0]?.mod) continue;
         defs.push(def);
       }
@@ -121,6 +123,7 @@ export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
       if (registry.isSuspended()) return;
       const openDialog = document.querySelector('[role="dialog"][data-state="open"]');
       if (openDialog && !openDialog.hasAttribute("data-shortcuts-help")) return;
+      helpOnly = openDialog !== null;
       if (isEditableTarget(e.target)) return;
       const key = eventToKey(e);
       if (!key) return;
