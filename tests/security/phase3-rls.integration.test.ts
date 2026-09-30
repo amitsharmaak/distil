@@ -6,6 +6,7 @@ import {
   tenantProtectedTables,
 } from "@/lib/postgres/tenant-migration/manifest";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
+import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
 import {
@@ -335,7 +336,7 @@ describeWithTenantMigration(
 
       await pool.asTenant(fixture.alpha.auth.session, (transaction) =>
         createPostgresRepositories(transaction as unknown as Sql).captureTokens.replaceActive({
-          userId: fixture.alpha.user.id,
+          userId: userIdSchema.parse(fixture.alpha.user.id),
           id: "alpha-new",
           name: "Capture token",
           tokenHash: "hash-alpha-new",
