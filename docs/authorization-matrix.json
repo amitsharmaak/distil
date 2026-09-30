@@ -1290,6 +1290,7 @@
       "testProfile": "owner",
       "notes": "POST checks Origin and enqueues the first items.area-backfill tenant job for the caller only; GET returns the caller's area counts and backfill run totals (counts only, no content)."
     },
+    {
       "path": "/api/v1/capture-tokens/:id",
       "source": "src/app/api/v1/capture-tokens/[id]/route.ts",
       "methods": ["DELETE"],
