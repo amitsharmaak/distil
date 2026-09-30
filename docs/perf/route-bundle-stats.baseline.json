@@ -27,11 +27,6 @@
       "gzipBytes": 177550,
       "chunks": 10
     },
-    "/ask": {
-      "rawBytes": 575237,
-      "gzipBytes": 176693,
-      "chunks": 10
-    },
     "/collections": {
       "rawBytes": 580902,
       "gzipBytes": 177550,
