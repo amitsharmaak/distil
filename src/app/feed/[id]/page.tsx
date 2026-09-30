@@ -10,7 +10,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Play, Headphones, Mail, Hash, Globe, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AreaBadge } from "@/components/feed/area-badge";
+import { ReaderAreaBadge } from "@/components/feed/reader-area-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { withTenantRepositories } from "@/lib/database";
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
@@ -244,7 +244,7 @@ export default async function ItemDetailPage({
             </>
           )}
           <span className="ml-auto flex items-center gap-2">
-            <AreaBadge itemId={item.id} area={item.area} aiArea={item.aiArea} />
+            <ReaderAreaBadge itemId={item.id} area={item.area} aiArea={item.aiArea} />
             <Badge
               variant="outline"
               className={`h-4 py-0 text-[10px] leading-none ${priorityColors[item.priority]}`}

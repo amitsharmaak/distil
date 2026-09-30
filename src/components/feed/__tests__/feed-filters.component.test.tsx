@@ -26,6 +26,25 @@ function renderSheet(search = "", activeCount = 0) {
 
 afterEach(cleanup);
 
+describe("FeedFilterSheet controlled open", () => {
+  it("opens from the parent and reports closing", () => {
+    const onOpenChange = jest.fn();
+    render(
+      <FeedFilterSheet
+        filters={feedFilterState(new URLSearchParams(""))}
+        onChange={jest.fn()}
+        activeCount={0}
+        topicOptions={[]}
+        open
+        onOpenChange={onOpenChange}
+      />
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
 describe("FeedFilterSheet", () => {
   it("switches area one at a time and back to All", () => {
     const { onChange } = renderSheet("area=personal");

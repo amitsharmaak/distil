@@ -91,6 +91,9 @@ jest.mock("@/components/feed/detail-action-bar", () => ({
     </div>
   ),
 }));
+jest.mock("@/components/feed/reader-area-badge", () => ({
+  ReaderAreaBadge: () => <span data-testid="area-badge" />,
+}));
 jest.mock("@/components/feed/article-navigation", () => ({
   ArticleNavigation: ({ prevId, nextId }: { prevId: string | null; nextId: string | null }) => (
     <div data-testid="navigation" data-prev={prevId ?? ""} data-next={nextId ?? ""} />

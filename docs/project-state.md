@@ -48,17 +48,28 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   sent to new users. Decisions 1–4 answered on 2026-09-30, all recommended options (env allowlist, any
   email, audit when configured, admin-only Troubleshooting tab). Next: Amit starts I1–I3 as one
   task with the code prompt in the checkpoint.
-- **Keyboard navigation: audited, plan K1–K4 recorded, nothing implemented (branch
-  `claude/distil-keyboard-shortcuts-5b189c`, docs only; checkpoint "Keyboard navigation: audit and
-  phased plan (K1–K4) — 2026-09-30"):** Amit finds the app hard to use from the keyboard. Audit:
-  three undocumented shortcuts exist (`/`, `r`, arrows), two swallow browser shortcuts (`⌘R`,
-  `⌥←`), rows cannot be walked without tabbing, buttons sit inside links, most icon buttons have
-  no accessible name. Plan: **K1** shortcut registry + `?` help dialog + `g`-navigation + bug
-  fixes; **K2** `j`/`k` row navigation on Feed and Today with the row markup fixed; **K3** reader
-  shortcuts plus Mark unread and Copy link; **K4** Research/Settings keys, keyboard-only e2e,
-  polish. The checkpoint holds the full key map, five decisions, a single-session code prompt and an
-  orchestrated prompt (main thread delegates all execution to small worker models).
-  Next: Amit answers the five decisions and picks a phase (recommended K1).
+- **Keyboard navigation: K1–K4 implemented, PR
+  [#101](https://github.com/amitsharmaak/distil/pull/101) (branch `claude/keyboard-k1`, worktree
+  `k1-prompt-455dd8`; checkpoints "Keyboard navigation K1–K4 … — 2026-09-30" and "Keyboard
+  navigation: audit and phased plan (K1–K4) — 2026-09-30"):** Amit's decisions: `1A 2A 3A 4A 5A`
+  (Gmail-style keys; on/off switch in localStorage; row markup fix inside K2; agent squash-merges
+  after green gates and a local browser check; order K1 → K2 → K3 → K4). For this task 4A/5A
+  (merge per phase, one phase per session) are superseded by "Amit, in chat, 2026-09-30: finish
+  all four phases, then merge and deploy to Production together": all four phases sit on one
+  branch in PR #101 and ship as one squash merge, which auto-deploys (release pin `unpinned`).
+  Shipped: shortcut engine, `?` help dialog and single-key switch, `g`-navigation (K1); `j`/`k`/`o`
+  row navigation on Feed and Today with the nested-button row markup fixed (K2); reader keys plus
+  Mark unread (Shift+U) and Copy link (Shift+C) (K3); Research, report and Settings keys, a
+  Settings shortcuts card, a keyboard-only e2e spec and `docs/user-guide.md` (K4). Verified locally:
+  in-app browser on the local loop and keyboard e2e 12 passed. Full gate at `ddb3547`:
+  `npm run check` 244 suites / 1,999 tests, 0 lint errors, 4 warnings; `npm run test:integration` 4
+  suites / 12 tests; `npm run test:extension` 12 passed; `npm run build` compiled;
+  `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in desktop-chromium, mobile-chromium and
+  mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the e2e server inherits
+  `.env.local` auth and feature variables, which reproduces on `origin/main` `eaec1d2` and does not
+  apply in CI (no `.env.local`); stages ran separately because `check:full` stops at the first
+  failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there). Not merged, not deployed. Next: squash-merge #101 once
+  CI is green, which deploys; then a Production smoke check of `?`, `g f`, `j`/`k` and Shift+U.
 - **Collections feature removed in code (branch `codex/remove-collections`, PR
   [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
   (code only) — 2026-09-30"):** the pages, API routes, UI controls,
@@ -684,6 +695,262 @@ is not yet authorized; Amit starts it as its own task with the code prompt below
 > Verify with `npm run check` and `npm run test:integration` against local Docker Postgres with
 > your local user in `DISTIL_ADMIN_USER_IDS`. Do not touch Vercel or Neon. Record a checkpoint
 > and handoff bullet before opening the PR.
+
+### Keyboard navigation K4: Research, Settings, e2e and user guide — 2026-09-30
+
+**Why.** Phase K4 of the plan in checkpoint "Keyboard navigation: audit and phased plan (K1–K4) —
+2026-09-30": the remaining screens, a keyboard-only regression test and a settings entry for the
+preference. Same branch `claude/keyboard-k1` and PR
+[#101](https://github.com/amitsharmaak/distil/pull/101), per "Amit, in chat, 2026-09-30: finish
+all four phases, then merge and deploy to Production together". Not merged, not deployed; nothing
+changed in Vercel or Neon.
+
+**What changed.**
+
+- `80466f7` (10 files, +437/−36): `src/app/research/page.tsx` registers `n` (New research) and
+  Shift+S (Scan for suggestions, off while scanning or loading); `src/app/research/[id]/page.tsx`
+  registers `u` (back to the item or `/research`); `src/components/research/report-toolbar.tsx`
+  registers Shift+C (Copy as Markdown) and Shift+D (Research further); `src/app/settings/page.tsx`
+  makes the tabs controlled and registers `1`/`2`; new
+  `src/components/settings/keyboard-shortcuts-card.tsx` in Settings → Account mirrors the dialog's
+  single-key switch and opens the dialog. `aria-keyshortcuts` and a title on every touched button
+  and tab.
+- `fae17b2` (2 files, +309): `tests/e2e/keyboard.spec.ts` drives Today → `g f` → `j j` → Enter →
+  `r` → `u` → `?` → Esc with the keyboard only, asserting focus and URL; checks that `?` typed
+  into the search input stays inert; runs axe `nested-interactive` on `/feed`, the reader and the
+  open dialog. The DB-seeded tests skip without a loopback `DATABASE_URL` (CI). New
+  `docs/user-guide.md` with the shortcut tables.
+
+**Deviations from the brief.** `report.back` is registered in the report page, not the toolbar,
+because the page owns the back target; `n` and Shift+D click a ref'd `DeepResearch` trigger
+rather than controlling the dialog; `mobile-nav.tsx` is untouched (no shortcuts on the mobile
+nav); the nested `<main>` in `today-prototype.tsx` became `<section>` in K2 (`a85e82c`).
+
+**Tests.** Component tests for the Research, report and Settings keys and the Settings card.
+e2e: 12 passed across desktop-chromium, mobile-chromium and mobile-webkit against the local dev
+server. Quick gate after K2–K4: `npm run check` exit 0, 243 suites / 1,992 tests, 0 lint errors,
+4 warnings. Review findings and fixes are listed under K2 and K3 (`8eee279`); the duplicate
+`single-key-shortcuts` DOM id between the Settings card and the help dialog now uses `useId`.
+
+**Verification.** Local loop, in-app browser, Docker Postgres, local owner. Keys were sent as synthetic
+keydown events because the pane was hidden, so native accelerators, hover tooltips and
+animations were not exercised.
+
+- `/research`: `n` opens the dialog; Shift+S posts to the proactive research route (200,
+  "Scanning…").
+- Report: Shift+C shows "Copied!", Shift+D opens Research further, `u` goes back.
+- `/settings`: `?` lists the Settings group first; the card switch and the dialog switch share the
+  preference (localStorage `distil.shortcuts.singleKey`); "View all shortcuts" opens the dialog.
+  `1`/`2` failed under synthetic events only because the Settings Suspense boundary had not
+  hydrated in the hidden pane; a real keypress on a fresh load switched to Account (confirmed by
+  the orchestrator), and a fresh-load regression test was added (`ddb3547`).
+- 375 px: dialog fits. Console: no shortcut-related errors; pre-existing 403/404/405 resource
+  loads and a Radix description warning.
+- Playwright `tests/e2e/keyboard.spec.ts`: 12 passed (desktop-chromium, mobile-chromium,
+  mobile-webkit) against the dev server.
+- Full gate at `ddb3547`: `npm run check` 244 suites / 1,999 tests, 0 lint errors, 4 warnings;
+  `npm run test:integration` 4 suites / 12 tests; `npm run test:extension` 12 passed;
+  `npm run build` compiled; `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in desktop-chromium,
+  mobile-chromium and mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the
+  e2e server inherits `.env.local` auth and feature variables, which reproduces on `origin/main`
+  `eaec1d2` and does not apply in CI (no `.env.local`); stages ran separately because `check:full`
+  stops at the first failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there).
+
+**Limitations.** The mobile nav has no shortcuts (touch devices rarely have keyboards); an iPad
+with a keyboard gets the desktop behaviour because the listener does not check width; the
+seeded e2e tests do not run in CI.
+
+### Keyboard navigation K3: reader shortcuts, Mark unread and Copy link — 2026-09-30
+
+**Why.** Phase K3 of the plan: read, judge and move on from an item without the mouse, with every
+action visible in a tooltip. Same branch and PR #101 (decision as in K4). Not merged, not
+deployed.
+
+**What changed** (`05568a9`, 11 files, +593/−28).
+
+- **Reader keys:** `j`/`k` alias ←/→ (`article-navigation.tsx`); `u` and Esc (always on) push the
+  Topbar's `backHref` (`topbar.tsx`); `o` opens the original with `noopener,noreferrer`; `+`/`-`
+  like and dislike; `a` opens the area menu through new `src/components/feed/reader-area-badge.tsx`
+  (suspends shortcuts while open); Shift+D opens Deep research; `s`, `d` and Shift+S toggle
+  summary/original, brief/detailed and regenerate (`ai-summary-content.tsx`).
+- **New actions** in `detail-action-bar-content.tsx`: **Mark unread** (Shift+U, shown only when
+  read) PATCHes `/api/items/:id` with `{ isRead: false }` and flips the local `read` state; **Copy
+  link** (Shift+C) copies `location.href`, shows "Copied" for 1.5 s and announces it in a
+  `role="status"` region; clipboard failures are swallowed.
+- `deep-research.tsx` accepts controlled `open`/`onOpenChange`, `children={null}` renders no
+  trigger, and it suspends shortcuts while open; the action bar owns the state and returns focus
+  to its button on close.
+- **A11y:** `aria-label` and `aria-keyshortcuts` on every icon button, the key in each tooltip
+  ("Next item · J"), summary toggles with `type="button"`, `aria-pressed` and a focus-visible
+  ring; `feed/[id]/page.tsx` uses `ReaderAreaBadge`.
+
+**Deviations from the brief.** `s`, `d` and Shift+S are registered inside `AISummary` next to
+its handlers rather than lifted into a shared context with the action bar. `ddb3547` lets the
+action bar wrap at phone widths.
+
+**Review fixes** (`8eee279`). Esc in Reader View also fired the new always-on back shortcut
+(closed the overlay and left for `/feed`) and the other reader keys acted behind it:
+`reader-view-overlay.tsx` now calls `useShortcutsSuspended(true)`, with a component test.
+
+**Tests.** Component tests for each key, the unread PATCH body and state flip, the copy state,
+tooltips and `aria-keyshortcuts`, and Topbar back. Quick gate after K2–K4 as in K4.
+
+**Verification.** Local loop, in-app browser, Docker Postgres, local owner. Keys were sent as synthetic
+keydown events because the pane was hidden, so native accelerators, hover tooltips and
+animations were not exercised.
+
+- Reader: `j`/`k` move between items; `u` and Esc go back; Esc with the area menu open closes only
+  the menu; Shift+D opens Deep research and Esc returns focus to its button; `o` calls
+  `window.open` with the original URL; `s`/`d` flip summary and length; Shift+U shows only when
+  read and flips to unread; Shift+C writes the URL to the clipboard; tooltips carry the key ("Copy
+  link · Shift+C"); `?` lists the Reading group first; `+`/`-` set like/dislike (they set, not
+  toggle); `r` marks read and advances.
+- 375 px: the action bar overflowed (457 px) and now wraps to two rows within 375 px after
+  `ddb3547`. Dark reader: dialog and body share tokens.
+- Reader overlay Esc check skipped: no local item had full content (covered by the component
+  test from `8eee279`).
+- Full gate at `ddb3547`: `npm run check` 244 suites / 1,999 tests, 0 lint errors, 4 warnings;
+  `npm run test:integration` 4 suites / 12 tests; `npm run test:extension` 12 passed;
+  `npm run build` compiled; `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in desktop-chromium,
+  mobile-chromium and mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the
+  e2e server inherits `.env.local` auth and feature variables, which reproduces on `origin/main`
+  `eaec1d2` and does not apply in CI (no `.env.local`); stages ran separately because `check:full`
+  stops at the first failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there).
+
+**Limitations.** Esc on a focused button with an open tooltip closes the tooltip first; a second
+Esc goes back.
+
+### Keyboard navigation K2: row navigation on Feed and Today — 2026-09-30
+
+**Why.** Phase K2 of the plan: read the list without a mouse, with the nested-button row markup
+fixed in the same phase (decision 3A). Same branch and PR #101 (decision as in K4). Not merged,
+not deployed.
+
+**What changed.**
+
+- `8f65b8e` (2 files, +267): new `src/components/shortcuts/use-row-navigation.ts`. It reads
+  `[data-row]` elements from a container ref, focuses each row's first `a[href]` (the title
+  link), registers `j`, `k`, `o` and, when handlers are given, `r` and `a`; `j` on the last row
+  clicks `[data-load-more]`.
+- `da0a4d8` (6 files, +167/−78): `content-card.tsx` rows are `<article data-row data-item-id>`
+  with a stretched title link and Mark read / AreaBadge as siblings (`relative z-10`), so no
+  button sits inside a link; `area-badge.tsx` accepts a controlled `open`/`onOpenChange`;
+  `aria-label` on `mark-read-button.tsx`.
+- `a85e82c` (9 files, +288/−10): `feed-list.tsx` wires the hook plus `f` (Filters sheet, now
+  controlled in `feed-filters.tsx`), `u` (show or hide read items), `c` (card/compact) and the
+  Load more marker; `today-prototype.tsx` rows get `data-row`/`data-item-id`, one navigation order
+  across both sections, and the nested `<main>` becomes `<section>`.
+
+**Deviations from the brief.** Today has no per-row mark-read, area or show-read controls, so
+only `j`/`k`/`o` are registered there; `u` on Feed drives the URL read filter rather than local
+state.
+
+**Review fixes** (`8eee279`). `r` on a Feed row only updated local state; it now PATCHes
+`/api/items/:id` like the Mark read button. Letter keys typed in an open row area menu (a
+`role="menu"`, not a dialog) fired list shortcuts; `feed-list.tsx` now suspends shortcuts while
+it is open. Processing rows (no link) stopped `j`/`k`; the hook now skips them. Tests added for
+each.
+
+**Tests.** Hook tests (order, Load more, processing rows), card markup, Filters sheet control,
+Feed and Today wiring. Quick gate after K2–K4 as in K4.
+
+**Verification.** Local loop, in-app browser, Docker Postgres, local owner. Keys were sent as synthetic
+keydown events because the pane was hidden, so native accelerators, hover tooltips and
+animations were not exercised.
+
+- `/feed`, card and compact: `j j k` walks rows 1 → 2 → 3 → 2; `o` opens `/feed/<id>`; `r` marks
+  read (PATCH `/api/items/<id>` 200, still read after reload); `a` opens the row menu, and `r`,
+  `j`, `f`, `c` and `g t` are inert while it is open, Esc closes it; `f` opens Filters; `u` cycles
+  the URL read filter; `c` toggles the layout. Load more not exercised (only 2–4 rows locally).
+- Today: `j`/`k` walk all rows and `o` opens (only one section had items).
+- 375 px: Feed `j`/`k` work.
+- Full gate at `ddb3547`: `npm run check` 244 suites / 1,999 tests, 0 lint errors, 4 warnings;
+  `npm run test:integration` 4 suites / 12 tests; `npm run test:extension` 12 passed;
+  `npm run build` compiled; `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in desktop-chromium,
+  mobile-chromium and mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the
+  e2e server inherits `.env.local` auth and feature variables, which reproduces on `origin/main`
+  `eaec1d2` and does not apply in CI (no `.env.local`); stages ran separately because `check:full`
+  stops at the first failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there).
+
+**Limitations.** Rows added by Load more are picked up because the hook reads the DOM, but focus
+stays on the button until the user presses `j` again.
+
+### Keyboard navigation K1: shortcut engine and help dialog — 2026-09-30
+
+**Why.** Phase K1 of the plan in checkpoint "Keyboard navigation: audit and phased plan (K1–K4) —
+2026-09-30". Branch `claude/keyboard-k1` (worktree `k1-prompt-455dd8`, PR
+[#101](https://github.com/amitsharmaak/distil/pull/101)) from `main` `eaec1d2`. Orchestrated run: the main thread delegated to worker subagents, one integration commit per
+workstream. Amit's decisions, verbatim: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch in
+localStorage; row markup fix inside K2; agent squash-merges after green gates and a local
+browser check; order K1 → K2 → K3 → K4). Implementation complete and verified locally; not
+merged; nothing deployed, nothing changed in Vercel or Neon.
+
+**Commits.** `f38c4ac` engine; `eab4ce5` provider, help dialog, preference and Kbd; `e02ac94`
+wiring (provider mount, `g`-navigation, migrated listeners, a11y labels); `22a2605` Today at `/`
+gets list scope; `ca1560e` review fixes. 24 files, +1,320/−116.
+
+**What changed.**
+
+- **Engine** (pure, no React): `src/lib/shortcuts/{types,match,sequence}.ts`. `eventToKey`
+  normalises a keydown and returns null for undeclared meta/ctrl/alt, `isComposing` and
+  `defaultPrevented`; `keyEquals` compares key, `shift` and `mod` (Cmd on Mac, Ctrl elsewhere);
+  `SequenceMatcher` handles single keys and two-key sequences within 1 s. There is no
+  `registry.ts`: the provider holds the Map.
+- **React layer:** in `src/components/shortcuts/`: `shortcuts-provider`, `shortcuts-help-dialog`,
+  `shortcuts-preference`, `use-global-shortcuts`; plus `src/components/ui/kbd.tsx` and
+  `src/components/ui/switch.tsx` (shadcn). One window keydown listener in the provider;
+  `useShortcut` (handler kept in a ref), `useShortcutsSuspended` (counter), scope from the path.
+  It skips text fields and any open `[role="dialog"][data-state="open"]`; while the help dialog
+  is open only the help entries act.
+- **Wiring:** `app-shell` (provider, dialog and global keys; auth routes render outside it),
+  `sidebar` (Keyboard shortcuts entry, `aria-current`, labels when collapsed), `theme-toggle`,
+  `topbar`, `filter-bar`, `article-navigation`, `detail-action-bar-content`.
+- **Key map shipped:** `?` and ⌘/Ctrl+/ help; `/` search (focuses the page search box, else opens
+  `/feed?focus=search`, and the filter bar removes only that param); `g t` → `/` (Today lives at
+  `/`, not `/today`), `g f`, `g r`, `g s`; `[` sidebar; Shift+T theme; on the reader ←/→ and `r`
+  migrated from private listeners. `?`, ⌘/Ctrl+/ and `/` are always on.
+- **Bugs fixed by design:** the reader's ←/→ and `r` swallowed `⌥←` and `⌘R`; undeclared
+  meta/ctrl/alt now never match, so the browser keeps them.
+- **Accessibility:** `aria-label` and `aria-keyshortcuts` on the detail action bar icon buttons,
+  theme toggle and shortcuts entry; `aria-current="page"` on sidebar links.
+- **Preference:** `localStorage` key `distil.shortcuts.singleKey` (default on); off leaves only
+  always-on and modifier shortcuts. Toggle in the help dialog.
+- **Deviations from the brief:** punctuation resolves from `e.key` (with an `e.code` fallback for
+  Dead/Unidentified) instead of `e.code`, after review found `/` and `?` wrong on non-US layouts;
+  the `reader-view-overlay` Escape listener is left as is for a later phase; the sidebar and topbar
+  both render `ThemeToggle` (id `theme.toggle`) and only the sidebar one registers Shift+T; the
+  help dialog lists the help entry twice, once per key.
+
+**Tests.** Unit: `match`, `sequence`. Component: the provider against the real engine (only
+`next/navigation` mocked), help dialog, preference, detail action bar `r`, filter-bar focus
+param, theme-toggle Shift+T. Pre-fix gate: `npm run check` exit 0, 238 suites / 1,944 tests,
+0 lint errors, 4 warnings (below the 10 baseline). Post-fix gate (`ca1560e`): `npm run check`
+exit 0, 238 suites / 1,946 tests, 0 lint errors, 4 warnings.
+
+**Browser verification** (local loop, in-app browser, Docker Postgres, local owner; desktop,
+375 px and dark):
+
+- `?` on Today, Feed, reader (Reading group first), Research and Settings: pass.
+- `g f`, `g t`, `[` (aside 256 → 64 → 256 px), Shift+T (html class toggles): pass.
+- ⌘R and ⌥← verified by mechanism only (keydown no longer `defaultPrevented`, item stays unread),
+  because the pane cannot fire native accelerators. Amit should press them once.
+- `?` and `/` typed in the Save form appear as text; no dialog.
+- Sidebar entry and the Single-key switch (off silences `g r`, `?` still opens): pass.
+- 375 px: the dialog fits and scrolls. Dark mode: surface matches the Filters sheet.
+- Post-fix re-check: `?` opens and closes on `/feed`; `/` with the dialog closed focuses Search;
+  `[` and Shift+T as above (theme restored); with help open on `/settings`, `g f` and Shift+T
+  change nothing and `?` closes it; with help open on a reader page, ←, → and `r` leave the path
+  and unread state unchanged and Esc closes it. Console: two pre-existing, unrelated resource
+  errors (404/403). Observed, not attributed to K1: a reader URL drops `?filter=unread` after the
+  page settles, also before the fixes.
+
+**Limitations.** No row navigation yet; the help dialog lists only K1 entries; the two modifier
+checks need a human keypress; the reader overlay is not a dialog, so reader keys still act
+behind it (pre-existing).
+
+**Next.** Superseded: per Amit's later decision (in chat, 2026-09-30) K2–K4 followed on the same
+branch and PR #101 instead of fresh branches after a K1 merge; see the K2, K3 and K4 checkpoints
+above.
 
 ### Unused embeddings module removed — 2026-09-30
 
