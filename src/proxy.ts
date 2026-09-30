@@ -40,6 +40,10 @@ const TRACE_HEADER = "x-trace-id";
 export const P8_PROXY_PROBE_QUERY = "p8";
 const P8_PROXY_PROBE_SUBJECT = "urn:distil:perf-probe:p8:missing";
 
+function escapeHtmlText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 function connectorsDisabled(pathname: string): boolean {
   return (
     process.env.FEATURE_CONNECTORS === "false" &&
@@ -136,10 +140,12 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
     if (authenticatedP8Probe) {
       const timing = serverTimingHeader(metrics, "proxy");
       return finish(
-        NextResponse.json(
-          { serverTiming: timing },
-          { headers: { "cache-control": "private, no-store" } }
-        ),
+        new NextResponse(`<pre>${escapeHtmlText(timing)}</pre>`, {
+          headers: {
+            "cache-control": "private, no-store",
+            "content-type": "text/html; charset=utf-8",
+          },
+        }),
         false,
         timing
       );

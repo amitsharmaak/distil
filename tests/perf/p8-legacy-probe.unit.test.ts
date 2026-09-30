@@ -110,8 +110,9 @@ describe("P8 legacy Preview connection probe", () => {
     expect(serverTiming).toMatch(
       /^proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="q=2"$/
     );
-    await expect(response.json()).resolves.toEqual({ serverTiming });
+    await expect(response.text()).resolves.toBe(`<pre>${serverTiming}</pre>`);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(response.headers.get("x-middleware-next")).toBeNull();
   });
 
@@ -139,12 +140,12 @@ describe("P8 legacy Preview connection probe", () => {
       .mockRejectedValueOnce(new Error("private database failure"));
 
     const response = await signedInRequest(probePath);
-    const body = await response.json();
+    const body = await response.text();
 
     expect(response.status).toBe(200);
     expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(body)).not.toContain("private database failure");
-    expect(body).toEqual({ serverTiming: response.headers.get("server-timing") });
+    expect(body).not.toContain("private database failure");
+    expect(body).toBe(`<pre>${response.headers.get("server-timing")}</pre>`);
   });
 
   it("does not probe a non-GET request even when the query flag is present", async () => {
