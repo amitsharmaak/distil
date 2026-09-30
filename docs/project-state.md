@@ -156,8 +156,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
     with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
     and compare a small local sample against flash-lite per area.
-  - **Minor open items:** the Filters sheet's Area segment labels truncate at 375 px (Feed and
-    Today); `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
+  - **Minor open items:** (the Area label truncation at 375 px is fixed; checkpoint "Filters
+    sheet: segment labels fit on phones — 2026-09-30") `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
     e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
     e2e passes).
     **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
@@ -500,6 +500,18 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Filters sheet: segment labels fit on phones — 2026-09-30
+
+Amit asked to fix the Area labels ("Perso…", "Learni…", "Updat…") cut off in the Filters sheet
+at 375 px (Feed and Today share the sheet). Cause: `Segmented` in
+`src/components/feed/feed-filters.tsx` used equal grid columns (`auto-cols-fr`), leaving about
+49 px of text room per Area segment. Fix: a flex row whose segments size to their label and
+share the spare width (`flex-auto`, `min-w-0`, `px-1.5`); `truncate` stays as a last resort. It
+applies to Sort and Archive too. Checked in the local in-app browser: no label cut at 375 px
+(Personal 75 px, Learning 77 px) or at 320 px while searching (four Sort options including Best
+match), no horizontal page scroll, and the desktop panel keeps near-equal segments. UI only; no
+schema, route or environment change.
 
 ### Performance P11: cold-start settings retained — 2026-09-30
 
