@@ -94,8 +94,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
   keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
   Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
-  Claude, and R3 splits the call. Next: R3 on `claude/research-r3-adaptive`, then ask Amit about
-  R4.
+  Claude, and R3 splits the call. **R2 Production regression and hotfix:** a
+  Production run started at Amit's request (`8bb4d982`, same question) stalled at synthesis:
+  the queue consumer hit Vercel's 60 s limit twice because the Anthropic SDK retried the timed-out
+  50 s call internally and R2's 12,000-token budget let Claude write past it. Hotfix (checkpoint
+  "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
+  model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
+  Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
+  failed by the stale guard on its next read. Next: R3 on `claude/research-r3-adaptive`, then
+  ask Amit about R4.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
