@@ -36,7 +36,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **Keyboard navigation: K1 implemented, PR pending (branch `claude/keyboard-k1`, worktree
+- **Keyboard navigation: K1 implemented, PR
+  [#101](https://github.com/amitsharmaak/distil/pull/101) (branch `claude/keyboard-k1`, worktree
   `k1-prompt-455dd8`; checkpoints "Keyboard navigation K1: shortcut engine and help dialog —
   2026-09-30" and "Keyboard navigation: audit and phased plan (K1–K4) — 2026-09-30"):** Amit's
   decisions: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch in localStorage; row markup fix
@@ -543,12 +544,12 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 ### Keyboard navigation K1: shortcut engine and help dialog — 2026-09-30
 
 **Why.** Phase K1 of the plan in checkpoint "Keyboard navigation: audit and phased plan (K1–K4) —
-2026-09-30". Branch `claude/keyboard-k1` (worktree `k1-prompt-455dd8`) from `main` `eaec1d2`.
-Orchestrated run: the main thread delegated to worker subagents, one integration commit per
+2026-09-30". Branch `claude/keyboard-k1` (worktree `k1-prompt-455dd8`, PR
+[#101](https://github.com/amitsharmaak/distil/pull/101)) from `main` `eaec1d2`. Orchestrated run: the main thread delegated to worker subagents, one integration commit per
 workstream. Amit's decisions, verbatim: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch in
 localStorage; row markup fix inside K2; agent squash-merges after green gates and a local
-browser check; order K1 → K2 → K3 → K4). Implementation complete and verified locally; PR
-pending; nothing deployed, nothing changed in Vercel or Neon.
+browser check; order K1 → K2 → K3 → K4). Implementation complete and verified locally; not
+merged; nothing deployed, nothing changed in Vercel or Neon.
 
 **Commits.** `f38c4ac` engine; `eab4ce5` provider, help dialog, preference and Kbd; `e02ac94`
 wiring (provider mount, `g`-navigation, migrated listeners, a11y labels); `22a2605` Today at `/`
