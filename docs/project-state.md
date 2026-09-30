@@ -430,6 +430,46 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Inline search F7: legacy search path retired — 2026-09-30
+
+Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`). Completes F7 after
+the UI part landed in #75. Implementation complete and locally verified; not deployed.
+
+- **Callers checked first.** No caller of `GET /api/items?q=` or `GET /api/v1/search` remains:
+  the browser extension posts only to `/api/v1/captures`, the iPhone Shortcut
+  (`docs/iphone-shortcut.md`) posts only to `/api/v1/captures`, the UI has no `/search` links and
+  no `/api/items` list fetch, and Ask does not call either route. The only references were the
+  routes' own tests, the Phase 2 e2e mock, the authorization matrix and the route-surface fixture.
+- **`GET /api/items`.** The `q` branch and its `hybridSearch` import are gone. A request carrying
+  `q` (even empty) now gets **400** with CORS headers and a message pointing to
+  `GET /api/v1/feed?q=`, rather than a silently unfiltered list; the other filters are unchanged.
+  The route otherwise ignores unknown parameters, so `q` is the one explicit rejection. The SQLite
+  compatibility and Wave 2 security tests were rewritten for this.
+- **`GET /api/v1/search` deleted** with its contract test. Authorization matrix entry removed,
+  `expectedApiRouteFileCount` 92 → 91, the `/search` page entry now records "redirects to /feed"
+  with no feature gate, route-surface fixture 123 → 122 surfaces, and the two harness counts
+  updated.
+- **`FEATURE_SEARCH` removed from code**: `readPhase2FeatureFlags` no longer has `search`; the
+  Phase 3 activation preflight no longer lists it; tests, `.env.local.example`, the web-vitals
+  script, the Phase 2 e2e flag list and AGENTS.md updated. **Amit:** delete any leftover
+  `FEATURE_SEARCH` variable in Vercel yourself; nothing reads it now, so leaving it is harmless.
+- **What stays.** `searchPassages` and `PostgresPassageSearchStore` (`src/lib/knowledge/retrieval.ts`)
+  stay as the passage-retrieval layer; grounded answers call `store.searchKeyword` directly, so
+  `searchPassages` now has only its unit test as a caller (candidate for a later cleanup).
+  `hybridSearch` (`src/lib/ai/search.ts`) stays because `src/lib/agent/rag.ts` imports it, but
+  `rag.ts` itself has no production importer since the `/api/agent/**` routes were deleted in P4
+  (also a later cleanup candidate). The `/search` → `/feed?…` redirect page stays.
+- **Docs.** AGENTS.md §3 gains a Search bullet (one search surface: Feed/Today header search on
+  `GET /api/v1/feed`; Ask uses the passage-retrieval layer) and drops `FEATURE_SEARCH` from the
+  flag list; `docs/ARCHITECTURE.md` says the same.
+- **Verification.** `npm run check` passes (230 suites, 1725 tests), `tests/harness` passes, and
+  `npm run audit:phase3-security` passes. Grep finds no `FEATURE_SEARCH`, `/api/v1/search` or
+  `DISTIL_PHASE2_SEARCH` outside this file. The `/search` redirect unit test passes. In
+  `tests/e2e/phase2.spec.ts` (all Phase 2 flags on, desktop and mobile Chromium, port 3107) the new
+  `/search?q=padel` → `/feed?q=padel` step passes; the test then fails at the later
+  `/feed/phase2-fixture` reader step with a server error from the local dev database, which this
+  change does not touch. No migration, env var or cloud change.
+
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
 Amit's feedback on the F3 filter bar: the search spanned the page, and the area switch and quick

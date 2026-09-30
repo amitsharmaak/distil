@@ -9,7 +9,6 @@ export interface Phase2FeatureFlags {
   /** Server-render `/` and `/feed` with their data; `false` restores the client-fetch pages. */
   serverRender: boolean;
   knowledgeUi: boolean;
-  search: boolean;
   answers: boolean;
   personalization: boolean;
   digests: boolean;
@@ -25,7 +24,6 @@ export function readPhase2FeatureFlags(
     areaClassification: environment.FEATURE_AREA_CLASSIFICATION?.trim().toLowerCase() !== "false",
     serverRender: environment.FEATURE_SERVER_RENDER?.trim().toLowerCase() !== "false",
     knowledgeUi: enabled(environment.FEATURE_KNOWLEDGE_UI),
-    search: enabled(environment.FEATURE_SEARCH),
     answers: enabled(environment.FEATURE_ANSWERS),
     personalization: enabled(environment.FEATURE_PERSONALIZATION),
     digests: enabled(environment.FEATURE_DIGESTS),

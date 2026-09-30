@@ -98,6 +98,12 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
   (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
+- **Search:** one user-facing search surface: the Feed/Today header search, served by
+  `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Ask and grounded answers
+  retrieve passages through the passage-retrieval layer (`src/lib/knowledge/retrieval.ts`:
+  `PassageSearchStore.searchKeyword`, `searchPassages`). `hybridSearch` (`src/lib/ai/search.ts`)
+  remains only for `src/lib/agent/rag.ts`. The Search page, `GET /api/v1/search`, the
+  `GET /api/items?q=` branch (now 400) and `FEATURE_SEARCH` were retired in inline search F7.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
   `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,
@@ -110,8 +116,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   authenticated-publisher framework still exist in code but are disabled in hosted deployments
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
-  `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_SEARCH`,
-  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
+  `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_ANSWERS`,
+  `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
   on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
   `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and
   `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`

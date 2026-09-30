@@ -235,7 +235,6 @@ function startServer(databaseUrl: string) {
       FEATURE_NEON_AUTH: "false",
       FEATURE_CONNECTORS: "false",
       FEATURE_KNOWLEDGE_UI: "true",
-      FEATURE_SEARCH: "true",
       FEATURE_ANSWERS: "true",
       FEATURE_PERSONALIZATION: "true",
       FEATURE_DIGESTS: "true",

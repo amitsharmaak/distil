@@ -4,7 +4,6 @@ const validEnvironment = {
   FEATURE_NEON_AUTH: "true",
   FEATURE_CONNECTORS: "false",
   FEATURE_KNOWLEDGE_UI: "false",
-  FEATURE_SEARCH: "false",
   FEATURE_ANSWERS: "false",
   FEATURE_PERSONALIZATION: "false",
   FEATURE_DIGESTS: "false",
@@ -31,7 +30,6 @@ describe("Phase 3 auth activation preflight", () => {
         ...validEnvironment,
         VERCEL_ENV: "production",
         FEATURE_KNOWLEDGE_UI: "true",
-        FEATURE_SEARCH: "true",
         FEATURE_ANSWERS: "true",
         FEATURE_PERSONALIZATION: "true",
         FEATURE_DIGESTS: "true",
@@ -107,7 +105,7 @@ describe("Phase 3 auth activation preflight", () => {
       ...validEnvironment,
       FEATURE_NEON_AUTH: "TRUE",
       FEATURE_CONNECTORS: "true",
-      FEATURE_SEARCH: "true",
+      FEATURE_ANSWERS: "true",
       DISTIL_LEGACY_USER_ID: "15baec07-275a-4ca8-be30-654db41155cf",
     });
 
@@ -162,7 +160,6 @@ describe("Phase 3 auth activation preflight", () => {
       FEATURE_NEON_AUTH: "true",
       FEATURE_CONNECTORS: "false",
       FEATURE_KNOWLEDGE_UI: "false",
-      FEATURE_SEARCH: "false",
       FEATURE_ANSWERS: "false",
       FEATURE_PERSONALIZATION: "false",
       FEATURE_DIGESTS: "false",

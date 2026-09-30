@@ -1,12 +1,9 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/browser/test";
 
-const allPhase2UiEnabled = [
-  "FEATURE_KNOWLEDGE_UI",
-  "FEATURE_SEARCH",
-  "FEATURE_ANSWERS",
-  "FEATURE_DIGESTS",
-].every((name) => process.env[name]?.trim().toLowerCase() === "true");
+const allPhase2UiEnabled = ["FEATURE_KNOWLEDGE_UI", "FEATURE_ANSWERS", "FEATURE_DIGESTS"].every(
+  (name) => process.env[name]?.trim().toLowerCase() === "true"
+);
 
 async function mockTodayFeed(page: Page) {
   await page.route("**/api/v1/feed?*", (route) =>
@@ -39,34 +36,6 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
 }) => {
   test.skip(!allPhase2UiEnabled, "Run with all Phase 2 UI flags enabled.");
   await mockTodayFeed(page);
-  await page.route("**/api/v1/search?*", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        query: "padel",
-        results: [
-          {
-            itemId: "fixture-item",
-            chunkId: "fixture-chunk",
-            contentVersionId: "fixture-version",
-            title: "Fixture padel article",
-            url: "https://example.test/padel",
-            sourceType: "manual",
-            excerpt: "A deterministic passage about padel.",
-            excerptStart: 0,
-            excerptEnd: 37,
-            score: 1,
-            reasons: ["keyword:chunk_text"],
-            retrievalMode: "keyword",
-            degradation: [],
-          },
-        ],
-        retrievalMode: "keyword",
-        degradation: [],
-      }),
-    })
-  );
   await page.route("**/api/v1/preferences", (route) =>
     route.fulfill({
       status: 200,
@@ -86,9 +55,8 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   );
 
   await page.goto("/");
-  // Desktop shows the sidebar entry plus the top bar icon; mobile shows the icon only.
-  await expect(page.locator('a[href="/search"]:visible').first()).toBeVisible();
-  expect(await page.locator('a[href="/search"]:visible').count()).toBeLessThanOrEqual(2);
+  // Search lives in the Feed and Today headers; there is no separate Search destination.
+  await expect(page.locator('a[href="/search"]')).toHaveCount(0);
   // Ask lives in the desktop sidebar only; the phone bar is Today / Feed / Save / Settings.
   if (isMobile) {
     await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
@@ -99,9 +67,9 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   // Digests left primary navigation in the 2026-09 simplification; Settings links to it.
   await expect(page.getByRole("link", { name: "Digests" })).toHaveCount(0);
 
+  // Old Search links land on the equivalent Feed view.
   await page.goto("/search?q=padel");
-  await expect(page.getByRole("heading", { name: "Search your knowledge" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Fixture padel article" })).toBeVisible();
+  await expect(page).toHaveURL(/\/feed\?q=padel$/);
 
   await page.goto("/digests");
   await expect(page.getByRole("heading", { name: "No digest yet" })).toBeVisible();

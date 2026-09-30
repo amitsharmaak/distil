@@ -55,6 +55,12 @@ Per `AGENTS.md` §3: PostgreSQL full-text search is the primary path; embeddings
 JSONB (no `pgvector`) and retrieval degrades explicitly rather than silently. This means a missing
 or failed embedding step should fall back to FTS-only ranking instead of returning empty results.
 
+There is one user-facing search surface: the Feed/Today header search on `GET /api/v1/feed`. Ask
+and grounded answers retrieve passages through the passage-retrieval layer
+(`src/lib/knowledge/retrieval.ts`: `PassageSearchStore.searchKeyword`, `searchPassages`).
+The separate Search page, `GET /api/v1/search`, the `q` branch of `GET /api/items` and the
+`FEATURE_SEARCH` flag were retired in inline search F7 (2026-09-30).
+
 ### Why summaries validate before caching
 
 `generateSummary()` (`src/lib/ai/summarize.ts`) parses every model response with a zod schema
