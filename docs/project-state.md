@@ -452,8 +452,8 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 **Why.** Phase R1 of "Deep research readability: diagnosis and phased plan — 2026-09-29": make
 existing reports easy to read without any engine change. Branch `claude/research-r1-page` from
 `origin/main` `10f367f`; feature commit `3ea0ec9`. UI only — no engine, prompt, provider, route
-or schema change. Implementation complete and verified by tests; **not seen in a browser yet,
-not merged, not deployed**.
+or schema change. Implementation complete, verified by tests and in the local in-app browser
+(orchestrator, 2026-09-30); merged and deployed as recorded in the Current handoff.
 
 **References re-checked on `10f367f` before editing.** `page.tsx:372` was the `prose prose-sm`
 body card, `:379-402` the sources card, `:66` `extractExecutiveSummary`; `Markdown`
@@ -509,7 +509,7 @@ recorded shape of that report — 789 words, 41 sources listed / 8 cited; not re
 | Navigation   | none                                                                    | "On this page" from `##`/`###` (rail on desktop, disclosure on phones)                                                |
 | Inline links | full link text, two parenthesised links per bullet                      | small domain chips, parentheses removed                                                                               |
 | Header stats | start/complete timestamps and status badges                             | "Completed <date> · N sections · ~3 min read · 8 sources" (789 words / 230 wpm ≈ 3; expected, confirm in the browser) |
-| Sources      | 41 raw truncated URLs, always open                                      | collapsed; "Cited in this report (8)" first, "Other links the research touched (33)" behind a second disclosure       |
+| Sources      | 41 raw truncated URLs, always open                                      | collapsed; "Cited in this report (8)" first, "Other links the research touched (32)" behind a second disclosure       |
 | Actions      | two outline buttons above the summary                                   | one compact toolbar under the header                                                                                  |
 
 **Verification (local, this worktree).** `npm run check` passes: lint 0 errors (the 5 known
@@ -524,9 +524,15 @@ disclosures, the full view with legacy and object sources) and the updated
 
 **Gaps and next steps.**
 
-1. **Browser verification pending (orchestrator):** local loop with report `5a9cf55a` — desktop,
-   375 px mobile, dark mode; check no horizontal scroll, chip legibility, sticky rail offset under
-   the 3.5rem top bar (`top-20`, headings `scroll-mt-20`), and the real K/M numbers above (K can exceed 8 if the text links URLs missing from the stored list, which count as cited).
+1. **Browser verification done (orchestrator, local loop, report `5a9cf55a`, 2026-09-30):**
+   dev server from this worktree against the local Docker Postgres with a throwaway local login
+   hash passed through the process environment (Amit's `.env.local` untouched). Measured:
+   header "Completed 21 Sept 2026 · 3 sections · ~3 min read · 8 sources"; one H1 (the question);
+   no `<hr>` in the body; 779 words rendered in the article; domain chips inline; TOC rail on
+   desktop (1280 px) highlights the current section; "Sources · 8 cited, 32 more" collapsed
+   ("Other" is 32, not 33 — one stored URL was a duplicate after normalisation); 375 px mobile:
+   no horizontal scroll, collapsible "On this page · 10 parts"; dark mode (app theme toggle)
+   legible, chips included. Screenshots were taken in the session (not stored).
 2. Citation compaction is regex-based: links in unusual shapes (URLs containing parentheses, a
    citation group split across lines) stay as ordinary links. Harmless; R2 replaces URLs in the
    text with `[n]` markers.
