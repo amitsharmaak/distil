@@ -65,16 +65,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability: plan merged, nothing implemented (PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62), squash merged as `0726cc0` on
-  2026-09-29; checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
-  poorly rendered content). Root causes: the source list is a regex scrape of every URL in the
-  raw findings (41 listed, 8 cited in the local sample), prompts ask for URLs everywhere, one
-  4,096-token synthesis compresses the findings to ~800 words in a fixed four-heading template,
-  and the page is one small-type card with no navigation. Phases, one per task: **R1** readable
-  page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
-  writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
-  decisions in the checkpoint and picks a phase (recommended R1).
+- **Deep research readability R1–R4: in progress (orchestrated by Claude from worktree
+  `deep-research-readability-r1-r4-846d48`; plan PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62), checkpoint "Deep research readability:
+  diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat,
+  thin and poorly rendered content; baseline local run `5a9cf55a`: 789 words, 41 sources listed,
+  8 cited, one small-type card). **Decisions (Amit, 2026-09-30; task-specific authorization for
+  this task only):** (1) order R1 → R2 → R3; (2) storage in the existing `research_reports`
+  text columns, no migration; (3) R3 target 1,500–2,500 words with TL;DR and key takeaways on
+  top; (4) R4 decided after R3 (ask again then; a Production migration would need separate
+  approval); (5) Claude may squash merge each phase to `main` (auto-deploys to Production) once
+  its gates are green and it is checked locally, then confirm the deployment and
+  `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
+  only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
+  memory, labelled on the page). Phase branches: `claude/research-r1-page`,
+  `claude/research-r2-citations`, `claude/research-r3-adaptive`. Progress: R1 and the R2 engine
+  half started in parallel.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
