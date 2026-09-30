@@ -709,13 +709,13 @@ design for seamless keyboard navigation with shortcuts, a Gmail-style way to see
 handlers (`onKeyDown`, `keydown`, `KeyboardEvent`, `tabIndex`, `aria-keyshortcuts`, `kbd`,
 `focus-visible`), for clickable elements that are not buttons or links, and for the handler each
 user action calls. The two shortcut bugs below were re-read line by line. No live browser pass
-was made; the plan's verification steps include one.
+was made; the plan's verification steps include one. After the Collections removal (#98, `0a1e350`) merged, the citations in `filter-bar.tsx`, `feed-filters.tsx`, `feed-list.tsx`, `today-experience.tsx` and `settings/page.tsx` were re-verified and updated to that commit.
 
-#### How the keyboard works today (verified against `main` at `b1a62fb`)
+#### How the keyboard works today (verified against `main` at `b1a62fb`, citations re-verified at `0a1e350`)
 
 - **Three shortcuts exist, all page-local and undocumented.** `/` focuses the search box on
-  Today and Feed (`src/components/feed/filter-bar.tsx:105-114`, ignores editable targets and
-  modifiers; `Esc` clears then blurs, `:142-148`; the only `<kbd>` hint in the app is `:168-173`).
+  Today and Feed (`src/components/feed/filter-bar.tsx:102-111`, ignores editable targets and
+  modifiers; `Esc` clears then blurs, `:140-146`; the only `<kbd>` hint in the app is `:165-170`).
   `←`/`→` open the previous/next item on the reader page
   (`src/components/feed/article-navigation.tsx:18-29`). `r` marks the open item read and moves on
   (`src/components/feed/detail-action-bar-content.tsx:88-103`; tooltip "Mark as read (R)" `:222`).
@@ -735,8 +735,8 @@ was made; the plan's verification steps include one.
 - **Navigation.** `sidebar.tsx:19-25`: Today `/`, Feed `/feed`, Research `/research`, Save
   `/save`, Settings `/settings`; theme toggle `:92`; collapse `:97-104`. `mobile-nav.tsx:8-13`
   omits Research. Topbar shows the date or a "Back to feed" link (`topbar.tsx:24`).
-- **Lists.** Feed renders `ContentCard` rows (`feed-list.tsx:303-311`) and a "Load more" button
-  (`:316-322`); Today renders `TodayItem` links (`today-prototype.tsx:33-58`) in "Priority
+- **Lists.** Feed renders `ContentCard` rows (`feed-list.tsx:272-280`) and a "Load more" button
+  (`:282-291`); Today renders `TodayItem` links (`today-prototype.tsx:33-58`) in "Priority
   Reading" and "Worth Revisiting", or one "Unread matches" list when filtered. Every row is a
   `next/link` `<Link>`, so `Tab` reaches it and `Enter` opens it, but there is no way to move
   between rows without tabbing through every control in between.
@@ -753,10 +753,10 @@ was made; the plan's verification steps include one.
   (`ai-summary-content.tsx:299,311,329,342,360`) have no `type`, no `aria-pressed` and no
   focus-visible style. `today-prototype.tsx:179` nests a `<main>` inside the shell's `<main>`.
 - **Actions a shortcut can call (handlers exist).** Feed: `FeedList.handleMarkRead`
-  (`feed-list.tsx:236`), `AreaBadge.choose` (`area-badge.tsx:49`), `fetchItems(nextCursor, true)`
-  (`feed-list.tsx:318`), `replaceFilters` (`feed-list.tsx:224`, `today-experience.tsx:139`), the
-  Filters sheet `open`/`setOpen` inside `FeedFilterSheet` (`feed-filters.tsx:282-294`), card/compact
-  layout (`feed-filters.tsx:255-270`). Reader: `handleMarkRead` (`detail-action-bar-content.tsx:66`),
+  (`feed-list.tsx:209`), `AreaBadge.choose` (`area-badge.tsx:49`), `fetchItems(nextCursor, true)`
+  (`feed-list.tsx:287`), `replaceFilters` (`feed-list.tsx:197`, `today-experience.tsx:113`), the
+  Filters sheet `open`/`setOpen` inside `FeedFilterSheet` (`feed-filters.tsx:279-290`), card/compact
+  layout (`feed-filters.tsx:250-270`). Reader: `handleMarkRead` (`detail-action-bar-content.tsx:66`),
   `handleRate` (`:49`), View original (`:154`), Deep research dialog (`:162`,
   `deep-research.tsx:33-36`), `setViewMode` (`ai-summary-content.tsx:299,311`),
   `handleLengthChange` (`:280`), `generate(len, true)` (`:244`). Research: `handleScan`
@@ -804,18 +804,18 @@ was made; the plan's verification steps include one.
 | Context     | Key                                                       | Action                                                    | Calls into                          |
 | ----------- | --------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------- |
 | Everywhere  | `?` or `⌘/` `Ctrl+/`                                      | Open / close the Shortcuts dialog                         | new `ShortcutsHelpDialog`           |
-| Everywhere  | `/`                                                       | Focus search (on other pages: go to `/feed` and focus)    | `filter-bar.tsx:110`                |
+| Everywhere  | `/`                                                       | Focus search (on other pages: go to `/feed` and focus)    | `filter-bar.tsx:107`                |
 | Everywhere  | `g` `t` / `g` `f` / `g` `r` / `g` `s` / `g` `,` / `g` `a` | Go to Today / Feed / Research / Save / Settings / Account | `router.push`                       |
 | Everywhere  | `[`                                                       | Collapse or expand the sidebar                            | `app-shell.tsx:16`                  |
 | Everywhere  | `Shift+T`                                                 | Toggle dark / light                                       | `theme-provider.tsx:47`             |
-| Everywhere  | `Esc`                                                     | Close dialog or sheet; clear then blur search             | Radix, `filter-bar.tsx:142`         |
+| Everywhere  | `Esc`                                                     | Close dialog or sheet; clear then blur search             | Radix, `filter-bar.tsx:140`         |
 | Today, Feed | `j` / `k`                                                 | Focus next / previous row (`j` at the end: Load more)     | new `useRowNavigation`              |
 | Today, Feed | `Enter` or `o`                                            | Open focused row                                          | native link / `router.push`         |
-| Feed        | `r`                                                       | Mark focused row read                                     | `feed-list.tsx:236`                 |
+| Feed        | `r`                                                       | Mark focused row read                                     | `feed-list.tsx:209`                 |
 | Today, Feed | `a`                                                       | Change the focused row's life area                        | `area-badge.tsx:77` trigger         |
-| Today, Feed | `f`                                                       | Open the Filters sheet                                    | `feed-filters.tsx:282`              |
+| Today, Feed | `f`                                                       | Open the Filters sheet                                    | `feed-filters.tsx:279`              |
 | Today, Feed | `u`                                                       | Toggle unread-only                                        | `replaceFilters({ showRead })`      |
-| Feed        | `c`                                                       | Toggle card / compact layout                              | `feed-filters.tsx:255-270`          |
+| Feed        | `c`                                                       | Toggle card / compact layout                              | `feed-filters.tsx:250-270`          |
 | Reader      | `j` / `k` or `→` / `←`                                    | Next / previous item                                      | `article-navigation.tsx:22-26`      |
 | Reader      | `u` or `Esc` (no dialog open)                             | Back to the list                                          | Topbar back link target             |
 | Reader      | `r`                                                       | Mark read and advance (existing, fixed)                   | `detail-action-bar-content.tsx:66`  |
@@ -830,7 +830,7 @@ was made; the plan's verification steps include one.
 | Reader      | `Shift+C`                                                 | Copy link (new)                                           | `navigator.clipboard`               |
 | Research    | `n` / `Shift+S`                                           | New research / Scan for suggestions                       | `research/page.tsx:174,75`          |
 | Report      | `u` / `Shift+C` / `Shift+D`                               | Back / Copy as Markdown / Research further                | `report-toolbar.tsx:41,45`          |
-| Settings    | `1` / `2`                                                 | Capture / Account tab                                     | `settings/page.tsx:24-31`           |
+| Settings    | `1` / `2`                                                 | Capture / Account tab                                     | `settings/page.tsx:26-31`           |
 
 #### Plan — four PR-sized phases, each its own task from current `main`
 
@@ -973,7 +973,7 @@ answers, e.g. "1A 2A 3A 4A 5A">.
 
 Rules for this task:
 - Re-verify every file:line the checkpoint cites before editing; the plan was written
-  against main b1a62fb and lines may have moved.
+  against main 0a1e350 and lines may have moved.
 - Keep the existing shortcuts (/, r, arrow keys) working while migrating them to the
   registry; fix the Cmd/Ctrl+R and Alt/Cmd+Arrow modifier bugs.
 - Every shortcut must be registered through the single registry so the ? dialog lists it;
