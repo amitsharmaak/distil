@@ -1,13 +1,48 @@
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { NeonProxyProvider } from "@/lib/auth/neon-proxy";
 import type { ProviderIdentityPort } from "@/lib/auth/request-context";
-import { measurePhase, recordProviderCall } from "@/lib/observability/request-metrics";
+import {
+  currentRequestMetrics,
+  measurePhase,
+  recordProviderCall,
+  runWithRequestMetrics,
+  type RequestMetrics,
+} from "@/lib/observability/request-metrics";
 
 export const PROXY_PROVIDER_PHASE = "proxy-auth-provider";
 export const PROXY_CONNECTION_PHASE = "proxy-auth-connect";
 export const PROXY_DATABASE_PHASE = "proxy-auth-db";
 
 type IdentityLookupInput = Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0];
+
+/**
+ * postgres.js invokes its debug hook from the pooled connection's async
+ * lifecycle, which can retain the phase that established that connection.
+ * For this temporary sequential diagnostic, derive the phase's query count
+ * from the request-total delta and undo any stale phase attribution.
+ */
+async function measureP8QueryPhase<T>(
+  metrics: RequestMetrics | undefined,
+  name: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!metrics) return operation();
+
+  const queriesBefore = metrics.queries;
+  const phaseQueriesBefore = new Map(
+    [...metrics.phases].map(([phaseName, entry]) => [phaseName, entry.queries])
+  );
+  try {
+    return await runWithRequestMetrics(() => measurePhase(name, operation), metrics);
+  } finally {
+    const queryDelta = Math.max(0, metrics.queries - queriesBefore);
+    for (const [phaseName, entry] of metrics.phases) {
+      entry.queries = phaseQueriesBefore.get(phaseName) ?? 0;
+    }
+    const measured = metrics.phases.get(name);
+    if (measured) measured.queries = (phaseQueriesBefore.get(name) ?? 0) + queryDelta;
+  }
+}
 
 /**
  * P8 diagnostic only: repeat the exact identity lookup so Preview can compare
@@ -18,8 +53,18 @@ export async function measureP8ProxyIdentityLookup(
   repositories: AuthRepositoryPort,
   input: IdentityLookupInput
 ): ReturnType<AuthRepositoryPort["findAccountByIdentity"]> {
-  await measurePhase(PROXY_CONNECTION_PHASE, () => repositories.findAccountByIdentity(input));
-  return measurePhase(PROXY_DATABASE_PHASE, () => repositories.findAccountByIdentity(input));
+  const metrics = currentRequestMetrics();
+  try {
+    await measureP8QueryPhase(metrics, PROXY_CONNECTION_PHASE, () =>
+      repositories.findAccountByIdentity(input)
+    );
+  } catch {
+    // The first call is diagnostic only. The second lookup remains the
+    // authoritative result on the Neon path and must run even after failure.
+  }
+  return measureP8QueryPhase(metrics, PROXY_DATABASE_PHASE, () =>
+    repositories.findAccountByIdentity(input)
+  );
 }
 
 /**

@@ -4,7 +4,8 @@ import type { LinkedAccount } from "@/lib/auth/account";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { createSessionToken } from "@/lib/auth/session";
-import { recordDatabaseStatement } from "@/lib/observability/request-metrics";
+import { PROXY_CONNECTION_PHASE } from "@/lib/auth/auth-metrics";
+import { measurePhase, recordDatabaseStatement } from "@/lib/observability/request-metrics";
 import { P8_PROXY_PROBE_QUERY } from "@/proxy";
 
 const sessionSecret = "p8-legacy-preview-session-secret-with-32-bytes";
@@ -116,6 +117,22 @@ describe("P8 legacy Preview connection probe", () => {
     expect(response.headers.get("x-middleware-next")).toBeNull();
   });
 
+  it("reattributes pooled-client debug callbacks to one query per sequential phase", async () => {
+    fakes.findAccountByIdentity.mockImplementation(() =>
+      measurePhase(PROXY_CONNECTION_PHASE, async () => {
+        recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
+        return undefined;
+      })
+    );
+
+    const response = await signedInRequest(probePath);
+
+    expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
+    expect(response.headers.get("server-timing")).toMatch(
+      /^proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="q=2"$/
+    );
+  });
+
   it("ignores both lookup results so legacy auth remains authoritative", async () => {
     fakes.findAccountByIdentity.mockImplementation(async () => {
       recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
@@ -131,7 +148,7 @@ describe("P8 legacy Preview connection probe", () => {
     expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps probe failures non-authoritative and out of the JSON response", async () => {
+  it("keeps probe failures non-authoritative and out of the diagnostic response", async () => {
     fakes.findAccountByIdentity
       .mockImplementationOnce(async () => {
         recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
@@ -146,6 +163,26 @@ describe("P8 legacy Preview connection probe", () => {
     expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
     expect(body).not.toContain("private database failure");
     expect(body).toBe(`<pre>${response.headers.get("server-timing")}</pre>`);
+  });
+
+  it("still runs and reports the database phase when the connection lookup fails", async () => {
+    fakes.findAccountByIdentity
+      .mockImplementationOnce(async () => {
+        recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
+        throw new Error("first lookup failed");
+      })
+      .mockImplementationOnce(async () => {
+        recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
+        return undefined;
+      });
+
+    const response = await signedInRequest(probePath);
+
+    expect(response.status).toBe(200);
+    expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
+    expect(response.headers.get("server-timing")).toMatch(
+      /^proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="q=2"$/
+    );
   });
 
   it("does not probe a non-GET request even when the query flag is present", async () => {
