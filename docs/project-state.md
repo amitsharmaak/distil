@@ -477,9 +477,12 @@ the UI part landed in #75. Implementation complete and locally verified; not dep
   `npm run audit:phase3-security` passes. Grep finds no `FEATURE_SEARCH`, `/api/v1/search` or
   `DISTIL_PHASE2_SEARCH` outside this file. The `/search` redirect unit test passes. In
   `tests/e2e/phase2.spec.ts` (all Phase 2 flags on, desktop and mobile Chromium, port 3107) the new
-  `/search?q=padel` → `/feed?q=padel` step passes; the test then fails at the later
-  `/feed/phase2-fixture` reader step with a server error from the local dev database, which this
-  change does not touch. No migration, env var or cloud change.
+  `/search?q=padel` → `/feed?q=padel` step passes (run against the local Docker database with
+  the auth variables blank, as in CI). The test then fails at the later `/feed/phase2-fixture`
+  reader step: the page returns 500 with `AccessDeniedError: unauthenticated`. That failure
+  predates this change: a probe of the same reader step on `origin/main` (`9c93a95`) returns the
+  same 500. On `main` the spec fails even earlier, at its stale `a[href="/search"]` assertion. No
+  migration, env var or cloud change.
 
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
