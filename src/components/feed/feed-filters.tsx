@@ -126,11 +126,7 @@ function Segmented<T extends string>({
   onSelect: (value: T) => void;
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className="grid auto-cols-fr grid-flow-col gap-0.5 rounded-lg bg-muted p-0.5"
-    >
+    <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-lg bg-muted p-0.5">
       {options.map((option) => {
         const checked = option.value === value;
         return (
@@ -143,7 +139,9 @@ function Segmented<T extends string>({
               if (!checked) onSelect(option.value);
             }}
             className={cn(
-              "h-8 truncate rounded-md px-2 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              // Content-sized segments sharing the spare width: equal columns cut
+              // "Personal" and "Learning" at phone width.
+              "h-8 min-w-0 flex-auto truncate rounded-md px-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               checked
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

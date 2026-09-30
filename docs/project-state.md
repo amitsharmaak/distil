@@ -1,6 +1,6 @@
 # Distil project roadmap and state
 
-Last updated: 2026-09-17 (Asia/Kolkata)
+Last updated: 2026-09-30 (Asia/Kolkata)
 
 This is the canonical, durable restart point for the Distil project across development sessions.
 Keep the product roadmap stable near the top and continuously update the active-phase status,
@@ -15,10 +15,9 @@ This section is the only forward-looking instruction block in this file. Everyth
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Execute the app-slowness plan P8–P11 from the checkpoint "App slowness:
-  live diagnosis and phased plan (P8–P11) — 2026-09-29", with Codex as integration owner. P8 and
-  P10 start in parallel from fresh `origin/main`; P9 starts only after P8 is released; P11 is a
-  recorded no-change decision. Phase 4 (mobile) remains unauthorized.
+- **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
+  and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
+  recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
 - **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
   `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
   trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
@@ -40,17 +39,28 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `GET /api/v1/search` (no UI caller now) and the `FEATURE_SEARCH` flag. Checked by tests and in the
   local in-app browser with real items: phone and desktop layouts, the `/search` redirect, and
   the removed icon and sidebar entry. Not yet checked on Production.
-- **App slowness: diagnosed live, plan P8–P11 recorded, nothing implemented (branch
-  `claude/app-performance-investigation-917601`; checkpoint "App slowness: live diagnosis and
-  phased plan (P8–P11) — 2026-09-29"):** Amit finds the whole app slow. Measured on Production
-  through his Chrome session: a warm click is ~450 ms, of which the proxy's authentication is
-  ~210–370 ms (a fresh Neon connection for the one account lookup, ~125 ms, plus an uncached
-  Neon Auth round trip, 80–250 ms) while the page's own database work is ~20 ms; after a few idle
-  minutes Neon and Vercel cold starts stack (8.5 s Today load observed). Phases, one per task:
-  **P8** proxy lookup without a per-request connection, **P9** provider check from the signed
-  cookie cache for read-only requests, **P10** fewer prefetches and instant Feed chips, **P11**
-  Neon/Vercel cold-start settings (cloud change). Next: Amit answers the four decisions in the
-  checkpoint and picks a phase (recommended P8).
+- **App slowness P8–P11 released (PRs [#78](https://github.com/amitsharmaak/distil/pull/78),
+  [#80](https://github.com/amitsharmaak/distil/pull/80) and
+  [#87](https://github.com/amitsharmaak/distil/pull/87); checkpoints "Performance P8",
+  "Performance P9", "Performance P10" and "Performance P11" below):** P8's Neon HTTP adapter
+  removed the proxy lookup's per-request Postgres connection while retaining the same
+  security-definer lookup and authorization semantics (`1d2831a`). P10 removed rare-route
+  prefetches and made Feed filters optimistic (`02759a9`). P9 uses Neon Auth's signed cookie only
+  for ordinary GET/HEAD page and RSC reads, enforces the approved 60-second lifetime even across
+  pre-release 300-second cookies, and leaves every mutation, API, Account and lifecycle path on
+  exactly one uncached provider check (`c4506c4`). All three releases passed their applicable
+  Quick/Full/Vercel gates. P9 Production deployment `dpl_CfuuRwXgf6BzbMBc4qRfn1AK4Ca8` is Ready,
+  serves `distilai.app`, and `/api/health` returns 200. Preview could not exercise P9 because the
+  Preview environment intentionally has legacy auth rather than the Production Neon Auth
+  configuration; Amit explicitly authorized the green-gate merge and immediate Production
+  validation instead. Production loaded an authenticated Feed successfully. Same-method warm
+  Feed filter URL commits measured 693, 630 and 747 ms; the browser-control overhead dominates
+  these readings, so they do not isolate P9's expected 80–250 ms server-side saving. P11 retains
+  Neon Free's mandatory five-minute suspend and Vercel Fluid Compute; no cloud setting or plan
+  changed. After more than six idle minutes, a Production Feed-filter route committed in
+  1,332 ms; that single route-commit sample meets P11's under-1.5-second target but is not a claim
+  that the previously observed 6.7–8.5-second full-stream tail is eliminated. Next: merge the
+  docs-only P11 closure; no performance implementation remains in this plan.
 - **AI cost accounting corrected (PR [#69](https://github.com/amitsharmaak/distil/pull/69),
   squash merged as `d3ec32e` on 2026-09-29; checkpoints "Consolidation of open PRs (2) —
   2026-09-29" and "AI cost accounting: verified prices, thinking tokens, grounding fee —
@@ -108,37 +118,53 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
   `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
   `next build` succeeds without either route. Merged and deployed on Amit's authorization
-  (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
-- **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
-  Production (plan PR
-  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
-  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
-  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 PR
-  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; F4 PR
-  [#72](https://github.com/amitsharmaak/distil/pull/72), squash merged as `c68d622` on 2026-09-29
-  after the full gate; checkpoints "Consolidation of open PRs (2) — 2026-09-29", "Life areas F4: area badge and one-tap reclassify —
-  2026-09-29", "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
-  2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
-  classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
-  2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
-  page replaced by a search bar at the top of Today and Feed that filters as he types, with
-  one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
-  learning material with every item sorted automatically by AI into one of four areas (Personal,
-  Work, Learning, Updates), shown as a filter and fixable with one tap. All open decisions are
-  answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
-  `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
-  an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
-  changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
-  `cf0cf28`). Open items for Amit: the F3 bar on a phone, and the F4 area badge in a browser
-  (both verified by tests only). Amit decided on 2026-09-29 not to rotate the `neondb_owner`
-  password after its exposure in his terminal history (see the consolidation (2) checkpoint). **Seen on
-  Production on 2026-09-29** (Claude, through Amit's signed-in Chrome): the F3 filter bar renders
-  on desktop with the area switch and the five toggles, `?area=work` filters, and a capture from
-  that afternoon had been classified by F2 as Updates (the only classified item until F6). F4 is on
-  `main` (Production already has `life-areas`, so it works on deploy). Next: F5 (filter bar
-  on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
-  onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
-  model before starting that task).
+  (2026-09-30). The `FEATURE_ANSWERS` Production variable was deleted from Vercel on 2026-09-30
+  (Claude, at Amit's request in chat; no redeploy needed since nothing reads it).
+- **Inline search, quick filters and AI life areas: F1–F7 complete and deployed (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61); F1 [#63](https://github.com/amitsharmaak/distil/pull/63),
+  F2 [#64](https://github.com/amitsharmaak/distil/pull/64), F3 [#67](https://github.com/amitsharmaak/distil/pull/67),
+  F4 [#72](https://github.com/amitsharmaak/distil/pull/72), Feed header and Search page UI
+  [#75](https://github.com/amitsharmaak/distil/pull/75); F5 [#79](https://github.com/amitsharmaak/distil/pull/79)
+  squash merged as `0d7d34b`, F6 [#82](https://github.com/amitsharmaak/distil/pull/82) as `35c3009`, F7
+  [#86](https://github.com/amitsharmaak/distil/pull/86) as `6901bc9`, all on 2026-09-30; checkpoints "Inline search F7:
+  legacy search path retired — 2026-09-30", "Life areas F6: area backfill — 2026-09-30", "Inline
+  search F5: filter bar on Today — 2026-09-30" and the plan "Inline search, quick filters and life
+  areas — 2026-09-29"):** Amit wanted one search bar on Today and Feed instead of a Search page,
+  one-tap quick filters, and every item sorted by AI into Personal, Work, Learning or Updates,
+  fixable with one tap.
+  - **Today has the filter bar (F5).** Same compact search pill and Filters sheet as Feed. With a
+    query, quick filter or area, Today shows one "Unread matches" list and "Search everything →"
+    (to `/feed` with the same parameters plus `read=true`, which on the Feed page means "Read
+    included"); otherwise Today is unchanged. Checked locally at 1280 px and 375 px, light and dark.
+  - **Every item has an area (F6).** Tenant job `items.area-backfill` with a real handler, started
+    by `POST /api/v1/areas/backfill` (counts via `GET`). **Local:** 4 items → Work 1, Learning 1,
+    Updates 2 (0 failed). **Production** (one run, authorized by Amit, 2026-09-30 06:56Z, 2
+    chained batches in ~33 s): 23 classified, 0 skipped, 0 failed, 0 left unclassified; library
+    now Personal 0 · Work 4 · Learning 11 · Updates 9 (one item was already classified at capture).
+    Cost: 23 flash-lite calls (local run: ~$0.001 for 4). No corrections yet.
+  - **One search surface (F7, rescoped after A1 removed Ask).** The Feed/Today header search on
+    `GET /api/v1/feed` is the only search. Removed: the Search page (PR #75; `/search?…` redirects
+    to `/feed?…`), `GET /api/v1/search`, the `/api/items` `q` branch (now 400 with a pointer),
+    `FEATURE_SEARCH`, and, with Ask gone, the now-callerless `hybridSearch`, `searchPassages` /
+    passage store, `repositories.passages` and the `ItemFilters.query` clause. Kept:
+    `content_chunks`, chunking, grounding, all schema. Nothing stays "for Ask" because Ask no
+    longer exists. The leftover `FEATURE_SEARCH` and `FEATURE_ANSWERS` variables (Production
+    only) were deleted from Vercel project `project-evgf1` on 2026-09-30 by Claude through Amit's
+    signed-in Chrome, at his request in chat. No redeploy was triggered; nothing reads them, and
+    the next deploy drops them. The other `FEATURE_*` variables are unchanged.
+  - **Classifier model follow-up (decision 12): still open.** Question to Amit: which exact
+    provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
+    with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
+    and compare a small local sample against flash-lite per area.
+  - **Minor open items:** (the Area label truncation at 375 px is fixed; checkpoint "Filters
+    sheet: segment labels fit on phones — 2026-09-30") `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
+    e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
+    e2e passes).
+    **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
+    spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
+    backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
+    himself (he later asked Claude to delete it and `FEATURE_ANSWERS`, done 2026-09-30); the model
+    follow-up is excluded unless Amit names the model id.
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
   2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
@@ -475,6 +501,56 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Filters sheet: segment labels fit on phones — 2026-09-30
+
+Amit asked to fix the Area labels ("Perso…", "Learni…", "Updat…") cut off in the Filters sheet
+at 375 px (Feed and Today share the sheet). Cause: `Segmented` in
+`src/components/feed/feed-filters.tsx` used equal grid columns (`auto-cols-fr`), leaving about
+49 px of text room per Area segment. Fix: a flex row whose segments size to their label and
+share the spare width (`flex-auto`, `min-w-0`, `px-1.5`); `truncate` stays as a last resort. It
+applies to Sort and Archive too. Checked in the local in-app browser: no label cut at 375 px
+(Personal 75 px, Learning 77 px) or at 320 px while searching (four Sort options including Best
+match), no horizontal page scroll, and the desktop panel keeps near-equal segments. UI only; no
+schema, route or environment change.
+
+### Performance P11: cold-start settings retained — 2026-09-30
+
+P11 is a docs-only no-change phase on branch `codex/perf-p11-cold-start`, created from current
+`origin/main` `5c879ea`. Amit chose decision 3B: stay on the existing free plans and accept
+occasional cold wakes. The signed-in provider consoles were re-checked read-only; no Neon or
+Vercel setting, plan, deployment, environment variable, database, or application code changed.
+
+- **Neon.** The `distil-production` primary compute is fixed at 0.25 CU on the Free plan. Its
+  scale-to-zero drawer reports suspension after five minutes of inactivity and requires a paid
+  upgrade to configure the setting. The Vercel-managed Neon integration lists Launch at
+  $0.106/CU-hour plus $0.35/GB-month of storage. Keeping this 0.25-CU compute always active on
+  Launch would therefore cost about **$19.35/month** for compute at 730 hours/month, plus storage
+  and any other metered usage. A longer suspend timeout would cost proportionally to the extra
+  active time but would still leave a cold wake after a sufficiently long idle period.
+- **Vercel.** The linked project is on Hobby and Fluid Compute is already enabled. Hobby includes
+  4 active CPU hours, 360 GB-hours of provisioned memory and one million invocations; Fluid pauses
+  between requests, so leaving it enabled does not create an always-warm charge. There is no P11
+  Vercel-side change to make, and disabling Fluid would work against the phase objective.
+- **Accepted idle evidence.** P8's preserved HTTP Preview, after at least six minutes without
+  shared-database traffic, measured first Neon HTTP lookup **764.0 ms**, identical repeated lookup
+  **31.4 ms**, and proxy total **827.2 ms**. P10's preserved Preview, after at least six minutes
+  idle, measured the first `/feed` RSC at **6,668.3 ms** end to end with only **9.8 ms** in the
+  proxy; its follow-up resource was **289.6 ms** with **1.5 ms** in the proxy. After released P9
+  and more than six minutes without an intentional Production request, a Feed-filter route URL
+  committed in **1,332 ms** through the signed-in browser. That is below P11's 1.5-second target
+  for this single route-commit reading, but it is not the same as measuring the entire streamed
+  Today page and does not erase the earlier 6.7–8.5-second cold-tail outliers.
+- **Verification.** `npm ci` completed before the documentation edit. After merging released P9,
+  `npm run check` passes: lint has zero errors and the five existing warnings, TypeScript is clean,
+  and all 234 suites / 1,898 tests pass. `git diff --check` is clean.
+- **Decision and remaining risk.** Always-on Neon would target the roughly 0.7-second database
+  wake visible in P8, not the much larger Vercel/page cold tail isolated by P10. It therefore
+  would be unlikely to meet P11's under-1.5-second idle target by itself, making the approximately
+  $19/month upgrade a poor trade at Distil's current usage. The accepted decision is to keep Neon
+  Free with the mandatory five-minute suspension and leave Vercel Fluid enabled. The final
+  Production sample met the route-commit target without a cloud change, but cold-start variance
+  and the unmeasured full RSC stream remain the risk; no always-warm guarantee is claimed.
+
 ### Performance P9: 60-second read-only provider session cache — 2026-09-30
 
 P9 is implemented on `codex/perf-p9-session-cache` in worktree
@@ -515,17 +591,20 @@ changed with the policy comments; the 15 centrally protected mutation surfaces a
 were re-reviewed, the frozen digest was updated, and no route inventory, surface count or
 authorization-matrix entry changed.
 
-**Gaps and remaining gates:** no Preview or Production request was made here. The deterministic
-handler fixture plus WebCrypto-signed tokens prove cache/uncached selection rather than contacting
-Neon Auth. Codex, as integration owner, must review the diff, push/open the auth-boundary PR with
-`full-ci`, read a
-Preview deployment (four warm `/feed` RSC samples, four warm `GET /api/v1/feed` controls, plus one
-sample after at least six idle minutes), and confirm that ordinary page/RSC requests lose the
-80–250 ms `proxy-auth-provider` phase while API controls still perform exactly one uncached
-provider check. After green Quick/Full/Vercel gates, Codex may use Amit's recorded authorization
-to squash-merge, verify the Production deployment and `/api/health`, repeat the live readings,
-then record merge/deployment evidence separately. No Vercel/Neon setting, environment variable,
-migration, merge or deployment was changed by this implementation task.
+**Release and live verification:** PR [#87](https://github.com/amitsharmaak/distil/pull/87)
+carried the `full-ci` label; Quick gate, all Full-gate jobs, Web/mobile and extension E2E, the
+Production build and Vercel passed. Amit authorized merging without the phase-specific Preview
+reading because Preview intentionally has legacy auth and lacks Production's Neon Auth
+configuration; copying Production auth secrets into Preview was rejected. Squash commit
+`c4506c4` deployed as `dpl_CfuuRwXgf6BzbMBc4qRfn1AK4Ca8`; the deployment is Ready on
+`distilai.app`, `/api/health` returned 200, and an authenticated Production Feed loaded. Same-method
+warm Feed filter URL commits were 693, 630 and 747 ms. Browser-control overhead dominates those
+readings (P8's equivalent samples were 732, 639 and 694 ms), so they neither prove nor disprove the
+expected 80–250 ms server-phase saving. Exact Production `Server-Timing` remained inaccessible:
+direct API navigation is blocked by the browser client and script injection/raw browser debugging
+was correctly not used. The deterministic signed-cookie tests are therefore the direct evidence
+for zero provider calls on eligible reads; Production proves the integrated auth path remains
+usable. The final six-minute-idle Production sample is recorded with P11 below.
 
 ### Deep research R3: adaptive, deeper report — 2026-09-30
 
