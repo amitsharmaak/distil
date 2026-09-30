@@ -36,6 +36,9 @@
 
 ## 2. RAG Agent (Chat)
 
+> **Removed 2026-09-30.** Ask Distil (`/ask`, `/api/v1/answers`) and `src/lib/agent/rag.ts` were
+> deleted; this section is kept as history only.
+
 **Purpose:** Retrieval-augmented generation for `/api/agent/chat`. Classifies user intent, retrieves relevant context, generates grounded answers with citations.
 
 **Prompts:**

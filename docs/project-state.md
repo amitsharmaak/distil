@@ -9,15 +9,26 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-29
+## Current handoff — 2026-09-30
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
-  ordinary capture and reading, adding items one at a time and checking capture, readable
-  extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Active objective:** Execute the app-slowness plan P8–P11 from the checkpoint "App slowness:
+  live diagnosis and phased plan (P8–P11) — 2026-09-29", with Codex as integration owner. P8 and
+  P10 start in parallel from fresh `origin/main`; P9 starts only after P8 is released; P11 is a
+  recorded no-change decision. Phase 4 (mobile) remains unauthorized.
+- **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
+  `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
+  trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
+  auth/account-sensitive paths, and missing/expired caches remain uncached. (3B) P11 stays on the
+  Neon Free plan and accepts occasional cold wakes; no Neon setting, Vercel setting, or paid plan
+  change is authorized. Read-only reconnaissance found `distil-production` fixed at 0.25 CU with
+  mandatory scale-to-zero after five idle minutes, while Vercel Fluid Compute is already enabled.
+  (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
+  green and its Preview reading meets the phase goal; each merge auto-deploys because the release
+  pin is `unpinned`. This authorization is limited to this P8–P11 task.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -54,16 +65,53 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability: plan merged, nothing implemented (PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62), squash merged as `0726cc0` on
-  2026-09-29; checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat, thin and
-  poorly rendered content). Root causes: the source list is a regex scrape of every URL in the
-  raw findings (41 listed, 8 cited in the local sample), prompts ask for URLs everywhere, one
-  4,096-token synthesis compresses the findings to ~800 words in a fixed four-heading template,
-  and the page is one small-type card with no navigation. Phases, one per task: **R1** readable
-  page (UI only), **R2** grounded numbered citations, **R3** adaptive outline + per-section
-  writing for depth, **R4** optional research-notes drill-down. Next: Amit answers the four
-  decisions in the checkpoint and picks a phase (recommended R1).
+- **Deep research readability R1–R4: in progress (orchestrated by Claude from worktree
+  `deep-research-readability-r1-r4-846d48`; plan PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62), checkpoint "Deep research readability:
+  diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat,
+  thin and poorly rendered content; baseline local run `5a9cf55a`: 789 words, 41 sources listed,
+  8 cited, one small-type card). **Decisions (Amit, 2026-09-30; task-specific authorization for
+  this task only):** (1) order R1 → R2 → R3; (2) storage in the existing `research_reports`
+  text columns, no migration; (3) R3 target 1,500–2,500 words with TL;DR and key takeaways on
+  top; (4) R4 decided after R3 (ask again then; a Production migration would need separate
+  approval); (5) Claude may squash merge each phase to `main` (auto-deploys to Production) once
+  its gates are green and it is checked locally, then confirm the deployment and
+  `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
+  only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
+  memory, labelled on the page). Phase branches: `claude/research-r1-page`,
+  `claude/research-r2-citations`, `claude/research-r3-adaptive`.
+  **R1 (readable page, UI only)** done and deployed: PR
+  [#81](https://github.com/amitsharmaak/distil/pull/81), squash merged as `8280fdc`; Production
+  deployment succeeded (05:28Z) and `/api/health` returned 200; checked locally on `5a9cf55a` at
+  desktop, 375 px and dark mode (checkpoint "Deep research R1: readable report page —
+  2026-09-30"). **R2 (numbered citations, engine + UI)** done: squash merged to `main`
+  (checkpoint "Deep research R2: grounded numbered citations — 2026-09-30"). Live local run
+  `79e2f8cc` (same question as the baseline) found that **search grounding works on the
+  free-tier key** for `research-search` (7 grounded sources, redirects resolved to publisher
+  URLs) and exposed a synthesis regression on the Gemini fallback (thinking exhausted the
+  4,096-token budget; the stored report was a reasoning fragment). Fixed on the branch (12,000
+  tokens, truncation rejected and retried, prompt starts at the first heading) and confirmed by
+  a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
+  keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
+  Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
+  Claude, and R3 splits the call. **R2 Production regression and hotfix:** a
+  Production run started at Amit's request (`8bb4d982`, same question) stalled at synthesis:
+  the queue consumer hit Vercel's 60 s limit twice because the Anthropic SDK retried the timed-out
+  50 s call internally and R2's 12,000-token budget let Claude write past it. Hotfix (checkpoint
+  "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
+  model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
+  Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
+  failed by the stale guard on its next read. Next: R3 on `claude/research-r3-adaptive`, then
+  ask Amit about R4.
+- **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
+  checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
+  Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
+  read, move on) and asked for the code to be deleted with no redirect. `/ask` and
+  `POST /api/v1/answers` are gone, along with the grounded-answer pipeline, the `knowledge-answer`
+  AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
+  `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
+  `next build` succeeds without either route. Merged and deployed on Amit's authorization
+  (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
@@ -437,6 +485,646 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Performance P8: Neon HTTP proxy identity lookup — 2026-09-30
+
+P8 is implemented on `codex/perf-p8-proxy-lookup` after merging `origin/main` at `4f1ee3e` and,
+when main advanced concurrently, again at `35c3009` (merge, not rebase). The proxy's exact-key
+internal-account lookup now uses
+`@neondatabase/serverless` `neon()` over stateless HTTP through a proxy-only narrow repository
+port. Routes, lifecycle work, queues and tenant repositories remain on the existing `postgres.js`
+clients. Both auth adapters share the same row mapper and the HTTP adapter still calls
+`distil_resolve_auth_identity($1, $2)` with bound parameters. The SECURITY DEFINER function,
+`distil_runtime` grant, status checks, denial behavior, signed identity handoff and CSRF ordering
+are unchanged; the reviewed boundary still contains the same 15 protected surfaces.
+
+The Step 1 stop condition passed before the driver change. On the old transport, a fresh Preview
+request measured `proxy-auth-connect` 1,823.9 ms (`q=2`), the identical established-connection
+lookup `proxy-auth-db` 5.4 ms (`q=1`), and proxy total 1,850.6 ms (`q=3`). Warm connect/query/total
+samples were 5.0/3.8/10.5 ms, 4.5/4.3/10.3 ms and 4.2/4.3/9.8 ms. This proved that the indexed
+SECURITY DEFINER query was not the bottleneck and authorized the HTTP transport change.
+
+Live HTTP evidence came from Preview deployment `dpl_Ev2efbGGhGY3JN9DtYGMZbP1c1Ym`, while the
+temporary two-call diagnostic was still present. Its fresh-deployment first HTTP/second HTTP/proxy
+sample was 1,617.1/25.9/1,674.0 ms. Warm repeats were 74.3/27.3/104.3 ms,
+7.4/9.5/18.3 ms, 9.5/11.0/21.6 ms and 23.3/9.5/37.0 ms; every repeat reported
+`q=1`/`q=1`/`q=2`. After the one-time HTTP-client warm-up, the stable samples are below the P8
+warm target of 30 ms, and the identical second lookup remained at or below 27.3 ms throughout.
+A nominal sample after more than six minutes was 56.4/25.7/113.9 ms, but it is not accepted as a
+whole-system idle result because P10 traffic kept the shared Neon database warm.
+
+The accepted whole-system idle sample came after at least six minutes without shared-database
+traffic on the preserved HTTP Preview deployment: first HTTP 764.0 ms (`q=1`), identical second
+HTTP 31.4 ms (`q=1`), proxy total 827.2 ms (`q=2`). This is the cold/Neon-suspended reading: the
+wake dominates, while the repeated query remains close to the 30 ms warm target. P11's accepted
+no-change decision means this occasional wake remains an explicit Free-plan trade-off.
+
+The temporary `/feed?p8=1` legacy-auth response, auth hook, fixed missing subject, double lookup,
+`proxy-auth-connect` phase and diagnostic tests are removed in cleanup commit `e4915f7`. Final
+semantics are exactly one HTTP `findAccountByIdentity` call, measured as `proxy-auth-db` with
+`q=1`; `/feed?p8=1` is once again an ordinary Feed request. Permanent coverage mocks the HTTP
+client, asserts the existing function and bound parameters, shares and verifies the old row
+mapping, checks fail-closed/redacted runtime construction, proves postgres.js is not constructed
+for the proxy port, retains authorization/handoff coverage, and fences one provider call plus one
+account query.
+
+**Verification status.** Local focused verification passed 8 suites / 92 tests. Local
+`npm run check` passed after the `origin/main` merge: lint has 0 errors and the same 5 warnings in
+untouched files, formatting and TypeScript are clean, and all 236 suites / 1,854 tests pass.
+External GitHub CI has not run for the final cleanup commit yet. The recorded Preview deployment is
+live evidence for the HTTP adapter but predates removal of the temporary probe; the final branch is
+not released or merged at this checkpoint. Docker PostgreSQL cannot exercise Neon's HTTPS SQL
+transport, so local transport coverage uses a mocked `neon()` client and Preview supplies the live
+driver check.
+
+Still pending for the integration owner: merge/release P8 only after its normal CI gate, then record
+Production warm and true-idle readings. No Production measurement, merge or release is claimed
+here.
+
+### Life areas F6: area backfill — 2026-09-30
+
+Branch `claude/areas-f6-backfill` from `10f367f` (merged with `origin/main` at `8280fdc`).
+Implementation complete, verified by tests and by a local run against the Docker Postgres; not
+merged, not deployed, and not run on Production. No migration and no new environment variable.
+
+**What changed**
+
+- **Tenant job `items.area-backfill`** (`src/lib/jobs/area-backfill.ts`): classifies the tenant's
+  ready items with no AI area and no correction, in batches (default 20, max 50), through the
+  same `classifyItemArea` function and `classify-area` task as capture.
+  - **Title and summary only** (decision 7): `classifyItemArea` gained an `input: "title-summary"`
+    mode that sends the title, the brief's overview (else the stored summary) and the item's
+    metadata, never body text. Correction examples are read once per batch.
+  - **Registered handler.** Added to the account-lifecycle allowlist
+    (`src/lib/lifecycle/queue-runtime.ts`), so the queue callback runs it instead of completing
+    it as "No tenant handler registered".
+  - **Idempotent and resumable.** Progress is the items themselves: a classified item leaves the
+    candidate set. A run walks candidates in id order with a cursor and chains the next batch as
+    a new job whose id is derived from the run and batch number, so a redelivered batch
+    re-enqueues the same job. Each batch stops at a 40 s time budget (callback limit 60 s).
+  - **Failures and budget.** One item's failure is counted and skipped for the rest of that run
+    (the next run retries it). Tenant budget exhaustion (`AIQuotaExceededError`) or a provider
+    quota refusal stops the run cleanly with status `budget-exhausted` and enqueues nothing more.
+  - **Counts only.** Each batch writes its counts into its own job payload
+    (`jobs.recordResult`) and logs `area_backfill_batch` with counts and ids; the logger
+    allowlist gained those counter names.
+- **Trigger and observation** (`src/app/api/v1/areas/backfill/route.ts`, signed-in user only):
+  - `POST` (Origin-checked; body optional `{batchSize, maxBatches}`) starts a run for the caller
+    and returns `{started, runId, jobId, unclassified}`, or `{started:false, reason}` with
+    `nothing-to-do` or `already-running` (a run that moved in the last 10 minutes).
+  - `GET` returns `{counts: {byArea, unclassified, corrected}, runs: [{runId, status, batches,
+totals: {classified, skipped, failed, byArea}}]}`. Counts only, never content.
+- **Repository:** `items.listAreaBackfillCandidates`, `items.countAreas`, `jobs.recordResult`,
+  `jobs.listRecentByType`. **Local dispatch:** `InlineTenantJobDispatcher` and
+  `resolveTenantJobDispatcher` run tenant jobs in the dev process under
+  `DISTIL_CAPTURE_DISPATCH=inline` (Vercel Queue `account-lifecycle` otherwise); the
+  local-development runbook table says so.
+- **Authorization:** `/api/v1/areas/backfill` (GET, POST, owner) and the `area-backfill` AI path
+  in `docs/authorization-matrix.json`; the account-lifecycle callback now lists `items`,
+  `ai_summaries`, `usage_counters` and `audit_log`. Route-surface fixture and harness counts
+  updated.
+
+**Verification (locally verified 2026-09-30)**
+
+- `npm run check` (after merging `origin/main`): lint (5 pre-existing warnings, 0 errors),
+  typecheck, 236 suites / 1,809 tests passed. New: `area-backfill.unit.test.ts` (skips classified and manually set items, batch size
+  and chaining, a failed item is counted and retried by the next run, resume after a crashed
+  batch without paying twice, budget and quota exhaustion stop cleanly, time budget, max batches,
+  strict payload, start/already-running/nothing-to-do, counts-only overview), a registration
+  test in `queue-runtime.unit.test.ts`, title-summary tests in `classify-area.unit.test.ts`, and
+  `areas/backfill/__tests__/route.contract.test.ts`.
+- `life-areas.integration.test.ts` (PostgreSQL): candidates and counts are tenant-scoped and skip
+  classified, corrected and non-ready items; `recordResult` and `listRecentByType` see only the
+  caller's jobs. 7/7 passed.
+- **Local run** (Docker Postgres, `next dev` on :3106, inline dispatch, signed in with a
+  throwaway local test password): before, 4 ready items, all unclassified, 0 corrected.
+  `POST {batchSize: 2}` started a run; a second POST returned `already-running`. The run
+  finished in 3 batches (2, 2, 0), all three jobs `completed` with no error. After: personal 0,
+  work 1, learning 1, updates 2; skipped 0; failed 0; unclassified 0. Four `classify-area` calls
+  on Gemini 3.5 Flash-Lite, 2,083 input and 168 output tokens, estimated $0.001. A further POST
+  returned `nothing-to-do`.
+
+**Production run (needs Amit's authorization for that run).** After this branch is merged and
+deployed, from a signed-in `https://distilai.app` tab (browser console, same origin):
+`await (await fetch("/api/v1/areas/backfill", {method: "POST"})).json()` to start, then
+`await (await fetch("/api/v1/areas/backfill")).json()` until the newest run's status is
+`completed`, `budget-exhausted` or `max-batches-reached`. Vercel logs show
+`area_backfill_batch` per batch. Re-running is safe; it picks up whatever is still unclassified.
+
+**Risks:** one Flash-Lite call per item, so a large library uses that many requests of the
+tenant's daily `ai.requests` quota (a budget stop is clean; re-run the next day). A batch that
+dies after enqueueing its successor but before finishing can overlap with that successor for a
+few items; `classifyItemArea` skips already-classified items, so the cost is at most a duplicate
+call. The account-lifecycle queue now also carries the backfill jobs.
+
+### Ask Distil removed (A1) — 2026-09-30
+
+Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get
+rid of the `/ask` endpoint outright, with no redirect. A1 is implemented on the plan's branch,
+`worktree-remove-ask-distil-plan`, after merging `origin/main` at `10f367f` (F7 had merged by
+then).
+
+- **Deleted:** `src/app/ask/page.tsx`, `src/components/phase2/ask-experience.tsx`,
+  `src/app/api/v1/answers/route.ts`, `src/lib/knowledge/answer-generator.ts`,
+  `src/components/agent/chat-panel.tsx`, `src/lib/agent/rag.ts`,
+  `evals/phase2-answer-acceptance.ts` (and the `eval:phase2-answers` script), plus their tests.
+- **Trimmed:** `src/lib/knowledge/service.ts` keeps only `KnowledgeServiceError`,
+  `regenerateSummarySchema`, `getItemIntelligence` and `enqueueSummaryRegeneration`. The answer
+  schema, types, in-memory answer cache, citation validation and `assertDateRange` went with
+  Ask. `knowledge-answer` is removed from `src/lib/ai/ai-config.ts`. `answers` /
+  `FEATURE_ANSWERS` is removed from `src/lib/phase2/feature-flags.ts`, the Phase 3 activation
+  preflight, `.env.local.example` and the web-vitals script. The sidebar loses the Ask entry, and
+  `AppShell` and `Sidebar` lose the `showAnswers` prop.
+- **Records:** `docs/authorization-matrix.json` drops the `/api/v1/answers`, `/ask` and
+  `agent-rag` entries. `grounded-answers` keeps `getItemIntelligence` and
+  `enqueueSummaryRegeneration`. The reviewed counts are now 91 API route files and 19 pages. The
+  route-surface fixture, harness counts (122 inventory, 52 owner mutations) and the bundle
+  baseline are updated. `AGENTS.md` and `docs/agent-architecture.md` note the removal.
+- **Tests changed:** the retrieval tenant-canary test now calls `searchKeyword` directly instead
+  of going through `answerFromKnowledge`, so tenant-invariant coverage is kept. The router
+  accounting test uses the `summarize` task. The sidebar test asserts five links and no Ask. The
+  Playwright nav test expects no Ask link on any viewport.
+- **Kept:** `searchPassages`, `GET /api/v1/search`, `content_chunks`, `grounding.ts`,
+  `hybridSearch` (still used by `src/app/api/items/route.ts`) and `/research`. No schema or data
+  change. AI usage rows recorded under `knowledge-answer` stay as history.
+- **Verification:** `npm run check` passes (227 suites, 1,678 tests; the 5 lint warnings
+  predate this branch). `npm run audit:phase3-security` passes. `next build` succeeds, and its
+  route list has neither `/ask` nor `/api/v1/answers`. The page was not opened in a browser; the
+  preview config lives in the main checkout, which this session could not edit.
+- **Production:** not deployed; nothing changed in Vercel or Neon. After release, `/ask` 404s
+  even where `FEATURE_ANSWERS=true`. Amit may then delete that variable (a cloud mutation).
+
+### Removing Ask Distil — 2026-09-29
+
+Amit's intent, condensed: Distil should stay very simple, and every feature must add a lot of
+value. Its purpose is to take information in from many sources, use AI to distil what he needs
+at that moment, and let him read and move on instead of visiting several places. Search earns its
+place because it finds things he has read. He asked whether Ask Distil (a chat that answers
+questions across the whole library) does too, or whether it is feature bloat.
+
+This checkpoint is the plan. It was implemented the next day; see "Ask Distil removed (A1) —
+2026-09-30".
+
+#### Critique (Claude, accepted by Amit in chat)
+
+- **Different product.** Ask serves a "second brain" you query later; Distil is a flow product.
+  A chat surface pulls the app toward "chat with my stuff", which is the sprawl Amit wants to
+  avoid.
+- **Little lift over search.** Ask retrieves through the same PostgreSQL full-text path
+  (embeddings optional, no pgvector) and then writes a paragraph over the hits. On a personal
+  library of a few hundred items, searching and reading the top briefs gives about the same
+  result and shows the real items, not a synthesis that might blend them wrong.
+- **Three question-answering features.** Library-wide Ask, the planned S3 "Go deeper" / "Ask
+  about this" in the reader, and `/research`. S3 fits the purpose best: it answers while he is
+  reading, from one item, and he keeps moving.
+- **Ongoing cost.** A nav slot, a feature flag, an API route, a grounded-answer prompt and
+  cache, an AI task (`knowledge-answer`), tenant-security tests, authorization-matrix entries
+  and AI budget, all kept working through every AI routing or schema change.
+- **Where it would earn its place:** questions across items ("what did the three pieces on X
+  disagree about?"). If Amit misses that after removal, the answer belongs on Feed's search
+  (see "Parked" below), not in a separate tab.
+
+#### What Ask is today (verified against `main` at `aba860b`)
+
+- **Surface.** `src/app/ask/page.tsx` renders `AskExperience`
+  (`src/components/phase2/ask-experience.tsx`) and returns 404 unless `FEATURE_ANSWERS=true`.
+  The sidebar shows an "Ask" link (`src/components/layout/sidebar.tsx:25`, filtered at `:80` by
+  `showAnswers`), which `src/app/layout.tsx:61` passes as `flags.answers` through `AppShell`.
+- **API.** `POST /api/v1/answers` (`src/app/api/v1/answers/route.ts`) calls
+  `answerFromKnowledge` (`src/lib/knowledge/service.ts:235`, with the in-memory answer cache and
+  the `GroundedAnswerResponse` types) and `createRouterGroundedAnswerGenerator`
+  (`src/lib/knowledge/answer-generator.ts`, AI task `knowledge-answer` in
+  `src/lib/ai/ai-config.ts`). Nothing else calls either function.
+- **Orphans found on the way.** `src/components/agent/chat-panel.tsx` (`ChatPanel`) is imported
+  by nothing; it belonged to the `/api/agent/**` routes deleted in P4. `src/lib/agent/rag.ts` is
+  imported only by its own test. It is the second caller of `hybridSearch`, which is why F7 keeps
+  `hybridSearch` alive.
+- **Stays.** `searchPassages` (`src/lib/knowledge/retrieval.ts`) and `GET /api/v1/search` (F7
+  owns their future), `content_chunks` and chunking, `grounding.ts`, and the
+  `research-synthesize` task (used by `src/lib/ai/research.ts`).
+
+#### Phase A1 — Remove Ask Distil
+
+- **Goal:** no `/ask` page, no answers API, no dead chat code; nothing else changes.
+- **Files:**
+  - Delete: `src/app/ask/page.tsx`, `src/components/phase2/ask-experience.tsx` and its component
+    test, `src/app/api/v1/answers/route.ts` and its security test,
+    `src/lib/knowledge/answer-generator.ts` and its unit test,
+    `src/components/agent/chat-panel.tsx`, `src/lib/agent/rag.ts` and its unit test.
+  - Edit: `src/lib/knowledge/service.ts` (remove `answerFromKnowledge`, `answerRequestSchema` if
+    unused elsewhere, the answer cache and answer-only types); `src/lib/ai/ai-config.ts` (remove
+    the `knowledge-answer` task from the union and all provider tables, as `dedup-check` was
+    removed, unless S3 has already started reusing it); `src/components/layout/sidebar.tsx`,
+    `src/components/layout/app-shell.tsx` and `src/app/layout.tsx` (drop the Ask entry and the `showAnswers` prop);
+    `src/lib/phase2/feature-flags.ts` and its test (drop `answers` / `FEATURE_ANSWERS`); the
+    sidebar and topbar component tests.
+  - Records: `docs/authorization-matrix.json` (the `/api/v1/answers`, `/ask`,
+    `grounded-answers` and `agent-rag` entries; `scripts/check-phase3-security.ts` checks this
+    file against the routes), `docs/perf/route-bundle-stats.baseline.json` (`/ask`), `AGENTS.md`
+    (the product line "search, ask, revisit", the `/ask` surface and the `FEATURE_ANSWERS` flag),
+    `docs/agent-architecture.md` (RAG section). Leave `docs/ai-first-architecture.md` as
+    historical, or add a one-line note that Ask was removed.
+  - Optional redirect: `/ask` → `/feed` so an old bookmark lands somewhere (see decision 2).
+- **Out of scope:** `/research`, `/api/v1/search`, `searchPassages`, `hybridSearch` (it keeps
+  its `/api/items` caller until F7), and any schema or data change. AI usage rows recorded under
+  `knowledge-answer` stay as history.
+- **Tests:** remove the deleted code's tests. Update the feature-flag, sidebar and topbar tests.
+  Keep `check-phase3-security` passing, and add a test that `/ask` returns 404 or redirects.
+- **Verification:** `npm run check`; local loop: the sidebar has no Ask entry, `/ask` behaves as
+  decided, and Today, Feed, the reader and research still work. Quick gate.
+- **Production:** no migration. After the release, Amit may delete `FEATURE_ANSWERS` from Vercel
+  (a cloud mutation; nothing reads it any more, so leaving it is harmless).
+- **Record:** a dated checkpoint and the handoff bullet updated.
+
+#### Decisions (Amit, in chat, 2026-09-30)
+
+1. **Remove the code, not just hide it.** Setting `FEATURE_ANSWERS=false` would have hidden the
+   tab but left the route, prompt, task and tests to maintain.
+2. **No redirect.** `/ask` returns 404 like any unknown path. (Claude had recommended a redirect
+   to `/feed`; Amit chose to get rid of the endpoint entirely.)
+
+#### Parked, not planned
+
+- **A short cited answer on Feed search.** When a Feed query reads like a question, show two or
+  three lines answered from the matching items, above the results. Only if Amit misses Ask
+  after A1. It would reuse `searchPassages` and a small prompt, not a chat.
+- **`/research` deserves the same question.** Deep web research is a different job from
+  distilling what Amit captured, and it has three entry points. Not assessed here.
+
+#### Order, ownership and recording
+
+A1 is one `claude/<task>` or `worktree-<task>` branch from `main` with its own state update. It
+is independent of F5, F6 and S3.
+
+### Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30
+
+**Scope: engine only.** Branch `claude/research-r2-synth-timeout` from `origin/main` `0d7d34b`
+(R2 is `0592c27`). Implementation complete and verified by deterministic tests (`npm run check`:
+237 suites, 1,884 tests). No live model calls. Not merged, not deployed.
+
+**Evidence (Production).** Run `8bb4d982…` reached synthesis (`research-synthesize` on Anthropic
+`claude-sonnet-4-6`), then the queue consumer `POST /api/queue/research-runs` failed on every
+delivery with "Vercel Runtime Timeout Error: Task timed out after 60 seconds".
+
+**Cause.** Three things together:
+
+1. `RESEARCH_TIMEOUTS_MS.synthesize` (50 s) was passed to the Anthropic SDK as a per-request
+   `timeout`. The Anthropic and OpenAI SDKs retry a timed-out request twice by default
+   (`maxRetries` 2), each retry with the full timeout, so the "50 s" call could run ~150 s. The
+   timeout did abort each HTTP attempt, but not the stage. (Gemini's grounded search had the same
+   shape through `withRetry`, 2 × 45 s.)
+2. R2 raised the synthesis budget to 12,000 tokens with `rejectTruncated`, so Claude wrote a
+   longer report than the ~50 s it has (Sonnet streams ~60–80 tokens/s); before R2 the 4,096
+   default capped it.
+3. The stage's attempt counter was incremented only in the `catch`. A delivery Vercel kills at
+   60 s never reaches it, so the stage was redelivered without bound (until the 15-minute stale
+   guard on the read routes failed the report).
+
+**Fix.**
+
+- `GenerateOptions` gains `signal` (passed to all three SDKs) and `providerOverrides` (per-provider
+  `maxTokens` / `rejectTruncated`, applied by the provider that serves the call); Anthropic and
+  OpenAI now honour `maxAttempts` as `maxRetries = maxAttempts - 1` (default unchanged when not
+  given). This also makes the existing `maxAttempts: 1` of `summarize-complex` (40 s on Claude)
+  and `classify-area` really single-attempt.
+- Every research model call makes one attempt (`maxAttempts: 1`); the queue redelivers a failed
+  stage.
+- Synthesis: 45 s timeout; 2,400 output tokens on Claude/GPT (~40 s at 60 tokens/s) with a report
+  that reaches the cap kept, not failed (it already has its headings); Gemini 8,192 tokens with
+  truncation rejected (the pinned `@google/generative-ai` 0.24.1 has no thinking-budget option).
+  Prompt unchanged; Claude reports may be shorter until R3 splits the call.
+- New hard stage deadline `RESEARCH_STAGE_DEADLINE_MS` (50 s, `withStageDeadline`): aborts the
+  stage's requests through the signal and rejects even if a provider ignores it, so the attempt is
+  recorded and the queue retry directive returns well inside 60 s. A late answer is not written
+  (`signal.throwIfAborted()` before the report and finding writes).
+- The attempt is written before the stage runs (restored on success, so attempts still count
+  failures only). A stage whose `MAX_STAGE_ATTEMPTS` (2) deliveries were all killed takes its
+  degraded outcome without calling the model; synthesis fails the report with "Research failed:
+  the report took too long to write. Please try again." Costs one progress write per stage.
+
+**Tests.** `research-stages.unit.test.ts`: a never-resolving provider under fake timers settles at
+exactly the deadline with the signal aborted and the attempt recorded; a late answer is not
+stored; the last attempt fails the report with the clear message; a killed delivery has already
+recorded its attempt; exhausted killed deliveries fail synthesis / degrade search without a model
+call; call options updated. `summary-provider.unit.test.ts`: Anthropic gets `maxRetries: 0` and
+the signal; `providerOverrides` gives Claude 2,400 (cut-off kept) and Gemini 8,192 (cut-off
+rejected).
+
+**Next.** Release decision for Amit; after deploy, rerun a research question on Production and
+check the synthesis latency in the audit log. Runs stuck like `8bb4d982` fail through the stale
+guard when read.
+
+### Inline search F5: filter bar on Today — 2026-09-30
+
+Phase F5 of "Inline search, quick filters and life areas — 2026-09-29", built on the redesigned
+header and sheet from PR #75. Branch `claude/search-f5-today-bar` from `10f367f`.
+Implementation complete and verified by tests; not merged, not deployed, not yet checked in a
+browser with a signed-in user.
+
+**What changed**
+
+- **Today's header** is the same `FilterBar` as the Feed: the "Your reading habit / Today" title
+  on the left, the compact search pill (placeholder "Search unread"; accessible name, `/` and
+  Esc unchanged) and the Filters button on the right, and removable chips when a filter is on.
+- **When Today switches to results** (`isTodayFiltered` in `src/lib/feed/today-selection.ts`):
+  when `hasActiveFilters` is true for the URL read as Today reads it. That means a search of
+  2+ characters, an area, or any facet (type, X, priority, source, topic, collection, dates).
+  A sort alone does not count, and `read`, `showRead`, `archive` and `cursor` are ignored
+  (`todayFilterState` forces unread and active). With none of these, Today is the unchanged
+  fixed selection: the same query, the same sections and the same fallback request.
+- **Results mode:**
+  - The two sections are replaced by one "Unread matches" list: unread, active items, at most
+    20 (`TODAY_RESULTS_LIMIT`; the count shows "First N" when more exist).
+  - Order: by priority unless a sort was chosen, or by relevance while searching.
+  - A "Search everything →" link goes to `/feed` with the same parameters, minus the ones
+    Today ignores, plus `read=true`, so the wider search covers read items too. Archived items
+    stay out, as on the Feed by default. **Deviation, for review:** the brief said "same
+    parameters"; without `read=true` the Feed would show the same unread set.
+  - Empty state: "Nothing unread matches “…”" (with "with these filters" when a filter is also
+    on), or "No unread items match these filters.". The link stays visible.
+  - Typing narrows the on-screen items at once, as on the Feed; the debounced `q` then goes
+    to `/?q=…`.
+- **Server rendering:** `src/app/page.tsx` reads `searchParams`. When filtered, it parses
+  `todayResultsSearch(state)` through the Feed's `parseFeedQuery` and runs `loadFeedPage` in the
+  same single tenant transaction as before. It also reads the collection list (for the sheet's
+  Collection group and chip names), which is one extra query on every Today load. The page hands
+  over a keyed `TodayView`; the client uses it only when the key matches its URL, and otherwise
+  fetches the same query from `/api/v1/feed`, like the Feed island does.
+- **Sheet on Today** (`FeedFilterSheet` gains `unreadQueue` and `showSort`; `viewMode` is now
+  optional):
+  - **Kept:** Area, Type (with X posts), Priority, Source, Topic (from the items on screen),
+    Collection, and Date added.
+  - **Hidden:** "Unread only" and Archive, because Today is always the unread, active queue.
+    Also hidden: the layout toggle, because Today has one card layout.
+  - **Sort** shows only in results mode, because the default sections have a fixed order.
+- **Shared code, not forked:** `nextFeedUrl` moved into `quick-filters.ts` as
+  `filtersUrl(pathname, …)`, which both pages use (`nextFeedUrl` is kept as a wrapper).
+
+**Checks (locally verified 2026-09-30)**
+
+- `npm run check`: lint 0 errors (the 5 existing warnings), typecheck clean, 232 suites /
+  1,772 tests passed.
+  - New `src/lib/feed/__tests__/today-selection.unit.test.ts`: the filtered-mode rule, Today's
+    scope and sort, results query, view key, link parameters, view mapping and `filtersUrl`.
+  - `today-experience.component.test.tsx`: default, sort-only, filtered and empty states; link
+    parameters; the client fallback query; typing narrows then commits `/?q=`; Clear.
+  - The `/` page test covers the server-rendered default, Today-ignored parameters, search with
+    filters and filter-only priority order.
+  - A `FeedFilterSheet` test covers the Today variant.
+- A dev server on port 3105 rendered `/`, `/?q=news&area=work` and a filter-only URL without
+  errors. The requests were anonymous, so they got the client-fetch fallback; no signed-in
+  browser check was done.
+
+**Orchestrator review (Claude, main session, 2026-09-30):** `read=true` on "Search everything →"
+is kept (the link is meant to widen the search beyond the unread queue). Checked in the local
+in-app browser (Docker Postgres, signed-in local owner, real items) at 1280 px and 375 px, light
+and dark: default Today unchanged, `?q=` results, filters-only and empty-result states, chips
+with Clear, the phone bottom sheet, no horizontal scroll at 375 px, and the link landing on
+`/feed?q=…&read=true`. Minor, shared with Feed: the sheet's Area segment labels truncate at 375 px.
+PR [#79](https://github.com/amitsharmaak/distil/pull/79). No migration and no environment change.
+
+### Deep research R2: grounded numbered citations — 2026-09-30
+
+**Scope: engine and UI halves.** Branch `claude/research-r2-citations` from `main` `10f367f`,
+with `main` merged in after R1 landed (`8280fdc`, merge `d43ddfa`); spec: checkpoint "Deep
+research readability: diagnosis and phased plan — 2026-09-29", **R2**. Implementation complete
+and verified by deterministic tests, one orchestrated local run (`79e2f8cc`, which exposed the
+synthesis regression below) and two synthesis replay calls; the page was checked in the browser
+by the orchestrator (superscripts, `#source-n` jump, auto-open and `:target` highlight work).
+Not merged, not deployed.
+
+**References re-verified on `10f367f`.** URL scrape at `research.ts:552-553`, "with source URLs"
+prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, untouched),
+`GeminiProviderImpl.generateTextWithSearch` returning only `response.text()` (now
+`providers.ts` ~175; the spec's `:161` pointed at the `tools` comment), the synthesis template's
+"inline source links", `RESEARCH_TIMEOUTS_MS` unchanged.
+
+**What changed and why.**
+
+- **Provider.** `GeminiProviderImpl.generateTextWithSearch` returns `sources` from
+  `groundingMetadata.groundingChunks` (`web.uri`, `web.title`; http(s) only, de-duplicated) via
+  `parseGroundingSources`. OpenAI and Anthropic have no search method; the test fake returns
+  `sources: []`. The unused non-tenant `generateTextWithSearch` still returns a string.
+- **Tenant facade** (`createTenantAIRouter(...).generateTextWithSearch`) returns
+  `{ text, sources, grounded }`; `grounded: false` with no sources on both plain fallbacks (no
+  Gemini provider; grounding refused for quota). It accepts a prompt pair
+  `{ grounded, ungrounded }` so the fallback can ask for recalled sources without an extra call.
+  Tenant admission, accounting and audit unchanged.
+- **Redirect resolution** (`src/lib/ai/research-sources.ts`, search and deepen stages). Only
+  `https://vertexaisearch.cloud.google.com/grounding-api-redirect/…` links are requested, `GET`
+  with `redirect: "manual"`, at most 8 per stage in parallel under one 3 s budget; the
+  `Location` is accepted only when it is an absolute http(s) URL on another host without
+  credentials. Any failure keeps the redirect; the grounding title (usually the domain) is kept,
+  falling back to the final domain. No other host is ever fetched; nothing is logged.
+- **Prompts.** Search and deepening (`researchNotesPrompt`) ask for specific facts, figures,
+  dates, named examples and disagreements, and no URLs. The ungrounded variant also asks for a
+  trailing ` ```sources ` JSON block of at most three sources the model is confident exist;
+  `extractRecalledSources` parses it (also a `json` fence or a bare trailing array), caps at
+  three, and strips it and a dangling "Sources:" label from the notes; malformed or truncated
+  blocks give no sources and keep the text. Synthesis gets the findings (each section lists
+  "Sources for this section: [n]…") plus a numbered, de-duplicated list `[n] title — domain`
+  (at most 40), and must cite with `[n]` only, no URLs and no Sources section. The four-heading
+  template otherwise stays (R3 replaces it); "inline source links" is gone.
+- **Citations.** After synthesis `finalizeCitations` keeps only cited sources, renumbers them
+  1..k in order of first citation, rewrites markers (`[3]`, `[1, 4]`, `[2-4]` → adjacent `[n]`),
+  drops ids not in the list (a marker left empty is removed) and leaves `[x](url)` links and
+  `[n]:` definitions alone.
+- **Model calls unchanged** (plan, one per sub-question, gaps, one per gap, synthesis).
+- **UI (on R1's `src/components/research/`).** A report whose stored sources are objects
+  (`hasNumberedSources`) is rendered in numbered mode; legacy `string[]` reports keep R1's
+  behaviour exactly (cited/other split, domain chips, markers untouched).
+  - `linkCitationMarkers` (`report-markdown.ts`) rewrites each run of adjacent known markers
+    (`[2]`, `[1][3]`, `[1, 3]`) into one in-page link `[1,3](#source-1 "distil:ref")`, outside
+    fenced and inline code, links, images, escaped brackets and `[n]:` definitions; unknown ids
+    stay plain text; line numbers are preserved so heading ids still match.
+  - `createCitationLink` (`report-body.tsx`) renders such a link as one `<sup>` group of
+    numbers, each linking to `#source-n` with "title — domain" as tooltip and "Source n: …" as
+    accessible name; clicking opens the collapsed sources disclosure before the jump. No new
+    dependency.
+  - The sources list becomes "Sources (k)", collapsed, ordered by id, each row `id="source-n"`
+    with `scroll-mt-20` and a `:target` highlight, title and domain plus external link; no
+    "Other links" disclosure. When no source is `grounded`, a visible one-line note reads
+    "Sources recalled by the model, not verified by search". The header count is the number of
+    object sources. An empty `[]` renders like a report without sources.
+
+**Stored shapes.**
+
+- `research_reports.sources` (existing text column, no migration): JSON array of
+  `{ id, url, title, domain, grounded }`, cited-only, `id` matching the `[n]` markers.
+  Legacy reports keep `string[]`; both routes pass either through `JSON.parse` unchanged.
+- Run state (`research_reports.progress`) **version 2**: `findings` and `deepening` hold
+  `{ question, notes, sources: [{ url, title }], grounded } | null`. Version 1 still parses and is
+  upgraded in memory (the next write stores v2): each string finding becomes notes with its
+  question from `subQuestions`/`gaps`, and its inline URLs (at most 8) become ungrounded sources
+  titled by domain, so in-flight runs finish and only what synthesis cites survives.
+
+**Verification.** `npm run check` green after the synthesis fix (lint 0 errors; typecheck; 236
+suites, 1,840 tests). Fix tests: headless answer retried then stored on the good retry,
+failed after the attempts, `assertCompleteReport` cases, synthesis call options, per-section
+"Sources:" lines (`research-stages.unit`), `rejectTruncated` for Gemini and Anthropic and
+thought-part filtering (`summary-provider.unit`), prompt wording (`prompts.unit`), derived
+titles, trimming, generic/opaque segments and unresolved-redirect display
+(`research-sources.unit`). UI tests (`src/app/research/[id]/__tests__/`): marker linking, grouping,
+unknown ids, code/link/definition exclusions and line preservation (`report-markdown.unit`),
+`hasNumberedSources` (`research-sources.unit`), superscript mapping, tooltips and accessible
+names, click-to-open, anchor ids, unverified note shown and hidden, legacy reports unchanged,
+empty `[]`, and a stored-report fixture rendered through the full `ResearchReportView`
+(`report-components.component`); the page test now expects "Sources (1)" for object sources.
+Engine tests: grounding-chunk parsing (`summary-provider.unit`), facade shape and fallback
+prompt selection (`router-search.unit`), redirect resolution with a mocked fetch — success,
+timeout, errors/unsafe locations, cap, non-Google hosts untouched, de-duplication
+(`research-sources.unit`), recalled-block parsing, catalog and renumbering, v1 resume and v1
+synthesis, grounded stage walk, malformed block (`research-stages.unit`), prompts
+(`prompts.unit`), object and legacy sources through both routes
+(`src/app/api/ai/research/__tests__/report-sources.unit`).
+
+**Grounding works live (correcting the earlier assumption).** In local run `79e2f8cc` the
+free-tier key's `research-search` calls on `gemini-3-flash-preview` were grounded: all 7 stored
+sources are `grounded: true`, and 6 of 7 redirects resolved to real hosts
+(`machinelearning.apple.com`, `developer.android.com`, `anthropic.com`, …), matching the R2
+redirect assumption. Grounding titles are bare domains ("apple.com"). One source stayed an
+unresolved redirect (titled "biggo.com"); the run logged nothing that tells whether it was over
+the 8-per-stage cap, hit the 3 s budget or got a non-3xx, so search stages now log counts only
+(`research_grounding_sources`: sources, redirects, overCap, unresolved; no URLs). The earlier
+belief that grounding is refused on the free-tier key may have been specific to the older
+search model or quota at the time; not re-investigated.
+
+**Synthesis regression found live and fixed (2026-09-30).** Run `79e2f8cc` (synthesis on
+`gemini-3.5-flash` with the Anthropic key blanked) completed but stored an 87-word, headless
+report starting mid-sentence with the model's own deliberation about source numbering.
+Diagnosis (audit row plus one replay call on a synthetic 7-finding fixture): the call used the
+provider-default 4,096 output tokens; the model spent 3,929 on thinking, stopped with
+`finishReason: MAX_TOKENS`, and returned one text part holding the cut-off tail of its
+reasoning. Not a post-processing bug (`finalizeCitations` and block stripping never trim the
+head). Fixes:
+
+- Synthesis gets `maxTokens: 12_000` (`RESEARCH_SYNTHESIZE_MAX_TOKENS`) and
+  `rejectTruncated: true`, a new `GenerateOptions` flag: Gemini `MAX_TOKENS`, OpenAI `length` and
+  Anthropic `max_tokens` then throw `invalid_output`, so the stage retries instead of storing a
+  cut-off answer.
+- Guard: `assertCompleteReport` fails the attempt when the answer has no `##` heading; after the
+  retry budget the report is marked failed ("incomplete report") rather than stored.
+- Gemini answer text excludes `thought: true` parts (`geminiText`); none appeared in the replay,
+  but `response.text()` would include them.
+- Prompt: each findings section now carries its sources on a "Sources: [n] title — domain" line
+  under its heading (no separate numbered list, which invited a mapping exercise); the report
+  must use the four `##` headings and "begin directly with the line ## Executive Summary", with no
+  title, notes, planning or reasoning.
+- Replay with the fix (second and last live call): `STOP`, starts with `## Executive Summary`,
+  1,939 words, 4 `##` and 10 `###` headings, all 7 sources cited. **Margin is thin:** 42.7 s of
+  the 50 s timeout and 11,866 of 12,000 output tokens (8,436 thinking). A heavier input can hit
+  the timeout or the cap; both now retry and then fail cleanly instead of storing garbage.
+  Lowering Gemini's thinking level (`thinkingConfig`) was not tried live (budget); R3's
+  per-section writing removes the single large call. Production synthesis runs on
+  `claude-sonnet-4-6`, where this did not occur.
+
+**Display titles (UI, applies to stored rows).** `normalizeSources` replaces a missing or
+domain-like title ("apple.com") with one derived from the URL's last meaningful path segment
+(`titleFromUrl`: decoded, separators to spaces, first letter capitalised, ≤ 80 characters at a
+word boundary; generic segments like "news"/"index" and opaque ids skipped), else no title so
+the row shows the domain alone. An unresolved grounding redirect shows only its grounding
+domain: no path in the list, domain taken from the title when needed.
+
+**Before/after vs `5a9cf55a`.** Before: 41 scraped URLs listed and 8 cited, links inline in the
+text. Run `79e2f8cc` (before the synthesis fix): 7 cited, grounded, numbered source objects,
+but a broken 87-word report. The fixed synthesis replay on a synthetic fixture: 1,939 words,
+7/7 sources cited with `[n]` markers and no URLs. A full local run with the fix is still to
+be done by the orchestrator.
+
+**Not deployed. Nothing changed in Vercel or Neon.**
+
+### Deep research R1: readable report page — 2026-09-30
+
+**Why.** Phase R1 of "Deep research readability: diagnosis and phased plan — 2026-09-29": make
+existing reports easy to read without any engine change. Branch `claude/research-r1-page` from
+`origin/main` `10f367f`; feature commit `3ea0ec9`. UI only — no engine, prompt, provider, route
+or schema change. Implementation complete, verified by tests and in the local in-app browser
+(orchestrator, 2026-09-30); merged and deployed as recorded in the Current handoff.
+
+**References re-checked on `10f367f` before editing.** `page.tsx:372` was the `prose prose-sm`
+body card, `:379-402` the sources card, `:66` `extractExecutiveSummary`; `Markdown`
+(`src/components/markdown.tsx`) already took a `components` prop. Finding while checking: the
+`prose` classes were inert — `@tailwindcss/typography` is not installed — so the old body had no
+reading typography at all. The new page uses the item reader's `.distil-reader` styles instead.
+
+**What changed**
+
+- `src/app/research/[id]/page.tsx`: a completed report renders `ResearchReportView`; the
+  queued/running stepper, failed state, loading and error states, SSE and polling are unchanged.
+  `sources` is typed `unknown` and normalised in the view.
+- `src/components/research/report-markdown.ts` (pure): strips the leading duplicate H1 (a summary
+  H1 is kept and demoted), demotes later H1s to H2, drops `---`/`***`/`___` rules (not setext
+  underlines, table rules or fenced code); rewrites parenthesised citation groups
+  ("([A](u), [B](u))", "(Source: [C](u))", "(https://…)") into bare links marked as citations;
+  lifts the first TL;DR / Summary / Executive Summary section (heading levels 1–3); extracts
+  `##`/`###` headings with a stable slug function (de-duplicated `x`, `x-2`, …; `tldr` reserved)
+  and their source line; counts words without URLs and markup (230 wpm).
+- `report-body.tsx`: markdown in `.distil-reader` typography via the existing `Markdown`
+  `components` prop — `h2`/`h3` get the TOC ids by source line (`node.position`), so ids always
+  match the TOC; citation links and bare autolinks render as a small muted domain chip with the
+  lucide `ExternalLink` icon (href kept, `target=_blank`, `rel="noopener noreferrer"`, full title
+  on hover and in the accessible name); other prose links keep their text; tables scroll inside
+  their own bordered container (code blocks already scroll via `.distil-reader pre`).
+- `report-toc.tsx`: "On this page" — sticky right rail on `lg` with the current section
+  highlighted (IntersectionObserver, skipped where unavailable), collapsible disclosure on smaller
+  screens that closes after a tap; hidden when there are fewer than two entries.
+- `research-sources.ts` + `research-sources-list.tsx`: one `normalizeSources` helper accepts the
+  legacy `string[]`, R2's `{ id, url, title, domain, grounded }` objects, or a JSON string of
+  either (invalid and repeated URLs dropped). `splitSources` puts sources whose URL appears in the
+  report (or whose `[n]` marker does) under "Cited in this report (n)" in text order — plus any
+  linked URL missing from the stored list — and the rest under "Other links the research touched
+  (n)". Both disclosures are collapsed by default; rows show domain + short path (title + domain
+  for R2 objects, with their number).
+- `report-toolbar.tsx`: Copy as Markdown (copies the stored markdown unchanged, "Copied!" for 2 s)
+  and Research further (same `DeepResearch` dialog) as one compact ghost-button toolbar.
+- `research-report-view.tsx`: header ("Deep research" eyebrow, the question in the reader's serif
+  display size, "Completed <date> · N sections · ~M min read · K sources", where K is the cited
+  count, or the total when nothing is cited), toolbar, mobile TOC, TL;DR callout, body, sources;
+  reading column `max-w-2xl` (the item reader's width) inside a `max-w-5xl` grid with a 13rem rail.
+  Theme tokens only (`muted`, `border`, `primary`, `foreground`), so dark mode follows the theme.
+
+**Before / after against the `5a9cf55a` baseline** (structure derived from the code and the
+recorded shape of that report — 789 words, 41 sources listed / 8 cited; not rendered here):
+
+|              | Before                                                                  | After                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Body         | one `prose-sm` card (typography plugin absent, so effectively unstyled) | card-free reading column in `.distil-reader` serif, 1.1875rem, reader width                                           |
+| Title        | question in the header **and** the model's `# Research Report: …` H1    | question once, in the header                                                                                          |
+| Rules        | `---` between every section                                             | removed                                                                                                               |
+| Summary      | "Executive Summary" card, regex on `##`/`#` only                        | TL;DR callout from TL;DR / Summary / Executive Summary at levels 1–3                                                  |
+| Navigation   | none                                                                    | "On this page" from `##`/`###` (rail on desktop, disclosure on phones)                                                |
+| Inline links | full link text, two parenthesised links per bullet                      | small domain chips, parentheses removed                                                                               |
+| Header stats | start/complete timestamps and status badges                             | "Completed <date> · N sections · ~3 min read · 8 sources" (789 words / 230 wpm ≈ 3; expected, confirm in the browser) |
+| Sources      | 41 raw truncated URLs, always open                                      | collapsed; "Cited in this report (8)" first, "Other links the research touched (32)" behind a second disclosure       |
+| Actions      | two outline buttons above the summary                                   | one compact toolbar under the header                                                                                  |
+
+**Verification (local, this worktree).** `npm run check` passes: lint 0 errors (the 5 known
+warnings, none in changed files), typecheck clean, Jest **234 suites / 1,785 tests passed**. The
+research page suites grow from 16 to 66 tests: `report-markdown.unit` (slugs and de-duplication,
+H1/rule stripping incl. setext/table/code safety, citation compaction, TL;DR variants, headings
+with duplicates, a report with no summary heading, stats), `research-sources.unit` (legacy
+`string[]`, object sources, JSON string, dedupe, cited/other split, `[n]` markers),
+`report-components.component` (heading ids by line, link chips, TOC variants, sources
+disclosures, the full view with legacy and object sources) and the updated
+`page.component` suite. No dev server, no live model calls, no database access.
+
+**Gaps and next steps.**
+
+1. **Browser verification done (orchestrator, local loop, report `5a9cf55a`, 2026-09-30):**
+   dev server from this worktree against the local Docker Postgres with a throwaway local login
+   hash passed through the process environment (Amit's `.env.local` untouched). Measured:
+   header "Completed 21 Sept 2026 · 3 sections · ~3 min read · 8 sources"; one H1 (the question);
+   no `<hr>` in the body; 779 words rendered in the article; domain chips inline; TOC rail on
+   desktop (1280 px) highlights the current section; "Sources · 8 cited, 32 more" collapsed
+   ("Other" is 32, not 33 — one stored URL was a duplicate after normalisation); 375 px mobile:
+   no horizontal scroll, collapsible "On this page · 10 parts"; dark mode (app theme toggle)
+   legible, chips included. Screenshots were taken in the session (not stored).
+2. Citation compaction is regex-based: links in unusual shapes (URLs containing parentheses, a
+   citation group split across lines) stay as ordinary links. Harmless; R2 replaces URLs in the
+   text with `[n]` markers.
+3. `[n]` markers are not yet rendered as superscript citations — that is R2's UI work; the
+   sources list already numbers titled source objects.
+4. Not merged, not deployed; nothing changed in Vercel or Neon.
 
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 

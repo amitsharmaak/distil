@@ -72,6 +72,9 @@ jest.mock("@/lib/auth/neon-server", () => ({
 jest.mock("@/lib/auth/repository-runtime", () => ({
   getAuthRepositoryPort: async () => fakes.authRepositories,
 }));
+jest.mock("@/lib/auth/proxy-repository-runtime", () => ({
+  getProxyAuthRepositoryPort: async () => fakes.authRepositories,
+}));
 jest.mock("@/lib/database", () => ({
   getTenantRepositories: async (auth: AuthContext) =>
     createPostgresRepositoryAccess(fakes.tenantSql).getTenantRepositories(auth),
@@ -193,6 +196,10 @@ describe("request cost fence (P2: one transaction, three statements)", () => {
     expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
     expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
     expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledWith({
+      provider: "neon",
+      providerSubject: "provider-subject",
+    });
 
     // API pass-throughs carry the timing as a forwarded request header (see
     // PROXY_TIMING_HEADER); Next.js exposes forwarded headers under this prefix.

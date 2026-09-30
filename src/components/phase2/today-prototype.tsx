@@ -91,14 +91,111 @@ function TodaySection({
   );
 }
 
-/** Fixture-backed prototype; the integration layer supplies ranked items later. */
-export function TodayPrototype({ priority, revisiting }: TodayPrototypeProps) {
+/** Today's title block; the filter bar places it beside the search. */
+export function TodayHeading() {
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground">Your reading habit</p>
+      <h1 className="font-serif text-3xl font-bold">Today</h1>
+    </div>
+  );
+}
+
+export interface TodayResultsProps {
+  items: KnowledgeItem[];
+  /** More unread matches exist than are shown. */
+  hasMore: boolean;
+  /** Shown when nothing matches. */
+  emptyMessage: string;
+  /** The same search on the Feed, across read items too. */
+  searchEverythingHref: string;
+}
+
+/** Filtered Today: one list of unread matches in place of the two sections. */
+export function TodayResults({
+  items,
+  hasMore,
+  emptyMessage,
+  searchEverythingHref,
+}: TodayResultsProps) {
+  return (
+    <section aria-labelledby="today-results-heading">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex items-baseline gap-2">
+          <h2 id="today-results-heading" className="font-serif text-xl font-semibold">
+            Unread matches
+          </h2>
+          {items.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              {hasMore ? `First ${items.length}` : items.length}
+            </span>
+          )}
+        </div>
+        <Link
+          href={searchEverythingHref}
+          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Search everything →
+        </Link>
+      </div>
+      {items.length ? (
+        <ul className="space-y-3">
+          {items.map((item) => (
+            <TodayItem key={item.id} item={item} />
+          ))}
+        </ul>
+      ) : (
+        <p
+          className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground"
+          role="status"
+        >
+          {emptyMessage}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Today's page body. `header` replaces the plain title (the page passes the
+ * filter bar); `results` replaces the two sections with the filtered list, and
+ * `children` (a loading or error state) replaces both.
+ */
+export function TodayPrototype({
+  priority,
+  revisiting,
+  header,
+  results,
+  busy = false,
+  children,
+}: TodayPrototypeProps & {
+  header?: React.ReactNode;
+  results?: TodayResultsProps;
+  /** A navigation is pending; the current content stays visible, dimmed. */
+  busy?: boolean;
+  children?: React.ReactNode;
+}) {
   return (
     <main className="mx-auto w-full max-w-3xl space-y-8 px-4 py-6 sm:px-6">
-      <header>
-        <p className="text-sm text-muted-foreground">Your reading habit</p>
-        <h1 className="font-serif text-3xl font-bold">Today</h1>
-      </header>
+      <header>{header ?? <TodayHeading />}</header>
+      <div
+        className={busy ? "space-y-8 opacity-60 transition-opacity" : "space-y-8"}
+        aria-busy={busy}
+      >
+        {children ??
+          (results ? (
+            <TodayResults {...results} />
+          ) : (
+            <TodayDefaultSections priority={priority} revisiting={revisiting} />
+          ))}
+      </div>
+    </main>
+  );
+}
+
+function TodayDefaultSections({ priority, revisiting }: TodayPrototypeProps) {
+  return (
+    <>
       <TodaySection
         title="Priority Reading"
         icon={<Bookmark className="h-5 w-5" />}
@@ -111,6 +208,6 @@ export function TodayPrototype({ priority, revisiting }: TodayPrototypeProps) {
         items={revisiting}
         empty="Saved ideas will return here when the timing is useful."
       />
-    </main>
+    </>
   );
 }

@@ -6,13 +6,8 @@ import type {
   InvitationRecord,
 } from "@/lib/auth/ports";
 import type { LinkedAccount, ProviderIdentity } from "@/lib/auth/account";
+import { mapAuthAccount, type AuthAccountRow } from "@/lib/auth/account-row";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
-
-interface AccountRow {
-  user_id: string;
-  primary_email: string | null;
-  status: LinkedAccount["status"];
-}
 
 interface InvitationRow {
   id: string;
@@ -34,16 +29,6 @@ interface InvitationRow {
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function mapAccount(row: AccountRow | undefined): LinkedAccount | undefined {
-  if (!row) return undefined;
-  const userId = userIdSchema.parse(row.user_id);
-  return {
-    userId,
-    ...(row.primary_email ? { primaryEmail: row.primary_email } : {}),
-    status: row.status,
-  };
 }
 
 function mapInvitation(row: InvitationRow | undefined): InvitationRecord | undefined {
@@ -161,7 +146,7 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
   async consumeInvitationAndLinkIdentity(
     input: ConsumeInvitationInput
   ): Promise<LinkedAccount | undefined> {
-    const [row] = await this.sql<AccountRow[]>`
+    const [row] = await this.sql<AuthAccountRow[]>`
       SELECT * FROM distil_consume_invitation(
         ${input.invitationId}::uuid,
         ${input.tokenHash},
@@ -172,23 +157,23 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
         ${input.consumedAt}::timestamptz
       )
     `;
-    return mapAccount(row);
+    return mapAuthAccount(row);
   }
 
   async findAccountByIdentity(input: {
     provider: ProviderIdentity["provider"];
     providerSubject: string;
   }): Promise<LinkedAccount | undefined> {
-    const [row] = await this.sql<AccountRow[]>`
+    const [row] = await this.sql<AuthAccountRow[]>`
       SELECT * FROM distil_resolve_auth_identity(${input.provider}, ${input.providerSubject})
     `;
-    return mapAccount(row);
+    return mapAuthAccount(row);
   }
 
   async findAccountByEmail(email: string): Promise<LinkedAccount | undefined> {
-    const [row] = await this.sql<AccountRow[]>`
+    const [row] = await this.sql<AuthAccountRow[]>`
       SELECT * FROM distil_resolve_active_auth_email(${email})
     `;
-    return mapAccount(row);
+    return mapAuthAccount(row);
   }
 }
