@@ -25,15 +25,6 @@ const SELF_AUTHENTICATING_PATHS = [
 ] as const;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/**
- * Temporary P8 hook. It runs only after a real signed legacy session passes
- * every authentication and origin check; public/test/bypass paths never call
- * it. Omit the hook for normal request behavior.
- */
-export interface LegacyAuthHooks {
-  onAuthenticated?: () => Promise<void>;
-}
-
 export function isAuthEnabled(): boolean {
   const environment = readAuthEnvironment();
   return Boolean(environment.passwordHash && environment.sessionSecret);
@@ -67,10 +58,7 @@ async function legacyTokenMatches(request: NextRequest, expected?: string): Prom
   return difference === 0;
 }
 
-export async function checkAuth(
-  request: NextRequest,
-  hooks: LegacyAuthHooks = {}
-): Promise<NextResponse | null> {
+export async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
   if (pathname === "/login" || hasSpecializedAuth(pathname)) return null;
 
@@ -105,7 +93,6 @@ export async function checkAuth(
         { status: 403 }
       );
     }
-    await hooks.onAuthenticated?.();
     return null;
   }
 
