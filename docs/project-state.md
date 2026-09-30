@@ -18,6 +18,18 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
   and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
   recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
+- **Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 recorded, nothing
+  implemented (branch `claude/chrome-extension-web-store-fb0101`, docs only; checkpoint "Chrome
+  extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30"):** Amit wants
+  the extension on the Chrome Web Store and wants users never to see a capture token: install,
+  sign in, save. Design: per-browser connection tokens (new `kind`/`label` columns on
+  `capture_tokens`, manual token kept for the Shortcut), a public `/extension/connect` page that
+  mints a token and hands it to the pinned extension id through `externally_connectable` with a
+  state nonce, "Connected browsers" in Settings, and "Sign in again" in the extension on
+  rejection. Plan: **X1** server (migration, routes, connect page, returning-user `next`),
+  **X2** extension 2.0 (sign-in flow, no token field, pinned `key`), **X3** store listing
+  (packaging script, privacy page, listing text; Amit submits). Next: Amit answers the five
+  decisions in the checkpoint and picks a phase (recommended X1).
 - **One capture token per account (PR [#90](https://github.com/amitsharmaak/distil/pull/90),
   squash merged on 2026-09-30 at Amit's request after green CI; checkpoint "Single capture token —
   2026-09-30"):** Amit found named per-client tokens overkill; capture sources are not tracked per
@@ -540,6 +552,198 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30
+
+**Why.** Amit wants the browser extension on the Chrome Web Store, and he wants users never to
+see or handle a capture token: install the extension, sign in to Distil, start saving. Today the
+extension is load-unpacked only and its Options page asks for an origin and a pasted token from
+Settings → Capture. This checkpoint is the design and the phased plan only. Branch
+`claude/chrome-extension-web-store-fb0101` (worktree `chrome-extension-web-store-fb0101`) from
+`main` `eaec1d2`; docs only, no code changed, nothing touched in Vercel, Neon or the Web Store.
+
+**Evidence (code read at `eaec1d2`).**
+
+- Tokens are stored hash-only (`src/lib/auth/capture-tokens.ts`, `capture_tokens.token_hash`),
+  shown once at generation, one active token per account since PR #90; `replaceActive` revokes
+  every active token for the tenant. So the server cannot "hand out" the existing token: a
+  browser can only receive a token minted for it at connect time. The 2026-09-30 decision
+  already rejected reversible storage.
+- `POST /api/v1/captures` accepts either a `dst_cap_` bearer token or a cookie session
+  (`src/lib/auth/authenticate.ts`); the extension uses the bearer path from its service worker.
+  Extension fetches carry `Origin: chrome-extension://<id>`; host permissions bypass CORS, and
+  the route is a public Neon path, so the bearer path works from the extension today.
+- Returning-user sign-in always lands on `/`: password sign-in navigates to `/` in
+  `sign-in-card.tsx`, and `createReturningMagicLinkCompletionHandler` (`magic-link.ts`) redirects
+  to `/` with no `next`. Only the invitation flow carries a safe `nextPath` through a sealed
+  cookie (`invite-state.ts`, `safeNextPath`). A connect page therefore needs its own way back
+  after sign-in (X1 adds it).
+- Chrome's `externally_connectable` validator on Chromium `main` accepts any parseable match
+  pattern (`extensions/common/manifest_handlers/externally_connectable.cc`, read on
+  2026-09-30); `http://localhost:3000/*` is valid alongside `https://distilai.app/*`, so the
+  same handoff works for local development. The extension test harness
+  (`tests/support/browser/extension.ts`) launches the unpacked extension in Chromium and can
+  fulfil `http://localhost:3000/...` pages with `context.route`, so the handoff is testable
+  without a dev server.
+- The Chrome Web Store keeps an extension id stable across unpacked and store builds when the
+  manifest carries a `key` field; the store uses that id on first upload. Without it the dev id
+  differs from the store id, and the connect page would not know which extension to message.
+
+#### Target design
+
+**User experience.** Install from the Web Store. The Options page (also opened by the popup
+when nothing is connected) shows one button, **Sign in to Distil**. It opens
+`https://distilai.app/extension/connect` in a tab. If the user is not signed in, the normal
+sign-in card appears there (password or magic link); after sign-in the page comes back to
+itself. The page says "Connect this browser to Distil?" with the account email and a **Connect**
+button. On click, Distil mints a browser connection token and passes it to the extension; the tab
+shows "Connected. You can close this tab." and the extension's popup switches to "Ready to
+save." No token is ever displayed, copied or pasted. Settings → Capture gains a **Connected
+browsers** list (label, connected date, last used, **Disconnect**). If a connection is
+disconnected or otherwise rejected, the extension's popup shows **Sign in again**; clicking it
+reruns the connect flow, and when the web session is still alive the page reconnects with one
+click. The existing manual capture token stays for the iPhone Shortcut and scripts.
+
+**Token model (X1).** Browser connections are ordinary `capture_tokens` rows with a new
+`kind` column (`manual` | `browser`, default `manual`) and a nullable `label` column
+("Chrome on macOS", from the user agent at connect time). The capture route needs no change:
+`authenticateCaptureToken` resolves any active row by hash, per-token rate limits and
+`last_used_at` keep working. `replaceActive` becomes kind-scoped: regenerating the manual token
+revokes only manual rows, and connecting a browser revokes nothing (each browser holds its own
+token, so disconnecting one leaves the others working). Migration `0014_browser_connections.sql`
+(`ALTER TABLE capture_tokens ADD COLUMN kind text NOT NULL DEFAULT 'manual' CHECK (kind IN
+('manual','browser')), ADD COLUMN label text`), manifest entry in
+`src/lib/postgres/tenant-migration/manifest.ts` (`migrationColumns: ["kind", "label"]`), schema
+in `schema.ts`, verified by `npm run db:tenant:verify`. The token plaintext keeps the `dst_cap_`
+prefix so `authenticate.ts` is untouched. Tokens do not expire; they are revoked from Settings.
+Signing out of the web app does not disconnect a browser (same as a phone app), which is what
+makes offline replay reliable.
+
+**Handoff (X1 server side, X2 extension side).** OAuth-style state nonce plus Chrome's
+`externally_connectable` page-to-extension messaging:
+
+1. The extension generates a 32-byte random `state`, stores `{ state, origin, startedAt }` as
+   `distilPendingConnect` in `chrome.storage.local`, and opens
+   `<origin>/extension/connect?state=<state>` in a new tab. It never sends its id; the page
+   knows the pinned id.
+2. `/extension/connect` is a public Neon path (rendered signed-out) so it can host the sign-in
+   card inline. Signed-out: it renders `SignInCard` with `next="/extension/connect?state=…"`;
+   password sign-in navigates to `next`, and `request-link` seals `next` in a short-lived
+   cookie (`pending-sign-in-next`, same sealing as `invite-state.ts`, value through
+   `safeNextPath`) that `createReturningMagicLinkCompletionHandler` reads and clears. Signed-in:
+   it shows the account email and the Connect button.
+3. Connect calls `POST /api/v1/extension/connections` (session cookie, `requireAllowedOrigin`,
+   body `{ label }`) → `201 { connection: { id, label, createdAt }, token }`. The route is added
+   to `docs/authorization-matrix.json` (`route_session`, `user_session`, owner scope,
+   resources `capture_tokens`) with the usual adversarial tests; `GET` lists the caller's
+   browser connections without hashes; `DELETE /api/v1/extension/connections/:id` revokes one
+   (owner only, foreign id → 404).
+4. The page delivers the token with
+   `chrome.runtime.sendMessage(DISTIL_EXTENSION_ID, { type: "distil-connect", state, origin, token, connection })`
+   and waits for `{ ok: true }`. `DISTIL_EXTENSION_ID` is one constant in
+   `src/lib/extension/constants.ts` (client-safe; the id is public). If `chrome.runtime` is
+   undefined on the page, the extension is not installed or not allowed for this origin; the page
+   shows the Web Store link instead of minting anything.
+5. The extension's `onMessageExternal` listener accepts the message only when
+   `sender.url` origin equals the pending `origin`, `state` equals the pending state, and the
+   pending record is younger than 10 minutes. It then stores `{ origin, token, connectionId,
+label, accountKey }` (the queue namespace `accountKey` becomes a hash of origin +
+   connectionId), clears the pending record, replays the queue and answers `{ ok: true }`. Any
+   mismatch answers `{ ok: false }` and the page tells the user to start again from the
+   extension. This nonce is what stops a crafted link from planting an attacker's token in the
+   victim's extension (login CSRF). The explicit Connect click and the pinned extension id are
+   what stop a crafted link from sending the victim's token elsewhere.
+6. On `401`/`403` from the capture route the extension clears the token, keeps the queue,
+   and shows **Sign in again** (popup and Options). Reconnecting mints a new token for the same
+   browser; the queue for the previous connection is replayed only when the new token belongs to
+   the same account, which the page confirms by returning the account id in `connection` and the
+   extension compares before adopting the old queue (otherwise the old queue stays paused, as
+   today).
+
+**Why not the alternatives.** (a) Cookie-based capture (`credentials: "include"` from the
+extension): the API's CSRF rule rejects mutations whose Origin is not an allowed app origin,
+sessions expire independently of the extension, and third-party cookie partitioning makes it
+unreliable; it would also break offline replay after a web sign-out. (b)
+`chrome.identity.launchWebAuthFlow`: the auth window cannot complete a magic-link sign-in that
+finishes in another tab. (c) OAuth device-code polling (extension polls the server with a code
+the page approved): no extension id coupling, but it needs a short-lived table holding token
+plaintext and a polling loop; keep as fallback if `externally_connectable` proves awkward.
+(d) Handing the extension the single account token: needs reversible storage (rejected on
+2026-09-30) or would revoke the iPhone Shortcut's token on every connect.
+
+#### Decisions for Amit (answer inline; recommended option first)
+
+1. **Token model:** (A, recommended) separate per-browser connection tokens plus the existing
+   manual token for the Shortcut; (B) one token per account minted by connect, revoking the
+   Shortcut's token each time the extension connects.
+2. **Handoff:** (A, recommended) `externally_connectable` + state nonce, pinned extension id;
+   (B) device-code polling with a new short-lived table.
+3. **Connection lifetime:** (A, recommended) never expires, revocable in Settings, re-sign-in
+   only after revocation; (B) expires after N days with silent reconnect while the web session
+   lives (adds a refresh endpoint; more moving parts, little gain for a personal tool).
+4. **Web Store visibility:** (A, recommended) unlisted first (link-only for invited testers),
+   public later; (B) public from the first submission. Both need the privacy policy page and
+   store assets.
+5. **Custom origin:** (A, recommended) keep an "Advanced" field on the Options page for
+   `http://localhost:3000` and self-hosted origins; (B) production only, no field.
+
+#### Plan — three PR-sized phases, each its own task from current `main`
+
+**X1 — Server: browser connections and the connect page (recommended first).** Goal: a signed-in
+user can open `/extension/connect`, click Connect, and the page hands a token to a pinned
+extension id; the manual token and Shortcut keep working. Files: migration
+`src/lib/postgres/tenant-migrations/0014_browser_connections.sql`, `schema.ts`, migration
+`manifest.ts`, `repositories.ts` (`replaceActive` kind-scoped, `list` by kind),
+`repositories/ports.ts`, `capture-tokens.ts` (`issueBrowserConnection`), routes
+`src/app/api/v1/extension/connections/route.ts` and `[id]/route.ts`, page
+`src/app/extension/connect/page.tsx` (+ client component), `neon-proxy.ts` `PUBLIC_PATHS`,
+returning-user `next` (sealed cookie in `magic-link.ts`, `next` prop on `SignInCard`),
+`src/lib/extension/constants.ts`, Settings "Connected browsers" card next to `TokenSettings`,
+`docs/authorization-matrix.json`, `AGENTS.md` §3 auth bullet, `docs/vercel-deployment.md` if a
+variable is added (none expected). Tests: migration/manifest unit, repository SQL shape, RLS
+integration (connect and disconnect are tenant-scoped; regenerate leaves browser rows), route
+contracts (origin required, foreign id 404, no hash in `GET`), `safeNextPath` on the sealed
+cookie, component test for the connect page states (signed-out, no extension, connect, done),
+Settings card. Verification: `npm run check`, `npm run test:integration`, `npm run
+db:tenant:verify` against local Docker Postgres, connect page opened in the local in-app browser
+with a stub `chrome.runtime`. Deploying X1 is a Production migration and needs Amit's
+authorization; the migration is additive and safe for the old extension.
+
+**X2 — Extension 2.0: sign-in flow, no token field.** Goal: install, click Sign in, connect,
+save. Files: `browser-extension/manifest.json` (`version` 2.0.0, `key` pinned, host permission
+`https://distilai.app/*`, `externally_connectable.matches` for `https://distilai.app/*` and
+`http://localhost:3000/*`, optional host permissions retained for custom origins),
+`background.js` (pending-connect state, `onMessageExternal`, token clearing on auth failure,
+queue namespace by connection id), `options.*` (Sign in / Signed in as / Disconnect, Advanced
+origin field, no token input), `popup.*` ("Sign in again" state), README. Generate the key once
+with `openssl genrsa 2048 | openssl rsa -pubout -outform DER | base64` and record the resulting
+id in `src/lib/extension/constants.ts` (X1 ships a placeholder that X2 replaces, or X2 opens a
+one-line follow-up PR on the app). Tests: harness specs for the whole handoff using
+`context.route` to serve a fake `/extension/connect` page that posts the message with the right
+and the wrong state, for the 401 → "Sign in again" → reconnect path, and for the queue
+namespace on reconnect; `npm run test:extension`. Verification: local Docker loop with X1
+deployed locally (`http://localhost:3000`), then Production once X1 is live.
+
+**X3 — Chrome Web Store listing.** Goal: a link Amit can send to an invited tester. Files:
+`scripts/pack-extension.ts` (`npm run extension:pack` → `dist/distil-extension-<version>.zip`,
+manifest version check), `src/app/privacy/page.tsx` as a public path (what the extension
+collects: page URL, title, selected text, only when the user saves; token stored locally; no
+analytics), `browser-extension/STORE.md` with the listing text, single-purpose statement and
+per-permission justifications (`activeTab`, `alarms`, `contextMenus`, `storage`, host
+permission for `distilai.app`), and the screenshots list Amit captures. Amit does the store
+steps himself (developer account, one-time fee, upload, unlisted visibility, submit for review);
+after approval, README and the Settings card link to the store page, and the "load unpacked"
+instructions move to a development section. Verification: the packed zip loads in Chrome from
+`chrome://extensions` and passes the X2 harness; review outcome recorded here with the store
+item id.
+
+**Single-session code prompt (paste into a fresh session after answering the decisions).**
+"Read AGENTS.md, then in docs/project-state.md the Current handoff and the checkpoint 'Chrome
+extension: token-free sign-in and Web Store listing — plan X1–X3'. Amit's decisions are: <fill
+in 1–5>. Implement phase <X1|X2|X3> exactly as its brief describes, on a new branch from
+origin/main, with the tests listed, run `npm run check` (and `npm run test:integration` for
+X1, `npm run test:extension` for X2), update the state file (handoff bullet and a dated
+checkpoint), and open a PR. Do not deploy, migrate Production, or touch the Web Store."
 
 ### Unused embeddings module removed — 2026-09-30
 
