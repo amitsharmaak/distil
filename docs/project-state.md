@@ -118,7 +118,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
   `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
   `next build` succeeds without either route. Merged and deployed on Amit's authorization
-  (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
+  (2026-09-30). The `FEATURE_ANSWERS` Production variable was deleted from Vercel on 2026-09-30
+  (Claude, at Amit's request in chat; no redeploy needed since nothing reads it).
 - **Inline search, quick filters and AI life areas: F1–F7 complete and deployed (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61); F1 [#63](https://github.com/amitsharmaak/distil/pull/63),
   F2 [#64](https://github.com/amitsharmaak/distil/pull/64), F3 [#67](https://github.com/amitsharmaak/distil/pull/67),
@@ -147,8 +148,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     `FEATURE_SEARCH`, and, with Ask gone, the now-callerless `hybridSearch`, `searchPassages` /
     passage store, `repositories.passages` and the `ItemFilters.query` clause. Kept:
     `content_chunks`, chunking, grounding, all schema. Nothing stays "for Ask" because Ask no
-    longer exists. **Amit:** delete any leftover `FEATURE_SEARCH` (and `FEATURE_ANSWERS`)
-    variable in Vercel yourself; nothing reads them.
+    longer exists. The leftover `FEATURE_SEARCH` and `FEATURE_ANSWERS` variables (Production
+    only) were deleted from Vercel project `project-evgf1` on 2026-09-30 by Claude through Amit's
+    signed-in Chrome, at his request in chat. No redeploy was triggered; nothing reads them, and
+    the next deploy drops them. The other `FEATURE_*` variables are unchanged.
   - **Classifier model follow-up (decision 12): still open.** Question to Amit: which exact
     provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
     with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
@@ -160,7 +163,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
     spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
     backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
-    himself; the model follow-up is excluded unless Amit names the model id.
+    himself (he later asked Claude to delete it and `FEATURE_ANSWERS`, done 2026-09-30); the model
+    follow-up is excluded unless Amit names the model id.
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
   2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
