@@ -15,9 +15,31 @@ This section is the only forward-looking instruction block in this file. Everyth
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
-  and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
-  recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
+- **Active objective:** Three recorded plans await Amit's go-ahead: the Chrome extension
+  token-free sign-in and Web Store listing (X1–X3, below), the iPhone Shortcut without a visible
+  token (D1–D3, below, which builds on X1's token kinds) and admin invitations from Settings
+  (I1–I3, below). The app-slowness plan P8–P11 is closed (P8–P10 live, P11 the authorized
+  no-change decision). Keyboard navigation K1–K4 is merged (`67f722c`, PR #101); PR #103 records
+  its Production release. Phase 4 (mobile) remains unauthorized.
+- **Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 recorded, nothing
+  implemented (branch `claude/chrome-extension-web-store-fb0101`, PR
+  [#102](https://github.com/amitsharmaak/distil/pull/102), docs only, merged with `main` through
+  `6da0e43`; checkpoint "Chrome extension: token-free sign-in and Web Store listing — plan
+  X1–X3 — 2026-09-30"):** Amit wants
+  the extension on the Chrome Web Store and wants users never to see a capture token: install,
+  sign in, save. Design: per-browser connection tokens (new `kind`/`label` columns on
+  `capture_tokens`, manual token kept for the Shortcut), a public `/extension/connect` page that
+  mints a token and hands it to the pinned extension id through `externally_connectable` with a
+  state nonce, "Connected browsers" in Settings, and "Sign in again" in the extension on
+  rejection. Plan: **X1** server (migration, routes, connect page, returning-user `next`),
+  **X2** extension 2.0 (sign-in flow, no token field, pinned `key`), **X3** store listing
+  (packaging script, privacy page, listing text; Amit submits). Evidence checked on 2026-09-30:
+  tokens are hash-only so the existing token cannot be reissued; returning-user sign-in always
+  lands on `/`; Chromium's `externally_connectable` validator accepts `localhost` patterns. X1
+  ends with a Production migration that needs Amit's authorization; X2 depends on X1 being
+  deployed; X3 depends on X2 and on Amit's Web Store developer account. This plan supersedes
+  the "share a zip of `browser-extension/`" step under Tester onboarding. Next: Amit answers
+  the five decisions in the checkpoint and picks a phase (recommended X1).
 - **One capture token per account (PR [#90](https://github.com/amitsharmaak/distil/pull/90),
   squash merged on 2026-09-30 at Amit's request after green CI; checkpoint "Single capture token —
   2026-09-30"):** Amit found named per-client tokens overkill; capture sources are not tracked per
@@ -30,10 +52,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `claude/iphone-shortcut-token-abstraction-e945a7`; checkpoint "iPhone Shortcut without a
   visible token: design and phased plan (D1–D3) — 2026-09-30"):** Amit wants the capture token
   abstracted away from Shortcut users. Recommended shape: one public token-free Shortcut that
-  pairs itself with a short code shown in Settings → Capture and stores a phone-only `device`
-  credential; the account token stays for the extension. Three phases: D1 data and API, D2
-  Settings card, D3 Shortcut and runbook. No code changed. Next: Amit answers the four lettered
-  decisions in the checkpoint and picks D1 as its own task.
+  pairs itself with a short code shown in Settings → Capture and stores a phone-only `phone`
+  token; it reuses the `kind`/`label` columns and kind-scoped `replaceActive` that the Chrome
+  plan X1 introduces, and supersedes X1's "manual token stays for the Shortcut" once D3 ships.
+  Three phases: D1 data and API, D2 Settings card, D3 Shortcut and runbook. No code changed.
+  Next: Amit answers the five lettered decisions in the checkpoint (including D1's order against
+  X1) and picks D1 as its own task.
 - **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
   `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
   trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
@@ -44,6 +68,18 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
+- **Admin invitations from Settings: plan I1–I3 recorded, nothing implemented (branch
+  `claude/distil-onboarding-docs-a2addc`, docs only; checkpoint "Admin invitations from Settings:
+  phased plan (I1–I3) — 2026-09-30"):** onboarding a colleague on 2026-09-30 needed a Neon SQL
+  lookup for the operator UUID, an inline `DATABASE_URL` for `npm run auth:invite`, and a
+  hand-pasted link. Plan: **I1** admin allowlist + `/api/v1/admin/invitations` (issue, list,
+  revoke) reusing `executeInvitationCommand`; **I2** Settings → Invitations tab (admin only,
+  link shown once with Copy, list with revoke); **I3** capture diagnostics moved out of the
+  Capture tab into an admin-only Troubleshooting tab (Amit finds it noisy; an environment gate
+  would hide it where the failures live). The same branch adds `docs/onboarding.md`, the guide
+  sent to new users. Decisions 1–4 answered on 2026-09-30, all recommended options (env allowlist, any
+  email, audit when configured, admin-only Troubleshooting tab). Next: Amit starts I1–I3 as one
+  task with the code prompt in the checkpoint.
 - **Keyboard navigation: K1–K4 implemented, PR
   [#101](https://github.com/amitsharmaak/distil/pull/101) (branch `claude/keyboard-k1`, worktree
   `k1-prompt-455dd8`; checkpoints "Keyboard navigation K1–K4 … — 2026-09-30" and "Keyboard
@@ -121,7 +157,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   extension Options page now prefills `https://distilai.app`, so a tester only pastes their own
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
-  a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
+  a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed. The zip
+  step is superseded by the X1–X3 extension plan (Web Store install, sign-in, no token); the
+  invitation step by the I1–I3 admin-invitations plan.
 - **Deep research readability R1–R3: done and deployed; R4 dropped (orchestrated by Claude
   from worktree `deep-research-readability-r1-r4-846d48`; plan PR
   [#62](https://github.com/amitsharmaak/distil/pull/62); checkpoints "Deep research R1: readable
@@ -524,7 +562,11 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
   step. The exact-SHA gate and the task-specific authorization rule in `AGENTS.md` §9 are
   unchanged: releases still happen only when Amit asks.
 - **Exact next steps:**
-  1. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
+  1. **Amit: answer the five decisions in the "Chrome extension: token-free sign-in and Web Store
+     listing — plan X1–X3" checkpoint and pick a phase (recommended X1)**, then start it with
+     the single-session code prompt at the end of that checkpoint. Independently, start I1–I3
+     with the prompt in the admin-invitations checkpoint.
+  2. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
      live capture and the jsdom runtime fix — 2026-09-17") extracted and indexed correctly, but
      the P6 brief summary was skipped with `AIProviderError AI_AUTHENTICATION`: the Gemini API
      key in Vercel's Production environment is rejected by the provider. Replace
@@ -533,10 +575,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
      secrets. Until then every capture lands without a generated summary (extractive brief only)
      and on-demand summaries fail the same way.
-  2. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
+  3. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
      migration applied to Production — 2026-09-18" below). `ai_summaries.content_hash` now exists
      there; wiring it into the summary cache key is P6's deferred item and a small follow-up.
-  3. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
+  4. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
      simplified shell and P3's same-origin client have now been exercised by Claude through the
      in-app browser but not seen by a person), and make one browser-extension capture (the
      in-app `/save` path is verified; the extension path is not). Done 2026-09-19: the iPhone
@@ -545,16 +587,16 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
      the durable worker — 2026-09-19"); fixed and released as PR #42 on 2026-09-20 (checkpoint
      "Release: PR #42 to Production — 2026-09-20").
-  4. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
+  5. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  5. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
+  6. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
      2026-09-18"). The remaining performance work is not in the plan, each a separate
      decision: the RLS/ordering architecture question from P7 (ordered index scans cannot cross
      the security barrier; adding the two unused indexes anyway would be a one-file `0011`
      stage), the ~130 ms `proxy-auth-db` lookup (`distil_resolve_auth_identity`, a SECURITY
      DEFINER lookup on `auth_identities`, the largest fixed per-request cost), and the
      multi-second Vercel + Neon cold start on the first request of a session.
-  6. Other engineering candidates, each as its own short-lived branch with a state update: the
+  7. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
@@ -588,6 +630,12 @@ nothing touched in Vercel or Neon.
   `token_prefix`, `created_at`, `last_used_at`, `revoked_at` and a partial unique index on active
   hashes (`src/lib/postgres/schema.ts:1324-1341`); no `kind`. A silently issued phone credential
   therefore cannot reuse today's issuance without revoking the browser extension's token.
+  The Chrome extension plan X1–X3 (checkpoint "Chrome extension: token-free sign-in and Web
+  Store listing — plan X1–X3 — 2026-09-30", merged to `main` as `3a310ac` while this brief was
+  being written) plans exactly the column this needs: `capture_tokens.kind` (`manual` |
+  `browser`) plus a nullable `label`, migration `0014_browser_connections.sql`, and a
+  kind-scoped `replaceActive`. This plan builds on it rather than duplicating it; X1's sentence
+  "the existing manual token stays for the iPhone Shortcut" is superseded once D3 ships.
 - `DELETE /api/v1/capture-tokens/:id` exists with no UI caller
   (`src/app/api/v1/capture-tokens/[id]/route.ts:13`; `CaptureTokenRepository.revoke`,
   `src/lib/repositories/ports.ts:302`). `GET`/`POST /api/v1/capture-tokens` are session-only and
@@ -619,12 +667,14 @@ nothing touched in Vercel or Neon.
 
 **Target design (option A).**
 
-- **Two kinds of capture credential.** `capture_tokens.kind` = `account` (the one visible token
-  for the extension and scripts; exactly today's behaviour) or `device` (issued only by pairing,
-  never displayed, one row per paired phone, `name` = the device label). `replaceActive` revokes
-  only `kind = 'account'`; `TokenSettings` lists only `account`. Capture auth is unchanged: both
-  kinds are `dst_cap_` bearer tokens, hash-only storage, same per-token rate limit, same
-  `actorKind: "capture-token"`, so captures, exports, deletion and RLS need no change.
+- **A third token kind.** X1's `capture_tokens.kind` gains the value `phone` (issued only by
+  pairing, never displayed, one row per paired phone, X1's `label` column holding the device
+  name). The visible token stays `manual`, `replaceActive` stays scoped to `manual` as X1
+  specifies, and `TokenSettings` lists only `manual`. Capture auth is unchanged: every kind is a
+  `dst_cap_` bearer token, hash-only storage, same per-token rate limit, same
+  `actorKind: "capture-token"`, so captures, exports, deletion and RLS need no change. If D1
+  runs before X1 (decision 5), D1 carries the `kind`/`label` migration in X1's exact shape with
+  the `CHECK` extended to `('manual','browser','phone')`, and X1 then only extends nothing.
 - **Pairing codes.** New tenant-owned table `shortcut_pairings` (`user_id`, `id`, `code_hash`,
   `created_at`, `expires_at`, `attempts`, `consumed_at`, `token_id` nullable). Codes are eight
   Crockford base32 characters shown as `XXXX-XXXX` (about 10^12 possibilities; six digits would
@@ -635,7 +685,7 @@ nothing touched in Vercel or Neon.
   `{ code, deviceName? }`) resolves the owner pre-context through a new SECURITY DEFINER function
   `distil_resolve_shortcut_pairing(code_hash)` modelled on `distil_resolve_capture_token`
   (EXECUTE only for the runtime role), opens the tenant transaction, re-checks hash, expiry and
-  `consumed_at`, mints a `device` token, marks the code consumed, and returns `{ token }` once.
+  `consumed_at`, mints a `phone` token, marks the code consumed, and returns `{ token }` once.
   Wrong or expired codes return `401 UNAUTHORIZED` with no hint; the endpoint is rate-limited
   `pairing:${ip}` like login. `DELETE /api/v1/capture-tokens/:id` becomes Disconnect.
 - **Settings → Capture, "iPhone" card** (new component beside `TokenSettings`): a "Get the
@@ -664,6 +714,9 @@ nothing touched in Vercel or Neon.
 4. Shortcut distribution: (A) Amit signs and shares one iCloud link from his iPhone and sets
    `NEXT_PUBLIC_IOS_SHORTCUT_URL` in Vercel (an env-var change he authorizes and makes himself);
    (B) the runbook keeps the build-it-yourself recipe and only the pairing step changes.
+5. Order against the Chrome plan: (A) X1 first, then D1 adds the `phone` kind on top of X1's
+   columns (migration `0015_phone_pairing.sql`); (B) D1 first, carrying X1's `kind`/`label`
+   migration as `0014` so X1 shrinks to routes and pages.
 
 #### Plan — three PR-sized phases, each its own task from current `main`
 
@@ -674,23 +727,26 @@ account token and the current Shortcut keep working throughout; Amit's phone re-
 **D1 — Data and API: token kinds and pairing exchange.** Goal: a phone can obtain its own
 credential from a code without touching the account token.
 
-- **Files:** new `src/lib/postgres/tenant-migrations/0014_shortcut_pairing.sql` (`capture_tokens.kind`
-  text not null default `'account'`; `shortcut_pairings` with RLS policies matching the other
-  tenant tables; `distil_resolve_shortcut_pairing`; partial unique index on pending codes per
-  user); `schema.ts`; `ports.ts` (`CaptureTokenRecord.kind`, `replaceActive` scoped to `account`,
-  new `ShortcutPairingRepository`); `repositories.ts`; new `src/lib/auth/shortcut-pairing.ts`
+- **Files:** new tenant migration (`0015_phone_pairing.sql` after X1, or `0014` carrying X1's
+  columns per decision 5): extend the `kind` `CHECK` with `'phone'`; `shortcut_pairings` with RLS
+  policies matching the other tenant tables; `distil_resolve_shortcut_pairing`; partial unique
+  index on pending codes per user; manifest entry in `src/lib/postgres/tenant-migration/manifest.ts`;
+  `schema.ts`; `ports.ts` (`CaptureTokenRecord.kind`/`label` if X1 has not added them, new
+  `ShortcutPairingRepository`); `repositories.ts`; new `src/lib/auth/shortcut-pairing.ts`
   (code generation, hashing, `exchangePairingCode`); new
   `src/lib/auth/shortcut-pairing-identity.ts` (pre-context resolver); new routes
   `src/app/api/v1/shortcut-pairings/route.ts` and `…/exchange/route.ts`; `lifecycle/exports.ts`
   and account deletion include `shortcut_pairings`; `docs/runbooks` note for the new function.
-- **Approach:** `issueCaptureToken` gains `kind` and `name` parameters (defaults unchanged);
+- **Approach:** `issueCaptureToken` gains `kind` and `label` parameters (defaults unchanged;
+  X1's `issueBrowserConnection` is the sibling);
   the exchange route mirrors `authenticateCaptureToken`'s two-step lookup so the pre-context
   read is exact-key only. Wrong codes increment `attempts`; after five the code is consumed.
 - **Tests:** repository SQL shape; unit tests for code generation and exchange (expired,
   consumed, wrong, attempt cap, happy path returns plaintext once); route contract tests
   (session required to create; exchange needs no session but is rate-limited; UNAUTHORIZED gives
   no hint); RLS integration test proving regeneration of the account token leaves device tokens
-  active and vice versa; `test:phase3-isolation` migration invariants for the new table and
+  active and vice versa, and that disconnecting one phone leaves browser connections and the
+  manual token alone; `test:phase3-isolation` migration invariants for the new table and
   function.
 - **Verification:** `npm run check`, `npm run test:integration`, `npm run db:tenant:verify` on
   the local Docker Postgres. Applying `0014` to Production is a Neon mutation and needs Amit's
@@ -699,14 +755,14 @@ credential from a code without touching the account token.
 **D2 — Settings: pair, list and disconnect.** Goal: the whole phone setup is visible and
 reversible in Settings → Capture with no token string on screen.
 
-- **Files:** new `src/components/capture/iphone-shortcut-card.tsx` and test; `token-settings.tsx`
-  (filter to `account`, copy change); `settings/page.tsx` (mount the card between
-  `TokenSettings` and `CaptureDiagnostics`); `GET /api/v1/capture-tokens` returns `kind` so the
-  card can list `device` rows; keyboard help entry if the card gets a focusable action (K4 card
-  lists Settings keys).
+- **Files:** new `src/components/capture/iphone-shortcut-card.tsx` and test, placed next to
+  X1's "Connected browsers" card so Settings → Capture reads manual token / browsers / iPhone;
+  `token-settings.tsx` (filter to `manual`, copy change); `settings/page.tsx`;
+  `GET /api/v1/capture-tokens` returns `kind` and `label` so the card can list `phone` rows;
+  keyboard help entry if the card gets a focusable action (K4 card lists Settings keys).
 - **Tests:** component tests for pairing (code shown, countdown, expiry state, new code replaces
   old), device list and Disconnect (calls `DELETE`, row disappears), and the hidden link when the
-  env var is unset; route test for `kind` in the list payload.
+  env var is unset; route test for `kind` and `label` in the list payload.
 - **Verification:** `npm run check`; local in-app browser at desktop, 375 px and dark; pair
   once end-to-end against the local API with `curl` standing in for the Shortcut.
 
@@ -726,6 +782,330 @@ one code, and shares articles.
   Disconnect in Settings makes the next share prompt again; a wrong code reports failure and does
   not pair; the same iCloud link installs cleanly on a second phone signed into a different
   account and pairs to that account only.
+
+### Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30
+
+**Why.** Amit wants the browser extension on the Chrome Web Store, and he wants users never to
+see or handle a capture token: install the extension, sign in to Distil, start saving. Today the
+extension is load-unpacked only and its Options page asks for an origin and a pasted token from
+Settings → Capture. This checkpoint is the design and the phased plan only. Branch
+`claude/chrome-extension-web-store-fb0101` (worktree `chrome-extension-web-store-fb0101`) from
+`main` `eaec1d2`; docs only, no code changed, nothing touched in Vercel, Neon or the Web Store.
+
+**Evidence (code read at `eaec1d2`).**
+
+- Tokens are stored hash-only (`src/lib/auth/capture-tokens.ts`, `capture_tokens.token_hash`),
+  shown once at generation, one active token per account since PR #90; `replaceActive` revokes
+  every active token for the tenant. So the server cannot "hand out" the existing token: a
+  browser can only receive a token minted for it at connect time. The 2026-09-30 decision
+  already rejected reversible storage.
+- `POST /api/v1/captures` accepts either a `dst_cap_` bearer token or a cookie session
+  (`src/lib/auth/authenticate.ts`); the extension uses the bearer path from its service worker.
+  Extension fetches carry `Origin: chrome-extension://<id>`; host permissions bypass CORS, and
+  the route is a public Neon path, so the bearer path works from the extension today.
+- Returning-user sign-in always lands on `/`: password sign-in navigates to `/` in
+  `sign-in-card.tsx`, and `createReturningMagicLinkCompletionHandler` (`magic-link.ts`) redirects
+  to `/` with no `next`. Only the invitation flow carries a safe `nextPath` through a sealed
+  cookie (`invite-state.ts`, `safeNextPath`). A connect page therefore needs its own way back
+  after sign-in (X1 adds it).
+- Chrome's `externally_connectable` validator on Chromium `main` accepts any parseable match
+  pattern (`extensions/common/manifest_handlers/externally_connectable.cc`, read on
+  2026-09-30); `http://localhost:3000/*` is valid alongside `https://distilai.app/*`, so the
+  same handoff works for local development. The extension test harness
+  (`tests/support/browser/extension.ts`) launches the unpacked extension in Chromium and can
+  fulfil `http://localhost:3000/...` pages with `context.route`, so the handoff is testable
+  without a dev server.
+- The Chrome Web Store keeps an extension id stable across unpacked and store builds when the
+  manifest carries a `key` field; the store uses that id on first upload. Without it the dev id
+  differs from the store id, and the connect page would not know which extension to message.
+
+#### Target design
+
+**User experience.** Install from the Web Store. The Options page (also opened by the popup
+when nothing is connected) shows one button, **Sign in to Distil**. It opens
+`https://distilai.app/extension/connect` in a tab. If the user is not signed in, the normal
+sign-in card appears there (password or magic link); after sign-in the page comes back to
+itself. The page says "Connect this browser to Distil?" with the account email and a **Connect**
+button. On click, Distil mints a browser connection token and passes it to the extension; the tab
+shows "Connected. You can close this tab." and the extension's popup switches to "Ready to
+save." No token is ever displayed, copied or pasted. Settings → Capture gains a **Connected
+browsers** list (label, connected date, last used, **Disconnect**). If a connection is
+disconnected or otherwise rejected, the extension's popup shows **Sign in again**; clicking it
+reruns the connect flow, and when the web session is still alive the page reconnects with one
+click. The existing manual capture token stays for the iPhone Shortcut and scripts.
+
+**Token model (X1).** Browser connections are ordinary `capture_tokens` rows with a new
+`kind` column (`manual` | `browser`, default `manual`) and a nullable `label` column
+("Chrome on macOS", from the user agent at connect time). The capture route needs no change:
+`authenticateCaptureToken` resolves any active row by hash, per-token rate limits and
+`last_used_at` keep working. `replaceActive` becomes kind-scoped: regenerating the manual token
+revokes only manual rows, and connecting a browser revokes nothing (each browser holds its own
+token, so disconnecting one leaves the others working). Migration `0014_browser_connections.sql`
+(`ALTER TABLE capture_tokens ADD COLUMN kind text NOT NULL DEFAULT 'manual' CHECK (kind IN
+('manual','browser')), ADD COLUMN label text`), manifest entry in
+`src/lib/postgres/tenant-migration/manifest.ts` (`migrationColumns: ["kind", "label"]`), schema
+in `schema.ts`, verified by `npm run db:tenant:verify`. The token plaintext keeps the `dst_cap_`
+prefix so `authenticate.ts` is untouched. Tokens do not expire; they are revoked from Settings.
+Signing out of the web app does not disconnect a browser (same as a phone app), which is what
+makes offline replay reliable.
+
+**Handoff (X1 server side, X2 extension side).** OAuth-style state nonce plus Chrome's
+`externally_connectable` page-to-extension messaging:
+
+1. The extension generates a 32-byte random `state`, stores `{ state, origin, startedAt }` as
+   `distilPendingConnect` in `chrome.storage.local`, and opens
+   `<origin>/extension/connect?state=<state>` in a new tab. It never sends its id; the page
+   knows the pinned id.
+2. `/extension/connect` is a public Neon path (rendered signed-out) so it can host the sign-in
+   card inline. Signed-out: it renders `SignInCard` with `next="/extension/connect?state=…"`;
+   password sign-in navigates to `next`, and `request-link` seals `next` in a short-lived
+   cookie (`pending-sign-in-next`, same sealing as `invite-state.ts`, value through
+   `safeNextPath`) that `createReturningMagicLinkCompletionHandler` reads and clears. Signed-in:
+   it shows the account email and the Connect button.
+3. Connect calls `POST /api/v1/extension/connections` (session cookie, `requireAllowedOrigin`,
+   body `{ label }`) → `201 { connection: { id, label, createdAt }, token }`. The route is added
+   to `docs/authorization-matrix.json` (`route_session`, `user_session`, owner scope,
+   resources `capture_tokens`) with the usual adversarial tests; `GET` lists the caller's
+   browser connections without hashes; `DELETE /api/v1/extension/connections/:id` revokes one
+   (owner only, foreign id → 404).
+4. The page delivers the token with
+   `chrome.runtime.sendMessage(DISTIL_EXTENSION_ID, { type: "distil-connect", state, origin, token, connection })`
+   and waits for `{ ok: true }`. `DISTIL_EXTENSION_ID` is one constant in
+   `src/lib/extension/constants.ts` (client-safe; the id is public). If `chrome.runtime` is
+   undefined on the page, the extension is not installed or not allowed for this origin; the page
+   shows the Web Store link instead of minting anything.
+5. The extension's `onMessageExternal` listener accepts the message only when
+   `sender.url` origin equals the pending `origin`, `state` equals the pending state, and the
+   pending record is younger than 10 minutes. It then stores `{ origin, token, connectionId,
+label, accountKey }` (the queue namespace `accountKey` becomes a hash of origin +
+   connectionId), clears the pending record, replays the queue and answers `{ ok: true }`. Any
+   mismatch answers `{ ok: false }` and the page tells the user to start again from the
+   extension. This nonce is what stops a crafted link from planting an attacker's token in the
+   victim's extension (login CSRF). The explicit Connect click and the pinned extension id are
+   what stop a crafted link from sending the victim's token elsewhere.
+6. On `401`/`403` from the capture route the extension clears the token, keeps the queue,
+   and shows **Sign in again** (popup and Options). Reconnecting mints a new token for the same
+   browser; the queue for the previous connection is replayed only when the new token belongs to
+   the same account, which the page confirms by returning the account id in `connection` and the
+   extension compares before adopting the old queue (otherwise the old queue stays paused, as
+   today).
+
+**Why not the alternatives.** (a) Cookie-based capture (`credentials: "include"` from the
+extension): the API's CSRF rule rejects mutations whose Origin is not an allowed app origin,
+sessions expire independently of the extension, and third-party cookie partitioning makes it
+unreliable; it would also break offline replay after a web sign-out. (b)
+`chrome.identity.launchWebAuthFlow`: the auth window cannot complete a magic-link sign-in that
+finishes in another tab. (c) OAuth device-code polling (extension polls the server with a code
+the page approved): no extension id coupling, but it needs a short-lived table holding token
+plaintext and a polling loop; keep as fallback if `externally_connectable` proves awkward.
+(d) Handing the extension the single account token: needs reversible storage (rejected on
+2026-09-30) or would revoke the iPhone Shortcut's token on every connect.
+
+#### Decisions for Amit (answer inline; recommended option first)
+
+1. **Token model:** (A, recommended) separate per-browser connection tokens plus the existing
+   manual token for the Shortcut; (B) one token per account minted by connect, revoking the
+   Shortcut's token each time the extension connects.
+2. **Handoff:** (A, recommended) `externally_connectable` + state nonce, pinned extension id;
+   (B) device-code polling with a new short-lived table.
+3. **Connection lifetime:** (A, recommended) never expires, revocable in Settings, re-sign-in
+   only after revocation; (B) expires after N days with silent reconnect while the web session
+   lives (adds a refresh endpoint; more moving parts, little gain for a personal tool).
+4. **Web Store visibility:** (A, recommended) unlisted first (link-only for invited testers),
+   public later; (B) public from the first submission. Both need the privacy policy page and
+   store assets.
+5. **Custom origin:** (A, recommended) keep an "Advanced" field on the Options page for
+   `http://localhost:3000` and self-hosted origins; (B) production only, no field.
+
+#### Plan — three PR-sized phases, each its own task from current `main`
+
+**X1 — Server: browser connections and the connect page (recommended first).** Goal: a signed-in
+user can open `/extension/connect`, click Connect, and the page hands a token to a pinned
+extension id; the manual token and Shortcut keep working. Files: migration
+`src/lib/postgres/tenant-migrations/0014_browser_connections.sql`, `schema.ts`, migration
+`manifest.ts`, `repositories.ts` (`replaceActive` kind-scoped, `list` by kind),
+`repositories/ports.ts`, `capture-tokens.ts` (`issueBrowserConnection`), routes
+`src/app/api/v1/extension/connections/route.ts` and `[id]/route.ts`, page
+`src/app/extension/connect/page.tsx` (+ client component), `neon-proxy.ts` `PUBLIC_PATHS`,
+returning-user `next` (sealed cookie in `magic-link.ts`, `next` prop on `SignInCard`),
+`src/lib/extension/constants.ts`, Settings "Connected browsers" card next to `TokenSettings`,
+`docs/authorization-matrix.json`, `AGENTS.md` §3 auth bullet, `docs/vercel-deployment.md` if a
+variable is added (none expected). Tests: migration/manifest unit, repository SQL shape, RLS
+integration (connect and disconnect are tenant-scoped; regenerate leaves browser rows), route
+contracts (origin required, foreign id 404, no hash in `GET`), `safeNextPath` on the sealed
+cookie, component test for the connect page states (signed-out, no extension, connect, done),
+Settings card. Verification: `npm run check`, `npm run test:integration`, `npm run
+db:tenant:verify` against local Docker Postgres, connect page opened in the local in-app browser
+with a stub `chrome.runtime`. Deploying X1 is a Production migration and needs Amit's
+authorization; the migration is additive and safe for the old extension.
+
+**X2 — Extension 2.0: sign-in flow, no token field.** Goal: install, click Sign in, connect,
+save. Files: `browser-extension/manifest.json` (`version` 2.0.0, `key` pinned, host permission
+`https://distilai.app/*`, `externally_connectable.matches` for `https://distilai.app/*` and
+`http://localhost:3000/*`, optional host permissions retained for custom origins),
+`background.js` (pending-connect state, `onMessageExternal`, token clearing on auth failure,
+queue namespace by connection id), `options.*` (Sign in / Signed in as / Disconnect, Advanced
+origin field, no token input), `popup.*` ("Sign in again" state), README. Generate the key once
+with `openssl genrsa 2048 | openssl rsa -pubout -outform DER | base64` and record the resulting
+id in `src/lib/extension/constants.ts` (X1 ships a placeholder that X2 replaces, or X2 opens a
+one-line follow-up PR on the app). Tests: harness specs for the whole handoff using
+`context.route` to serve a fake `/extension/connect` page that posts the message with the right
+and the wrong state, for the 401 → "Sign in again" → reconnect path, and for the queue
+namespace on reconnect; `npm run test:extension`. Verification: local Docker loop with X1
+deployed locally (`http://localhost:3000`), then Production once X1 is live.
+
+**X3 — Chrome Web Store listing.** Goal: a link Amit can send to an invited tester. Files:
+`scripts/pack-extension.ts` (`npm run extension:pack` → `dist/distil-extension-<version>.zip`,
+manifest version check), `src/app/privacy/page.tsx` as a public path (what the extension
+collects: page URL, title, selected text, only when the user saves; token stored locally; no
+analytics), `browser-extension/STORE.md` with the listing text, single-purpose statement and
+per-permission justifications (`activeTab`, `alarms`, `contextMenus`, `storage`, host
+permission for `distilai.app`), and the screenshots list Amit captures. Amit does the store
+steps himself (developer account, one-time fee, upload, unlisted visibility, submit for review);
+after approval, README and the Settings card link to the store page, and the "load unpacked"
+instructions move to a development section. Verification: the packed zip loads in Chrome from
+`chrome://extensions` and passes the X2 harness; review outcome recorded here with the store
+item id.
+
+**Single-session code prompt (paste into a fresh session after answering the decisions).**
+"Read AGENTS.md, then in docs/project-state.md the Current handoff and the checkpoint 'Chrome
+extension: token-free sign-in and Web Store listing — plan X1–X3'. Amit's decisions are: <fill
+in 1–5>. Implement phase <X1|X2|X3> exactly as its brief describes, on a new branch from
+origin/main, with the tests listed, run `npm run check` (and `npm run test:integration` for
+X1, `npm run test:extension` for X2), update the state file (handoff bullet and a dated
+checkpoint), and open a PR. Do not deploy, migrate Production, or touch the Web Store."
+
+### Admin invitations from Settings: phased plan (I1–I3) — 2026-09-30
+
+**Why.** Amit onboarded a colleague on 2026-09-30 and asked for an admin to be able to send
+invitations from the Settings section instead of the CLI. What the manual run needed today: the
+operator UUID had to be looked up in the Neon SQL editor (`users.primary_email`, not `email`);
+`npm run auth:invite` does not read `.env.local`, so `DATABASE_URL` had to be passed inline, and
+without it the script fails with the misleading "Authentication repositories are unavailable"
+(the real cause, a missing URL, is swallowed in `src/lib/auth/repository-runtime.ts:15-25`);
+the printed `invitationUrl` was then pasted by hand. This checkpoint is the plan only. Branch
+`claude/distil-onboarding-docs-a2addc` from `main` `eaec1d2`; docs only, no code changed,
+nothing touched in Vercel or Neon. The same branch adds `docs/onboarding.md`, the guide shared
+with new users (sign-in, capture token, extension load-unpacked, Shortcut, Home Screen install).
+
+**How invitations work today (verified at `eaec1d2`).**
+
+- **Issue.** Only `scripts/auth-invitations.ts` (`npm run auth:invite -- issue <email>
+<operator-uuid> <reason> <origin>`). It calls `executeInvitationCommand`
+  (`src/lib/auth/invitations.ts`), which stores a row in `invitations` (normalized + hashed
+  email, salted token hash, `issued_by_actor_id`, `issuance_reason`, 7-day `expires_at`,
+  `INVITATION_TTL_MS`) and returns `<origin>/invite#token=<id>.<secret>` once. The secret is
+  never stored, so a link cannot be re-shown; a lost link means revoke and issue again.
+  `issued_by_actor_id` is any UUID with no foreign key; nothing checks that it is an admin.
+- **Accept.** The invitee opens `/invite` (`src/app/invite/page.tsx`), enters the email, and
+  `POST /api/auth/invitations/request-link` validates token and email match, claims a dispatch
+  slot and sends a Neon Auth magic link; `/api/auth/invitations/complete` consumes the row and
+  links the identity (`consumeInvitationAndLinkIdentity`). Returning users sign in at
+  `/sign-in`. No email is sent at issue time; the link itself is delivered by hand.
+- **Revoke.** CLI only (`revoke <invitation-uuid> <operator-uuid> <reason>`), used by the
+  tenant-isolation runbook.
+- **No admin concept.** `users` has `status` only (`0005_phase3_tenant_expand.sql:20-30`).
+  `docs/authorization-matrix.json` defines a `platform_admin` principal ("explicit audited
+  maintenance only; normal sessions never imply this principal") and scopes `invitations` to
+  `operator-control-plane` with "operator reason and audit required". `operator_audit_events`
+  exists (`0008_phase3_lifecycle.sql:102`) but is revoked from the runtime role and written only
+  through the control-plane client (`DATABASE_CONTROL_PLANE_URL`, `getControlPlaneRepositories`).
+- **Repository port.** `InvitationRepositoryPort` (`src/lib/auth/ports.ts:39`) has create, find
+  by id, revoke and the dispatch claim methods; there is no list.
+- **Settings.** `src/app/settings/page.tsx` has two tabs, Capture (`TokenSettings`, the
+  generate/copy-once/regenerate pattern to reuse) and Account.
+
+#### Plan
+
+**I1 — Admin identity and API (recommended first, with I2).**
+
+- Admin designation: `DISTIL_ADMIN_USER_IDS` (comma-separated user UUIDs) read through
+  `src/lib/auth/environment.ts`; helper `isPlatformAdmin(userId)`. No schema change. Amit's
+  Production UUID goes into Vercel by Amit (env change, his authorization). Alternative: a
+  `users.role` column (decision 1).
+- Routes under `src/app/api/v1/admin/invitations/`: `POST` (body `{ email, note? }`) issues via
+  `executeInvitationCommand` with `issuedByActorId` = the session user, `reason` =
+  `settings:<note or "invited from Settings">`, `appOrigin` from `readApplicationOrigin`;
+  returns `{ invitationId, invitationUrl, expiresAt }` once. `GET` lists invitations (id,
+  masked email, status, issued by, expires, accepted at); needs a new
+  `listInvitations` port method and Postgres implementation. `DELETE /:id` revokes with a
+  reason. All three: `resolveRequestAuthContext` + `requireAllowedOrigin` + admin check, 403 for
+  everyone else, 404-shaped when `FEATURE_NEON_AUTH` is off. Cap: 20 issues per admin per day.
+- Audit: the `invitations` row already records actor and reason. When
+  `DATABASE_CONTROL_PLANE_URL` is configured, also write an `operator_audit_events` row
+  (`invitation.issue` / `invitation.revoke`); skip silently when it is not (decision 3).
+- Tests: unit for the admin helper and command mapping; route tests for 403/200/429; a
+  repository test for `listInvitations`. Update `docs/authorization-matrix.json` (invitations
+  gain `self-admin-session` as an allowed issuer path) and `AGENTS.md` §Auth.
+- Small fix in passing: `scripts/auth-invitations.ts` should surface the underlying error and
+  say "set DATABASE_URL" when it is empty.
+
+**I2 — Settings → Invitations tab.**
+
+- Third tab, rendered only when the account payload says `isAdmin` (server-derived; the API is
+  the real gate). Form: email, optional note, **Send invitation** button. Result card copies
+  `TokenSettings`: "Copy this link now, it will not be shown again", Copy button, expiry date.
+- List below: masked email, status chip (pending / accepted / revoked / expired), issued date,
+  expiry, **Revoke…** with a reason prompt. Empty state explains that invitees open the link
+  and request a magic link with the invited address.
+- Component tests mirror `token-settings.component.test.tsx`; one Playwright smoke run behind
+  the admin allowlist in the local Docker loop.
+
+**I3 — Capture diagnostics out of the main Capture tab.**
+
+- Today `CaptureDiagnostics` (`src/components/capture/capture-diagnostics.tsx`) is mounted
+  under the token panel in Settings → Capture (`src/app/settings/page.tsx`) and shows every
+  rejected or failed capture with Retry / Save again. It was added on 2026-09-24 as an
+  "internal diagnostics" surface after Amit declined a notification bell (checkpoint "Capture
+  diagnostics in Settings — 2026-09-24"). Amit now finds it noisy on the main Settings view and
+  is unsure it belongs in the app at all.
+- Why a plain "only outside production" gate is wrong: the failures it lists live in the
+  Production database. `NODE_ENV` is `production` on distilai.app and `development` only in
+  the local Docker loop, so an environment gate would hide the panel exactly where the data is.
+  The app has no runtime debug mode today (`src/lib/config.ts` exposes `FEATURE_CONNECTORS`
+  and `NODE_ENV` only; no client-visible debug flag).
+- Options (decision 4): (A) **Troubleshooting tab, admin-only** — a third Settings tab rendered
+  only when the account payload says `isAdmin` (the I1 allowlist), with the diagnostics panel
+  unchanged inside it; the tab shows a count badge only when failures exist. No new mechanism,
+  and it matches the original "internal diagnostics" framing. Non-admins see nothing.
+  (B) **Troubleshooting tab for everyone** — same move, no gate; failures stay visible to all
+  users but out of the way. (C) **Remove the panel and its `?status=` filter** — failures go
+  silent again; the retry route stays for the capture receipt page. Recommended: A.
+- Work (small): move the component into the new tab, add the tab trigger, gate on `isAdmin`,
+  update `settings/__tests__` and the diagnostics component tests; no API change.
+
+#### Decisions (answered by Amit in chat, 2026-09-30)
+
+All four recommended options were chosen: (1A) env allowlist `DISTIL_ADMIN_USER_IDS`, no
+migration; (2A) any email may be invited; (3A) the `invitations` row is the record, and
+`operator_audit_events` is written only when `DATABASE_CONTROL_PLANE_URL` is configured;
+(4A) capture diagnostics move into an admin-only Troubleshooting tab. Implementation of I1–I3
+is not yet authorized; Amit starts it as its own task with the code prompt below.
+
+#### Decisions as asked
+
+1. **Admin designation:** (A) `DISTIL_ADMIN_USER_IDS` env allowlist, no migration
+   (recommended); (B) `users.role` column with a tenant migration.
+2. **Who may be invited:** (A) any email (recommended); (B) restrict to listed domains.
+3. **Audit:** (A) rely on the `invitations` row and write `operator_audit_events` only when the
+   control-plane URL is configured (recommended); (B) require the control-plane URL in
+   Production first.
+4. **Capture diagnostics:** (A) admin-only Troubleshooting tab (recommended); (B) Troubleshooting
+   tab for everyone; (C) remove the panel.
+
+#### Single-session code prompt (I1 + I2 + I3)
+
+> Implement I1, I2 and I3 from the checkpoint "Admin invitations from Settings: phased plan
+> (I1–I3) — 2026-09-30" in `docs/project-state.md`, on a fresh `claude/admin-invitations` branch
+> from `origin/main`. Read `src/lib/auth/invitations.ts`, `src/lib/auth/ports.ts`,
+> `src/lib/postgres/auth-repository.ts`, `src/app/api/v1/account/route.ts` (auth pattern),
+> `src/components/capture/token-settings.tsx` (copy-once UI) and `src/app/settings/page.tsx`
+> first. Add the admin allowlist helper, the three admin routes, the `listInvitations` port
+> method, the Invitations tab, the admin-only Troubleshooting tab holding `CaptureDiagnostics`,
+> tests, the matrix and `AGENTS.md` updates, and the CLI error fix.
+> Verify with `npm run check` and `npm run test:integration` against local Docker Postgres with
+> your local user in `DISTIL_ADMIN_USER_IDS`. Do not touch Vercel or Neon. Record a checkpoint
+> and handoff bullet before opening the PR.
 
 ### Keyboard navigation K4: Research, Settings, e2e and user guide — 2026-09-30
 
