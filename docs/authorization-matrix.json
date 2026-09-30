@@ -2170,13 +2170,6 @@
       "requiredScope": "one user's items, feedback and preferences per call/job"
     },
     {
-      "id": "embedding",
-      "source": "src/lib/ai/embeddings.ts",
-      "entryPoints": ["generateEmbedding", "findSimilarItems", "embedItem"],
-      "currentScope": "all recent embeddings",
-      "requiredScope": "owned item write and tenant-filtered similarity candidates"
-    },
-    {
       "id": "deep-research",
       "source": "src/lib/ai/research.ts",
       "entryPoints": ["startResearch", "runResearchStage"],
