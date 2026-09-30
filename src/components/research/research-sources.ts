@@ -2,9 +2,9 @@
  * Source normalisation for deep-research reports.
  *
  * `research_reports.sources` is a text column holding JSON. Reports written so far store a
- * `string[]` of URLs scraped from the findings; phase R2 will store numbered source objects
- * `{ id, url, title, domain, grounded }` in the same column. The page accepts both shapes and
- * normalises them here, in one place.
+ * `string[]` of URLs scraped from the findings; since phase R2 the engine stores cited-only,
+ * numbered source objects `{ id, url, title, domain, grounded }` in the same column. The page
+ * accepts both shapes and normalises them here, in one place.
  */
 
 export interface ResearchSource {
@@ -120,6 +120,26 @@ export function normalizeSources(raw: unknown): ResearchSource[] {
     sources.push(source);
   });
   return sources;
+}
+
+/**
+ * True when the stored sources are R2's numbered source objects (cited-only, ids matching the
+ * report's `[n]` markers) rather than a legacy URL list. Accepts the raw API value or its JSON.
+ */
+export function hasNumberedSources(raw: unknown): boolean {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return false;
+    }
+  }
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry))
+  );
 }
 
 const MARKDOWN_LINK_RE = /\]\((https?:\/\/[^)\s]+)/g;

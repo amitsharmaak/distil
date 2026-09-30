@@ -453,13 +453,11 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 ### Deep research R2: grounded numbered citations — 2026-09-30
 
-**Scope so far: engine half only.** Branch `claude/research-r2-citations` from `main` `10f367f`
-(spec: checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29", **R2**).
-Implementation complete and verified by deterministic tests; no live model calls, not merged, not
-deployed. **UI half pending** (`[n]` superscripts, numbered sources list, "recalled by the model"
-note on `/research/[id]`); it waits for R1's page rewrite to merge. Today's page renders each
-source as a string (`{url}` as a React child), so a report stored with the new object sources
-would fail to render there: this branch must not ship without the UI half.
+**Scope: engine and UI halves.** Branch `claude/research-r2-citations` from `main` `10f367f`,
+with `main` merged in after R1 landed (`8280fdc`, merge `d43ddfa`); spec: checkpoint "Deep
+research readability: diagnosis and phased plan — 2026-09-29", **R2**. Implementation complete
+and verified by deterministic tests; no live model calls, not yet seen in a browser, not merged,
+not deployed.
 
 **References re-verified on `10f367f`.** URL scrape at `research.ts:552-553`, "with source URLs"
 prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, untouched),
@@ -498,6 +496,22 @@ prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, un
   drops ids not in the list (a marker left empty is removed) and leaves `[x](url)` links and
   `[n]:` definitions alone.
 - **Model calls unchanged** (plan, one per sub-question, gaps, one per gap, synthesis).
+- **UI (on R1's `src/components/research/`).** A report whose stored sources are objects
+  (`hasNumberedSources`) is rendered in numbered mode; legacy `string[]` reports keep R1's
+  behaviour exactly (cited/other split, domain chips, markers untouched).
+  - `linkCitationMarkers` (`report-markdown.ts`) rewrites each run of adjacent known markers
+    (`[2]`, `[1][3]`, `[1, 3]`) into one in-page link `[1,3](#source-1 "distil:ref")`, outside
+    fenced and inline code, links, images, escaped brackets and `[n]:` definitions; unknown ids
+    stay plain text; line numbers are preserved so heading ids still match.
+  - `createCitationLink` (`report-body.tsx`) renders such a link as one `<sup>` group of
+    numbers, each linking to `#source-n` with "title — domain" as tooltip and "Source n: …" as
+    accessible name; clicking opens the collapsed sources disclosure before the jump. No new
+    dependency.
+  - The sources list becomes "Sources (k)", collapsed, ordered by id, each row `id="source-n"`
+    with `scroll-mt-20` and a `:target` highlight, title and domain plus external link; no
+    "Other links" disclosure. When no source is `grounded`, a visible one-line note reads
+    "Sources recalled by the model, not verified by search". The header count is the number of
+    object sources. An empty `[]` renders like a report without sources.
 
 **Stored shapes.**
 
@@ -510,8 +524,14 @@ prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, un
   question from `subQuestions`/`gaps`, and its inline URLs (at most 8) become ungrounded sources
   titled by domain, so in-flight runs finish and only what synthesis cites survives.
 
-**Verification.** `npm run check` green (lint 0 errors; typecheck; 233 suites, 1,766 tests). New
-or changed tests: grounding-chunk parsing (`summary-provider.unit`), facade shape and fallback
+**Verification.** `npm run check` green after the UI half (lint 0 errors; typecheck; 236
+suites, 1,829 tests). UI tests (`src/app/research/[id]/__tests__/`): marker linking, grouping,
+unknown ids, code/link/definition exclusions and line preservation (`report-markdown.unit`),
+`hasNumberedSources` (`research-sources.unit`), superscript mapping, tooltips and accessible
+names, click-to-open, anchor ids, unverified note shown and hidden, legacy reports unchanged,
+empty `[]`, and a stored-report fixture rendered through the full `ResearchReportView`
+(`report-components.component`); the page test now expects "Sources (1)" for object sources.
+Engine tests: grounding-chunk parsing (`summary-provider.unit`), facade shape and fallback
 prompt selection (`router-search.unit`), redirect resolution with a mocked fetch — success,
 timeout, errors/unsafe locations, cap, non-Google hosts untouched, de-duplication
 (`research-sources.unit`), recalled-block parsing, catalog and renumbering, v1 resume and v1
@@ -525,8 +545,8 @@ and the redirect `Location` behaviour are implemented from the API documentation
 fixtures only (accepted by Amit, decision 6). Live sources remain model memory, marked
 `grounded: false`.
 
-**Expected before/after vs `5a9cf55a`** (not yet measured; needs one local run after the UI
-half): before, 41 scraped URLs listed and 8 cited, links inline in the text; after, at most
+**Expected before/after vs `5a9cf55a`** (not yet measured; needs one local run and a browser
+check): before, 41 scraped URLs listed and 8 cited, links inline in the text; after, at most
 three recalled sources per question (≤ ~21 candidates), only cited ones stored as numbered
 objects with title and domain, and `[n]` markers instead of URLs in the text.
 

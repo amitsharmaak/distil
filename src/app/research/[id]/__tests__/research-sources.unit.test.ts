@@ -1,5 +1,6 @@
 import {
   domainOf,
+  hasNumberedSources,
   normalizeSources,
   shortPath,
   splitSources,
@@ -140,5 +141,22 @@ describe("splitSources", () => {
   it("returns everything as other when the report links nothing", () => {
     const sources = normalizeSources(["https://a.example", "https://b.example"]);
     expect(splitSources(sources, "No links.")).toEqual({ cited: [], other: sources });
+  });
+});
+
+describe("hasNumberedSources", () => {
+  it("recognises R2 source objects, raw or as JSON", () => {
+    const objects = [{ id: 1, url: "https://a.example", title: "A", domain: "a.example" }];
+    expect(hasNumberedSources(objects)).toBe(true);
+    expect(hasNumberedSources(JSON.stringify(objects))).toBe(true);
+  });
+
+  it("treats legacy URL lists, empty lists and garbage as not numbered", () => {
+    expect(hasNumberedSources(["https://a.example"])).toBe(false);
+    expect(hasNumberedSources([])).toBe(false);
+    expect(hasNumberedSources("[]")).toBe(false);
+    expect(hasNumberedSources("not json")).toBe(false);
+    expect(hasNumberedSources(null)).toBe(false);
+    expect(hasNumberedSources([{ url: "https://a.example" }, "https://b.example"])).toBe(false);
   });
 });
