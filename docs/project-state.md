@@ -515,6 +515,9 @@ own hash. No database, environment variable, Production deployment or open PR wa
   After merging the released P8 state from `origin/main` `1d2831a`, the focused sidebar and Feed
   suites passed 22 tests and the final `npm run check` passed: lint 0 errors / 5 unchanged warnings,
   formatting and TypeScript clean, 236 suites / 1,856 tests.
+  After merging the F7 cleanup from `origin/main` `6901bc9`, those focused suites again passed
+  22 tests and `npm run check` passed: lint 0 errors / 5 unchanged warnings, formatting and
+  TypeScript clean, 233 suites / 1,836 tests.
   (A stale `.next/dev` route cache still referenced Ask on the first typecheck; moving that generated
   cache aside produced the clean result.) The local in-app browser at
   `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately selects it, increments the
