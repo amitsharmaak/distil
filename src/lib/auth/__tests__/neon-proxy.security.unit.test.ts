@@ -347,7 +347,6 @@ describe("composed Neon proxy authorization", () => {
 
   it.each([
     ["GET", "/api/v1/feed", true],
-    ["GET", "/api/cron/digests", true],
     ["POST", "/api/v1/captures", false],
     ["POST", "/api/items", false],
     ["POST", "/api/queue/capture-requests", false],

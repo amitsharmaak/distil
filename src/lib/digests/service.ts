@@ -1,14 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
 import type {
   DigestCandidate,
   DigestItem,
-  DigestJob,
   DigestRun,
   DigestStore,
-  PersonalPreferences,
 } from "./types";
 
 const selectionVersion = "deterministic-v1";
@@ -233,24 +231,4 @@ export async function dismissDigestItem(
     throw new DigestError("DIGEST_ITEM_NOT_FOUND", 404, "Digest item was not found");
   }
   return item;
-}
-
-export async function enqueueDigest(
-  context: AuthContext,
-  store: DigestStore,
-  preferences: PersonalPreferences,
-  requestedBy: DigestJob["requestedBy"],
-  now = new Date()
-): Promise<DigestJob | undefined> {
-  const tenant = parseAuthContext(context);
-  if (!preferences.digestEnabled) return undefined;
-  const localDate = localDateFor(preferences.digestTimezone, now);
-  return store.enqueue({
-    id: randomUUID(),
-    localDate,
-    idempotencyKey: `digest:${tenant.userId}:${localDate}`,
-    status: "queued",
-    requestedBy,
-    createdAt: now.toISOString(),
-  });
 }

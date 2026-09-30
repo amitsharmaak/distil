@@ -20,6 +20,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (I1–I3, below). The app-slowness plan P8–P11 is closed (P8–P10 live, P11 the authorized
   no-change decision). Keyboard navigation K1–K4 is merged (`67f722c`, PR #101); PR #103 records
   its Production release. Phase 4 (mobile) remains unauthorized.
+- **Nightly digest cron removed (branch `claude/pending-tasks-summary-48f300`; checkpoint "Nightly
+  digest cron removed — 2026-09-30"):** the 02:00 UTC cron in `vercel.json` enqueued one
+  `digest_run` tenant job per active user every night, and the worker completed each one as "No
+  tenant handler registered" because no handler was ever registered. Amit chose to stop
+  enqueuing rather than build digests. Removed: the `crons` entry, `GET /api/cron/digests`, the
+  durable-queue mirror `src/lib/digests/runtime.ts` and the now-callerless `enqueueDigest`
+  helper; the authorization matrix, route-surface fixture and tests follow. The digest tables,
+  store, preferences and the in-app `POST /api/v1/digests/run` are unchanged. Full gate green
+  locally (`npm run check` 242 suites / 1,991 tests, `audit:phase3-security`). Not merged, not
+  deployed. After the merge the `CRON_SECRET` Production variable is read by nothing and may be
+  removed by Amit. Still enqueued without a handler, out of this task's scope:
+  `regenerate_intelligence_summary` (reachable from `POST /api/v1/items/:id/summaries/regenerate`)
+  and `knowledge_backfill` (operator script only).
 - **Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 recorded, nothing
   implemented (branch `claude/chrome-extension-web-store-fb0101`, PR
   [#102](https://github.com/amitsharmaak/distil/pull/102), docs only, merged with `main` through
@@ -511,10 +524,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
   - The deferred bug backlog (`BUG-PWA-001/002`, `BUG-IOS-001/002`, `BUG-CONTENT-001`,
     `BUG-SEARCH-001`, `BUG-READER-001`) below remains open and unscheduled.
   - Known functional gap found during the performance analysis: the tenant job types
-    `regenerate_intelligence_summary`, `digest_run` and `knowledge_backfill` are enqueued but no
-    handler is registered (`src/lib/jobs/tenant-runtime.ts` completes them as "No tenant handler
-    registered"), so the nightly digest cron in `vercel.json` is write-only. Amit chose not to add
-    digest work now; either register handlers or stop enqueuing in a later task.
+    `regenerate_intelligence_summary` and `knowledge_backfill` are enqueued but no handler is
+    registered (`src/lib/jobs/tenant-runtime.ts` completes them as "No tenant handler
+    registered"). The third such type, `digest_run`, and its nightly cron were removed on
+    2026-09-30 (checkpoint "Nightly digest cron removed — 2026-09-30").
   - Resolved 2026-09-16: the concurrent docs branches `claude/pwa-reinstall-notes` (PR #18,
     `735ee4d`) and `claude/perf-plan` (PR #19, `22cd7aa`) both merged; both checkpoints kept.
   - Two files of the branch-workflow tooling could not be written by Claude Code because the
@@ -590,6 +603,47 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Nightly digest cron removed — 2026-09-30
+
+**Why.** While consolidating the pending-task list, Claude re-checked the "write-only digest
+cron" gap recorded on 2026-09-16. `vercel.json` scheduled `GET /api/cron/digests` at 02:00 UTC;
+the route walked every active user and enqueued a `digest_run` tenant job per user through
+`src/lib/digests/runtime.ts`. `src/lib/lifecycle/queue-runtime.ts` registers handlers only for
+account export, export retention, area backfill and account deletion, so
+`src/lib/jobs/tenant-runtime.ts` completed each digest job with the note "No tenant handler
+registered" and no digest was ever produced. Whether the route ran on Production depends on the
+`FEATURE_DIGESTS` variable, which was not read here. Amit chose in chat (2026-09-30) to stop
+enqueuing (option 1) rather than register handlers.
+
+**What changed** (branch `claude/pending-tasks-summary-48f300`, code and docs, no schema or
+cloud change):
+
+- `vercel.json`: the `crons` block is gone; the three queue triggers are unchanged.
+- Deleted `src/app/api/cron/digests/route.ts` and its contract test, and
+  `src/lib/digests/runtime.ts` (`enqueueDigestRuntimeJob`, the never-registered
+  `createDigestJobHandler`) with its unit test.
+- `src/lib/digests/service.ts`: `enqueueDigest` removed (the cron was its only caller); the two
+  assertions covering it are gone from `service.unit.test.ts`. The `DigestStore.enqueue` port,
+  the PostgreSQL store, the `digest_jobs` table and `POST /api/v1/digests/run` (which runs a
+  digest inline for the signed-in user) are untouched.
+- `docs/authorization-matrix.json`: the `/api/cron/digests` route entry and the `digest-cron`
+  worker entry removed; `expectedApiRouteFileCount` 88 → 87. The `cron_service` principal stays
+  as a definition with no route.
+- `tests/fixtures/phase3/phase2-wave0-route-surfaces.json` drops the surface (116 → 115 in
+  `authorization-matrix.unit.test.ts`); `tests/support/authorization-matrix.ts` loses the
+  system-route branch that existed only for it; the neon-proxy security test drops its cron row.
+
+**Verified locally.** `npm run check`: lint 0 errors, `tsc --noEmit` clean, 242 suites /
+1,991 tests passed; `npm run audit:phase3-security` passed. Not merged, not deployed.
+
+**Open after this task.** (1) `CRON_SECRET` in Vercel Production is read by nothing once this
+merges; Amit may delete it (cloud change, his call). (2) `regenerate_intelligence_summary` is
+still enqueued by `enqueueSummaryRegeneration` behind `POST /api/v1/items/:id/summaries/regenerate`
+with no handler, so that route creates a pending artifact that never completes; `knowledge_backfill`
+is enqueued only by `scripts/run-knowledge-backfill.ts`. Both are separate decisions.
+(3) Amit confirmed in chat on 2026-09-30 that deep research works on Production and that the
+K1–K4 keyboard smoke check on Production is done; PR #103 still records that check as pending.
 
 ### Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30
 
