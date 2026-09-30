@@ -483,7 +483,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 P9 is implemented on `codex/perf-p9-session-cache` in worktree
 `.codex-worktrees/perf-p9-session-cache`. It started from `origin/main` `1d2831a` (the released P8
 commit), produced implementation commit `0e713bf`, then merged the concurrent F7 release at
-`6901bc9` without rebasing; branch HEAD before this checkpoint was `ceb79d0`.
+`6901bc9` without rebasing. Correctness-review commit `5eb4697` added local HS256 verification
+before the fast path, then current `origin/main` `02759a9` (P10) was merged without rebasing;
+branch HEAD before this checkpoint update was `0ad5e00`.
 
 Neon Auth's signed `session_data` cookie now has Amit's chosen 60-second TTL. Only ordinary
 `GET`/`HEAD` page and RSC requests with an unexpired cache-shaped cookie let the SDK validate and
@@ -499,20 +501,23 @@ account-status, deletion-pending recovery and fail-closed behavior are unchanged
 **Security trade-off:** after sign-out on another device or provider-side revocation, an ordinary
 read-only page/RSC request can continue for at most 60 seconds. Mutations, API reads and writes,
 the Account shell and all lifecycle-sensitive operations continue to observe provider revocation
-on their next request. The SDK remains the authority for the cookie's HMAC signature; P9's local
-expiry read is only a conservative selector that sends known misses to the uncached path.
+on their next request. P9 validates the cookie's HS256 signature, JWT header, payload shape and
+expiry before selecting cached mode; the SDK validates it again before returning the session. A
+well-shaped token with a fresh expiry but the wrong signature is routed directly to one
+`disableCookieCache=true` handler call, avoiding the SDK's two-fetch reactive-mint path.
 
-**Locally verified:** focused auth and frozen-boundary coverage passed (5 suites, 82 tests), the
-security suite passed before the final `main` merge (42 suites, 418 tests), and the final
-`npm run check` after merging `6901bc9` passed (lint with the five existing warnings and zero
-errors, typecheck, 233 suites / 1,846 tests). The first full run correctly failed only because the
-reviewed `src/lib/auth/neon-proxy.ts` digest changed with the policy comments; the 15 centrally
-protected mutation surfaces and their ordering were re-reviewed, the frozen digest was updated,
-and no route inventory, surface count or authorization-matrix entry changed.
+**Locally verified:** focused auth and frozen-boundary coverage passed (5 suites, 83 tests), the
+final security suite passed (42 suites, 419 tests), and `npm run check` after merging `02759a9`
+passed (lint with the five existing warnings and zero errors, typecheck, 233 suites / 1,849 tests).
+The first full run correctly failed only because the reviewed `src/lib/auth/neon-proxy.ts` digest
+changed with the policy comments; the 15 centrally protected mutation surfaces and their ordering
+were re-reviewed, the frozen digest was updated, and no route inventory, surface count or
+authorization-matrix entry changed.
 
-**Gaps and remaining gates:** no Preview or Production request was made here, and the deterministic
-handler fixture proves cache/uncached selection rather than contacting Neon Auth. Codex, as
-integration owner, must review the diff, push/open the auth-boundary PR with `full-ci`, read a
+**Gaps and remaining gates:** no Preview or Production request was made here. The deterministic
+handler fixture plus WebCrypto-signed tokens prove cache/uncached selection rather than contacting
+Neon Auth. Codex, as integration owner, must review the diff, push/open the auth-boundary PR with
+`full-ci`, read a
 Preview deployment (four warm `/feed` RSC samples, four warm `GET /api/v1/feed` controls, plus one
 sample after at least six idle minutes), and confirm that ordinary page/RSC requests lose the
 80–250 ms `proxy-auth-provider` phase while API controls still perform exactly one uncached
