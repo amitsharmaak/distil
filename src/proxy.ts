@@ -17,11 +17,6 @@ import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
 import { instrumentNeonProxyDependencies } from "@/lib/auth/auth-metrics";
 import {
-  P10_PREVIEW_PROBE_HEADER,
-  P10_PREVIEW_PROBE_PARAM,
-  P10_PREVIEW_PROBE_VALUE,
-} from "@/lib/auth/p10-preview-probe";
-import {
   PROXY_TIMING_HEADER,
   runWithRequestMetrics,
   serverTimingHeader,
@@ -111,12 +106,6 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
   if (!neonFoundation.enabled) {
     const authError = await checkAuth(request);
     if (authError) return finish(authError);
-    // TEMPORARY: let the P10 Preview render an empty tenant for measurement
-    // without adding a legacy user id to the environment. The inbound form of
-    // this header was stripped above, and Neon-authenticated requests never get it.
-    if (request.nextUrl.searchParams.get(P10_PREVIEW_PROBE_PARAM) === P10_PREVIEW_PROBE_VALUE) {
-      requestHeaders.set(P10_PREVIEW_PROBE_HEADER, P10_PREVIEW_PROBE_VALUE);
-    }
   } else {
     try {
       const dependencies = instrumentNeonProxyDependencies({
