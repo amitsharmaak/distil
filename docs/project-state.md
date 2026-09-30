@@ -509,12 +509,16 @@ own hash. No database, environment variable, Production deployment or open PR wa
   passed (23 tests), `npm run check:quick` passed (4 related suites / 33 tests), and the pre-merge
   `npm run check` passed: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites /
   1,738 tests. After merging current `origin/main`, `npm run check` passed again: lint 0 errors /
-  5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. The local
-  in-app browser at `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately
-  selects it, increments the active count and commits `/feed?area=work`; closing the sheet shows
-  the Work chip. The local worktree has no `.env.local`, so feed API calls returned the expected
-  unconfigured-local error and real list rows were not available. The pending/dimmed list and
-  settled-server-page states are covered deterministically by the new component test.
+  5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. After the final
+  merge of `origin/main` `4f1ee3e` and removal of all measurement code, `npm run check` passed:
+  lint 0 errors / 5 unchanged warnings, formatting and TypeScript clean, 233 suites / 1,828 tests.
+  (A stale `.next/dev` route cache still referenced Ask on the first typecheck; moving that generated
+  cache aside produced the clean result.) The local in-app browser at
+  `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately selects it, increments the
+  active count and commits `/feed?area=work`; closing the sheet shows the Work chip. The local
+  worktree has no `.env.local`, so feed API calls returned the expected unconfigured-local error
+  and real list rows were not available. The pending/dimmed list and settled-server-page states are
+  covered deterministically by the new component test.
 - **Preview evidence.** Deployment `dpl_4SLSqmwG8Kq4o5zYmZbH36HUR6sa`, temporarily reached
   through the stable-host alias, was measured with a strictly temporary legacy-auth harness.
   The initial `/feed?p10=1` logs included `/`, `/feed`, `/collections`, `/archive` and the Feed
@@ -737,6 +741,7 @@ rejected).
 **Next.** Release decision for Amit; after deploy, rerun a research question on Production and
 check the synthesis latency in the audit log. Runs stuck like `8bb4d982` fail through the stale
 guard when read.
+
 ### Inline search F5: filter bar on Today — 2026-09-30
 
 Phase F5 of "Inline search, quick filters and life areas — 2026-09-29", built on the redesigned
