@@ -547,3 +547,103 @@ describe("stored R2 report fixture", () => {
     );
   });
 });
+
+describe("stored R3 report fixture", () => {
+  beforeEach(() => {
+    markdownCalls.length = 0;
+  });
+
+  // Shaped as the R3 engine assembles it: TL;DR, key takeaways, question-specific sections
+  // (one a GFM table, one a failed-section placeholder), caveats; cited-only renumbered sources.
+  const storedReport = {
+    query: "Which on-device assistant approach should a phone maker pick?",
+    report: [
+      "## TL;DR",
+      "",
+      "Hybrid designs win on latency and privacy [1][2].",
+      "",
+      "## Key takeaways",
+      "",
+      "- A 3B model answers in 120 ms [1].",
+      "- Cloud handoff costs 0.4 s per request [2].",
+      "",
+      "## How on-device models work",
+      "",
+      "Small models run locally [1].",
+      "",
+      "### Memory limits",
+      "",
+      "Eight gigabytes is the floor [1].",
+      "",
+      "## The approaches side by side",
+      "",
+      "| Approach | Latency |",
+      "| --- | --- |",
+      "| On-device | 120 ms [1] |",
+      "| Cloud | 400 ms [2] |",
+      "",
+      "## What to watch",
+      "",
+      "*This section could not be written; see sources [2].*",
+      "",
+      "## Caveats and open questions",
+      "",
+      "- Figures are vendor-reported [2].",
+      "",
+    ].join("\n"),
+    sources: [
+      {
+        id: 1,
+        url: "https://a.example/1",
+        title: "Model card",
+        domain: "a.example",
+        grounded: true,
+      },
+      {
+        id: 2,
+        url: "https://b.example/2",
+        title: "Latency study",
+        domain: "b.example",
+        grounded: true,
+      },
+    ] as unknown,
+    createdAt: "2026-09-30T10:00:00.000Z",
+    completedAt: "2026-09-30T10:06:00.000Z",
+  };
+
+  it("lifts the TL;DR into the callout and lists every section in the contents", async () => {
+    render(<ResearchReportView report={storedReport} />);
+    await screen.findAllByTestId("markdown");
+
+    const tldr = screen.getByRole("region", { name: "TL;DR" });
+    expect(tldr).toHaveAttribute("id", "tldr");
+    expect(markdownCalls[0].children).toBe(
+      `Hybrid designs win on latency and privacy [1,2](#source-1 "${CITATION_REF_TITLE}").`
+    );
+    const body = markdownCalls[1].children;
+    expect(body).not.toContain("## TL;DR");
+    expect(body.startsWith("## Key takeaways")).toBe(true);
+    expect(body).toContain(`| On-device | 120 ms [1](#source-1 "${CITATION_REF_TITLE}") |`);
+    expect(body).toContain("*This section could not be written; see sources [2](#source-2");
+
+    const navs = screen.getAllByRole("navigation", { name: "On this page" });
+    expect(
+      within(navs[1])
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")])
+    ).toEqual([
+      ["TL;DR", "#tldr"],
+      ["Key takeaways", "#key-takeaways"],
+      ["How on-device models work", "#how-on-device-models-work"],
+      ["Memory limits", "#memory-limits"],
+      ["The approaches side by side", "#the-approaches-side-by-side"],
+      ["What to watch", "#what-to-watch"],
+      ["Caveats and open questions", "#caveats-and-open-questions"],
+    ]);
+    // Key takeaways and Caveats are framing: the header counts the three body sections.
+    expect(screen.getByTestId("report-stats")).toHaveTextContent("3 sections");
+    expect(screen.getByTestId("report-stats")).toHaveTextContent("2 sources");
+    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
+    expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();
+  });
+});

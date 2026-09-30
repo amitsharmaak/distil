@@ -1,8 +1,12 @@
 import {
   createCaptureQueueMessageV2,
+  createResearchRunMessageV1,
   createTenantJobEnvelopeV1,
   parseCaptureQueueMessageV2,
+  parseResearchRunMessageV1,
   parseTenantJobEnvelopeV1,
+  RESEARCH_RUN_STEPS,
+  researchRunIdempotencyKey,
   type CaptureQueueMessageV2,
   type CreateCaptureQueueMessageV2Input,
   type CreateTenantJobEnvelopeV1Input,
@@ -200,5 +204,44 @@ describe("tenant job contracts", () => {
     ],
   ])("rejects a job envelope with %s", (_case, envelope) => {
     expect(() => parseTenantJobEnvelopeV1(envelope)).toThrow();
+  });
+});
+
+describe("research run message", () => {
+  const REPORT_ID = "a0000000-0000-4000-8000-00000000000a";
+  const base = { version: 1, userId: USER_ID, reportId: REPORT_ID, traceId: TRACE_ID };
+
+  it("accepts every stage kind, including the R3 outline and write stages", () => {
+    expect(RESEARCH_RUN_STEPS).toEqual([
+      "plan",
+      "search",
+      "gaps",
+      "deepen",
+      "synthesize",
+      "outline",
+      "write",
+    ]);
+    const outline = createResearchRunMessageV1({ ...base, step: "outline" });
+    expect(outline).toEqual({ ...base, step: "outline" });
+    expect(researchRunIdempotencyKey(outline)).toBe(`research:${REPORT_ID}:outline:0`);
+    const write = createResearchRunMessageV1({ ...base, step: "write", index: 2 });
+    expect(researchRunIdempotencyKey(write)).toBe(`research:${REPORT_ID}:write:2`);
+    expect(Object.isFrozen(write)).toBe(true);
+  });
+
+  it("keeps accepting a synthesize message published before the upgrade", () => {
+    expect(parseResearchRunMessageV1({ ...base, step: "synthesize" })).toEqual({
+      ...base,
+      step: "synthesize",
+    });
+  });
+
+  it.each([
+    ["a write stage without its section index", { ...base, step: "write" }],
+    ["an unknown stage", { ...base, step: "assemble" }],
+    ["a negative index", { ...base, step: "write", index: -1 }],
+    ["an extra field", { ...base, step: "outline", outline: {} }],
+  ])("rejects %s", (_case, message) => {
+    expect(() => parseResearchRunMessageV1(message)).toThrow();
   });
 });

@@ -101,8 +101,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
   model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
   Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
-  failed by the stale guard on its next read. Next: R3 on `claude/research-r3-adaptive`, then
-  ask Amit about R4.
+  failed by the stale guard on its next read. **R3 (adaptive, deeper report)** done: outline → one write per
+  section → assembly, run state v3 (v1/v2 still finish), stepper fixed (checkpoint "Deep
+  research R3: adaptive, deeper report — 2026-09-30"); squash merged to `main`. Local full run
+  `10b849b6` (baseline question, Gemini fallback, Anthropic key blanked): **1,951 words**, TL;DR
+  51 words, 5 key takeaways, 4 question-specific sections (one GFM table) plus caveats, **25
+  sources, all grounded and all cited**, no URLs in the text, no placeholder; slowest stage 28 s
+  (search), outline 8 s, writes 11–14 s, whole run ~3.5 min; checked at desktop, 375 px (table
+  scrolls inside its box) and dark mode. **Not verified live:** the Claude (Production) timings
+  for outline/write. Next: ask Amit about R4 (decision 4: decide after R3).
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -477,6 +484,208 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research R3: adaptive, deeper report — 2026-09-30
+
+**Scope: engine (plus the stepper).** Branch `claude/research-r3-adaptive` from `origin/main`
+`0592c27` (R1 `8280fdc` and R2 included); spec: checkpoint "Deep research readability:
+diagnosis and phased plan — 2026-09-29", **R3**, with Amit's decisions (storage stays in the
+existing `research_reports` text columns, no migration; 1,500–2,500 words with a TL;DR and key
+takeaways on top). Implementation complete and verified by deterministic tests and two live
+probe calls; no full run, no dev server. Not merged, not deployed; nothing changed in Vercel or
+Neon.
+
+**References re-checked on `0592c27`.** `RESEARCH_RUN_STEPS` / `ResearchRunStepKind` and the
+strict Zod message schema in `src/lib/contracts/tenant-jobs.ts`; `RESEARCH_TIMEOUTS_MS`
+(synthesize 50 s) and `RESEARCH_SYNTHESIZE_MAX_TOKENS` (12,000) in `src/lib/ai/research.ts`;
+`nextResearchStage` / `runResearchStage` / `applyDegradedOutcome`; the unbounded plan context
+(`[item.title, item.summary, item.fullContent]`, now `research.ts` ~`:861`, was `:490`);
+`researchSynthesizePrompt`'s fixed four headings; `htmlToReadableText` in `src/lib/format.ts`;
+the stepper's fixed four stages in `src/app/research/[id]/page.tsx`. All as the spec described.
+
+**What changed and why.**
+
+- **Stages.** The single `synthesize` stage is replaced by `outline` → one `write` per section →
+  assembly. Each is one queue message on the existing resumable machinery (durable attempts,
+  redelivery, degraded outcome after `MAX_STAGE_ATTEMPTS`). Assembly makes no model call and runs
+  in the invocation that writes the last section, in the same database write that completes the
+  report, so a stored state always has a section left to write (should one ever be read with
+  none left, `nextResearchStage` returns a write past the last section, which only assembles).
+- **Outline** (`generateJSON`, task `research-synthesize`, `researchOutlinePrompt`, Gemini
+  response schema `OUTLINE_RESPONSE_SCHEMA`): `shape` (explainer, comparison, landscape,
+  decision, how-to, timeline, other), a 2–3 sentence TL;DR, 3–5 takeaways each carrying a fact
+  with `[n]`, 3–6 sections (heading written for the question, purpose, the findings — `F1…Fk`,
+  failed search placeholders left out — and source ids it draws on, format prose / table / steps
+  / bullets) and 1–4 caveats. The input is every usable finding with its "Sources: [n] title —
+  domain" line, as R2's synthesis had. `parseOutline` (zod) trims to the caps instead of
+  rejecting (unknown shape → `other`, unknown format → `prose`, unknown source ids and duplicate
+  or reserved headings dropped, a section without a valid finding draws on all usable findings)
+  and rejects only an outline with no TL;DR, no takeaway, or fewer than two sections when two or
+  more findings are usable. Invalid JSON or an unusable outline fails the attempt; after the
+  retry `fallbackOutline` builds one deterministically: one prose section per usable finding
+  (research order, beyond six folded into the last), TL;DR and takeaways from the findings' first
+  facts with their first source cited, and a caveat saying the outline was automatic (plus how
+  many questions failed).
+- **Write** (`generateText`, `research-synthesize`, `researchSectionPrompt`): one section,
+  250–450 words, from that section's findings only (each with its Sources line), knowing the
+  other headings so it stays on its own ground; `[n]` citations with the global catalog ids; a
+  GFM table for `table`, a numbered list for `steps`, bold-lead bullets for `bullets`, paragraphs
+  for `prose`; body only. `cleanSectionBody` unwraps an outer markdown fence, drops a leading
+  heading that repeats the section heading (or any leading `#`/`##`), demotes remaining
+  `#`/`##` to `###` outside code, cuts a trailing Sources/References block, and fails the
+  attempt under 60 words. After the retry budget the section becomes
+  `*This section could not be written; see sources [n]…*`, citing that section's sources so they
+  survive, and the report still completes.
+- **Assembly** (`assembleReport`): `## TL;DR`, `## Key takeaways` (bullets), one `##` per
+  section, `## Caveats and open questions` (bullets; empty lists are omitted), then R2's
+  `finalizeCitations` over the whole document (cited-only, renumbered 1..k in order of first
+  citation, unknown ids dropped). Stored as markdown in `research_reports.report` (Copy as
+  Markdown unchanged) with the source objects in `research_reports.sources`. The source catalog is
+  rebuilt from the stored findings on each stage (deterministic; findings do not change after
+  the outline), so `[n]` ids agree across outline, writes and assembly.
+- **Plan prompt** chooses sub-questions for the kind of question (explainer, comparison,
+  landscape, decision, how-to, timeline examples) instead of the fixed background / current state
+  / players / outlook list. Item context is `itemPlanContext`: title, stored summary and the
+  article through `htmlToReadableText`, capped at 6,000 characters on a word boundary.
+- **Contract.** `RESEARCH_RUN_STEPS` gains `outline` and `write`; `synthesize` stays accepted. The
+  schema refines `write` to require its section `index` (idempotency key
+  `research:<id>:write:<i>`). A redelivered or pre-upgrade `synthesize` message is consumed as a
+  tick like any other: the consumer runs the first unfinished stage, which is `outline`, and
+  publishes `write` 0.
+- **Provider.** `GenerateOptions.thinking` (`"low" | "high"`): Gemini 3 models get
+  `generationConfig.thinkingConfig.thinkingLevel`, Gemini 2.5 Flash/Pro a `thinkingBudget`
+  (1,024 / 8,192), other models and providers ignore it (the SDK type predates the field; the API
+  accepted it live). It can be given per provider through the hotfix's `providerOverrides`
+  (which now accepts `thinking` besides `maxTokens` and `rejectTruncated`); the outline and write
+  calls set it only for Gemini.
+- **Stepper** (`/research/[id]`): Planning → Researching → Deepening → **Outlining** →
+  **Writing (2/5): <heading>**. A legacy `synthesizing` view shows as Outlining. Progress is
+  parsed by one helper for the read route (a JSON string), SSE events, objects, and defensively a
+  string of a string; unknown stages are ignored. Fix for the Production report on run
+  `8bb4d982` (progress `{"stage":"deepening","current":2,"total":2,…}` while the page showed
+  "Researching (0/1)"): a finished Researching step read "Researching (0/1)" from its defaults
+  and the Deepening step never showed its counts, so the page looked stuck on research; now a
+  finished step reads "Researched sub-questions" and the current one "Deepening (2/2): <gap>".
+
+**Lease budget (one mechanism, after merging the R2 hotfix `eaed15c`).** Every stage, including
+outline and write, runs under the hotfix's `withStageDeadline`: the attempt is written to the
+state before the stage starts (so a delivery Vercel kills still counts), the stage gets an
+`AbortSignal` that reaches the SDK's HTTP request, and at the deadline the signal is aborted and
+the attempt fails. The deadline is now **45 s** for all stages (the hotfix had 50 s; R3's
+separate 42 s outline/write deadline and its own Anthropic retry cap are gone). Outline and
+write calls: provider timeout 40 s, `maxAttempts: 1` (the SDKs get `maxRetries: 0` through the
+hotfix's `sdkRequestOptions`), `rejectTruncated: true`, and per-provider budgets via
+`providerOverrides` (`RESEARCH_OUTLINE_OPTIONS`, `RESEARCH_WRITE_OPTIONS`): default (Anthropic
+`claude-sonnet-4-6`, no extended thinking, and GPT; ~60–80 tokens/s) outline 2,500 and write
+2,000 tokens ≈ 31–42 s and 25–33 s even at the cap, while a real outline (~1,000 tokens) or
+450-word section (~650 tokens) should take ~12–16 s and ~8–11 s (estimated); Gemini
+(`gemini-3.5-flash`, low thinking, ~230 tokens/s measured) outline 6,000 and write 5,000 ≈ 26 s
+and 22 s at the cap. Invocation: report read + attempt write (<1 s) + stage ≤ 45 s + state or
+assembled-report write and next publish (<2 s) ≈ ≤ 48 s, ≥ 12 s inside the 60 s lease. Search
+stages keep their 45 s provider timeout, so the deadline now also bounds a slow grounded answer
+plus its redirect resolution at 45 s. Exhausted attempts, including every delivery killed
+before it could record its failure, degrade instead of failing the report: an outline becomes
+the deterministic fallback outline, a section the placeholder.
+
+**Run state version 3 and compatibility.** `research_reports.progress` adds `outline` (the
+normalised outline) and `sections` (`string | null` per outline section); stored reports are
+untouched. Version 2 states (R2) and version 1 states (before R2) still parse and are upgraded
+in memory (v1 → v2 as before, then `sections: []`, no outline); the next write stores v3.
+Decision: an in-flight v1/v2 run that reaches (or is waiting at) synthesis goes through outline
+and write rather than finishing on the old single call — one code path, the old synthesis prompt
+and its 12,000-token call (the one timing out on Production) are removed, and the findings the
+old run gathered are exactly what the outline needs. A `synthesize` attempt count in an old
+state does not count against the outline. `publicResearchProgress` still sends only the view.
+
+**Model calls per run.** Before (R2): plan 1 + search 3–5 + gaps 1 + deepen 0–2 + synthesis 1 =
+6–10. After: plan 1 + search 3–5 + gaps 1 + deepen 0–2 + outline 1 + write 3–6 = 9–16 (typical
+5 sections: ~13), before retries. On a Gemini-only key every non-search call (plan, gaps,
+outline, writes: 6–9 per run) lands on `gemini-3.5-flash`'s free-tier bucket of 20 requests a
+day, so about two runs a day locally. In Production the outline and writes run on
+`claude-sonnet-4-6`. Wall clock adds roughly one outline (~5–15 s) and 3–6 writes (~10 s each on
+Gemini) plus a queue hop per stage.
+
+**Live probes (2 calls, `gemini-3.5-flash`, Gemini SDK direct with the exact R3 prompts, schema
+and config; synthetic heat-pump fixture of 5 findings / ~24 facts / 10 sources, no captured
+content; Anthropic not involved; probe script deleted).**
+
+| Call                                  | Time   | Prompt tokens | Answer tokens | Thinking tokens | Finish | Shape                                                                                                                                                                 |
+| ------------------------------------- | ------ | ------------- | ------------- | --------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| outline (6,000 cap)                   | 5.0 s  | 1,591         | 845           | none reported   | STOP   | `decision`; TL;DR 76 words; 4 takeaways, all with `[n]`; 5 sections (bullets, prose, table, bullets, prose) each mapped to one finding and its two sources; 3 caveats |
+| write, table section (4,000 cap then) | 10.0 s | 881           | 574           | 1,712           | STOP   | 359 words, no heading, one GFM table, citations only from that section's sources, no URLs                                                                             |
+
+`thinkingLevel: "low"` was accepted by the API. The write used 2,286 of its 4,000 tokens, so
+the Gemini write cap was raised to 5,000 for headroom. Observations: the TL;DR ran long (76
+words for "2–3 sentences"); the writer cited both of a finding's sources on nearly every claim,
+because sources are attached per finding, not per fact (as in R2).
+
+**Expected before / after.** Baseline `5a9cf55a` (pre-R2): 789 words, the fixed Executive
+Summary / Key Findings / Analysis / Conclusion template (five themes of three one-line bullets),
+41 URLs listed / 8 cited. R2 (replay on a synthetic fixture): 1,939 words, same four headings, 7/7
+cited `[n]` sources, one 12,000-token call at 42.7 of 50 s. R3: 3–6 sections × 250–450 words
+plus TL;DR, takeaways and caveats ≈ 1,000–2,900 words, ~2,000 for the typical five sections
+(inside the 1,500–2,500 target); structure chosen per question (shape, question-specific
+headings, a table where the outline asks for one); TL;DR callout and TOC from R1 (`## TL;DR`
+is lifted, the TOC lists Key takeaways, each section and its `###`, and Caveats); cited-only,
+renumbered sources as in R2; no single call above ~16 s on either provider in the normal case.
+To confirm with the orchestrator's full run.
+
+**After the hotfix merge (same branch, follow-ups from the orchestrator).**
+
+- Merge of `origin/main` (`eaed15c`, PR #84): conflicts in `research.ts`, `providers.ts`, the
+  stage tests and this file, resolved as described under Lease budget. The hotfix's deadline
+  tests now run against a write stage (abort at the deadline, late answer not stored, last attempt
+  → placeholder and completed report, killed delivery counted, all deliveries killed → placeholder
+  without a model call, outline → fallback outline without a model call, search degrade).
+- Logger: R2's `research_grounding_sources` counts were dropped by the allowlist. `logger.ts`
+  gains a separate counter allowlist (`sources`, `redirects`, `overCap`, `unresolved`, `cited`,
+  `sections`, `placeholders`, `takeaways`, `caveats`, `words`) that keeps only non-negative safe
+  integers — a string (e.g. a URL) in those fields is dropped. The grounding event now logs its
+  counts; `research_outline_planned` and `research_report_assembled` log shape as `code` and the
+  counts in those fields instead of the earlier packed string.
+- TL;DR: the outline prompt asks for 2–3 short sentences, at most 60 words; assembly trims a
+  longer TL;DR to whole sentences within 60 words (`limitTldr`; citation markers not counted; a
+  single overlong sentence is cut with an ellipsis).
+- Header count: R1's "N sections" counts only body `##` sections; TL;DR / Summary, "Key
+  takeaways" and "Caveats (and open questions)" are excluded (`isBodySectionHeading`). Legacy
+  four-heading reports keep their count (Executive Summary was already lifted out).
+- Citations: the section prompt asks to cite only the source(s) that support each claim, chosen
+  by their titles (each finding's Sources line already lists number, title and domain), not every
+  source of a finding. No extra model calls.
+
+**Verification.** `npm run check` after the merge and follow-ups: lint 0 errors (5 warnings, all
+in files this branch does not change), typecheck clean, Jest **238 suites / 1,932 tests** passed.
+Before the merge: 237 / 1,879. Covered in addition to the list below: logger counters
+(`logger.security.unit`), `limitTldr` and assembly trimming (`research-report.unit`), section count
+for R3 and legacy reports (`report-markdown.unit`, `report-components.component` now "3
+sections"), per-claim citation wording (`prompts.unit`), Gemini thinking through
+`providerOverrides` (`summary-provider.unit`), outline/write options and the 45 s deadline
+(`research-stages.unit`). No live calls after the merge.
+
+Earlier coverage: `research-stages.unit` (full stage walk plan → search × 2 → gaps → deepen →
+outline → write × 2 with call options, prompts, views and the exact assembled markdown and
+renumbered sources; resume mid-write; a redelivered `synthesize` message through
+`consumeResearchRunMessage` runs the outline and publishes `write` 0; v2 run waiting for
+synthesis; v2 and v1 resume; v1 at synthesis through outline and write; invalid outline retried
+then deterministic fallback; exhausted section → placeholder citing its sources and the report
+completes; short answer retried; all-written state assembles without a model call; stage
+ordering), `research-report.unit` (outline normalisation, F-number mapping, caps, rejections,
+fallback outline, section cleaning, assembly shape and renumbering, placeholders, plan context),
+`prompts.unit`, `summary-provider.unit` (thinking config mapping), `tenant-jobs.security.unit`
+(research message steps, `write` needs an index, `synthesize` accepted, idempotency keys),
+`page.component` (Outlining / Writing labels, legacy `synthesizing`, string-encoded and
+double-encoded progress), `report-components.component` (an R3-shaped stored report: TL;DR
+callout, body starts at Key takeaways, table and placeholder citations linked, TOC entries,
+sources).
+
+**Gaps and next steps.**
+
+1. No full run yet (orchestrator's). Check: word count and section count, Sonnet timings per
+   stage against the budget above, citation spread per claim, TL;DR length, and the stepper on
+   Production-shaped progress.
+2. Per-fact source attribution beyond the prompt would need the search notes to carry
+   citations (not in scope).
+3. R4 (research notes drill-down) remains a separate decision.
 
 ### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
 

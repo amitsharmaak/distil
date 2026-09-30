@@ -10,6 +10,7 @@ import {
   estimateReadingMinutes,
   extractHeadings,
   extractSummary,
+  isBodySectionHeading,
   prepareReport,
   slugify,
   stripTitleAndRules,
@@ -254,5 +255,48 @@ describe("linkCitationMarkers", () => {
   it("reads the ids of a marker run", () => {
     expect(markerRunIds("[3][1, 3]")).toEqual([3, 1]);
     expect(sourceAnchorId(4)).toBe("source-4");
+  });
+});
+
+describe("R3 section count", () => {
+  it("counts body sections only, not the TL;DR, key takeaways or caveats", () => {
+    const prepared = prepareReport(
+      [
+        "## TL;DR",
+        "Short.",
+        "## Key takeaways",
+        "- A.",
+        "## How it works",
+        "Body.",
+        "### Detail",
+        "More.",
+        "## What it costs",
+        "Body.",
+        "## Caveats and open questions",
+        "- C.",
+      ].join("\n")
+    );
+    expect(prepared.sectionCount).toBe(2);
+    expect(prepared.headings.map((heading) => heading.text)).toEqual([
+      "Key takeaways",
+      "How it works",
+      "Detail",
+      "What it costs",
+      "Caveats and open questions",
+    ]);
+  });
+
+  it("leaves legacy four-heading reports at their previous count", () => {
+    const prepared = prepareReport(
+      "## Executive Summary\nS.\n## Key Findings\nF.\n## Analysis\nA.\n## Conclusion\nC."
+    );
+    expect(prepared.sectionCount).toBe(3);
+  });
+
+  it("recognises the framing headings", () => {
+    expect(isBodySectionHeading("Key takeaways")).toBe(false);
+    expect(isBodySectionHeading("Caveats and open questions")).toBe(false);
+    expect(isBodySectionHeading("Key Findings")).toBe(true);
+    expect(isBodySectionHeading("Caveats of on-device models")).toBe(true);
   });
 });
