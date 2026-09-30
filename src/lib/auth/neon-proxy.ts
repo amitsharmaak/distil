@@ -35,7 +35,7 @@ const PROTECTED_AUTH_PREFIXES = [
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const LOGIN_PATH = "/sign-in";
 
-/** One uncached provider verification: the session and the provider's refreshed cookies. */
+/** One provider verification (cache-eligible only for ordinary page reads). */
 export interface VerifiedProviderSession {
   session: ProviderSessionResult;
   /** `Set-Cookie` headers the provider wants forwarded to the browser. */
@@ -105,7 +105,7 @@ function deniedResponse(request: NextRequest, error: unknown): NextResponse {
 }
 
 /**
- * Authorize one request with exactly one uncached provider check and one
+ * Authorize one request with one provider verification and one
  * account lookup, then hand the identity to the application as a signed,
  * trace-bound `x-distil-identity` token. The caller strips every inbound
  * `x-distil-*` header before calling, so the returned headers are the only
@@ -134,9 +134,10 @@ export async function authorizeNeonProxy(
     if (requiresNeonSessionOrigin(request.method)) {
       requireAllowedOrigin(request, dependencies.allowedOrigins);
     }
-    // The single provider round trip for this request. Its session feeds the
-    // unchanged resolver through a one-shot adapter; nothing may call the
-    // provider again.
+    // The single provider verification for this request. Eligible page reads
+    // may resolve from the SDK's signed cookie; everything else is uncached.
+    // Its session feeds the unchanged resolver through a one-shot adapter, so
+    // nothing may call the provider again.
     const verified = await dependencies.provider.verifySession(request);
     providerHeaders = verified.headers;
     if (!verified.session.data?.user || !verified.session.data.session) {
