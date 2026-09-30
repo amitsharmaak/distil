@@ -15,8 +15,9 @@ This section is the only forward-looking instruction block in this file. Everyth
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Two recorded plans await Amit's go-ahead: the Chrome extension
-  token-free sign-in and Web Store listing (X1–X3, below) and admin invitations from Settings
+- **Active objective:** Three recorded plans await Amit's go-ahead: the Chrome extension
+  token-free sign-in and Web Store listing (X1–X3, below), the iPhone Shortcut without a visible
+  token (D1–D3, below, which builds on X1's token kinds) and admin invitations from Settings
   (I1–I3, below). The app-slowness plan P8–P11 is closed (P8–P10 live, P11 the authorized
   no-change decision). Keyboard navigation K1–K4 is merged (`67f722c`, PR #101); PR #103 records
   its Production release. Phase 4 (mobile) remains unauthorized.
@@ -60,6 +61,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   verified (`npm run check`, `npm run test:integration`); the merge auto-deploys, but Production
   was not checked here. Production's two legacy tokens keep working until Amit first regenerates;
   he then pastes the new token into the extension and the iPhone Shortcut.
+- **iPhone Shortcut without a visible token: plan only (branch
+  `claude/iphone-shortcut-token-abstraction-e945a7`; checkpoint "iPhone Shortcut without a
+  visible token: design and phased plan (D1–D3) — 2026-09-30"):** Amit wants the capture token
+  abstracted away from Shortcut users. Recommended shape: one public token-free Shortcut that
+  pairs itself with a short code shown in Settings → Capture and stores a phone-only `phone`
+  token; it reuses the `kind`/`label` columns and kind-scoped `replaceActive` that the Chrome
+  plan X1 introduces, and supersedes X1's "manual token stays for the Shortcut" once D3 ships.
+  Three phases: D1 data and API, D2 Settings card, D3 Shortcut and runbook. No code changed.
+  Next: Amit answers the five lettered decisions in the checkpoint (including D1's order against
+  X1) and picks D1 as its own task.
 - **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
   `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
   trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
@@ -644,6 +655,187 @@ with no handler, so that route creates a pending artifact that never completes; 
 is enqueued only by `scripts/run-knowledge-backfill.ts`. Both are separate decisions.
 (3) Amit confirmed in chat on 2026-09-30 that deep research works on Production and that the
 K1–K4 keyboard smoke check on Production is done; PR #103 still records that check as pending.
+
+### iPhone Shortcut without a visible token: design and phased plan (D1–D3) — 2026-09-30
+
+**Why.** Amit asked for the best way for a user to get the iPhone Shortcut "without having to
+worry about the token"; tokens should be abstracted away from the user completely. Today
+(`docs/iphone-shortcut.md`) a user copies the account capture token from Settings → Capture,
+builds the Shortcut by hand from a 9-step recipe, and pastes `Bearer <token>` into a header.
+Every regeneration means editing the Shortcut again. This checkpoint is the design and the plan
+only. Branch `claude/iphone-shortcut-token-abstraction-e945a7` (worktree
+`iphone-shortcut-token-abstraction-e945a7`) from `main` `67f722c`; docs only, no code changed,
+nothing touched in Vercel or Neon.
+
+**Evidence (verified against `main` at `67f722c`).**
+
+- Capture auth is bearer-only: `authenticateCaptureToken`
+  (`src/lib/auth/authenticate.ts:26-75`) requires `Authorization: Bearer dst_cap_…`, resolves the
+  owner pre-context through the SECURITY DEFINER function `distil_resolve_capture_token`
+  (`src/lib/auth/capture-token-identity.ts:31-41`, defined in
+  `src/lib/postgres/tenant-migrations/0008_phase3_lifecycle.sql:142-158`), then re-checks the hash
+  inside the tenant transaction and rate-limits per token id (60/minute).
+- Apple's **Get Contents of URL** action does not send Safari's cookies, so the Shortcut cannot
+  ride on the web session; the phone must hold a credential of its own. The only tokenless design
+  is one that opens Distil in Safari on every share (option B below).
+- One token per account since PR #90: `issueCaptureToken` (`src/lib/auth/capture-tokens.ts:25-44`)
+  calls `replaceActive`, whose CTE revokes **every** active token for the tenant
+  (`src/lib/postgres/repositories.ts:558-561`). `capture_tokens` has `name`, `token_hash`,
+  `token_prefix`, `created_at`, `last_used_at`, `revoked_at` and a partial unique index on active
+  hashes (`src/lib/postgres/schema.ts:1324-1341`); no `kind`. A silently issued phone credential
+  therefore cannot reuse today's issuance without revoking the browser extension's token.
+  The Chrome extension plan X1–X3 (checkpoint "Chrome extension: token-free sign-in and Web
+  Store listing — plan X1–X3 — 2026-09-30", merged to `main` as `3a310ac` while this brief was
+  being written) plans exactly the column this needs: `capture_tokens.kind` (`manual` |
+  `browser`) plus a nullable `label`, migration `0014_browser_connections.sql`, and a
+  kind-scoped `replaceActive`. This plan builds on it rather than duplicating it; X1's sentence
+  "the existing manual token stays for the iPhone Shortcut" is superseded once D3 ships.
+- `DELETE /api/v1/capture-tokens/:id` exists with no UI caller
+  (`src/app/api/v1/capture-tokens/[id]/route.ts:13`; `CaptureTokenRepository.revoke`,
+  `src/lib/repositories/ports.ts:302`). `GET`/`POST /api/v1/capture-tokens` are session-only and
+  origin-checked (`src/app/api/v1/capture-tokens/route.ts`).
+- Pre-context rate limiting exists for login, keyed `login:${ip}` (`src/lib/auth/service.ts:23`,
+  `LOGIN_RATE_LIMIT` 10 per 15 minutes in `src/lib/auth/constants.ts`).
+- Settings → Capture renders `TokenSettings` then `CaptureDiagnostics`
+  (`src/app/settings/page.tsx:68-69`); `TokenSettings` lists `active[0]` as "the" token and shows
+  a note when older tokens are still active (`src/components/capture/token-settings.tsx:74-110`).
+- iOS only imports **signed** shortcuts. Signing needs `shortcuts sign` on macOS or an iCloud
+  share from a device, so Distil cannot mint a personalised `.shortcut` file per user server-side.
+- Shortcuts can persist state itself: **Save File** / **Get File** in the app's own iCloud Drive
+  folder (`Shortcuts/Distil/`), with **Error If Not Found** off on read.
+
+**Options considered.**
+
+- **A — Device pairing with a short code (recommended).** One public, token-free Shortcut shared
+  once as an iCloud link. On first run it asks for a pairing code shown in Distil, exchanges it
+  for a phone-only credential, stores that in its iCloud Drive folder and never prompts again.
+  The user sees a code once and never a token. Distil lists the phone as a paired device with
+  Disconnect. This is the RFC 8628 "TV login" shape, driven by the user typing the code because a
+  Shortcut that opens Safari and waits for approval is unreliable.
+- **B — Tokenless: the Shortcut opens `https://distilai.app/save?url=…` in Safari.** No backend
+  change; the signed-in web page auto-submits. Rejected as the primary path: it opens Distil on
+  every share, which the runbook deliberately avoids, and it depends on the Safari session, not the
+  installed web app's separate cookie jar. Kept as a fallback if A is not wanted.
+- **C — Personalised Shortcut download per user.** Rejected: needs a Mac-based signing service
+  to save the user one paste.
+
+**Target design (option A).**
+
+- **A third token kind.** X1's `capture_tokens.kind` gains the value `phone` (issued only by
+  pairing, never displayed, one row per paired phone, X1's `label` column holding the device
+  name). The visible token stays `manual`, `replaceActive` stays scoped to `manual` as X1
+  specifies, and `TokenSettings` lists only `manual`. Capture auth is unchanged: every kind is a
+  `dst_cap_` bearer token, hash-only storage, same per-token rate limit, same
+  `actorKind: "capture-token"`, so captures, exports, deletion and RLS need no change. If D1
+  runs before X1 (decision 5), D1 carries the `kind`/`label` migration in X1's exact shape with
+  the `CHECK` extended to `('manual','browser','phone')`, and X1 then only extends nothing.
+- **Pairing codes.** New tenant-owned table `shortcut_pairings` (`user_id`, `id`, `code_hash`,
+  `created_at`, `expires_at`, `attempts`, `consumed_at`, `token_id` nullable). Codes are eight
+  Crockford base32 characters shown as `XXXX-XXXX` (about 10^12 possibilities; six digits would
+  need an aggressive IP limit to be safe), valid for ten minutes, single use, at most one pending
+  code per user (creating a new one expires the previous), hashed like tokens.
+- **Routes.** `POST /api/v1/shortcut-pairings` (session + `requireAllowedOrigin`) returns the
+  plaintext code and `expiresAt`. `POST /api/v1/shortcut-pairings/exchange` (no session; body
+  `{ code, deviceName? }`) resolves the owner pre-context through a new SECURITY DEFINER function
+  `distil_resolve_shortcut_pairing(code_hash)` modelled on `distil_resolve_capture_token`
+  (EXECUTE only for the runtime role), opens the tenant transaction, re-checks hash, expiry and
+  `consumed_at`, mints a `phone` token, marks the code consumed, and returns `{ token }` once.
+  Wrong or expired codes return `401 UNAUTHORIZED` with no hint; the endpoint is rate-limited
+  `pairing:${ip}` like login. `DELETE /api/v1/capture-tokens/:id` becomes Disconnect.
+- **Settings → Capture, "iPhone" card** (new component beside `TokenSettings`): a "Get the
+  Shortcut" link (iCloud share URL from `NEXT_PUBLIC_IOS_SHORTCUT_URL`; the card hides the link
+  when unset), a "Pair this iPhone" button that shows the code with a countdown and the two-line
+  instruction "Run Save to Distil once and type this code", and a list of paired devices
+  ("iPhone · paired 30 Sep · last used today") each with Disconnect. `TokenSettings` keeps its
+  copy, but the sentence "One token for every capture client: browser extension, iPhone
+  Shortcut, scripts" drops the Shortcut.
+- **The Shortcut.** Read `Shortcuts/Distil/token.txt`; if empty, **Ask for Input** "Enter the
+  code shown in Distil → Settings → Capture", POST it to the exchange route, save the returned
+  token to the file, notify "iPhone paired". Then the existing capture request with the stored
+  token in the header. On `UNAUTHORIZED` (disconnected or revoked) delete the file and notify
+  "Distil disconnected this iPhone. Share again to pair." so the next share re-pairs without
+  any editing. No token, origin or account detail lives in the Shortcut itself, so the same
+  iCloud link serves every user and may be shared publicly.
+
+**Decisions needed from Amit before D1 starts** (reply with letters, e.g. `1A 2A 3A 4A`):
+
+1. Shape: (A) device pairing as designed; (B) tokenless Safari open, no backend; (C) both, with B
+   as an extra "Save via Safari" Shortcut.
+2. Pairing code: (A) eight base32 characters `XXXX-XXXX`, ten minutes; (B) six digits, five
+   minutes, stricter IP limit.
+3. Device credential lifetime: (A) until disconnected, like the account token; (B) expires after
+   90 idle days and re-pairs automatically.
+4. Shortcut distribution: (A) Amit signs and shares one iCloud link from his iPhone and sets
+   `NEXT_PUBLIC_IOS_SHORTCUT_URL` in Vercel (an env-var change he authorizes and makes himself);
+   (B) the runbook keeps the build-it-yourself recipe and only the pairing step changes.
+5. Order against the Chrome plan: (A) X1 first, then D1 adds the `phone` kind on top of X1's
+   columns (migration `0015_phone_pairing.sql`); (B) D1 first, carrying X1's `kind`/`label`
+   migration as `0014` so X1 shrinks to routes and pages.
+
+#### Plan — three PR-sized phases, each its own task from current `main`
+
+Each phase is one `claude/<task>` branch and PR with its own dated checkpoint and handoff update.
+Re-verify every `file:line` above against current `main` before starting a phase. The existing
+account token and the current Shortcut keep working throughout; Amit's phone re-pairs only in D3.
+
+**D1 — Data and API: token kinds and pairing exchange.** Goal: a phone can obtain its own
+credential from a code without touching the account token.
+
+- **Files:** new tenant migration (`0015_phone_pairing.sql` after X1, or `0014` carrying X1's
+  columns per decision 5): extend the `kind` `CHECK` with `'phone'`; `shortcut_pairings` with RLS
+  policies matching the other tenant tables; `distil_resolve_shortcut_pairing`; partial unique
+  index on pending codes per user; manifest entry in `src/lib/postgres/tenant-migration/manifest.ts`;
+  `schema.ts`; `ports.ts` (`CaptureTokenRecord.kind`/`label` if X1 has not added them, new
+  `ShortcutPairingRepository`); `repositories.ts`; new `src/lib/auth/shortcut-pairing.ts`
+  (code generation, hashing, `exchangePairingCode`); new
+  `src/lib/auth/shortcut-pairing-identity.ts` (pre-context resolver); new routes
+  `src/app/api/v1/shortcut-pairings/route.ts` and `…/exchange/route.ts`; `lifecycle/exports.ts`
+  and account deletion include `shortcut_pairings`; `docs/runbooks` note for the new function.
+- **Approach:** `issueCaptureToken` gains `kind` and `label` parameters (defaults unchanged;
+  X1's `issueBrowserConnection` is the sibling);
+  the exchange route mirrors `authenticateCaptureToken`'s two-step lookup so the pre-context
+  read is exact-key only. Wrong codes increment `attempts`; after five the code is consumed.
+- **Tests:** repository SQL shape; unit tests for code generation and exchange (expired,
+  consumed, wrong, attempt cap, happy path returns plaintext once); route contract tests
+  (session required to create; exchange needs no session but is rate-limited; UNAUTHORIZED gives
+  no hint); RLS integration test proving regeneration of the account token leaves device tokens
+  active and vice versa, and that disconnecting one phone leaves browser connections and the
+  manual token alone; `test:phase3-isolation` migration invariants for the new table and
+  function.
+- **Verification:** `npm run check`, `npm run test:integration`, `npm run db:tenant:verify` on
+  the local Docker Postgres. Applying `0014` to Production is a Neon mutation and needs Amit's
+  task-specific authorization at release time.
+
+**D2 — Settings: pair, list and disconnect.** Goal: the whole phone setup is visible and
+reversible in Settings → Capture with no token string on screen.
+
+- **Files:** new `src/components/capture/iphone-shortcut-card.tsx` and test, placed next to
+  X1's "Connected browsers" card so Settings → Capture reads manual token / browsers / iPhone;
+  `token-settings.tsx` (filter to `manual`, copy change); `settings/page.tsx`;
+  `GET /api/v1/capture-tokens` returns `kind` and `label` so the card can list `phone` rows;
+  keyboard help entry if the card gets a focusable action (K4 card lists Settings keys).
+- **Tests:** component tests for pairing (code shown, countdown, expiry state, new code replaces
+  old), device list and Disconnect (calls `DELETE`, row disappears), and the hidden link when the
+  env var is unset; route test for `kind` and `label` in the list payload.
+- **Verification:** `npm run check`; local in-app browser at desktop, 375 px and dark; pair
+  once end-to-end against the local API with `curl` standing in for the Shortcut.
+
+**D3 — The Shortcut, the runbook and the real device.** Goal: a new user installs one link, types
+one code, and shares articles.
+
+- **Files:** `docs/iphone-shortcut.md` rewritten around install → pair → share, with the
+  build-it-yourself recipe kept as an appendix for people who prefer it; `docs/user-guide.md`
+  section; `AGENTS.md` §3 capture-clients sentence; `browser-extension` README sentence about
+  the account token staying for the extension only; `docs/vercel-deployment.md` gains
+  `NEXT_PUBLIC_IOS_SHORTCUT_URL`.
+- **Approach:** Amit builds the pairing Shortcut on his iPhone from the D3 recipe, shares it as
+  an iCloud link, sets the env var (his mutation) and pairs his phone; his legacy Shortcut token
+  is then revoked by the next account-token regeneration or a Disconnect.
+- **Verification (real device, Amit):** the existing acceptance checklist plus: first share
+  prompts for the code and reports "iPhone paired"; second share saves without prompting;
+  Disconnect in Settings makes the next share prompt again; a wrong code reports failure and does
+  not pair; the same iCloud link installs cleanly on a second phone signed into a different
+  account and pairs to that account only.
 
 ### Chrome extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09-30
 
