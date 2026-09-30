@@ -2,16 +2,29 @@
  * @jest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render as rtlRender,
+  screen,
+  type RenderOptions,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
+
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 
 import { TodayExperience, type TodayInitial } from "../today-experience";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { todayFilterState, todayView } from "@/lib/feed/today-selection";
 
+const render = (ui: ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: ShortcutsProvider, ...options });
+
 let mockSearch = "";
 const mockReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/feed",
   useSearchParams: () => new URLSearchParams(mockSearch),
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), refresh: jest.fn() }),
 }));

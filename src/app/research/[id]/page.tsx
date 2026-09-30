@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
 import { ResearchReportView } from "@/components/research/research-report-view";
 
 /** How often to re-fetch the report when the SSE stream is unavailable. */
@@ -106,8 +108,17 @@ function stageLabel(stage: ResearchProgress["stage"], progress: ResearchProgress
   }
 }
 
+const BACK: ShortcutDef = {
+  id: "report.back",
+  keys: [{ key: "u" }],
+  label: "Back",
+  group: "Research",
+  scope: "research",
+};
+
 export default function ResearchPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +206,16 @@ export default function ResearchPage() {
     };
   }, [id, fetchReport]);
 
+  const backHref = report ? (report.itemId ? `/feed/${report.itemId}` : "/research") : "/research";
+  useShortcut(
+    BACK,
+    (e) => {
+      e.preventDefault();
+      router.push(backHref);
+    },
+    report !== null
+  );
+
   if (error) {
     return (
       <div className="mx-auto max-w-4xl py-12 text-center">
@@ -230,7 +251,9 @@ export default function ResearchPage() {
 
   const backLink = (
     <Link
-      href={report.itemId ? `/feed/${report.itemId}` : "/research"}
+      href={backHref}
+      aria-keyshortcuts="u"
+      title="Back (u)"
       className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" /> Back

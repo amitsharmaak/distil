@@ -22,7 +22,7 @@ describe("MarkReadButton", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
 
-    expect(screen.getByRole("button", { name: "Read" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Marked as read" })).toBeDisabled();
     expect(onRead).toHaveBeenCalledWith(true);
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
     expect(global.fetch).toHaveBeenCalledWith("/api/items/item-1", {
@@ -43,5 +43,18 @@ describe("MarkReadButton", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Mark as read" })).toBeEnabled());
     expect(onRead.mock.calls).toEqual([[true], [false]]);
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MarkReadButton labels", () => {
+  it("has an accessible name in the unread and read states", () => {
+    const { unmount } = render(<MarkReadButton itemId="i" isRead={false} />);
+    expect(screen.getByRole("button", { name: "Mark as read" })).toHaveAttribute(
+      "aria-label",
+      "Mark as read"
+    );
+    unmount();
+    render(<MarkReadButton itemId="j" isRead showLabel />);
+    expect(screen.getByRole("button", { name: "Marked as read" })).toBeInTheDocument();
   });
 });

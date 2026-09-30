@@ -2,14 +2,32 @@
  * @jest-environment jsdom
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render as rtlRender,
+  screen,
+  waitFor,
+  type RenderOptions,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
+import {
+  ShortcutsProvider,
+  useRegisteredShortcuts,
+} from "@/components/shortcuts/shortcuts-provider";
 import { FeedList } from "../feed-list";
 import type { ContentItem } from "@/lib/types";
+
+const render = (ui: ReactElement, options?: RenderOptions) =>
+  rtlRender(ui, { wrapper: ShortcutsProvider, ...options });
+const press = (key: string) => fireEvent.keyDown(window, { key });
 
 let mockSearch = "";
 const mockReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/feed",
   useSearchParams: () => new URLSearchParams(mockSearch),
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), refresh: jest.fn() }),
 }));
@@ -20,19 +38,31 @@ jest.mock("@/components/feed/content-card", () => ({
     compact,
     filter,
     onMarkRead,
+    areaOpen,
+    onAreaOpenChange,
   }: {
     item: ContentItem;
     compact: boolean;
     filter: string;
     onMarkRead: (id: string, read: boolean) => void;
+    areaOpen: boolean;
+    onAreaOpenChange: (open: boolean) => void;
   }) => (
     <article
+      data-row
+      data-item-id={item.id}
+      data-area-open={String(areaOpen)}
       data-testid={`item-${item.id}`}
       data-compact={String(compact)}
       data-filter={filter}
       data-read={String(item.isRead)}
     >
-      <span>{item.title}</span>
+      <a href={`/feed/${item.id}`} onClick={(event) => event.preventDefault()}>
+        {item.title}
+      </a>
+      <button type="button" onClick={() => onAreaOpenChange(!areaOpen)}>
+        Area {item.title}
+      </button>
       <button type="button" onClick={() => onMarkRead(item.id, true)}>
         Mark {item.title} read
       </button>
@@ -47,7 +77,11 @@ jest.mock("@/components/feed/feed-filters", () => ({
     activeCount,
     viewMode,
     onViewModeChange,
+    open,
+    onOpenChange,
   }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
     filters: { sources: string[]; contentTypes: string[]; priorities: string[]; showRead: boolean };
     onChange: (updates: Record<string, string | string[] | undefined>) => void;
     activeCount: number;
@@ -55,6 +89,10 @@ jest.mock("@/components/feed/feed-filters", () => ({
     onViewModeChange: (mode: "card" | "compact") => void;
   }) => (
     <div data-testid="filters">
+      <output data-testid="sheet-open">{String(open)}</output>
+      <button type="button" onClick={() => onOpenChange(false)}>
+        Close sheet
+      </button>
       <output data-testid="sheet-state">
         {viewMode}|{filters.sources.join(",")}|{filters.contentTypes.join(",")}|
         {filters.priorities.join(",")}|{activeCount}
@@ -454,6 +492,145 @@ describe("FeedList with a server-rendered page", () => {
     expect(screen.getByText("First page")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2"
+    );
+  });
+});
+
+describe("FeedList keyboard shortcuts", () => {
+  const key = "archive=exclude&sort=for_you&limit=100&read=false";
+  const page = (nextCursor?: string) => ({
+    key,
+    items: [
+      makeItem({ id: "a", title: "Alpha" }),
+      makeItem({ id: "b", title: "Bravo" }),
+      makeItem({ id: "c", title: "Charlie" }),
+    ],
+    nextCursor,
+  });
+
+  beforeEach(() => {
+    cleanup();
+    mockSearch = "";
+    window.localStorage.clear();
+  });
+  afterEach(() => jest.clearAllMocks());
+
+  it("j and k move focus through the row links; o opens the focused one", () => {
+    render(<FeedList initialPage={page()} />);
+    const link = (name: string) => screen.getByRole("link", { name });
+    press("j");
+    expect(link("Alpha")).toHaveFocus();
+    press("j");
+    expect(link("Bravo")).toHaveFocus();
+    press("k");
+    expect(link("Alpha")).toHaveFocus();
+    const opened = jest.fn();
+    link("Alpha").addEventListener("click", opened);
+    press("o");
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
+  it("r marks the focused row read", () => {
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("j");
+    press("r");
+    expect(screen.getByTestId("item-b")).toHaveAttribute("data-read", "true");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false");
+  });
+
+  it("r persists the read state with a PATCH", () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("r");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/items/a",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: true }) })
+    );
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "true");
+  });
+
+  it("r reverts the row when the PATCH fails", async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) } as Response);
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("r");
+    await waitFor(() => expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false"));
+  });
+
+  it("does not act on r while a row's area menu is open", () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockClear();
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    fireEvent.click(screen.getByRole("button", { name: "Area Alpha" }));
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-area-open", "true");
+    press("r");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false");
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/items/a", expect.anything());
+  });
+
+  it("a opens the area popover of the focused row only", () => {
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("a");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-area-open", "true");
+    expect(screen.getByTestId("item-b")).toHaveAttribute("data-area-open", "false");
+  });
+
+  it("j on the last row clicks Load more", async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue(itemsResponse([makeItem({ id: "d", title: "Delta" })]));
+    render(<FeedList initialPage={page("cursor-2")} />);
+    press("j");
+    press("j");
+    press("j");
+    press("j");
+    expect(await screen.findByText("Delta")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("cursor=cursor-2"));
+  });
+
+  it("f opens the Filters sheet", () => {
+    render(<FeedList initialPage={page()} />);
+    expect(screen.getByTestId("sheet-open")).toHaveTextContent("false");
+    press("f");
+    expect(screen.getByTestId("sheet-open")).toHaveTextContent("true");
+  });
+
+  it("u toggles read items through the URL and c toggles the layout", () => {
+    render(<FeedList initialPage={page()} />);
+    press("u");
+    expect(mockReplace).toHaveBeenLastCalledWith("/feed?read=true", { scroll: false });
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-compact", "false");
+    press("c");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-compact", "true");
+    press("c");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-compact", "false");
+  });
+
+  it("lists the Lists group in the registry", () => {
+    function Ids() {
+      return (
+        <output data-testid="ids">
+          {useRegisteredShortcuts()
+            .filter((def) => def.group === "Lists")
+            .map((def) => def.id)
+            .sort()
+            .join(",")}
+        </output>
+      );
+    }
+    render(
+      <>
+        <Ids />
+        <FeedList initialPage={page()} />
+      </>
+    );
+    expect(screen.getByTestId("ids")).toHaveTextContent(
+      "list.area,list.filters,list.markRead,list.next,list.open,list.prev,list.toggleLayout,list.toggleUnread"
     );
   });
 });

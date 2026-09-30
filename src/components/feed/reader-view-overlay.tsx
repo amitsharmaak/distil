@@ -4,6 +4,7 @@ import { useCallback, useEffect } from "react";
 import { BookOpen, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import type { ExtractedLink } from "@/lib/types";
 
 export function ReaderViewOverlay({
@@ -23,6 +24,8 @@ export function ReaderViewOverlay({
   extractedLinks: ExtractedLink[];
   onClose: () => void;
 }) {
+  useShortcutsSuspended(true);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();

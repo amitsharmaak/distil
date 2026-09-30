@@ -7,7 +7,10 @@ import { AppShell, isReaderPath } from "../app-shell";
 
 const mockUsePathname = jest.fn<string, []>();
 
-jest.mock("next/navigation", () => ({ usePathname: () => mockUsePathname() }));
+jest.mock("next/navigation", () => ({
+  usePathname: () => mockUsePathname(),
+  useRouter: () => ({ push: jest.fn() }),
+}));
 jest.mock("next/image", () => ({
   __esModule: true,
   default: ({ alt }: { alt: string }) => <span role="img" aria-label={alt} />,

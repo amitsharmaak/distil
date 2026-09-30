@@ -32,6 +32,9 @@ export interface AreaBadgeProps {
   /** Reports the saved effective area and whether it is now a correction. */
   onChange?: (next: { area: LifeArea; manualArea?: LifeArea }) => void;
   className?: string;
+  /** Controlled open state of the menu; when provided the parent owns it. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const stop = (event: React.SyntheticEvent) => {
@@ -39,7 +42,15 @@ const stop = (event: React.SyntheticEvent) => {
   event.stopPropagation();
 };
 
-export function AreaBadge({ itemId, area, aiArea, onChange, className }: AreaBadgeProps) {
+export function AreaBadge({
+  itemId,
+  area,
+  aiArea,
+  onChange,
+  className,
+  open,
+  onOpenChange,
+}: AreaBadgeProps) {
   const [current, setCurrent] = React.useState<LifeArea | undefined>(area);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(false);
@@ -72,7 +83,7 @@ export function AreaBadge({ itemId, area, aiArea, onChange, className }: AreaBad
 
   return (
     <span className={cn("inline-flex", className)} onClick={stop}>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"

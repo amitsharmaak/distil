@@ -13,19 +13,33 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { config } from "@/lib/config";
+import { useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 
 interface DeepResearchProps {
   /** Optional — omit when starting research from the research page. */
   itemId?: string;
   /** Pre-filled query (usually the item title). */
   defaultQuery: string;
-  /** Custom trigger element; defaults to "Deep Research" button. */
+  /** Custom trigger element; defaults to "Deep Research" button. Pass null for no trigger. */
   children?: React.ReactNode;
+  /** Controlled open state; when provided the parent owns it. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function DeepResearch({ itemId, defaultQuery, children }: DeepResearchProps) {
+export function DeepResearch({
+  itemId,
+  defaultQuery,
+  children,
+  open: controlledOpen,
+  onOpenChange,
+}: DeepResearchProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  // Typing in the dialog must not trigger page shortcuts.
+  useShortcutsSuspended(open);
   const [query, setQuery] = useState(defaultQuery);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,13 +73,15 @@ export function DeepResearch({ itemId, defaultQuery, children }: DeepResearchPro
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children ?? (
-          <Button variant="default" className="gap-2">
-            <Search className="h-4 w-4" /> Deep Research
-          </Button>
-        )}
-      </DialogTrigger>
+      {children !== null && (
+        <DialogTrigger asChild>
+          {children ?? (
+            <Button variant="default" className="gap-2">
+              <Search className="h-4 w-4" /> Deep Research
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Deep Research</DialogTitle>
