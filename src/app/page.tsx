@@ -42,18 +42,11 @@ async function loadToday(params: SearchParams): Promise<TodayInitial | null> {
     query = todayFeedParams();
   }
   const flags = readPhase2FeatureFlags();
-  const loaded = await loadPageData("/", async (repositories) => {
-    const [page, collections] = await Promise.all([
-      loadFeedPage(repositories, query, { personalization: flags.personalization }),
-      repositories.collections.list(),
-    ]);
-    return { page, collections };
-  });
+  const loaded = await loadPageData("/", (repositories) =>
+    loadFeedPage(repositories, query, { personalization: flags.personalization })
+  );
   if (!loaded) return null;
-  return {
-    ...todayView(state, loaded.page),
-    collections: loaded.collections.map(({ id, name }) => ({ id, name })),
-  };
+  return todayView(state, loaded);
 }
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<SearchParams> }) {

@@ -23,7 +23,6 @@ export const feedQuerySchema = z.object({
     .array(z.enum(["high", "medium", "low"]))
     .max(3)
     .optional(),
-  collection: z.array(z.string().trim().min(1).max(160)).max(25).optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
   q: z.string().trim().min(2).max(MAX_FEED_SEARCH_LENGTH).optional(),
@@ -69,7 +68,6 @@ export function parseFeedQuery(input: FeedSearchInput): ParsedFeedQuery {
     source: list("source"),
     contentType: list("contentType"),
     priority: list("priority"),
-    collection: list("collection"),
     dateFrom: optional("dateFrom"),
     dateTo: optional("dateTo"),
     q: optional("q"),
@@ -105,7 +103,6 @@ export function feedListQuery(
     sources: data.source,
     contentTypes: data.contentType,
     priorities: data.priority,
-    collectionIds: data.collection,
     dateFrom: data.dateFrom,
     dateTo: data.dateTo,
     search: data.q,

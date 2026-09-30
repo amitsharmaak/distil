@@ -8,7 +8,6 @@ export function ReaderKnowledgePrototype({ fixture }: { fixture: ReaderKnowledge
   const [note, setNote] = useState(fixture.note);
   const [savedNote, setSavedNote] = useState(fixture.note);
   const [archived, setArchived] = useState(Boolean(fixture.archived));
-  const [collections, setCollections] = useState(fixture.collections);
   const [activeAnnotation, setActiveAnnotation] = useState(
     fixture.annotations.find((annotation) => annotation.state === "active")?.id ?? ""
   );
@@ -121,36 +120,6 @@ export function ReaderKnowledgePrototype({ fixture }: { fixture: ReaderKnowledge
               Saved locally in this prototype
             </p>
           )}
-        </section>
-        <section className="rounded-xl border bg-card p-4" aria-labelledby="collections-heading">
-          <h2 id="collections-heading" className="font-serif text-lg font-semibold">
-            Collections
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Keep this item with a deliberate reading thread.
-          </p>
-          <div className="mt-3 space-y-2">
-            {collections.map((collection) => (
-              <label
-                key={collection.id}
-                className="flex min-h-11 items-center gap-3 rounded-md px-1 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={collection.selected}
-                  onChange={() =>
-                    setCollections((current) =>
-                      current.map((entry) =>
-                        entry.id === collection.id ? { ...entry, selected: !entry.selected } : entry
-                      )
-                    )
-                  }
-                  className="h-4 w-4"
-                />
-                {collection.name}
-              </label>
-            ))}
-          </div>
         </section>
       </aside>
     </main>

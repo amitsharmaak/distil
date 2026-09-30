@@ -52,8 +52,6 @@ export interface FilterBarProps {
   onChange: (updates: FilterUpdates) => void;
   /** Called on every keystroke with the raw draft, before it reaches the URL. */
   onSearchDraftChange?: (draft: string) => void;
-  /** Collection id → name, for the collection chips. */
-  collectionNames?: Record<string, string>;
   /** The Filters sheet trigger, rendered beside the search field. */
   sheet?: React.ReactNode;
   /** Rendered at the start of the search row, typically the page title. */
@@ -66,7 +64,6 @@ export function FilterBar({
   filters,
   onChange,
   onSearchDraftChange,
-  collectionNames,
   sheet,
   leading,
   placeholder = "Search",
@@ -118,7 +115,7 @@ export function FilterBar({
     if (committed) onChange({ q: undefined });
   };
 
-  const chips = activeFilterChips(filters, collectionNames);
+  const chips = activeFilterChips(filters);
   const anyActive = hasActiveFilters(filters);
 
   return (

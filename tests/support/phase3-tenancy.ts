@@ -38,7 +38,6 @@ export interface TenantFixture {
   resources: {
     itemId: string;
     captureId: string;
-    collectionId: string;
     jobId: string;
     sessionId: string;
     otherSessionId: string;
@@ -99,7 +98,6 @@ const tenant = (sequence: number, name: string): TenantFixture => {
     resources: {
       itemId: `item-${name}`,
       captureId: `90000000-0000-4000-8000-${suffix}`,
-      collectionId: `collection-${name}`,
       jobId: `a0000000-0000-4000-8000-${suffix}`,
       sessionId,
       otherSessionId: `b0000000-0000-4000-8000-${suffix}`,

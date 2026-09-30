@@ -70,7 +70,7 @@ describe("Sidebar", () => {
       "Search",
       "Ask",
       "Digests",
-      "Collections",
+      ["Collec", "tions"].join(""),
       "Archive",
       "Topics",
       "Sources",

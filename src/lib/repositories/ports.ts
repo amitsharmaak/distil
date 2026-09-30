@@ -167,35 +167,6 @@ export interface AnnotationRepository {
   delete(id: string): Promise<boolean>;
 }
 
-export interface CollectionRecord {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CollectionItemRecord {
-  collectionId: string;
-  itemId: string;
-  position: number;
-  addedAt: string;
-}
-
-export interface CollectionRepository {
-  list(): Promise<CollectionRecord[]>;
-  find(id: string): Promise<CollectionRecord | undefined>;
-  create(record: CollectionRecord): Promise<CollectionRecord>;
-  update(
-    id: string,
-    patch: Partial<Pick<CollectionRecord, "name" | "description" | "updatedAt">>
-  ): Promise<CollectionRecord | undefined>;
-  delete(id: string): Promise<boolean>;
-  addItem(record: CollectionItemRecord): Promise<CollectionItemRecord>;
-  removeItem(collectionId: string, itemId: string): Promise<boolean>;
-  listItems(collectionId: string): Promise<CollectionItemRecord[]>;
-}
-
 export type ItemEventType =
   | "opened"
   | "marked_read"
@@ -203,8 +174,6 @@ export type ItemEventType =
   | "completed"
   | "archived"
   | "restored"
-  | "collection_added"
-  | "collection_removed"
   | "feedback_recorded"
   | "citation_clicked"
   | "resurfaced"
@@ -733,7 +702,6 @@ export interface RepositorySet {
   items: ItemRepository;
   itemNotes: ItemNoteRepository;
   annotations: AnnotationRepository;
-  collections: CollectionRepository;
   itemEvents: ItemEventRepository;
   digests: DigestRepository;
   captures: CaptureRepository;

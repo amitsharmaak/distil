@@ -16,7 +16,7 @@
  * server-side user) the island fetches the page itself.
  */
 
-import { startTransition, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { startTransition, useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -38,7 +38,6 @@ export interface FeedInitialPage {
   key: string;
   items: ContentItemSummary[];
   nextCursor?: string;
-  collections: { id: string; name: string }[];
 }
 
 type FeedResponse = {
@@ -79,9 +78,6 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
   const [loadedKey, setLoadedKey] = useState<string | null>(serverPage ? filterKey : null);
   const [nextCursor, setNextCursor] = useState<string | undefined>(serverPage?.nextCursor);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [collections, setCollections] = useState<{ id: string; name: string }[]>(
-    serverPage?.collections ?? []
-  );
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
   const [isPending, startNavigation] = useTransition();
@@ -103,7 +99,6 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     startTransition(() => {
       setItems(serverPage.items);
       setNextCursor(serverPage.nextCursor);
-      setCollections(serverPage.collections);
       setLoadedKey(serverPage.key);
       setLoadError(null);
     });
@@ -141,23 +136,6 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     void fetchItems(filters.cursor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPage, loadedKey, filterKey, fetchItems]);
-
-  const hasServerPage = Boolean(serverPage);
-  useEffect(() => {
-    if (hasServerPage) return;
-    let cancelled = false;
-    fetch("/api/v1/collections")
-      .then((res) => res.json())
-      .then((data: { collections?: { id: string; name: string }[] }) => {
-        if (!cancelled) setCollections(data.collections ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setCollections([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasServerPage]);
 
   const loading = loadedKey !== filterKey;
 
@@ -216,11 +194,6 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     ? filteredItems.filter((item) => matchesDraft(item, draftNeedle))
     : filteredItems;
   const topicOptions = Array.from(new Set(items.flatMap((item) => item.topics))).sort();
-  const collectionNames = useMemo(
-    () => Object.fromEntries(collections.map(({ id, name }) => [id, name])),
-    [collections]
-  );
-
   const replaceFilters = (updates: FilterUpdates) => {
     const currentParams = pendingUrl
       ? searchParamsForFeedUrl(pendingUrl)
@@ -252,14 +225,10 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
         filters={optimisticFilters}
         onChange={replaceFilters}
         onSearchDraftChange={setSearchDraft}
-        collectionNames={collectionNames}
         leading={
           <div className="flex items-baseline gap-4">
             <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
             <nav aria-label="Feed views" className="flex gap-3 text-sm text-muted-foreground">
-              <Link href="/collections" className="hover:text-foreground">
-                Collections
-              </Link>
               <Link href="/archive" className="hover:text-foreground">
                 Archive
               </Link>
@@ -270,9 +239,8 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
           <FeedFilterSheet
             filters={optimisticFilters}
             onChange={replaceFilters}
-            activeCount={activeFilterChips(optimisticFilters, collectionNames).length}
+            activeCount={activeFilterChips(optimisticFilters).length}
             topicOptions={topicOptions}
-            collectionOptions={collections}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
           />

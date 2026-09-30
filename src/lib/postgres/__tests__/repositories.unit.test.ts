@@ -84,7 +84,6 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       "items",
       "itemNotes",
       "annotations",
-      "collections",
       "itemEvents",
       "digests",
       "captures",

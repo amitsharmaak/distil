@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, FlaskConical, Folder, KeyRound, Sparkles, UserRound } from "lucide-react";
+import { Archive, FlaskConical, KeyRound, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TokenSettings } from "@/components/capture/token-settings";
@@ -58,11 +58,6 @@ export default function SettingsPage() {
               <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
                 <Link href="/digests">
                   <Sparkles className="h-3.5 w-3.5" /> Digests
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
-                <Link href="/collections">
-                  <Folder className="h-3.5 w-3.5" /> Collections
                 </Link>
               </Button>
               <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">

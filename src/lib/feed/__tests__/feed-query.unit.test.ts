@@ -140,7 +140,6 @@ describe("feed ranking contracts", () => {
   it("applies the revisit stale window and display/dismiss cooldowns deterministically", () => {
     const candidate = {
       isRead: false,
-      isInCollection: false,
       processingStatus: "ready" as const,
       lastOpenedAt: "2026-08-20T00:00:00Z",
     };
@@ -172,7 +171,6 @@ describe("feed ranking contracts", () => {
     ).toBeGreaterThan(explainFeedRank({ ...base }, "for_you", now).score);
     const candidate = {
       isRead: false,
-      isInCollection: false,
       processingStatus: "ready" as const,
       lastOpenedAt: "2026-08-01T00:00:00Z",
     };
@@ -187,7 +185,7 @@ describe("feed ranking contracts", () => {
       reason: "not_ready",
     });
     expect(resurfacingEligibility({ ...candidate, isRead: true }, now)).toMatchObject({
-      reason: "not_unread_or_saved",
+      reason: "already_read",
     });
   });
 
@@ -228,7 +226,6 @@ describe("feed ranking contracts", () => {
       sources: ["manual"],
       contentTypes: ["article"],
       priorities: ["medium"],
-      collectionIds: ["collection-1"],
       dateFrom: "2026-09-01T00:00:00.000Z",
       dateTo: "2026-09-07T00:00:00.000Z",
       now,
@@ -313,7 +310,6 @@ describe("feed ranking contracts", () => {
     const page = await new PostgresFeedQuery(sql as never, context).list({
       sort: "for_you",
       personalizationEnabled: true,
-      collectionIds: ["collection-1"],
       now,
     });
     expect(sql.statements).toHaveLength(1);
@@ -349,6 +345,7 @@ describe("feed ranking contracts", () => {
     expect(sql.statements[0]).toContain("i.processing_status='ready'");
     expect(sql.statements[0]).toContain("i.last_opened_at IS NOT NULL");
     expect(sql.statements[0]).toContain("i.last_opened_at <= ?::timestamptz - INTERVAL '14 days'");
+    expect(sql.statements[0]).not.toContain(["collec", "tion_items"].join(""));
   });
 
   it("fails closed for malformed keyset cursors before querying PostgreSQL", async () => {

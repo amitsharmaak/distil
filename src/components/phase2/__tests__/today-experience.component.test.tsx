@@ -56,10 +56,7 @@ function serverInitial(page: {
   resurfacedItems?: FeedItem[];
   nextCursor?: string;
 }): TodayInitial {
-  return {
-    ...todayView(todayFilterState(new URLSearchParams(mockSearch)), page),
-    collections: [],
-  };
+  return todayView(todayFilterState(new URLSearchParams(mockSearch)), page);
 }
 
 function feedCalls(): string[] {

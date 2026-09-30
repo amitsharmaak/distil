@@ -4,13 +4,9 @@ jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest
 import { AuthError } from "@/lib/auth/errors";
 import type { RepositorySet } from "@/lib/repositories/ports";
 import {
-  addCollectionItem,
   annotationCreateSchema,
   annotationUpdateSchema,
-  collectionCreateSchema,
   createAnnotation,
-  createCollection,
-  membershipSchema,
   noteSchema,
   parseBody,
   ReaderError,
@@ -54,14 +50,6 @@ import { getRepositorySet, getTenantRepositories } from "@/lib/database";
 import { createPostgresClient } from "@/lib/postgres/client";
 import { FeedQueryError, PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
-import { POST as createCollectionRoute } from "@/app/api/v1/collections/route";
-import { GET as listCollectionsRoute } from "@/app/api/v1/collections/route";
-import {
-  DELETE as deleteCollectionRoute,
-  GET as getCollectionRoute,
-  PATCH as patchCollectionRoute,
-} from "@/app/api/v1/collections/[id]/route";
-import { DELETE as deleteMembership } from "@/app/api/v1/collections/[id]/items/[itemId]/route";
 import { PUT as putNote } from "@/app/api/v1/items/[id]/note/route";
 import { PATCH as patchState } from "@/app/api/v1/items/[id]/state/route";
 import {
@@ -72,7 +60,6 @@ import {
   DELETE as deleteAnnotationRoute,
   PATCH as patchAnnotationRoute,
 } from "@/app/api/v1/items/[id]/annotations/[annotationId]/route";
-import { PUT as putMembership } from "@/app/api/v1/collections/[id]/items/[itemId]/route";
 
 const mockSession = requireRequestSession as jest.MockedFunction<typeof requireRequestSession>;
 const mockMutation = requireSessionMutation as jest.MockedFunction<typeof requireSessionMutation>;
@@ -125,16 +112,6 @@ function repositories() {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-    },
-    collections: {
-      list: jest.fn().mockResolvedValue([]),
-      find: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-      addItem: jest.fn(),
-      removeItem: jest.fn(),
-      listItems: jest.fn().mockResolvedValue([]),
     },
   };
 }
@@ -195,16 +172,10 @@ describe("Phase 2 reader API contract and security boundaries", () => {
         }),
         { params: Promise.resolve({ id: "item-1" }) }
       ),
-      createCollectionRoute(
-        jsonRequest("http://localhost/api/v1/collections", "POST", { name: "Inbox" })
-      ),
       patchState(
         jsonRequest("http://localhost/api/v1/items/item-1/state", "PATCH", { isRead: true }),
         { params: Promise.resolve({ id: "item-1" }) }
       ),
-      putMembership(jsonRequest("http://localhost/api/v1/collections/c/items/i", "PUT", {}), {
-        params: Promise.resolve({ id: "c", itemId: "i" }),
-      }),
     ];
     for (const response of await Promise.all(calls)) {
       expect(response.status).toBe(403);
@@ -217,7 +188,6 @@ describe("Phase 2 reader API contract and security boundaries", () => {
 
   it("rejects unknown fields, invalid numbers, and oversized text strictly", () => {
     expect(() => parseBody({ isRead: true, extra: true }, stateSchema)).toThrow(ReaderError);
-    expect(() => parseBody({ position: -1 }, membershipSchema)).toThrow(ReaderError);
     expect(() => parseBody({ body: "x".repeat(100_001) }, noteSchema)).toThrow(ReaderError);
     expect(() =>
       parseBody(
@@ -231,10 +201,6 @@ describe("Phase 2 reader API contract and security boundaries", () => {
         annotationCreateSchema
       )
     ).toThrow(ReaderError);
-    expect(() => parseBody({ name: "n".repeat(201) }, collectionCreateSchema)).toThrow(ReaderError);
-    expect(() => parseBody({ name: "Inbox", unknown: true }, collectionCreateSchema)).toThrow(
-      ReaderError
-    );
   });
 
   it("rejects malformed dates, offsets, limits, and cursors without querying", async () => {
@@ -273,6 +239,20 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: "INVALID_CURSOR" } });
   });
 
+  it("silently ignores the retired collection feed parameter", async () => {
+    const list = jest.fn().mockResolvedValue({ items: [] });
+    mockTenantRepositories.mockResolvedValue({ feed: { list } } as never);
+
+    const response = await getFeed(
+      new Request("https://distil.example/api/v1/feed?collection=old-bookmark")
+    );
+
+    expect(response.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(
+      expect.not.objectContaining({ collectionIds: expect.anything() })
+    );
+  });
+
   it("does not expose SQL or content details in conflict and 500 responses", async () => {
     const repo = repositories();
     repo.items.findById.mockRejectedValueOnce(
@@ -302,50 +282,10 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     ).catch((error: unknown) => error);
     expect(conflict).toMatchObject({ code: "CONFLICT", status: 409 });
     expect((conflict as Error).message).toBe("Annotation already exists");
-
-    repo.collections.find.mockResolvedValueOnce(undefined);
-    repo.collections.create.mockRejectedValueOnce(new Error("duplicate key; name=private"));
-    const collectionConflict = await createCollection(
-      repo as unknown as RepositorySet,
-      parseBody({ name: "Inbox" }, collectionCreateSchema)
-    ).catch((error: unknown) => error);
-    expect(collectionConflict).toMatchObject({ code: "CONFLICT", status: 409 });
-    expect((collectionConflict as Error).message).toBe("Collection already exists");
   });
 
-  it("makes idempotent collection membership retries preserve the original position", async () => {
+  it("makes idempotent annotation creation retries return existing records", async () => {
     const repo = repositories();
-    repo.collections.find.mockResolvedValue({ id: "collection-1", name: "Inbox" });
-    repo.collections.listItems.mockResolvedValue([
-      {
-        collectionId: "collection-1",
-        itemId: "item-1",
-        position: 7,
-        addedAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
-    repo.collections.addItem.mockImplementation(async (record: unknown) => record);
-    const result = await addCollectionItem(
-      repo as unknown as RepositorySet,
-      "collection-1",
-      "item-1"
-    );
-    expect(result.position).toBe(7);
-    expect(repo.collections.addItem).toHaveBeenCalledWith(expect.objectContaining({ position: 7 }));
-  });
-
-  it("makes idempotent collection and annotation creation retries return existing records", async () => {
-    const repo = repositories();
-    const collection = { id: "collection-hash", name: "Inbox" };
-    repo.collections.find.mockResolvedValue(collection);
-    await expect(
-      createCollection(repo as unknown as RepositorySet, {
-        name: "Different retry payload",
-        idempotencyKey: "same-key",
-      })
-    ).resolves.toBe(collection);
-    expect(repo.collections.create).not.toHaveBeenCalled();
-
     const annotation = {
       id: `annotation-${createHash("sha256").update("item-1:same-key").digest("hex").slice(0, 40)}`,
       itemId: "item-1",
@@ -369,7 +309,7 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     expect(repo.annotations.create).not.toHaveBeenCalled();
   });
 
-  it("covers authenticated annotation and collection read/mutation routes", async () => {
+  it("covers authenticated annotation read and mutation routes", async () => {
     const repo = repositories();
     const annotation = {
       id: "annotation-1",
@@ -384,11 +324,6 @@ describe("Phase 2 reader API contract and security boundaries", () => {
     repo.annotations.listForItem.mockResolvedValue([annotation]);
     repo.annotations.update.mockResolvedValue(annotation);
     repo.annotations.delete.mockResolvedValue(true);
-    repo.collections.list.mockResolvedValue([{ id: "collection-1", name: "Inbox" }]);
-    repo.collections.find.mockResolvedValue({ id: "collection-1", name: "Inbox" });
-    repo.collections.listItems.mockResolvedValue([]);
-    repo.collections.update.mockResolvedValue({ id: "collection-1", name: "Updated" });
-    repo.collections.delete.mockResolvedValue(true);
     mockTenantRepositories.mockResolvedValue(repo as unknown as RepositorySet);
 
     const annotationList = await listAnnotationsRoute(new Request("http://localhost"), {
@@ -406,27 +341,5 @@ describe("Phase 2 reader API contract and security boundaries", () => {
       params: Promise.resolve({ id: "item-1", annotationId: "annotation-1" }),
     });
     expect(annotationDelete.status).toBe(204);
-
-    const collectionList = await listCollectionsRoute(new Request("http://localhost"));
-    expect(collectionList.status).toBe(200);
-    const collectionGet = await getCollectionRoute(new Request("http://localhost"), {
-      params: Promise.resolve({ id: "collection-1" }),
-    });
-    expect(collectionGet.status).toBe(200);
-    const collectionPatch = await patchCollectionRoute(
-      jsonRequest("http://localhost", "PATCH", { name: "Updated" }),
-      { params: Promise.resolve({ id: "collection-1" }) }
-    );
-    expect(collectionPatch.status).toBe(200);
-    const collectionDelete = await deleteCollectionRoute(new Request("http://localhost"), {
-      params: Promise.resolve({ id: "collection-1" }),
-    });
-    expect(collectionDelete.status).toBe(204);
-
-    repo.collections.removeItem.mockResolvedValue(true);
-    const membershipDelete = await deleteMembership(new Request("http://localhost"), {
-      params: Promise.resolve({ id: "collection-1", itemId: "item-1" }),
-    });
-    expect(membershipDelete.status).toBe(204);
   });
 });

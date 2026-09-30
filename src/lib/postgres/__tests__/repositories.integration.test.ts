@@ -218,7 +218,7 @@ describe("PostgreSQL repository contracts", () => {
     });
   });
 
-  it("persists lifecycle, one note, anchored annotations, collections, and immutable events", async () => {
+  it("persists lifecycle, one note, anchored annotations, and immutable events", async () => {
     const repos = createPostgresRepositories(harness.sql);
     await repos.items.insert(item("knowledge", "https://example.com/knowledge"));
     await repos.items.update("knowledge", {
@@ -277,28 +277,6 @@ describe("PostgreSQL repository contracts", () => {
         updatedAt: "2026-01-02T00:00:00Z",
       })
     ).toMatchObject({ status: "orphaned", startOffset: undefined });
-
-    await repos.collections.create({
-      id: "collection",
-      name: "Read later",
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
-    });
-    await repos.collections.addItem({
-      collectionId: "collection",
-      itemId: "knowledge",
-      position: 4,
-      addedAt: "2026-01-01T00:00:00Z",
-    });
-    await repos.collections.addItem({
-      collectionId: "collection",
-      itemId: "knowledge",
-      position: 1,
-      addedAt: "2026-01-02T00:00:00Z",
-    });
-    expect(await repos.collections.listItems("collection")).toEqual([
-      expect.objectContaining({ itemId: "knowledge", position: 1 }),
-    ]);
 
     const event = {
       id: "event",

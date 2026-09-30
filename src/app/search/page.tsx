@@ -1,8 +1,8 @@
 /**
  * The old Search page. Search now lives in the Feed header and uses the same
- * URL parameters (`q`, `source`, `contentType`, `priority`, `topic`,
- * `collection`, `read`, `archive`, `dateFrom`, `dateTo`), so old `/search?…`
- * links and bookmarks land on the equivalent Feed view.
+ * URL parameters (`q`, `source`, `contentType`, `priority`, `topic`, `read`,
+ * `archive`, `dateFrom`, `dateTo`), so old `/search?…` links and bookmarks
+ * land on the equivalent Feed view. Retired parameters are silently discarded.
  */
 
 import { redirect } from "next/navigation";

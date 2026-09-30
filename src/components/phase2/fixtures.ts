@@ -41,10 +41,6 @@ export const readerKnowledgeFixture: ReaderKnowledgeFixture = {
     "The best operational teams write down the decision, its evidence, and the condition that would cause them to revisit it.",
   ],
   note: "Use this framing for the next reliability review.",
-  collections: [
-    { id: "product", name: "Product", selected: true },
-    { id: "leadership", name: "Leadership", selected: false },
-  ],
   annotations: [
     {
       id: "annotation-1",
