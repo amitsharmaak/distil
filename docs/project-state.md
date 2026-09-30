@@ -156,10 +156,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
     with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
     and compare a small local sample against flash-lite per area.
-  - **Minor open items:** (the Area label truncation at 375 px is fixed; checkpoint "Filters
-    sheet: segment labels fit on phones — 2026-09-30") `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
-    e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
-    e2e passes).
+  - **Minor open items:** the local e2e `phase2.spec.ts` reader step fails on a dev server
+    without sign-in (CI's production-build e2e passes). Closed: the Area label truncation at
+    375 px (checkpoint "Filters sheet: segment labels fit on phones — 2026-09-30") and the unused
+    `src/lib/ai/embeddings.ts` (checkpoint "Unused embeddings module removed — 2026-09-30").
     **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
     spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
     backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
@@ -500,6 +500,19 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Unused embeddings module removed — 2026-09-30
+
+Amit asked to clean up `src/lib/ai/embeddings.ts` (`generateEmbedding`, `cosineSimilarity`,
+`findSimilarItems`, `embedItem`). It had no production importer: its last callers
+(`hybridSearch` and the Ask pipeline) went with F7 and A1, and it called OpenAI and Gemini
+directly rather than through the AI router. Removed the file, its `embedding` AI-path entry in
+`docs/authorization-matrix.json`, and the pipeline test's mock and two "embedItem was not
+called" assertions (vacuous without the module). Kept: the `item_embeddings` table and the
+`EmbeddingRepository` (`find`, `upsert`, `listRecent`, used by `src/lib/database.ts`), and the
+`openai` package (still used by `src/lib/ai/providers.ts` and `scripts/check-ai-models.ts`).
+Checks: `npm run check` (234 suites, 1,898 tests), `tests/harness` (76) and
+`audit:phase3-security` pass. No schema, route or environment change.
 
 ### Filters sheet: segment labels fit on phones — 2026-09-30
 
