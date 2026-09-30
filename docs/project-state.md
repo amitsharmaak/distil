@@ -129,7 +129,8 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
   `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
   `next build` succeeds without either route. Merged and deployed on Amit's authorization
-  (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
+  (2026-09-30). The `FEATURE_ANSWERS` Production variable was deleted from Vercel on 2026-09-30
+  (Claude, at Amit's request in chat; no redeploy needed since nothing reads it).
 - **Inline search, quick filters and AI life areas: F1–F7 complete and deployed (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61); F1 [#63](https://github.com/amitsharmaak/distil/pull/63),
   F2 [#64](https://github.com/amitsharmaak/distil/pull/64), F3 [#67](https://github.com/amitsharmaak/distil/pull/67),
@@ -158,20 +159,23 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     `FEATURE_SEARCH`, and, with Ask gone, the now-callerless `hybridSearch`, `searchPassages` /
     passage store, `repositories.passages` and the `ItemFilters.query` clause. Kept:
     `content_chunks`, chunking, grounding, all schema. Nothing stays "for Ask" because Ask no
-    longer exists. **Amit:** delete any leftover `FEATURE_SEARCH` (and `FEATURE_ANSWERS`)
-    variable in Vercel yourself; nothing reads them.
+    longer exists. The leftover `FEATURE_SEARCH` and `FEATURE_ANSWERS` variables (Production
+    only) were deleted from Vercel project `project-evgf1` on 2026-09-30 by Claude through Amit's
+    signed-in Chrome, at his request in chat. No redeploy was triggered; nothing reads them, and
+    the next deploy drops them. The other `FEATURE_*` variables are unchanged.
   - **Classifier model follow-up (decision 12): still open.** Question to Amit: which exact
     provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
     with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
     and compare a small local sample against flash-lite per area.
-  - **Minor open items:** the Filters sheet's Area segment labels truncate at 375 px (Feed and
-    Today); `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
+  - **Minor open items:** (the Area label truncation at 375 px is fixed; checkpoint "Filters
+    sheet: segment labels fit on phones — 2026-09-30") `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
     e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
     e2e passes).
     **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
     spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
     backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
-    himself; the model follow-up is excluded unless Amit names the model id.
+    himself (he later asked Claude to delete it and `FEATURE_ANSWERS`, done 2026-09-30); the model
+    follow-up is excluded unless Amit names the model id.
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
   2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
@@ -507,6 +511,18 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Filters sheet: segment labels fit on phones — 2026-09-30
+
+Amit asked to fix the Area labels ("Perso…", "Learni…", "Updat…") cut off in the Filters sheet
+at 375 px (Feed and Today share the sheet). Cause: `Segmented` in
+`src/components/feed/feed-filters.tsx` used equal grid columns (`auto-cols-fr`), leaving about
+49 px of text room per Area segment. Fix: a flex row whose segments size to their label and
+share the spare width (`flex-auto`, `min-w-0`, `px-1.5`); `truncate` stays as a last resort. It
+applies to Sort and Archive too. Checked in the local in-app browser: no label cut at 375 px
+(Personal 75 px, Learning 77 px) or at 320 px while searching (four Sort options including Best
+match), no horizontal page scroll, and the desktop panel keeps near-equal segments. UI only; no
+schema, route or environment change.
 
 ### Performance P11: cold-start settings retained — 2026-09-30
 
