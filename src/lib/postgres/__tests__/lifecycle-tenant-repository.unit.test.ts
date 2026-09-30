@@ -173,13 +173,13 @@ describe("PostgresTenantLifecycleRepository", () => {
 
     const datasets = await repository.readExportDatasets();
 
-    expect(datasets).toHaveLength(27);
+    expect(datasets).toHaveLength(25);
     expect(datasets[0]).toEqual({
       name: "profile",
       rows: [{ id: userId, displayName: "Amit" }],
     });
     expect(datasets.at(-1)).toEqual({ name: "usage", rows: [] });
-    expect(database.unsafeQueries).toHaveLength(27);
+    expect(database.unsafeQueries).toHaveLength(25);
     expect(database.unsafeQueries[0].text).toContain("primaryEmail");
     expect(database.unsafeQueries.at(-1)?.text).toContain("usage_counters");
     database.assertExhausted();

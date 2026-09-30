@@ -38,8 +38,6 @@ describe("PostgreSQL repository contracts", () => {
         "items",
         "item_notes",
         "annotations",
-        "collections",
-        "collection_items",
         "item_events",
         "digest_runs",
         "digest_items",
