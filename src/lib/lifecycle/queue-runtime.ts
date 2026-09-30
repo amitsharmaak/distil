@@ -10,6 +10,8 @@ import type { AuthAccountPurger, ControlPlaneLifecycleRepository } from "@/lib/l
 import { getLifecycleAuthPurger } from "@/lib/lifecycle/auth-purger-runtime";
 import { getLifecycleObjectStore } from "@/lib/lifecycle/object-store-runtime";
 import type { TenantObjectStore } from "@/lib/storage/object-store";
+import { AREA_BACKFILL_JOB_TYPE, createAreaBackfillJobHandler } from "@/lib/jobs/area-backfill";
+import type { TenantJobDispatcher } from "@/lib/queue/dispatchers";
 
 import { ACCOUNT_DELETION_JOB_TYPE, type AccountDeletionWorkerDependencies } from "./deletion";
 import { ACCOUNT_EXPORT_JOB_TYPE, ACCOUNT_EXPORT_RETENTION_JOB_TYPE } from "./exports";
@@ -28,10 +30,17 @@ export interface LifecycleQueueRuntimeDependencies {
   getAuthPurger?: () => AuthAccountPurger;
   getControlPlaneLifecycle?: (context: SystemContext) => Promise<ControlPlaneLifecycleRepository>;
   createSystemContext?: (context: AuthContext) => SystemContext;
+  /** How a multi-batch job (the area backfill) publishes its next batch. */
+  getTenantJobDispatcher?: () => Promise<TenantJobDispatcher | undefined>;
 }
 
 function defaultControlPlaneLifecycle(context: SystemContext) {
   return getControlPlaneRepositories(context).then(({ lifecycle }) => lifecycle);
+}
+
+async function defaultTenantJobDispatcher(): Promise<TenantJobDispatcher> {
+  const { resolveTenantJobDispatcher } = await import("@/lib/queue/tenant-job-dispatch");
+  return resolveTenantJobDispatcher();
 }
 
 /**
@@ -61,6 +70,10 @@ export function createLifecycleTenantJobHandlers(
   });
   handlers.set(ACCOUNT_EXPORT_RETENTION_JOB_TYPE, async (context, payload, repositories) => {
     await createAccountExportRetentionJobHandler(getObjectStore())(context, payload, repositories);
+  });
+  handlers.set(AREA_BACKFILL_JOB_TYPE, async (context, payload, repositories) => {
+    const getDispatcher = dependencies.getTenantJobDispatcher ?? defaultTenantJobDispatcher;
+    await createAreaBackfillJobHandler(getDispatcher)(context, payload, repositories);
   });
   handlers.set(ACCOUNT_DELETION_JOB_TYPE, async (context, payload, repositories) => {
     // Resolve mandatory dependencies before processAccountDeletion can mark a

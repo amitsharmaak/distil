@@ -59,7 +59,7 @@ the Docker volume: `npm run db:local:down && docker volume rm distil-local_disti
 | Capture      | `DISTIL_CAPTURE_DISPATCH=inline`, in-process | Vercel Queue `capture-requests`  |
 | Research     | same switch: stages run in-process, chained  | Vercel Queue `research-runs`     |
 | Auth         | Legacy password login, one owner user        | Hosted Neon Auth                 |
-| Tenant jobs  | Not dispatched (no local consumer)           | Vercel Queue `account-lifecycle` |
+| Tenant jobs  | Area backfill runs in-process (same switch)  | Vercel Queue `account-lifecycle` |
 
 Never set `DISTIL_CAPTURE_DISPATCH=inline` on Vercel: serverless request lifetimes end before the
 worker finishes. Deep research follows the same switch: locally each stage (plan, one search per

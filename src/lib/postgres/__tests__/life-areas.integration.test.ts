@@ -231,3 +231,54 @@ describe("life-area item columns", () => {
     );
   });
 });
+
+describe("area backfill queries", () => {
+  it("lists only the caller's unclassified, uncorrected, ready items in id order", async () => {
+    const repos = repositoriesFor(owner);
+    for (const id of ["a", "b", "c", "d", "e"]) await repos.items.insert(item(id));
+    await repos.items.insert(item("p", { processingStatus: "processing" }));
+    await repos.items.setAiArea("b", classification);
+    await correct(owner.userId, "c", "personal", "2026-09-29T00:00:00Z");
+    await repositoriesFor(other).items.insert(item("f"));
+
+    expect(await repos.items.listAreaBackfillCandidates({ limit: 10 })).toEqual(["a", "d", "e"]);
+    expect(await repos.items.listAreaBackfillCandidates({ afterId: "a", limit: 1 })).toEqual(["d"]);
+    expect(await repositoriesFor(other).items.listAreaBackfillCandidates({ limit: 10 })).toEqual([
+      "f",
+    ]);
+    expect(await repos.items.countAreas()).toEqual({
+      byArea: { personal: 1, work: 1, learning: 0, updates: 0 },
+      unclassified: 3,
+      corrected: 1,
+    });
+  });
+
+  it("records a job's result in its payload and lists the caller's jobs by type", async () => {
+    const repos = repositoriesFor(owner);
+    const jobId = "50000000-0000-4000-8000-000000000001";
+    await repos.jobs.enqueue({
+      userId: owner.userId,
+      id: jobId,
+      jobType: "items.area-backfill",
+      idempotencyKey: "area-backfill:run:0",
+      payload: JSON.stringify({ batchIndex: 0 }),
+    });
+    await repositoriesFor(other).jobs.enqueue({
+      userId: other.userId,
+      id: "50000000-0000-4000-8000-000000000002",
+      jobType: "items.area-backfill",
+      idempotencyKey: "area-backfill:run:0",
+      payload: JSON.stringify({ batchIndex: 0 }),
+    });
+
+    await repos.jobs.recordResult?.(jobId, { status: "completed", classified: 3 });
+
+    const jobs = (await repos.jobs.listRecentByType?.("items.area-backfill", 10)) ?? [];
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      id: jobId,
+      status: "pending",
+      payload: { batchIndex: 0, result: { status: "completed", classified: 3 } },
+    });
+  });
+});
