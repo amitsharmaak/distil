@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { checkAuth, P8_PROXY_PROBE_HEADER } from "@/lib/middleware/auth";
+import { checkAuth } from "@/lib/middleware/auth";
 import { checkRateLimit } from "@/lib/middleware/rate-limit";
 import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
@@ -15,7 +15,10 @@ import { authorizeNeonProxy } from "@/lib/auth/neon-proxy";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 import { applyPrivateApiCacheControl } from "@/lib/middleware/private-cache";
-import { instrumentNeonProxyDependencies } from "@/lib/auth/auth-metrics";
+import {
+  instrumentNeonProxyDependencies,
+  measureP8ProxyIdentityLookup,
+} from "@/lib/auth/auth-metrics";
 import {
   PROXY_TIMING_HEADER,
   runWithRequestMetrics,
@@ -34,6 +37,8 @@ const CONNECTOR_API_PREFIXES = [
 /** Headers only this proxy may set; anything inbound under them is dropped. */
 const INTERNAL_HEADER_PREFIX = "x-distil-";
 const TRACE_HEADER = "x-trace-id";
+export const P8_PROXY_PROBE_QUERY = "__distil_p8_probe";
+const P8_PROXY_PROBE_SUBJECT = "urn:distil:perf-probe:p8:missing";
 
 function connectorsDisabled(pathname: string): boolean {
   return (
@@ -69,12 +74,16 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
     pathname === "/api/health" ||
     pathname === "/api/queue/capture-requests" ||
     pathname === "/api/queue/research-runs";
-  const finish = (response: NextResponse, passThrough = false) => {
+  const finish = (
+    response: NextResponse,
+    passThrough = false,
+    timing = serverTimingHeader(metrics, "proxy")
+  ) => {
     // Durations and counters only (see request-metrics.ts); visible in DevTools.
     // A header on an API pass-through would replace the route's own
     // Server-Timing, so those receive it as a request header instead.
     if (!(isApi && passThrough)) {
-      response.headers.set("server-timing", serverTimingHeader(metrics, "proxy"));
+      response.headers.set("server-timing", timing);
     }
     return applyPrivateApiCacheControl(pathname, isApi ? applyCors(request, response) : response);
   };
@@ -98,17 +107,43 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
 
   const traceId = crypto.randomUUID();
   let requestHeaders = new Headers(request.headers);
-  // The opt-in P8 diagnostic header is consumed by the legacy auth boundary;
-  // it is never forwarded to application code.
-  requestHeaders.delete(P8_PROXY_PROBE_HEADER);
   let providerHeaders: Headers | undefined;
 
   // FEATURE_NEON_AUTH is an exact opt-in. The legacy session path remains the
   // feature-off migration bridge and is not accepted by the Neon path.
   const neonFoundation = readNeonAuthFoundation();
   if (!neonFoundation.enabled) {
-    const authError = await checkAuth(request);
+    const isP8Probe =
+      request.method === "GET" && request.nextUrl.searchParams.get(P8_PROXY_PROBE_QUERY) === "1";
+    let authenticatedP8Probe = false;
+    const authError = await checkAuth(request, {
+      onAuthenticated: isP8Probe
+        ? async () => {
+            authenticatedP8Probe = true;
+            try {
+              const repositories = await getAuthRepositoryPort();
+              await measureP8ProxyIdentityLookup(repositories, {
+                provider: "neon",
+                providerSubject: P8_PROXY_PROBE_SUBJECT,
+              });
+            } catch {
+              // Measurement must never replace the legacy auth decision.
+            }
+          }
+        : undefined,
+    });
     if (authError) return finish(authError);
+    if (authenticatedP8Probe) {
+      const timing = serverTimingHeader(metrics, "proxy");
+      return finish(
+        NextResponse.json(
+          { serverTiming: timing },
+          { headers: { "cache-control": "private, no-store" } }
+        ),
+        false,
+        timing
+      );
+    }
   } else {
     try {
       const dependencies = instrumentNeonProxyDependencies({

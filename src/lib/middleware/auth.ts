@@ -12,8 +12,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { readSessionCookie } from "@/lib/auth/request";
 import { verifySessionToken } from "@/lib/auth/session";
-import { measureP8ProxyIdentityLookup } from "@/lib/auth/auth-metrics";
-import { getAuthRepositoryPort } from "@/lib/auth/repository-runtime";
 
 const SELF_AUTHENTICATING_PATHS = [
   "/api/auth/login",
@@ -26,27 +24,14 @@ const SELF_AUTHENTICATING_PATHS = [
   "/api/v1/capture-tokens",
 ] as const;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-export const P8_PROXY_PROBE_HEADER = "x-perf-probe-p8";
-const P8_PROXY_PROBE_SUBJECT = "urn:distil:perf-probe:p8:missing";
 
 /**
- * Preview normally uses legacy auth, so its signed-in browser cannot reach the
- * Neon proxy lookup. This temporary, explicit probe exercises the identical
- * SECURITY DEFINER lookup only after legacy authentication succeeds. Both
- * results are intentionally ignored; diagnostic failures cannot change the
- * legacy authorization decision.
+ * Temporary P8 hook. It runs only after a real signed legacy session passes
+ * every authentication and origin check; public/test/bypass paths never call
+ * it. Omit the hook for normal request behavior.
  */
-async function runP8LegacyProxyProbe(request: NextRequest): Promise<void> {
-  if (request.headers.get(P8_PROXY_PROBE_HEADER) !== "1") return;
-  try {
-    const repositories = await getAuthRepositoryPort();
-    await measureP8ProxyIdentityLookup(repositories, {
-      provider: "neon",
-      providerSubject: P8_PROXY_PROBE_SUBJECT,
-    });
-  } catch {
-    // Temporary observability must never make an authenticated request fail.
-  }
+export interface LegacyAuthHooks {
+  onAuthenticated?: () => Promise<void>;
 }
 
 export function isAuthEnabled(): boolean {
@@ -82,7 +67,10 @@ async function legacyTokenMatches(request: NextRequest, expected?: string): Prom
   return difference === 0;
 }
 
-export async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
+export async function checkAuth(
+  request: NextRequest,
+  hooks: LegacyAuthHooks = {}
+): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
   if (pathname === "/login" || hasSpecializedAuth(pathname)) return null;
 
@@ -117,7 +105,7 @@ export async function checkAuth(request: NextRequest): Promise<NextResponse | nu
         { status: 403 }
       );
     }
-    await runP8LegacyProxyProbe(request);
+    await hooks.onAuthenticated?.();
     return null;
   }
 

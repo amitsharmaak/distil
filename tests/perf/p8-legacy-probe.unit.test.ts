@@ -4,8 +4,8 @@ import type { LinkedAccount } from "@/lib/auth/account";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { createSessionToken } from "@/lib/auth/session";
-import { P8_PROXY_PROBE_HEADER } from "@/lib/middleware/auth";
 import { recordDatabaseStatement } from "@/lib/observability/request-metrics";
+import { P8_PROXY_PROBE_QUERY } from "@/proxy";
 
 const sessionSecret = "p8-legacy-preview-session-secret-with-32-bytes";
 const missingProbeSubject = "urn:distil:perf-probe:p8:missing";
@@ -53,21 +53,24 @@ afterAll(() => {
   process.env = originalEnvironment;
 });
 
-async function signedInRequest(headers: Record<string, string> = {}) {
+async function signedInRequest(path = "/feed", options: { method?: string; origin?: string } = {}) {
   const token = await createSessionToken(sessionSecret);
   const { proxy } = await import("@/proxy");
   return proxy(
-    new NextRequest("https://distil.example/feed", {
+    new NextRequest(`https://distil.example${path}`, {
+      method: options.method,
       headers: {
         cookie: `${SESSION_COOKIE_NAME}=${token}`,
-        ...headers,
+        ...(options.origin ? { origin: options.origin } : {}),
       },
     })
   );
 }
 
+const probePath = `/feed?${P8_PROXY_PROBE_QUERY}=1`;
+
 describe("P8 legacy Preview connection probe", () => {
-  it("does not load or query the repository without the explicit probe header", async () => {
+  it("does not load or query the repository without the explicit query flag", async () => {
     const response = await signedInRequest();
 
     expect(response.status).toBe(200);
@@ -79,20 +82,18 @@ describe("P8 legacy Preview connection probe", () => {
 
   it("does not probe when legacy authentication rejects the request", async () => {
     const { proxy } = await import("@/proxy");
-    const response = await proxy(
-      new NextRequest("https://distil.example/feed", {
-        headers: { [P8_PROXY_PROBE_HEADER]: "1" },
-      })
-    );
+    const response = await proxy(new NextRequest(`https://distil.example${probePath}`));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://distil.example/login?next=%2Ffeed");
+    expect(response.headers.get("location")).toBe(
+      "https://distil.example/login?next=%2Ffeed%3F__distil_p8_probe%3D1"
+    );
     expect(fakes.loadRepositories).not.toHaveBeenCalled();
     expect(fakes.findAccountByIdentity).not.toHaveBeenCalled();
   });
 
   it("records exactly two identical missing-identity lookups after successful legacy auth", async () => {
-    const response = await signedInRequest({ [P8_PROXY_PROBE_HEADER]: "1" });
+    const response = await signedInRequest(probePath);
 
     expect(response.status).toBe(200);
     expect(fakes.loadRepositories).toHaveBeenCalledTimes(1);
@@ -105,10 +106,13 @@ describe("P8 legacy Preview connection probe", () => {
       provider: "neon",
       providerSubject: missingProbeSubject,
     });
-    expect(response.headers.get("server-timing")).toMatch(
+    const serverTiming = response.headers.get("server-timing");
+    expect(serverTiming).toMatch(
       /^proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="q=2"$/
     );
-    expect(response.headers.get(`x-middleware-request-${P8_PROXY_PROBE_HEADER}`)).toBeNull();
+    await expect(response.json()).resolves.toEqual({ serverTiming });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-middleware-next")).toBeNull();
   });
 
   it("ignores both lookup results so legacy auth remains authoritative", async () => {
@@ -120,9 +124,38 @@ describe("P8 legacy Preview connection probe", () => {
       } as LinkedAccount;
     });
 
-    const response = await signedInRequest({ [P8_PROXY_PROBE_HEADER]: "1" });
+    const response = await signedInRequest(probePath);
 
     expect(response.status).toBe(200);
     expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps probe failures non-authoritative and out of the JSON response", async () => {
+    fakes.findAccountByIdentity
+      .mockImplementationOnce(async () => {
+        recordDatabaseStatement("SELECT * FROM distil_resolve_auth_identity($1, $2)");
+        return undefined;
+      })
+      .mockRejectedValueOnce(new Error("private database failure"));
+
+    const response = await signedInRequest(probePath);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(fakes.findAccountByIdentity).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(body)).not.toContain("private database failure");
+    expect(body).toEqual({ serverTiming: response.headers.get("server-timing") });
+  });
+
+  it("does not probe a non-GET request even when the query flag is present", async () => {
+    const response = await signedInRequest(probePath, {
+      method: "POST",
+      origin: "https://distil.example",
+    });
+
+    expect(response.status).toBe(200);
+    expect(fakes.loadRepositories).not.toHaveBeenCalled();
+    expect(fakes.findAccountByIdentity).not.toHaveBeenCalled();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 });
