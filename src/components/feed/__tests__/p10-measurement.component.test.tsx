@@ -138,14 +138,9 @@ describe("temporary P10 measurement harness", () => {
       );
     });
 
-    expect(info).toHaveBeenCalledWith("[P10 measurement]", {
-      path: "/feed",
-      durationMs: 123.5,
-      serverTiming: [
-        { name: "proxy-auth-db", durationMs: 12.3, description: "q=1" },
-        { name: "db", durationMs: 4.6 },
-      ],
-    });
+    expect(info).toHaveBeenCalledWith(
+      '[P10 measurement] {"path":"/feed","durationMs":123.5,"serverTiming":[{"name":"proxy-auth-db","durationMs":12.3,"description":"q=1"},{"name":"db","durationMs":4.6}]}'
+    );
     expect(screen.getByText(/Captured: API 0 · Feed RSC 1/)).toBeInTheDocument();
     unmount();
     expect(disconnect).toHaveBeenCalled();

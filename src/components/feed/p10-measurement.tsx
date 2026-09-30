@@ -107,7 +107,7 @@ export function P10MeasurementHarness({ apiPath }: { apiPath: string }) {
         if (!record) continue;
         // Temporary, explicitly query-gated measurement output. The record is
         // structurally limited to path, duration and aggregate timing entries.
-        console.info("[P10 measurement]", record);
+        console.info(`[P10 measurement] ${JSON.stringify(record)}`);
         if (record.path === "/api/v1/feed") setApiSamples((count) => count + 1);
         if (record.path === "/feed") setRscSamples((count) => count + 1);
       }
