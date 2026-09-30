@@ -1,7 +1,7 @@
 import { Writable } from "node:stream";
 import pinoPretty from "pino-pretty";
 
-import { createLogger, sanitizeLogError } from "@/lib/logger";
+import { createLogger, sanitizeLogError, sanitizeLogObject } from "@/lib/logger";
 
 function capture() {
   let output = "";
@@ -85,5 +85,29 @@ describe("central structured logger redaction", () => {
     const pretty = pinoPretty({ colorize: false, sync: true, destination: sink.destination });
     writeCanaries(createLogger({ development: true, destination: pretty }));
     expectCanariesRedacted(sink.output());
+  });
+
+  it("keeps numeric counters only as non-negative integers", () => {
+    expect(
+      sanitizeLogObject({
+        event: "research_grounding_sources",
+        sources: 7,
+        redirects: 6,
+        overCap: 0,
+        unresolved: 1,
+        words: 1_812,
+        cited: "https://private.example.test/a",
+        sections: -1,
+        placeholders: 1.5,
+        takeaways: Number.NaN,
+      })
+    ).toEqual({
+      event: "research_grounding_sources",
+      sources: 7,
+      redirects: 6,
+      overCap: 0,
+      unresolved: 1,
+      words: 1_812,
+    });
   });
 });

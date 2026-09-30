@@ -15,10 +15,13 @@ import { ResearchReportView } from "@/components/research/research-report-view";
 const POLL_INTERVAL_MS = 3000;
 
 interface ResearchProgress {
-  stage: "planning" | "researching" | "deepening" | "synthesizing";
+  /** `synthesizing` comes from runs started before the outline/write stages; shown as outlining. */
+  stage: "planning" | "researching" | "deepening" | "outlining" | "writing" | "synthesizing";
   current?: number;
   total?: number;
   question?: string;
+  /** Heading of the section being written (`writing`). */
+  heading?: string;
 }
 
 interface ResearchReport {
@@ -43,12 +46,64 @@ const STAGES: ResearchProgress["stage"][] = [
   "planning",
   "researching",
   "deepening",
-  "synthesizing",
+  "outlining",
+  "writing",
 ];
 
 function getStageIndex(stage: ResearchProgress["stage"]): number {
-  const i = STAGES.indexOf(stage);
+  const i = STAGES.indexOf(stage === "synthesizing" ? "outlining" : stage);
   return i >= 0 ? i : 0;
+}
+
+const STAGE_NAMES = new Set<string>([...STAGES, "synthesizing"]);
+
+/**
+ * Progress as the API and the stream send it: a JSON string (the read route and every SSE
+ * event), an object, or, defensively, a JSON string of a JSON string. Anything without a known
+ * stage is ignored.
+ */
+function parseResearchProgress(value: unknown): ResearchProgress | null {
+  let parsed = value;
+  for (let depth = 0; depth < 2 && typeof parsed === "string"; depth++) {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const stage = (parsed as { stage?: unknown }).stage;
+  return typeof stage === "string" && STAGE_NAMES.has(stage) ? (parsed as ResearchProgress) : null;
+}
+
+/** Stepper label for one stage, with the live counts when that stage is current. */
+function stageLabel(stage: ResearchProgress["stage"], progress: ResearchProgress | null): string {
+  const done = progress ? getStageIndex(progress.stage) > getStageIndex(stage) : false;
+  switch (stage) {
+    case "planning":
+      return "Planning research questions...";
+    case "researching": {
+      if (done) return "Researched sub-questions";
+      const current = progress?.stage === "researching";
+      const curr = current ? (progress.current ?? 0) : 0;
+      const tot = current ? (progress.total ?? 1) : 1;
+      const q = current ? progress.question : "";
+      return `Researching (${curr}/${tot})${q ? `: ${q}` : ""}`;
+    }
+    case "deepening": {
+      if (progress?.stage !== "deepening" || !progress.total) return "Deepening research...";
+      const q = progress.question ? `: ${progress.question}` : "";
+      return `Deepening (${progress.current ?? 0}/${progress.total})${q}`;
+    }
+    case "outlining":
+    case "synthesizing":
+      return "Outlining the report...";
+    case "writing": {
+      if (progress?.stage !== "writing" || !progress.total) return "Writing the report...";
+      const heading = progress.heading ? `: ${progress.heading}` : "";
+      return `Writing (${progress.current ?? 1}/${progress.total})${heading}`;
+    }
+  }
 }
 
 export default function ResearchPage() {
@@ -63,17 +118,8 @@ export default function ResearchPage() {
     if (!res.ok) throw new Error("Report not found");
     const data = await res.json();
     setReport(data.report);
-    if (data.report.progress) {
-      try {
-        setProgress(
-          typeof data.report.progress === "string"
-            ? JSON.parse(data.report.progress)
-            : data.report.progress
-        );
-      } catch {
-        // ignore
-      }
-    }
+    const parsed = parseResearchProgress(data.report.progress);
+    if (parsed) setProgress(parsed);
     return data.report;
   }, [id]);
 
@@ -113,12 +159,8 @@ export default function ResearchPage() {
         // Connect SSE for progress
         es = new EventSource(`${config.apiBaseUrl}/api/ai/research/${id}/stream`);
         es.addEventListener("progress", (e) => {
-          try {
-            const p = JSON.parse(e.data) as ResearchProgress;
-            setProgress(p);
-          } catch {
-            // ignore
-          }
+          const p = parseResearchProgress(e.data);
+          if (p) setProgress(p);
         });
         es.addEventListener("status", (e) => {
           try {
@@ -249,15 +291,7 @@ export default function ResearchPage() {
                 const isCurrent = currentStageIndex === i;
                 const isPending = currentStageIndex < i;
 
-                let label = "";
-                if (stage === "planning") label = "Planning research questions...";
-                else if (stage === "researching") {
-                  const curr = progress?.stage === "researching" ? (progress.current ?? 0) : 0;
-                  const tot = progress?.stage === "researching" ? (progress.total ?? 1) : 1;
-                  const q = progress?.stage === "researching" ? progress.question : "";
-                  label = `Researching (${curr}/${tot})${q ? `: ${q}` : ""}`;
-                } else if (stage === "deepening") label = "Deepening research...";
-                else if (stage === "synthesizing") label = "Synthesizing findings...";
+                const label = stageLabel(stage, progress);
 
                 return (
                   <div key={stage} className="flex items-start gap-3">

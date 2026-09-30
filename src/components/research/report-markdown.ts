@@ -23,6 +23,19 @@ const THEMATIC_BREAK_RE = /^\s{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const SUMMARY_HEADING_RE =
   /^(?:\*\*|__)?\s*(?:tl;?\s?dr|summary|executive\s+summary)\s*(?:\*\*|__)?\s*:?\s*$/i;
 
+/**
+ * Framing sections an R3 report adds around its body ("Key takeaways", "Caveats and open
+ * questions"); they appear in the contents but do not count as report sections in the header.
+ */
+const FRAMING_HEADING_RE =
+  /^(?:key\s+takeaways|caveats(?:\s+and\s+open\s+questions)?|open\s+questions)$/i;
+
+/** True for a heading that is part of the report's body, not its summary or framing. */
+export function isBodySectionHeading(text: string): boolean {
+  const trimmed = text.trim();
+  return !SUMMARY_HEADING_RE.test(trimmed) && !FRAMING_HEADING_RE.test(trimmed);
+}
+
 export interface ReportHeading {
   /** 2 or 3 — only `##` and `###` headings enter the table of contents. */
   level: 2 | 3;
@@ -323,7 +336,9 @@ export function prepareReport(markdown: string): PreparedReport {
     summary,
     body: rest,
     headings,
-    sectionCount: headings.filter((heading) => heading.level === 2).length,
+    sectionCount: headings.filter(
+      (heading) => heading.level === 2 && isBodySectionHeading(heading.text)
+    ).length,
     readingMinutes: estimateReadingMinutes(words),
   };
 }
