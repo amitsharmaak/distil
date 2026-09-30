@@ -1216,8 +1216,18 @@
       "currentAuth": "vercel_queue_signature_with_strict_tenant_job_envelope",
       "requiredPrincipal": "queue_service",
       "scope": "service",
-      "resources": ["account_exports", "account_deletions", "job_queue", "future_object_store"],
-      "testProfile": "service"
+      "resources": [
+        "account_exports",
+        "account_deletions",
+        "job_queue",
+        "future_object_store",
+        "items",
+        "ai_summaries",
+        "usage_counters",
+        "audit_log"
+      ],
+      "testProfile": "service",
+      "notes": "Allowlisted tenant jobs: account.export, account.export-expire, account.deletion and items.area-backfill (one bounded batch of life-area classification per message, chaining the next batch)."
     },
     {
       "path": "/api/settings/email-intelligence",
@@ -1268,6 +1278,17 @@
       "scope": "owner",
       "resources": ["oauth_tokens", "raw_content", "items"],
       "testProfile": "owner"
+    },
+    {
+      "path": "/api/v1/areas/backfill",
+      "source": "src/app/api/v1/areas/backfill/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "proxy_session_plus_route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["items", "job_queue"],
+      "testProfile": "owner",
+      "notes": "POST checks Origin and enqueues the first items.area-backfill tenant job for the caller only; GET returns the caller's area counts and backfill run totals (counts only, no content)."
     },
     {
       "path": "/api/v1/capture-tokens/:id",
@@ -1902,7 +1923,16 @@
       "source": "src/app/api/queue/account-lifecycle/route.ts",
       "currentTenant": "signed queue envelope only",
       "requiredTenant": "Vercel queue callback plus strict TenantJobEnvelopeV1; tenant-scoped claim revalidates userId, jobId and jobType before an allowlisted handler runs",
-      "resources": ["account_exports", "account_deletions", "job_queue", "future_object_store"]
+      "resources": [
+        "account_exports",
+        "account_deletions",
+        "job_queue",
+        "future_object_store",
+        "items",
+        "ai_summaries",
+        "usage_counters",
+        "audit_log"
+      ]
     },
     {
       "id": "research-runs-queue-callback",
@@ -2166,6 +2196,13 @@
       "entryPoints": ["classifyItemArea"],
       "currentScope": "tenant-scoped: called by the capture consumer with the queue envelope's system context; reads the owned item, its brief and the tenant's own area corrections, and writes only the AI area columns through the tenant repositories; provider calls go through the tenant AI router's budget and accounting",
       "requiredScope": "owned item and corrections only; never another tenant's items as examples; user-scoped AI budget/audit"
+    },
+    {
+      "id": "area-backfill",
+      "source": "src/lib/jobs/area-backfill.ts",
+      "entryPoints": ["startAreaBackfill", "runAreaBackfillBatch", "getAreaBackfillOverview"],
+      "currentScope": "tenant-scoped: started by the signed-in owner through /api/v1/areas/backfill and run as items.area-backfill tenant jobs on the account-lifecycle queue; candidates, classifications, job results and counts go through the envelope tenant's repositories; title and summary only reach the classify-area task through the tenant AI router",
+      "requiredScope": "owned items and job rows only; user-scoped AI budget/audit; logs and stored results hold counts and ids, never content"
     },
     {
       "id": "prioritization",
@@ -2496,7 +2533,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 91,
+    "expectedApiRouteFileCount": 92,
     "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

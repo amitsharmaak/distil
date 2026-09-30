@@ -482,7 +482,7 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
 `.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
-`origin/main` `4f1ee3e` merged after Preview verification (no rebase). Implementation commit
+`origin/main` `35c3009` merged after Preview verification (no rebase). Implementation commit
 `2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
 SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
 own hash. No database, environment variable, Production deployment or open PR was changed.
@@ -537,14 +537,93 @@ own hash. No database, environment variable, Production deployment or open PR wa
   **1.3 / 1.4 / 1.3 / 1.2 ms**. The same session reconfirmed immediate optimistic filter feedback
   and the absence of rare-route prefetches. All temporary measurement and compatibility code was
   then removed in `5e79f32`; the final tree contains no harness query, header or logger reference.
-- **Remaining gates / restart.** The integration owner still needs to append the true reading
-  after at least six minutes idle from the preserved measurement deployment. External CI, PR
-  merge and Production deployment have not happened. Integration owner: fetch
-  `codex/perf-p10-client-requests`, run `npm run check`, add the idle result to this checkpoint,
-  then create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
+- **Idle Preview timing.** After at least six minutes idle on the preserved measurement deployment,
+  the first `/feed` RSC completed in **6,668.3 ms** end to end with proxy only **9.8 ms**; the
+  subsequent follow-up `/feed` resource was **289.6 ms** with proxy **1.5 ms**. The UI selected
+  Work optimistically while the committed URL still showed Updates, then committed `area=work`
+  after the cold response. This completes the Preview timing set and places nearly all of the cold
+  delay outside proxy authentication.
+- **Remaining gates / restart.** External CI, PR merge and Production deployment have not
+  happened. Integration owner: fetch `codex/perf-p10-client-requests`, run `npm run check`, then
+  create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
   repeat the timing set and confirm Research, Save and Settings remain absent from initial
   prefetches and one Feed filter navigation still produces one RSC request.
 
+### Life areas F6: area backfill — 2026-09-30
+
+Branch `claude/areas-f6-backfill` from `10f367f` (merged with `origin/main` at `8280fdc`).
+Implementation complete, verified by tests and by a local run against the Docker Postgres; not
+merged, not deployed, and not run on Production. No migration and no new environment variable.
+
+**What changed**
+
+- **Tenant job `items.area-backfill`** (`src/lib/jobs/area-backfill.ts`): classifies the tenant's
+  ready items with no AI area and no correction, in batches (default 20, max 50), through the
+  same `classifyItemArea` function and `classify-area` task as capture.
+  - **Title and summary only** (decision 7): `classifyItemArea` gained an `input: "title-summary"`
+    mode that sends the title, the brief's overview (else the stored summary) and the item's
+    metadata, never body text. Correction examples are read once per batch.
+  - **Registered handler.** Added to the account-lifecycle allowlist
+    (`src/lib/lifecycle/queue-runtime.ts`), so the queue callback runs it instead of completing
+    it as "No tenant handler registered".
+  - **Idempotent and resumable.** Progress is the items themselves: a classified item leaves the
+    candidate set. A run walks candidates in id order with a cursor and chains the next batch as
+    a new job whose id is derived from the run and batch number, so a redelivered batch
+    re-enqueues the same job. Each batch stops at a 40 s time budget (callback limit 60 s).
+  - **Failures and budget.** One item's failure is counted and skipped for the rest of that run
+    (the next run retries it). Tenant budget exhaustion (`AIQuotaExceededError`) or a provider
+    quota refusal stops the run cleanly with status `budget-exhausted` and enqueues nothing more.
+  - **Counts only.** Each batch writes its counts into its own job payload
+    (`jobs.recordResult`) and logs `area_backfill_batch` with counts and ids; the logger
+    allowlist gained those counter names.
+- **Trigger and observation** (`src/app/api/v1/areas/backfill/route.ts`, signed-in user only):
+  - `POST` (Origin-checked; body optional `{batchSize, maxBatches}`) starts a run for the caller
+    and returns `{started, runId, jobId, unclassified}`, or `{started:false, reason}` with
+    `nothing-to-do` or `already-running` (a run that moved in the last 10 minutes).
+  - `GET` returns `{counts: {byArea, unclassified, corrected}, runs: [{runId, status, batches,
+totals: {classified, skipped, failed, byArea}}]}`. Counts only, never content.
+- **Repository:** `items.listAreaBackfillCandidates`, `items.countAreas`, `jobs.recordResult`,
+  `jobs.listRecentByType`. **Local dispatch:** `InlineTenantJobDispatcher` and
+  `resolveTenantJobDispatcher` run tenant jobs in the dev process under
+  `DISTIL_CAPTURE_DISPATCH=inline` (Vercel Queue `account-lifecycle` otherwise); the
+  local-development runbook table says so.
+- **Authorization:** `/api/v1/areas/backfill` (GET, POST, owner) and the `area-backfill` AI path
+  in `docs/authorization-matrix.json`; the account-lifecycle callback now lists `items`,
+  `ai_summaries`, `usage_counters` and `audit_log`. Route-surface fixture and harness counts
+  updated.
+
+**Verification (locally verified 2026-09-30)**
+
+- `npm run check` (after merging `origin/main`): lint (5 pre-existing warnings, 0 errors),
+  typecheck, 236 suites / 1,809 tests passed. New: `area-backfill.unit.test.ts` (skips classified and manually set items, batch size
+  and chaining, a failed item is counted and retried by the next run, resume after a crashed
+  batch without paying twice, budget and quota exhaustion stop cleanly, time budget, max batches,
+  strict payload, start/already-running/nothing-to-do, counts-only overview), a registration
+  test in `queue-runtime.unit.test.ts`, title-summary tests in `classify-area.unit.test.ts`, and
+  `areas/backfill/__tests__/route.contract.test.ts`.
+- `life-areas.integration.test.ts` (PostgreSQL): candidates and counts are tenant-scoped and skip
+  classified, corrected and non-ready items; `recordResult` and `listRecentByType` see only the
+  caller's jobs. 7/7 passed.
+- **Local run** (Docker Postgres, `next dev` on :3106, inline dispatch, signed in with a
+  throwaway local test password): before, 4 ready items, all unclassified, 0 corrected.
+  `POST {batchSize: 2}` started a run; a second POST returned `already-running`. The run
+  finished in 3 batches (2, 2, 0), all three jobs `completed` with no error. After: personal 0,
+  work 1, learning 1, updates 2; skipped 0; failed 0; unclassified 0. Four `classify-area` calls
+  on Gemini 3.5 Flash-Lite, 2,083 input and 168 output tokens, estimated $0.001. A further POST
+  returned `nothing-to-do`.
+
+**Production run (needs Amit's authorization for that run).** After this branch is merged and
+deployed, from a signed-in `https://distilai.app` tab (browser console, same origin):
+`await (await fetch("/api/v1/areas/backfill", {method: "POST"})).json()` to start, then
+`await (await fetch("/api/v1/areas/backfill")).json()` until the newest run's status is
+`completed`, `budget-exhausted` or `max-batches-reached`. Vercel logs show
+`area_backfill_batch` per batch. Re-running is safe; it picks up whatever is still unclassified.
+
+**Risks:** one Flash-Lite call per item, so a large library uses that many requests of the
+tenant's daily `ai.requests` quota (a budget stop is clean; re-run the next day). A batch that
+dies after enqueueing its successor but before finishing can overlap with that successor for a
+few items; `classifyItemArea` skips already-classified items, so the cost is at most a duplicate
+call. The account-lifecycle queue now also carries the backfill jobs.
 ### Ask Distil removed (A1) — 2026-09-30
 
 Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get

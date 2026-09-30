@@ -3,6 +3,8 @@ import { isDetailedCurrent } from "@/lib/ai/summary-freshness";
 import type {
   AiAreaClassification,
   AreaCorrection,
+  AreaCounts,
+  JobQueueSummary,
   ItemAreaState,
   AgentRepository,
   CaptureRepository,
@@ -289,6 +291,34 @@ class PostgresItems implements ItemRepository {
       aiArea: row.area == null ? undefined : (row.area as LifeArea),
       correctedArea: row.manual_area as LifeArea,
     }));
+  }
+  async listAreaBackfillCandidates(input: { afterId?: string; limit: number }) {
+    const after = input.afterId ? this.sql`AND id > ${input.afterId}` : this.sql``;
+    const rows = await this.sql<{ id: string }[]>`
+      SELECT id FROM items
+      WHERE processing_status='ready' AND area_classified_at IS NULL AND area IS NULL
+        AND manual_area IS NULL ${after}
+      ORDER BY id ASC
+      LIMIT ${input.limit}`;
+    return rows.map((row) => String(row.id));
+  }
+  async countAreas(): Promise<AreaCounts> {
+    const rows = await this.sql<{ area: string | null; count: number; corrected: number }[]>`
+      SELECT COALESCE(manual_area, area) AS area, count(*)::int AS count,
+        count(*) FILTER (WHERE manual_area IS NOT NULL)::int AS corrected
+      FROM items WHERE processing_status='ready'
+      GROUP BY 1`;
+    const counts: AreaCounts = {
+      byArea: { personal: 0, work: 0, learning: 0, updates: 0 },
+      unclassified: 0,
+      corrected: 0,
+    };
+    for (const row of rows) {
+      counts.corrected += row.corrected;
+      if (row.area == null) counts.unclassified += row.count;
+      else if (row.area in counts.byArea) counts.byArea[row.area as LifeArea] += row.count;
+    }
+    return counts;
   }
 }
 
@@ -2073,6 +2103,36 @@ class PostgresJobs implements JobQueueRepository {
       if (row.status in stats) stats[row.status as keyof typeof stats] = row.count;
     }
     return stats;
+  }
+
+  async recordResult(id: string, result: Record<string, unknown>) {
+    await this.sql`
+      UPDATE job_queue
+      SET payload = payload || jsonb_build_object('result', ${this.sql.json(result as never)}::jsonb),
+          updated_at=now()
+      WHERE id=${id}
+    `;
+  }
+
+  async listRecentByType(jobType: string, limit: number): Promise<JobQueueSummary[]> {
+    const rows = await this.sql<Row[]>`
+      SELECT id, status, attempts, payload, created_at, updated_at, completed_at FROM job_queue
+      WHERE job_type=${jobType}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${limit}
+    `;
+    return rows.map((row) => ({
+      id: String(row.id),
+      status: String(row.status),
+      attempts: Number(row.attempts ?? 0),
+      payload:
+        typeof row.payload === "string"
+          ? (JSON.parse(row.payload) as Record<string, unknown>)
+          : ((row.payload ?? {}) as Record<string, unknown>),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+      completedAt: row.completed_at == null ? undefined : iso(row.completed_at),
+    }));
   }
 }
 
