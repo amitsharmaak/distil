@@ -75,51 +75,41 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability R1–R4: in progress (orchestrated by Claude from worktree
-  `deep-research-readability-r1-r4-846d48`; plan PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62), checkpoint "Deep research readability:
-  diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat,
-  thin and poorly rendered content; baseline local run `5a9cf55a`: 789 words, 41 sources listed,
-  8 cited, one small-type card). **Decisions (Amit, 2026-09-30; task-specific authorization for
-  this task only):** (1) order R1 → R2 → R3; (2) storage in the existing `research_reports`
-  text columns, no migration; (3) R3 target 1,500–2,500 words with TL;DR and key takeaways on
-  top; (4) R4 decided after R3 (ask again then; a Production migration would need separate
-  approval); (5) Claude may squash merge each phase to `main` (auto-deploys to Production) once
-  its gates are green and it is checked locally, then confirm the deployment and
-  `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
-  only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
-  memory, labelled on the page). Phase branches: `claude/research-r1-page`,
-  `claude/research-r2-citations`, `claude/research-r3-adaptive`.
-  **R1 (readable page, UI only)** done and deployed: PR
-  [#81](https://github.com/amitsharmaak/distil/pull/81), squash merged as `8280fdc`; Production
-  deployment succeeded (05:28Z) and `/api/health` returned 200; checked locally on `5a9cf55a` at
-  desktop, 375 px and dark mode (checkpoint "Deep research R1: readable report page —
-  2026-09-30"). **R2 (numbered citations, engine + UI)** done: squash merged to `main`
-  (checkpoint "Deep research R2: grounded numbered citations — 2026-09-30"). Live local run
-  `79e2f8cc` (same question as the baseline) found that **search grounding works on the
-  free-tier key** for `research-search` (7 grounded sources, redirects resolved to publisher
-  URLs) and exposed a synthesis regression on the Gemini fallback (thinking exhausted the
-  4,096-token budget; the stored report was a reasoning fragment). Fixed on the branch (12,000
-  tokens, truncation rejected and retried, prompt starts at the first heading) and confirmed by
-  a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
-  keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
-  Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
-  Claude, and R3 splits the call. **R2 Production regression and hotfix:** a
-  Production run started at Amit's request (`8bb4d982`, same question) stalled at synthesis:
-  the queue consumer hit Vercel's 60 s limit twice because the Anthropic SDK retried the timed-out
-  50 s call internally and R2's 12,000-token budget let Claude write past it. Hotfix (checkpoint
-  "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
-  model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
-  Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
-  failed by the stale guard on its next read. **R3 (adaptive, deeper report)** done: outline → one write per
-  section → assembly, run state v3 (v1/v2 still finish), stepper fixed (checkpoint "Deep
-  research R3: adaptive, deeper report — 2026-09-30"); squash merged to `main`. Local full run
-  `10b849b6` (baseline question, Gemini fallback, Anthropic key blanked): **1,951 words**, TL;DR
-  51 words, 5 key takeaways, 4 question-specific sections (one GFM table) plus caveats, **25
-  sources, all grounded and all cited**, no URLs in the text, no placeholder; slowest stage 28 s
-  (search), outline 8 s, writes 11–14 s, whole run ~3.5 min; checked at desktop, 375 px (table
-  scrolls inside its box) and dark mode. **Not verified live:** the Claude (Production) timings
-  for outline/write. Next: ask Amit about R4 (decision 4: decide after R3).
+- **Deep research readability R1–R3: done and deployed; R4 dropped (orchestrated by Claude
+  from worktree `deep-research-readability-r1-r4-846d48`; plan PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62); checkpoints "Deep research R1: readable
+  report page", "Deep research R2: grounded numbered citations", "Deep research R2 hotfix:
+  synthesis fits the 60 s function" and "Deep research R3: adaptive, deeper report", all
+  2026-09-30):** Amit found reports hard to consume (baseline local run `5a9cf55a`: 789 words,
+  fixed four-heading template, 41 sources listed / 8 cited, one small-type card). **Decisions
+  (Amit, 2026-09-30, task-specific):** order R1 → R2 → R3; storage in the existing
+  `research_reports` text columns (no migration); 1,500–2,500 words with TL;DR and key
+  takeaways; Claude may squash merge each phase after green gates and a local check; R2's
+  grounded path by fixtures was acceptable; **R4 (research-notes drill-down) dropped
+  permanently — do not re-propose it.** **Shipped (each deployed to Production, deployment
+  success, `/api/health` 200):** R1 PR [#81](https://github.com/amitsharmaak/distil/pull/81)
+  `8280fdc` (reading column, TL;DR, TOC, domain chips, collapsed cited/other sources); R2 PR
+  [#83](https://github.com/amitsharmaak/distil/pull/83) `0592c27` (grounding sources, `[n]`
+  citations, cited-only numbered source objects, superscript UI); R2 hotfix PR
+  [#84](https://github.com/amitsharmaak/distil/pull/84) `eaed15c` (the Anthropic SDK retried a
+  timed-out 50 s synthesis inside the 60 s function; one attempt per call, hard stage deadline,
+  per-provider budgets, killed deliveries counted); R3 PR
+  [#85](https://github.com/amitsharmaak/distil/pull/85) `5c879ea` (outline → one write per
+  section → assembly, run state v3, stepper fixed). **Result vs baseline (local run `10b849b6`,
+  same question, Gemini):** 1,951 words; TL;DR 51 words, 5 takeaways, 4 question-specific
+  sections with a table, caveats; 25 sources, all grounded and all cited, no URLs in the text;
+  slowest stage 28 s; checked at desktop, 375 px and dark mode. Search grounding turned out to
+  work on the free-tier key, so grounded sources were verified live locally, not only by
+  fixtures. **Production evidence:** run `8bb4d982` (R2) failed on the synthesis timeout that
+  #84 fixed. Run `8b17dcaf` (R3, at Amit's request, 13:14–13:23 local) completed its stages,
+  stepper and 19 grounded sources, but every section write was refused by the app's own daily
+  AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
+  spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
+  **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
+  report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
+  Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
+  Optional follow-up: fail a report instead of completing it when every section is a
+  placeholder.
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -129,36 +119,48 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
   `next build` succeeds without either route. Merged and deployed on Amit's authorization
   (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
-- **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
-  Production (plan PR
-  [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
-  [#63](https://github.com/amitsharmaak/distil/pull/63), squash merged as `76471e5`; F2 PR
-  [#64](https://github.com/amitsharmaak/distil/pull/64), squash merged as `cf0cf28`; F3 PR
-  [#67](https://github.com/amitsharmaak/distil/pull/67), squash merged as `91214b0`; F4 PR
-  [#72](https://github.com/amitsharmaak/distil/pull/72), squash merged as `c68d622` on 2026-09-29
-  after the full gate; checkpoints "Consolidation of open PRs (2) — 2026-09-29", "Life areas F4: area badge and one-tap reclassify —
-  2026-09-29", "Consolidation of open PRs — 2026-09-29", "Inline search F3: filter bar on Feed —
-  2026-09-29", "feed-search and life-areas applied to Production — 2026-09-29", "Life areas F2: AI area
-  classification at capture — 2026-09-29", "Inline search F1: feed text search and site facet —
-  2026-09-29" and "Inline search, quick filters and life areas — 2026-09-29"):** Amit wants the dedicated Search
-  page replaced by a search bar at the top of Today and Feed that filters as he types, with
-  one-tap quick filters (Videos, X links, …), and wants Distil to hold his personal, work and
-  learning material with every item sorted automatically by AI into one of four areas (Personal,
-  Work, Learning, Updates), shown as a filter and fixable with one tap. All open decisions are
-  answered and recorded in the plan checkpoint. F1 added `q`, `site` and `sort=relevance` to
-  `GET /api/v1/feed` (tenant stage `feed-search`, `0012`). F2 classifies every new capture into
-  an area (tenant stage `life-areas`, `0013`; kill switch `FEATURE_AREA_CLASSIFICATION`); no UI
-  changed. **Both stages are applied to Production** (Amit, 2026-09-29, from the main checkout at
-  `cf0cf28`). Open items for Amit: the F3 bar on a phone, and the F4 area badge in a browser
-  (both verified by tests only). Amit decided on 2026-09-29 not to rotate the `neondb_owner`
-  password after its exposure in his terminal history (see the consolidation (2) checkpoint). **Seen on
-  Production on 2026-09-29** (Claude, through Amit's signed-in Chrome): the F3 filter bar renders
-  on desktop with the area switch and the five toggles, `?area=work` filters, and a capture from
-  that afternoon had been classified by F2 as Updates (the only classified item until F6). F4 is on
-  `main` (Production already has `life-areas`, so it works on deploy). Next: F5 (filter bar
-  on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
-  onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
-  model before starting that task).
+- **Inline search, quick filters and AI life areas: F1–F7 complete and deployed (plan PR
+  [#61](https://github.com/amitsharmaak/distil/pull/61); F1 [#63](https://github.com/amitsharmaak/distil/pull/63),
+  F2 [#64](https://github.com/amitsharmaak/distil/pull/64), F3 [#67](https://github.com/amitsharmaak/distil/pull/67),
+  F4 [#72](https://github.com/amitsharmaak/distil/pull/72), Feed header and Search page UI
+  [#75](https://github.com/amitsharmaak/distil/pull/75); F5 [#79](https://github.com/amitsharmaak/distil/pull/79)
+  squash merged as `0d7d34b`, F6 [#82](https://github.com/amitsharmaak/distil/pull/82) as `35c3009`, F7
+  [#86](https://github.com/amitsharmaak/distil/pull/86) as `6901bc9`, all on 2026-09-30; checkpoints "Inline search F7:
+  legacy search path retired — 2026-09-30", "Life areas F6: area backfill — 2026-09-30", "Inline
+  search F5: filter bar on Today — 2026-09-30" and the plan "Inline search, quick filters and life
+  areas — 2026-09-29"):** Amit wanted one search bar on Today and Feed instead of a Search page,
+  one-tap quick filters, and every item sorted by AI into Personal, Work, Learning or Updates,
+  fixable with one tap.
+  - **Today has the filter bar (F5).** Same compact search pill and Filters sheet as Feed. With a
+    query, quick filter or area, Today shows one "Unread matches" list and "Search everything →"
+    (to `/feed` with the same parameters plus `read=true`, which on the Feed page means "Read
+    included"); otherwise Today is unchanged. Checked locally at 1280 px and 375 px, light and dark.
+  - **Every item has an area (F6).** Tenant job `items.area-backfill` with a real handler, started
+    by `POST /api/v1/areas/backfill` (counts via `GET`). **Local:** 4 items → Work 1, Learning 1,
+    Updates 2 (0 failed). **Production** (one run, authorized by Amit, 2026-09-30 06:56Z, 2
+    chained batches in ~33 s): 23 classified, 0 skipped, 0 failed, 0 left unclassified; library
+    now Personal 0 · Work 4 · Learning 11 · Updates 9 (one item was already classified at capture).
+    Cost: 23 flash-lite calls (local run: ~$0.001 for 4). No corrections yet.
+  - **One search surface (F7, rescoped after A1 removed Ask).** The Feed/Today header search on
+    `GET /api/v1/feed` is the only search. Removed: the Search page (PR #75; `/search?…` redirects
+    to `/feed?…`), `GET /api/v1/search`, the `/api/items` `q` branch (now 400 with a pointer),
+    `FEATURE_SEARCH`, and, with Ask gone, the now-callerless `hybridSearch`, `searchPassages` /
+    passage store, `repositories.passages` and the `ItemFilters.query` clause. Kept:
+    `content_chunks`, chunking, grounding, all schema. Nothing stays "for Ask" because Ask no
+    longer exists. **Amit:** delete any leftover `FEATURE_SEARCH` (and `FEATURE_ANSWERS`)
+    variable in Vercel yourself; nothing reads them.
+  - **Classifier model follow-up (decision 12): still open.** Question to Amit: which exact
+    provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
+    with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
+    and compare a small local sample against flash-lite per area.
+  - **Minor open items:** the Filters sheet's Area segment labels truncate at 375 px (Feed and
+    Today); `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
+    e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
+    e2e passes).
+    **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
+    spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
+    backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
+    himself; the model follow-up is excluded unless Amit names the model id.
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
   2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
@@ -788,7 +790,6 @@ sources).
    Production-shaped progress.
 2. Per-fact source attribution beyond the prompt would need the search notes to carry
    citations (not in scope).
-3. R4 (research notes drill-down) remains a separate decision.
 
 ### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
 
@@ -2215,7 +2216,7 @@ stored report.
    question, `---` rules between sections, no table of contents or section navigation, and the
    sources card below it. Only the executive summary is lifted out (by regex, `page.tsx:66`).
 
-**Plan — four PR-sized phases, each its own task from current `main`.** Re-verify every
+**Plan — three PR-sized phases, each its own task from current `main`.** Re-verify every
 file:line reference above against `main` before starting a phase. Every phase keeps existing
 stored reports rendering (legacy markdown with `string[]` sources) and records a dated
 checkpoint with a before/after comparison against the `5a9cf55a` baseline (789 words, 41 sources
@@ -2294,11 +2295,6 @@ words, whose sections keep the specifics from the findings.
   day) allows roughly one run a day.
 - Tests: full stage walk, resume mid-`write`, degraded section, assembled markdown shape, contract
   schema, `/research/[id]` stepper labels.
-
-**R4 — Research notes drill-down (optional; decide after R3).** Keep the per-question findings
-after completion (today `progress` is cleared on completion) so the page can offer a collapsed
-"How this was researched" list of sub-questions with their notes. Needs a storage decision
-(a `notes jsonb` column is a tenant migration stage like `summary-structure`).
 
 **Decisions for Amit (recommendation first).**
 
