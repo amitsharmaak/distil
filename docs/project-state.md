@@ -512,9 +512,13 @@ browser with a signed-in user.
   errors. The requests were anonymous, so they got the client-fetch fallback; no signed-in
   browser check was done.
 
-**Restart steps:** browser-check Today on desktop and phone, light and dark, with a search, an
-area and an empty result. Confirm or revert the `read=true` choice on "Search everything →".
-Then open the PR. No migration and no environment change.
+**Orchestrator review (Claude, main session, 2026-09-30):** `read=true` on "Search everything →"
+is kept (the link is meant to widen the search beyond the unread queue). Checked in the local
+in-app browser (Docker Postgres, signed-in local owner, real items) at 1280 px and 375 px, light
+and dark: default Today unchanged, `?q=` results, filters-only and empty-result states, chips
+with Clear, the phone bottom sheet, no horizontal scroll at 375 px, and the link landing on
+`/feed?q=…&read=true`. Minor, shared with Feed: the sheet's Area segment labels truncate at 375 px.
+PR [#79](https://github.com/amitsharmaak/distil/pull/79). No migration and no environment change.
 
 ### Deep research R1: readable report page — 2026-09-30
 
