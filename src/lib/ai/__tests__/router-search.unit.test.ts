@@ -29,9 +29,16 @@ beforeEach(() => {
 });
 
 it("routes the tenant facade to the Gemini search-grounded model with tenant accounting", async () => {
+  const sources = [
+    {
+      url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc",
+      title: "example.com",
+    },
+  ];
   const generateTextWithSearch = jest.fn().mockResolvedValue({
-    value: "grounded answer https://example.com",
+    value: "grounded answer",
     usage: { inputTokens: 50, outputTokens: 20 },
+    sources,
   });
   const generateText = jest.fn();
   jest
@@ -51,12 +58,13 @@ it("routes the tenant facade to the Gemini search-grounded model with tenant acc
   });
 
   await expect(
-    createTenantAIRouter(context, repositories).generateTextWithSearch("prompt", {
-      timeoutMs: 45_000,
-    })
-  ).resolves.toBe("grounded answer https://example.com");
+    createTenantAIRouter(context, repositories).generateTextWithSearch(
+      { grounded: "grounded prompt", ungrounded: "ungrounded prompt" },
+      { timeoutMs: 45_000 }
+    )
+  ).resolves.toEqual({ text: "grounded answer", sources, grounded: true });
 
-  expect(generateTextWithSearch).toHaveBeenCalledWith("prompt", { timeoutMs: 45_000 });
+  expect(generateTextWithSearch).toHaveBeenCalledWith("grounded prompt", { timeoutMs: 45_000 });
   expect(generateText).not.toHaveBeenCalled();
   expect(repositories.lifecycle.consumeUsage).toHaveBeenCalledTimes(1);
   await deferred?.();
@@ -98,7 +106,7 @@ it("falls back to plain research-search routing when Gemini is not configured", 
     createTenantAIRouter(context, repositories).generateTextWithSearch("prompt", {
       timeoutMs: 45_000,
     })
-  ).resolves.toBe("memory answer");
+  ).resolves.toEqual({ text: "memory answer", sources: [], grounded: false });
 
   expect(generateText).toHaveBeenCalledWith("prompt", "claude-haiku-4-5", { timeoutMs: 45_000 });
   expect(repositories.lifecycle.consumeUsage).toHaveBeenCalledTimes(1);
@@ -125,9 +133,15 @@ it("falls back to plain routing when grounding itself is refused for quota", asy
   const repositories = repositoriesWithBudget();
 
   await expect(
-    createTenantAIRouter(context, repositories).generateTextWithSearch("prompt", { timeoutMs: 1 })
-  ).resolves.toBe("memory answer");
-  expect(generateText).toHaveBeenCalledWith("prompt", "gemini-3-flash-preview", { timeoutMs: 1 });
+    createTenantAIRouter(context, repositories).generateTextWithSearch(
+      { grounded: "grounded prompt", ungrounded: "ungrounded prompt" },
+      { timeoutMs: 1 }
+    )
+  ).resolves.toEqual({ text: "memory answer", sources: [], grounded: false });
+  expect(generateTextWithSearch).toHaveBeenCalledWith("grounded prompt", { timeoutMs: 1 });
+  expect(generateText).toHaveBeenCalledWith("ungrounded prompt", "gemini-3-flash-preview", {
+    timeoutMs: 1,
+  });
 });
 
 it("propagates timeouts from the grounded call so the stage is retried", async () => {

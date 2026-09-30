@@ -13,7 +13,7 @@ few invited colleagues. It turns intentional capture into a calm, prioritized da
 experience:
 
 > capture (desktop / iPhone) → durable ingest → extract, summarize, organize, prioritize → read →
-> search, ask, revisit.
+> search, revisit.
 
 The knowledge experience is the product. Connectors are inputs, not the goal. Prioritize reliable
 capture, useful summaries, good reading, traceable answers and tenant isolation over integration
@@ -100,18 +100,19 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
-  `/ask`, `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`,
-  `/onboarding`, `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop
-  sidebar link, Settings → Library link on mobile, and the flask button in the reader action bar;
-  routes under `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were
-  deleted in P4. Phase 2 surfaces sit behind `FEATURE_*` flags.
+  `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
+  `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop sidebar link,
+  Settings → Library link on mobile, and the flask button in the reader action bar; routes under
+  `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were deleted in
+  P4; Ask Distil (`/ask`, `/api/v1/answers`) was deleted on 2026-09-30. Phase 2 surfaces sit
+  behind `FEATURE_*` flags.
 - **Capture clients:** `browser-extension/` (Chrome MV3, posts to `/api/v1/captures`, offline
   replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`. Gmail, Slack and the
   authenticated-publisher framework still exist in code but are disabled in hosted deployments
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
   `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_SEARCH`,
-  `FEATURE_ANSWERS`, `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
+  `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
   on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
   `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and
   `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`

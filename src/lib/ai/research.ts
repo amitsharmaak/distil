@@ -17,13 +17,27 @@
 
 import crypto from "crypto";
 import { aiLogger, sanitizeLogError } from "@/lib/logger";
-import { createTenantAIRouter, getEffectiveModel } from "./router";
+import { createTenantAIRouter, getEffectiveModel, type SearchTextResult } from "./router";
 import {
   researchPlanPrompt,
   researchSynthesizePrompt,
   researchGapsPrompt,
+  researchNotesPrompt,
 } from "@/lib/prompts/research";
+import {
+  buildSourceCatalog,
+  extractRecalledSources,
+  finalizeCitations,
+  formatSourceList,
+  isGroundingRedirect,
+  MAX_GROUNDING_RESOLUTIONS,
+  resolveGroundingRedirects,
+  scrapeUrlSources,
+  type FindingSource,
+  type SourceCatalog,
+} from "./research-sources";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { GenerateOptions } from "./providers";
 import {
   createResearchRunMessageV1,
   researchRunIdempotencyKey,
@@ -37,15 +51,27 @@ import type { ResearchDispatcher } from "@/lib/queue/dispatchers";
  * Per-call provider timeouts. The provider default (15 s) is sized for
  * summaries; grounded searches and the final synthesis produce far longer
  * outputs. Each stage runs inside one 60 s queue invocation (the callback
- * lease), so synthesis is capped at 50 s to leave room for the report reads
- * and writes around the model call.
+ * lease) and is cut off at {@link RESEARCH_STAGE_DEADLINE_MS}; every call
+ * makes one attempt (`maxAttempts: 1`) because the queue redelivers a failed
+ * stage. A grounded search stage may add up to `GROUNDING_RESOLVE_TIMEOUT_MS`
+ * (3 s) to resolve Google redirect links.
  */
 export const RESEARCH_TIMEOUTS_MS = {
   plan: 30_000,
   search: 45_000,
   gaps: 30_000,
-  synthesize: 50_000,
+  synthesize: 45_000,
 } as const;
+
+/**
+ * Hard deadline for one stage inside the 60 s function. When it passes, the
+ * stage's provider requests are aborted and the attempt is recorded as failed,
+ * leaving ~10 s for the progress write and the queue's retry directive. Before
+ * this deadline, a timed-out Anthropic synthesis was retried inside the SDK
+ * (default 2 retries, each with the full timeout), and Vercel killed the
+ * function at 60 s before the attempt was recorded (Production run `8bb4d982`).
+ */
+export const RESEARCH_STAGE_DEADLINE_MS = 50_000;
 
 /**
  * Output budget for one search or deepening answer. The provider default
@@ -53,6 +79,30 @@ export const RESEARCH_TIMEOUTS_MS = {
  * local loop; findings for one sub-question fit comfortably in half that.
  */
 export const RESEARCH_SEARCH_MAX_TOKENS = 2048;
+
+/**
+ * Output budget for synthesis, per provider. Claude and GPT stream roughly
+ * 60–80 tokens/s, so 2,400 tokens (~1,800 words) finish in about 40 s, inside
+ * the 45 s timeout; a report that reaches the cap is kept (it already has its
+ * headings) rather than failed. Gemini's thinking models count reasoning
+ * against the same budget: on the provider default (4096) gemini-3.5-flash
+ * spent ~3,900 tokens thinking and returned only the cut-off tail of its
+ * reasoning (local run `79e2f8cc`), so Gemini gets 8,192 tokens and a cut-off
+ * answer fails the attempt. The SDK in use has no thinking-budget option.
+ */
+export const RESEARCH_SYNTHESIZE_MAX_TOKENS = 2_400;
+export const RESEARCH_SYNTHESIZE_GEMINI_MAX_TOKENS = 8_192;
+
+/** Provider options for the synthesis call. */
+export const RESEARCH_SYNTHESIZE_OPTIONS = {
+  timeoutMs: RESEARCH_TIMEOUTS_MS.synthesize,
+  maxTokens: RESEARCH_SYNTHESIZE_MAX_TOKENS,
+  rejectTruncated: false,
+  maxAttempts: 1,
+  providerOverrides: {
+    gemini: { maxTokens: RESEARCH_SYNTHESIZE_GEMINI_MAX_TOKENS, rejectTruncated: true },
+  },
+} as const satisfies GenerateOptions;
 
 /** Bound on the sub-questions a plan may produce; the prompt asks for 3–5. */
 export const MAX_SUB_QUESTIONS = 5;
@@ -75,25 +125,85 @@ export interface ResearchStage {
 }
 
 /**
+ * The research notes for one sub-question or gap. `grounded` is true when the
+ * notes came from a Google Search grounded call (sources are then the pages it
+ * searched); false when they came from model memory (sources, if any, are the
+ * few the model recalled).
+ */
+export interface ResearchFinding {
+  question: string;
+  notes: string;
+  sources: FindingSource[];
+  grounded: boolean;
+}
+
+/** Current durable run-state version. Version 1 (string findings) is still read. */
+export const RESEARCH_RUN_STATE_VERSION = 2;
+
+/**
  * Durable run state stored in `research_reports.progress`. `findings` and
  * `deepening` hold one slot per question; `null` marks a slot still to do.
  * `gaps` is absent until the gaps stage has run.
  */
 export interface ResearchRunState {
-  version: 1;
+  version: typeof RESEARCH_RUN_STATE_VERSION;
   updatedAt: string;
   view: ResearchProgressView;
   subQuestions?: string[];
-  findings: Array<string | null>;
+  findings: Array<ResearchFinding | null>;
   gaps?: string[];
-  deepening: Array<string | null>;
+  deepening: Array<ResearchFinding | null>;
   attempts: Record<string, number>;
+}
+
+/** Version 1 state, written before R2: findings were `## question\n\ntext` strings. */
+export interface ResearchRunStateV1 extends Omit<
+  ResearchRunState,
+  "version" | "findings" | "deepening"
+> {
+  version: 1;
+  findings: Array<string | null>;
+  deepening: Array<string | null>;
 }
 
 export type ResearchAI = Pick<
   ReturnType<typeof createTenantAIRouter>,
   "generateText" | "generateJSON" | "generateTextWithSearch"
 >;
+
+/** Thrown when a stage did not finish before {@link RESEARCH_STAGE_DEADLINE_MS}. */
+export class ResearchStageTimeoutError extends Error {
+  constructor(readonly stageKey: string) {
+    super(`research stage ${stageKey} did not finish in time`);
+    this.name = "ResearchStageTimeoutError";
+  }
+}
+
+/**
+ * Runs `work` with an abort signal and settles by `deadlineMs` at the latest:
+ * the signal is aborted and the promise rejects with
+ * {@link ResearchStageTimeoutError}, even when `work` ignores the signal.
+ */
+export async function withStageDeadline<T>(
+  key: string,
+  deadlineMs: number,
+  work: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new ResearchStageTimeoutError(key);
+      controller.abort(error);
+      reject(error);
+    }, deadlineMs);
+  });
+  try {
+    return await Promise.race([work(controller.signal), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Thrown when a stage failed but may be redelivered; the queue retries the message. */
 export class ResearchStageRetryError extends Error {
@@ -113,7 +223,7 @@ export function stageKey(stage: ResearchStage): string {
 
 function initialState(now: string): ResearchRunState {
   return {
-    version: 1,
+    version: RESEARCH_RUN_STATE_VERSION,
     updatedAt: now,
     view: { stage: "planning" },
     findings: [],
@@ -122,17 +232,56 @@ function initialState(now: string): ResearchRunState {
   };
 }
 
-function isRunState(value: unknown): value is ResearchRunState {
+/** Either stored version; both carry the same `view` and `updatedAt`. */
+function isRunState(value: unknown): value is ResearchRunState | ResearchRunStateV1 {
+  const version = (value as { version?: unknown } | null)?.version;
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as { version?: unknown }).version === 1 &&
+    (version === 1 || version === RESEARCH_RUN_STATE_VERSION) &&
     Array.isArray((value as { findings?: unknown }).findings) &&
     Array.isArray((value as { deepening?: unknown }).deepening)
   );
 }
 
-/** Reads the durable state; a missing or legacy flat payload starts fresh. */
+/**
+ * Converts a version 1 finding (`## question\n\ntext` with URLs inline) so a
+ * run that was in flight across the upgrade can finish. Its URLs become
+ * recalled (ungrounded) sources titled by domain.
+ */
+function upgradeFinding(
+  value: string | null,
+  question: string | undefined
+): ResearchFinding | null {
+  if (value === null) return null;
+  const header = value.match(/^## (.+)\r?\n/);
+  const resolvedQuestion = question ?? header?.[1]?.trim() ?? "";
+  const notes = header ? value.slice(header[0].length).trim() : value.trim();
+  return {
+    question: resolvedQuestion,
+    notes,
+    sources: scrapeUrlSources(notes),
+    grounded: false,
+  };
+}
+
+function upgradeV1(state: ResearchRunStateV1): ResearchRunState {
+  return {
+    ...state,
+    version: RESEARCH_RUN_STATE_VERSION,
+    findings: state.findings.map((finding, index) =>
+      upgradeFinding(finding, state.subQuestions?.[index])
+    ),
+    deepening: state.deepening.map((finding, index) =>
+      upgradeFinding(finding, state.gaps?.[index])
+    ),
+  };
+}
+
+/**
+ * Reads the durable state; a missing or legacy flat payload starts fresh and
+ * a version 1 state is upgraded in memory (the next write stores version 2).
+ */
 export function parseResearchRunState(
   progress: string | null | undefined,
   now: string
@@ -140,7 +289,9 @@ export function parseResearchRunState(
   if (!progress) return initialState(now);
   try {
     const parsed: unknown = JSON.parse(progress);
-    if (isRunState(parsed)) return parsed;
+    if (isRunState(parsed)) {
+      return parsed.version === 1 ? upgradeV1(parsed) : parsed;
+    }
   } catch {
     // fall through to a fresh state
   }
@@ -307,6 +458,10 @@ export interface RunResearchStageInput {
   /** Injected in tests; defaults to the tenant-bound router. */
   ai?: ResearchAI;
   now?: () => Date;
+  /** Injected in tests; used only to resolve Google grounding redirect links. */
+  fetchImpl?: typeof fetch;
+  /** Injected in tests; defaults to {@link RESEARCH_STAGE_DEADLINE_MS}. */
+  deadlineMs?: number;
 }
 
 export type RunResearchStageResult =
@@ -333,14 +488,30 @@ export async function runResearchStage(
   if (!stage) return { outcome: "skipped", reason: "terminal" };
   const key = stageKey(stage);
   const ai = input.ai ?? createTenantAIRouter(context, repositories);
-  if (report.status !== "running") {
-    await repositories.research.updateReport(reportId, { status: "running" });
+  const deadlineMs = input.deadlineMs ?? RESEARCH_STAGE_DEADLINE_MS;
+
+  // The attempt is recorded before the stage runs, so a delivery the platform kills (a function
+  // timeout never reaches the catch below) still counts against the bound.
+  const priorAttempts = state.attempts[key] ?? 0;
+  const attempt = Math.min(priorAttempts + 1, MAX_STAGE_ATTEMPTS);
+  if (priorAttempts < MAX_STAGE_ATTEMPTS) {
+    state.attempts[key] = attempt;
+    state.updatedAt = now().toISOString();
+    await setState(repositories, reportId, state, { status: "running" });
   }
 
   try {
-    await executeStage(ai, repositories, report, state, stage);
+    if (priorAttempts >= MAX_STAGE_ATTEMPTS) {
+      // Every allowed delivery of this stage was cut off before it could record its failure.
+      throw new ResearchStageTimeoutError(key);
+    }
+    await withStageDeadline(key, deadlineMs, (signal) =>
+      executeStage(ai, repositories, report, state, stage, signal, input.fetchImpl)
+    );
+    // Attempts count failures only; a successful stage leaves the earlier count unchanged.
+    if (priorAttempts === 0) delete state.attempts[key];
+    else state.attempts[key] = priorAttempts;
   } catch (error) {
-    const attempt = (state.attempts[key] ?? 0) + 1;
     state.attempts[key] = attempt;
     aiLogger.warn(
       {
@@ -363,7 +534,10 @@ export async function runResearchStage(
     if (!degraded) {
       await repositories.research.updateReport(reportId, {
         status: "failed",
-        report: `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        report:
+          error instanceof ResearchStageTimeoutError
+            ? "Research failed: the report took too long to write. Please try again."
+            : `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         completedAt: now().toISOString(),
         progress: null,
       });
@@ -406,7 +580,7 @@ function applyDegradedOutcome(
     case "search": {
       const index = stage.index ?? 0;
       const question = state.subQuestions?.[index] ?? report.query;
-      state.findings[index] = `## ${question}\n\n(Research on this question failed.)`;
+      state.findings[index] = failedFinding(question, "(Research on this question failed.)");
       state.view = researchingView(state, index);
       return true;
     }
@@ -416,7 +590,7 @@ function applyDegradedOutcome(
     case "deepen": {
       const index = stage.index ?? 0;
       const question = state.gaps?.[index] ?? report.query;
-      state.deepening[index] = `## ${question}\n\n(Research on this gap failed.)`;
+      state.deepening[index] = failedFinding(question, "(Research on this gap failed.)");
       state.view = deepeningView(state, index);
       return true;
     }
@@ -467,11 +641,77 @@ function deepeningView(state: ResearchRunState, completedIndex: number): Researc
   };
 }
 
-function combinedFindings(state: ResearchRunState): string {
-  const first = state.findings.map((finding) => finding ?? "").join("\n\n---\n\n");
-  const deepening = state.deepening.filter((finding): finding is string => finding !== null);
+function failedFinding(question: string, notes: string): ResearchFinding {
+  return { question, notes, sources: [], grounded: false };
+}
+
+function completedFindings(state: ResearchRunState): {
+  findings: ResearchFinding[];
+  deepening: ResearchFinding[];
+} {
+  return {
+    findings: state.findings.filter((finding): finding is ResearchFinding => finding !== null),
+    deepening: state.deepening.filter((finding): finding is ResearchFinding => finding !== null),
+  };
+}
+
+/**
+ * Findings as markdown sections. With `sourceIds` (synthesis), each section
+ * names the numbered sources behind it; the gaps stage gets the notes only.
+ */
+function combinedFindings(state: ResearchRunState, catalog?: SourceCatalog): string {
+  const { findings, deepening } = completedFindings(state);
+  const byId = new Map(catalog?.sources.map((source) => [source.id, source]));
+  let position = 0;
+  const section = (finding: ResearchFinding) => {
+    const sources = (catalog?.idsByFinding[position++] ?? [])
+      .map((id) => byId.get(id))
+      .filter((source) => source !== undefined);
+    const line =
+      sources.length > 0 ? `Sources: ${formatSourceList(sources).split("\n").join("; ")}\n\n` : "";
+    return `## ${finding.question}\n${line ? `\n${line}` : "\n"}${finding.notes}`;
+  };
+  const first = findings.map(section).join("\n\n---\n\n");
   if (deepening.length === 0) return first;
-  return `${first}\n\n---\n\n## Additional Deepening\n\n${deepening.join("\n\n---\n\n")}`;
+  return `${first}\n\n---\n\n## Additional Deepening\n\n${deepening.map(section).join("\n\n---\n\n")}`;
+}
+
+/**
+ * Turns one search-facade answer into a finding. Grounded answers keep the
+ * pages grounding returned (redirect links resolved); ungrounded answers keep
+ * the few sources the model recalled in its trailing JSON block. The block is
+ * stripped from the notes either way.
+ */
+async function toFinding(
+  question: string,
+  result: SearchTextResult,
+  jobId: string,
+  fetchImpl?: typeof fetch
+): Promise<ResearchFinding> {
+  const { notes, sources: recalled } = extractRecalledSources(result.text);
+  if (!result.grounded) return { question, notes, sources: recalled, grounded: false };
+  const sources = await resolveGroundingRedirects(result.sources, { fetchImpl });
+  // Counts only (no URLs), so an unresolved redirect can be told apart: over the cap vs failed.
+  const redirects = result.sources.filter((source) => isGroundingRedirect(source.url)).length;
+  aiLogger.info(
+    {
+      event: "research_grounding_sources",
+      jobId,
+      sources: result.sources.length,
+      redirects,
+      overCap: Math.max(0, redirects - MAX_GROUNDING_RESOLUTIONS),
+      unresolved: sources.filter((source) => isGroundingRedirect(source.url)).length,
+    },
+    "Research grounding sources resolved"
+  );
+  return { question, notes, sources, grounded: true };
+}
+
+function notesPrompts(question: string, kind: "question" | "gap") {
+  return {
+    grounded: researchNotesPrompt(question, { grounded: true, kind }),
+    ungrounded: researchNotesPrompt(question, { grounded: false, kind }),
+  };
 }
 
 async function executeStage(
@@ -479,8 +719,13 @@ async function executeStage(
   repositories: RepositorySet,
   report: ResearchReportRecord,
   state: ResearchRunState,
-  stage: ResearchStage
+  stage: ResearchStage,
+  signal: AbortSignal,
+  fetchImpl?: typeof fetch
 ): Promise<void> {
+  // One attempt per call: the queue redelivers a failed stage, and SDK-internal retries would
+  // run past the function's 60 s limit.
+  const call = { maxAttempts: 1, signal } as const;
   switch (stage.kind) {
     case "plan": {
       let itemContext: string | undefined;
@@ -493,7 +738,7 @@ async function executeStage(
       const planText = await ai.generateText(
         researchPlanPrompt(report.query, itemContext),
         "research-plan",
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.plan }
+        { timeoutMs: RESEARCH_TIMEOUTS_MS.plan, ...call }
       );
       setSubQuestions(state, parseSubQuestions(planText, report.query));
       return;
@@ -501,11 +746,14 @@ async function executeStage(
     case "search": {
       const index = stage.index ?? 0;
       const question = state.subQuestions?.[index] ?? report.query;
-      const result = await ai.generateTextWithSearch(
-        `Research this question thoroughly and provide detailed findings with source URLs:\n\n${question}`,
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.search, maxTokens: RESEARCH_SEARCH_MAX_TOKENS }
-      );
-      state.findings[index] = `## ${question}\n\n${result}`;
+      const result = await ai.generateTextWithSearch(notesPrompts(question, "question"), {
+        timeoutMs: RESEARCH_TIMEOUTS_MS.search,
+        maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
+        ...call,
+      });
+      const found = await toFinding(question, result, report.id, fetchImpl);
+      signal.throwIfAborted();
+      state.findings[index] = found;
       state.view = researchingView(state, index);
       return;
     }
@@ -515,7 +763,7 @@ async function executeStage(
         const result = await ai.generateJSON<{ gaps: string[] }>(
           researchGapsPrompt(report.query, combinedFindings(state)),
           "research-gaps",
-          { timeoutMs: RESEARCH_TIMEOUTS_MS.gaps }
+          { timeoutMs: RESEARCH_TIMEOUTS_MS.gaps, ...call }
         );
         gaps = Array.isArray(result?.gaps)
           ? result.gaps.filter((gap): gap is string => typeof gap === "string").slice(0, MAX_GAPS)
@@ -533,27 +781,34 @@ async function executeStage(
     case "deepen": {
       const index = stage.index ?? 0;
       const question = state.gaps?.[index] ?? report.query;
-      const result = await ai.generateTextWithSearch(
-        `Research this specific gap/question concisely with source URLs:\n\n${question}`,
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.search, maxTokens: RESEARCH_SEARCH_MAX_TOKENS }
-      );
-      state.deepening[index] = `## ${question}\n\n${result}`;
+      const result = await ai.generateTextWithSearch(notesPrompts(question, "gap"), {
+        timeoutMs: RESEARCH_TIMEOUTS_MS.search,
+        maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
+        ...call,
+      });
+      const found = await toFinding(question, result, report.id, fetchImpl);
+      signal.throwIfAborted();
+      state.deepening[index] = found;
       state.view = deepeningView(state, index);
       return;
     }
     case "synthesize": {
       state.view = { stage: "synthesizing" };
-      const findings = combinedFindings(state);
-      const reportText = await ai.generateText(
-        researchSynthesizePrompt(report.query, findings),
-        "research-synthesize",
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.synthesize }
-      );
-      const urlRegex = /https?:\/\/[^\s\)>\]"']+/g;
-      const sources = [...new Set(findings.match(urlRegex) ?? [])];
+      const { prompt, catalog } = buildSynthesisPrompt(report.query, state);
+      const reportText = await ai.generateText(prompt, "research-synthesize", {
+        ...RESEARCH_SYNTHESIZE_OPTIONS,
+        signal,
+      });
+      // A cut-off or reasoning-only answer fails the attempt so the stage is retried
+      // instead of storing it as the report.
+      assertCompleteReport(reportText);
+      // Only the sources the report cites are kept, renumbered 1..k.
+      const cited = finalizeCitations(reportText, catalog.sources);
+      // A stage past its deadline has already been recorded as a failed attempt.
+      signal.throwIfAborted();
       await repositories.research.updateReport(report.id, {
-        report: reportText,
-        sources: JSON.stringify(sources),
+        report: cited.report,
+        sources: JSON.stringify(cited.sources),
         status: "completed",
         completedAt: new Date().toISOString(),
         progress: null,
@@ -561,6 +816,34 @@ async function executeStage(
       return;
     }
   }
+}
+
+/** Thrown when synthesis returned something that is not a finished report. */
+export class IncompleteReportError extends Error {
+  constructor(readonly reason: "no_heading") {
+    super(`research synthesis returned an incomplete report (${reason})`);
+    this.name = "IncompleteReportError";
+  }
+}
+
+/**
+ * A finished report has at least one `##` heading (the prompt asks it to start with one). A
+ * thinking model that exhausts its budget returns a headless tail of its reasoning instead.
+ */
+export function assertCompleteReport(text: string): void {
+  if (!/^\s{0,3}##\s+\S/m.test(text)) throw new IncompleteReportError("no_heading");
+}
+
+/** The synthesis prompt for a run's findings, and the numbered source catalog it cites. */
+export function buildSynthesisPrompt(query: string, state: ResearchRunState) {
+  const { findings, deepening } = completedFindings(state);
+  const catalog = buildSourceCatalog([...findings, ...deepening]);
+  const prompt = researchSynthesizePrompt(
+    query,
+    combinedFindings(state, catalog),
+    catalog.sources.length > 0
+  );
+  return { prompt, catalog };
 }
 
 function parseSubQuestions(planText: string, query: string): string[] {

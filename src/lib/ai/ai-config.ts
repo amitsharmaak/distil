@@ -16,7 +16,6 @@
 /** All AI task types in the application. */
 export type AITask =
   | "summarize"
-  | "knowledge-answer"
   | "summarize-complex"
   | "prioritize"
   | "research-plan"
@@ -37,13 +36,12 @@ export interface ModelAssignment {
 /** Preferred model for each task; the router falls back per provider when its key is absent. */
 export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
   summarize: { provider: "gemini", model: "gemini-3.5-flash-lite" },
-  "knowledge-answer": { provider: "gemini", model: "gemini-3.5-flash-lite" },
   // Optional Anthropic upgrade: long-form synthesis over many sources.
   "summarize-complex": { provider: "anthropic", model: "claude-sonnet-4-6" },
   prioritize: { provider: "gemini", model: "gemini-3.5-flash-lite" },
   "research-plan": { provider: "gemini", model: "gemini-3.5-flash" },
   "research-search": { provider: "gemini", model: "gemini-3-flash-preview" },
-  // Optional Anthropic upgrade: the research report and RAG chat answers.
+  // Optional Anthropic upgrade: the research report.
   "research-synthesize": { provider: "anthropic", model: "claude-sonnet-4-6" },
   "research-gaps": { provider: "gemini", model: "gemini-3.5-flash" },
   "preference-analysis": { provider: "gemini", model: "gemini-3.5-flash-lite" },
@@ -99,7 +97,6 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
   // 2026-09-19); every fallback here must be a model the key can still call.
   gemini: {
     summarize: "gemini-3.5-flash-lite",
-    "knowledge-answer": "gemini-3.5-flash-lite",
     "summarize-complex": "gemini-3.5-flash",
     prioritize: "gemini-3.5-flash-lite",
     "research-plan": "gemini-3.5-flash",
@@ -112,7 +109,6 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
   },
   openai: {
     summarize: "gpt-4o-mini",
-    "knowledge-answer": "gpt-4o-mini",
     "summarize-complex": "gpt-4o",
     prioritize: "gpt-4o-mini",
     "research-plan": "gpt-4o",
@@ -127,7 +123,6 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
   // snapshot (claude-haiku-4-5 -> claude-haiku-4-5-20251001), which the audit resolves.
   anthropic: {
     summarize: "claude-haiku-4-5",
-    "knowledge-answer": "claude-haiku-4-5",
     "summarize-complex": "claude-sonnet-4-6",
     prioritize: "claude-haiku-4-5",
     "research-plan": "claude-sonnet-4-6",

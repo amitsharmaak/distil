@@ -45,7 +45,6 @@
     "test:live": "RUN_LIVE_CONNECTION_TESTS=1 jest --config jest.live.config.ts --runInBand",
     "eval": "tsx evals/run-evals.ts",
     "eval:live": "tsx evals/run-evals.ts --live",
-    "eval:phase2-answers": "tsx evals/phase2-answer-acceptance.ts",
     "eval:nightly": "tsx evals/nightly-eval.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:import:sqlite": "tsx scripts/import-sqlite.ts",
