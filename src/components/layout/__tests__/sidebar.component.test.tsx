@@ -18,6 +18,19 @@ jest.mock("next/image", () => ({
   ),
 }));
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    prefetch,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+    <a {...props} data-prefetch={prefetch === false ? "false" : "default"}>
+      {children}
+    </a>
+  ),
+}));
+
 jest.mock("@/components/layout/theme-toggle", () => ({
   ThemeToggle: ({ collapsed }: { collapsed?: boolean }) => (
     <span data-testid="theme-toggle" data-collapsed={String(Boolean(collapsed))} />
@@ -63,6 +76,17 @@ describe("Sidebar", () => {
       "Sources",
     ]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("prefetches primary routes but not rarely used destinations", () => {
+    render(<Sidebar />);
+
+    for (const name of ["Today", "Feed"]) {
+      expect(screen.getByRole("link", { name })).toHaveAttribute("data-prefetch", "default");
+    }
+    for (const name of ["Research", "Save", "Settings"]) {
+      expect(screen.getByRole("link", { name })).toHaveAttribute("data-prefetch", "false");
     }
   });
 

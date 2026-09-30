@@ -175,16 +175,27 @@ describe("FeedList without a server page (client fetch)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
     expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail", { scroll: false });
     fireEvent.click(screen.getByRole("button", { name: "Videos only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?contentType=video", { scroll: false });
+    expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail&contentType=video", {
+      scroll: false,
+    });
     fireEvent.click(screen.getByRole("button", { name: "High only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?priority=high", { scroll: false });
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      "/feed?source=gmail&contentType=video&priority=high",
+      { scroll: false }
+    );
     // The Unread quick filter lives in the Filters sheet and is on by default.
     const unread = screen.getByRole("button", { name: "Unread only" });
     expect(unread).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(unread);
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?read=true", { scroll: false });
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      "/feed?source=gmail&contentType=video&priority=high&read=true",
+      { scroll: false }
+    );
     fireEvent.click(screen.getByRole("button", { name: "All sources" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed", { scroll: false });
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      "/feed?contentType=video&priority=high&read=true",
+      { scroll: false }
+    );
     // The server renders the next page; the island itself refetches nothing.
     expect(feedFetches()).toBe(1);
 
@@ -375,6 +386,44 @@ describe("FeedList with a server-rendered page", () => {
     await settleInitialFetch();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
+  });
+
+  it("selects filters optimistically and dims the current list until the URL commits", async () => {
+    const initialPage = {
+      key: "archive=exclude&sort=for_you&limit=100&read=false",
+      items: [makeItem({ id: "server-1", title: "Server item" })],
+      collections: [],
+    };
+    const { rerender } = render(<FeedList initialPage={initialPage} />);
+    const list = screen.getByTestId("item-server-1").parentElement;
+
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("card||||0");
+    expect(list).toHaveAttribute("aria-busy", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
+
+    expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail", { scroll: false });
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("card|gmail|||1");
+    expect(list).toHaveAttribute("aria-busy", "true");
+    expect(list).toHaveClass("opacity-60");
+
+    mockSearch = "source=gmail";
+    rerender(
+      <FeedList
+        initialPage={{
+          key: "archive=exclude&sort=for_you&limit=100&read=false&source=gmail",
+          items: [makeItem({ id: "gmail", title: "Gmail item", sourceType: "gmail" })],
+          collections: [],
+        }}
+      />
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Gmail item")).toBeInTheDocument();
+    expect(screen.getByTestId("item-gmail").parentElement).toHaveAttribute("aria-busy", "false");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("ignores a server page rendered for different filters and fetches instead", async () => {
