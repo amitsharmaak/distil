@@ -3,7 +3,7 @@ import { AccessDeniedError } from "@/lib/auth/account";
 import { AuthError } from "@/lib/auth/errors";
 import { createIdentityToken, IDENTITY_HEADER } from "@/lib/auth/identity-token";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
-import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import type { AuthIdentityLookupPort } from "@/lib/auth/ports";
 import {
   resolveNeonAuthRequest,
   resolveNeonLifecycleRecoveryRequest,
@@ -117,7 +117,7 @@ export async function authorizeNeonProxy(
   requestId: string,
   dependencies: {
     provider: NeonProxyProvider;
-    repositories: () => Promise<AuthRepositoryPort>;
+    repositories: () => Promise<AuthIdentityLookupPort>;
     allowedOrigins: ReadonlySet<string>;
     identityTokenSecret: string;
   }

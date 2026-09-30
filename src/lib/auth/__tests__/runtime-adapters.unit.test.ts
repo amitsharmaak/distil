@@ -1,6 +1,8 @@
 import { createNeonAuth } from "@neondatabase/auth/next/server";
+import { neon } from "@neondatabase/serverless";
 import { getPostgresClient } from "@/lib/database";
 import { PostgresAuthRepository } from "@/lib/postgres/auth-repository";
+import { NeonHttpAuthRepository } from "@/lib/auth/neon-http-repository";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { authFailureResponse } from "@/lib/auth/http";
 import { legacyAuthDisabledResponse } from "@/lib/auth/legacy-bridge";
@@ -9,12 +11,18 @@ import {
   AuthRepositoryUnavailableError,
   getAuthRepositoryPort,
 } from "@/lib/auth/repository-runtime";
+import { getProxyAuthRepositoryPort } from "@/lib/auth/proxy-repository-runtime";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 
 jest.mock("@neondatabase/auth/next/server", () => ({ createNeonAuth: jest.fn() }));
+jest.mock("@neondatabase/serverless", () => ({ neon: jest.fn() }));
 jest.mock("@/lib/database", () => ({ getPostgresClient: jest.fn() }));
+jest.mock("@/lib/config", () => ({
+  config: { databaseUrl: "postgres://runtime-role:secret@preview.example.test/distil" },
+}));
 
 const mockedCreateNeonAuth = jest.mocked(createNeonAuth);
+const mockedNeon = jest.mocked(neon);
 const mockedPostgresClient = jest.mocked(getPostgresClient);
 
 beforeEach(() => jest.clearAllMocks());
@@ -58,6 +66,30 @@ describe("auth runtime adapters", () => {
     expect((first as unknown as { sql: unknown }).sql).toEqual({ tag: "shared-sql" });
     const port: AuthRepositoryPort = first;
     expect(typeof port.findAccountByIdentity).toBe("function");
+  });
+
+  it("constructs and caches a separate Neon HTTP adapter only for proxy lookup", async () => {
+    const http = { query: jest.fn() };
+    mockedNeon.mockImplementationOnce(() => {
+      throw new Error("postgres://private-connection-detail");
+    });
+    const failure = await getProxyAuthRepositoryPort().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AuthRepositoryUnavailableError);
+    expect(String(failure)).not.toContain("private-connection-detail");
+
+    mockedNeon.mockReturnValue(http as never);
+
+    const first = await getProxyAuthRepositoryPort();
+    const second = await getProxyAuthRepositoryPort();
+
+    expect(first).toBeInstanceOf(NeonHttpAuthRepository);
+    expect(second).toBe(first);
+    expect(mockedNeon).toHaveBeenCalledTimes(2);
+    expect(mockedNeon).toHaveBeenLastCalledWith(
+      "postgres://runtime-role:secret@preview.example.test/distil",
+      { fullResults: false }
+    );
+    expect(mockedPostgresClient).not.toHaveBeenCalled();
   });
 
   it("reports configuration names without exposing auth secret values", () => {
