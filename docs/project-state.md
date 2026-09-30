@@ -480,8 +480,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 ### Performance P8: Neon HTTP proxy identity lookup — 2026-09-30
 
-P8 is implemented on `codex/perf-p8-proxy-lookup` after merging current `origin/main`
-`4f1ee3e` (merge, not rebase). The proxy's exact-key internal-account lookup now uses
+P8 is implemented on `codex/perf-p8-proxy-lookup` after merging `origin/main` at `4f1ee3e` and,
+when main advanced concurrently, again at `35c3009` (merge, not rebase). The proxy's exact-key
+internal-account lookup now uses
 `@neondatabase/serverless` `neon()` over stateless HTTP through a proxy-only narrow repository
 port. Routes, lifecycle work, queues and tenant repositories remain on the existing `postgres.js`
 clients. Both auth adapters share the same row mapper and the HTTP adapter still calls
@@ -504,6 +505,12 @@ warm target of 30 ms, and the identical second lookup remained at or below 27.3 
 A nominal sample after more than six minutes was 56.4/25.7/113.9 ms, but it is not accepted as a
 whole-system idle result because P10 traffic kept the shared Neon database warm.
 
+The accepted whole-system idle sample came after at least six minutes without shared-database
+traffic on the preserved HTTP Preview deployment: first HTTP 764.0 ms (`q=1`), identical second
+HTTP 31.4 ms (`q=1`), proxy total 827.2 ms (`q=2`). This is the cold/Neon-suspended reading: the
+wake dominates, while the repeated query remains close to the 30 ms warm target. P11's accepted
+no-change decision means this occasional wake remains an explicit Free-plan trade-off.
+
 The temporary `/feed?p8=1` legacy-auth response, auth hook, fixed missing subject, double lookup,
 `proxy-auth-connect` phase and diagnostic tests are removed in cleanup commit `e4915f7`. Final
 semantics are exactly one HTTP `findAccountByIdentity` call, measured as `proxy-auth-db` with
@@ -515,17 +522,17 @@ account query.
 
 **Verification status.** Local focused verification passed 8 suites / 92 tests. Local
 `npm run check` passed after the `origin/main` merge: lint has 0 errors and the same 5 warnings in
-untouched files, formatting and TypeScript are clean, and all 234 suites / 1,830 tests pass.
+untouched files, formatting and TypeScript are clean, and all 236 suites / 1,854 tests pass.
 External GitHub CI has not run for the final cleanup commit yet. The recorded Preview deployment is
 live evidence for the HTTP adapter but predates removal of the temporary probe; the final branch is
 not released or merged at this checkpoint. Docker PostgreSQL cannot exercise Neon's HTTPS SQL
 transport, so local transport coverage uses a mocked `neon()` client and Preview supplies the live
 driver check.
 
-Still pending for the integration owner: take the true whole-system idle reading from the preserved
-old deployment after all shared-database traffic has been idle, then merge/release P8 only after its
-normal CI gate and record Production warm plus true-idle readings. No Production measurement,
-merge or release is claimed here.
+Still pending for the integration owner: merge/release P8 only after its normal CI gate, then record
+Production warm and true-idle readings. No Production measurement, merge or release is claimed
+here.
+
 ### Life areas F6: area backfill — 2026-09-30
 
 Branch `claude/areas-f6-backfill` from `10f367f` (merged with `origin/main` at `8280fdc`).
