@@ -53,7 +53,7 @@ interface ReportOverrides {
   itemId?: string | null;
   query?: string;
   report?: string;
-  sources?: string[];
+  sources?: unknown[];
   model?: string;
   status?: string;
   createdAt?: string;
@@ -67,7 +67,7 @@ function makeReport(overrides: ReportOverrides = {}) {
     itemId: "item-1",
     query: "What changed?",
     report: "Research body",
-    sources: [],
+    sources: [] as unknown[],
     model: "test-model",
     status: "completed",
     createdAt: "2026-01-02T03:04:05.000Z",
@@ -178,31 +178,39 @@ describe("ResearchPage", () => {
     expect(await screen.findByText("Failed to load report")).toBeInTheDocument();
   });
 
-  it("renders a completed report, extracts its summary, sources, and item backlink", async () => {
+  it("renders a completed report as a readable page with summary, sources and item backlink", async () => {
     const report = makeReport({
-      report: "## Executive Summary\nA concise answer.\n\n## Findings\nDetailed evidence.",
+      report:
+        "# Research Report: What changed?\n\n## Executive Summary\nA concise answer.\n\n---\n\n## Findings\nDetailed evidence ([Source](https://example.test/source)).",
       sources: ["https://example.test/source", "https://example.test/second"],
     });
     fetchMock.mockResolvedValue(responseFor(report));
 
     render(<ResearchPage />);
 
-    expect(await screen.findByRole("heading", { name: report.query })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: report.query })
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/feed/item-1");
-    expect(screen.getByText("completed")).toBeInTheDocument();
     expect(screen.getByText(/Completed/)).toBeInTheDocument();
+    expect(screen.getByTestId("report-stats")).toHaveTextContent(
+      "1 section · ~1 min read · 1 source"
+    );
     const markdown = await screen.findAllByTestId("markdown");
     expect(markdown).toHaveLength(2);
     expect(markdown[0]).toHaveTextContent("A concise answer.");
-    expect(markdown[1]).toHaveTextContent("## Findings Detailed evidence.");
+    expect(markdown[1]).toHaveTextContent("## Findings Detailed evidence");
     expect(markdown[1]).not.toHaveTextContent("Executive Summary");
-    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /example\.test\/source/ })).toHaveAttribute(
-      "rel",
-      "noopener noreferrer"
-    );
+    expect(markdown[1]).not.toHaveTextContent("Research Report");
+    expect(screen.getByText("Cited in this report (1)")).toBeInTheDocument();
+    expect(screen.getByText("Other links the research touched (1)")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /example\.test \/source/, hidden: true })
+    ).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByTestId("deep-research")).toHaveAttribute("data-query", report.query);
     expect(screen.getByTestId("deep-research")).toHaveAttribute("data-item-id", "item-1");
+    expect(screen.getByRole("button", { name: /Research further/ })).toBeInTheDocument();
+    expect(screen.queryByText("completed")).not.toBeInTheDocument();
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
@@ -220,6 +228,7 @@ describe("ResearchPage", () => {
     const { unmount } = render(<ResearchPage />);
 
     expect(await screen.findByText("Top line only.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "TL;DR" })).toHaveTextContent("Top line only.");
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/research");
     expect(screen.getByTestId("deep-research")).not.toHaveAttribute("data-item-id");
     expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
@@ -229,7 +238,32 @@ describe("ResearchPage", () => {
     render(<ResearchPage />);
 
     expect(await screen.findByText("No summary here.")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Executive Summary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "TL;DR" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+  });
+
+  it("renders R2 source objects stored in the same column", async () => {
+    fetchMock.mockResolvedValue(
+      responseFor(
+        makeReport({
+          report: "## Answer\nA claim [1].",
+          sources: [
+            {
+              id: 1,
+              url: "https://a.test/post",
+              title: "A post",
+              domain: "a.test",
+              grounded: true,
+            },
+          ],
+        })
+      )
+    );
+
+    render(<ResearchPage />);
+
+    expect(await screen.findByText("Cited in this report (1)")).toBeInTheDocument();
+    expect(screen.getByText("A post")).toBeInTheDocument();
   });
 
   it("copies the complete markdown and restores the button label after two seconds", async () => {
