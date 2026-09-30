@@ -80,11 +80,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
   memory, labelled on the page). Phase branches: `claude/research-r1-page`,
   `claude/research-r2-citations`, `claude/research-r3-adaptive`.
-  **R1 (readable page, UI only)** done: checked locally on `5a9cf55a` at desktop, 375 px and
-  dark mode (checkpoint "Deep research R1: readable report page — 2026-09-30"); squash merged
-  to `main` (auto-deploys to Production). **R2** engine half done on its branch (not merged; it
-  must not ship without its UI half, since object sources would break the old page); UI half
-  next, on top of R1. Then R3.
+  **R1 (readable page, UI only)** done and deployed: PR
+  [#81](https://github.com/amitsharmaak/distil/pull/81), squash merged as `8280fdc`; Production
+  deployment succeeded (05:28Z) and `/api/health` returned 200; checked locally on `5a9cf55a` at
+  desktop, 375 px and dark mode (checkpoint "Deep research R1: readable report page —
+  2026-09-30"). **R2 (numbered citations, engine + UI)** done: squash merged to `main`
+  (checkpoint "Deep research R2: grounded numbered citations — 2026-09-30"). Live local run
+  `79e2f8cc` (same question as the baseline) found that **search grounding works on the
+  free-tier key** for `research-search` (7 grounded sources, redirects resolved to publisher
+  URLs) and exposed a synthesis regression on the Gemini fallback (thinking exhausted the
+  4,096-token budget; the stored report was a reasoning fragment). Fixed on the branch (12,000
+  tokens, truncation rejected and retried, prompt starts at the first heading) and confirmed by
+  a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
+  keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
+  Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
+  Claude, and R3 splits the call. Next: R3 on `claude/research-r3-adaptive`, then ask Amit about
+  R4.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
@@ -519,6 +530,156 @@ and dark: default Today unchanged, `?q=` results, filters-only and empty-result 
 with Clear, the phone bottom sheet, no horizontal scroll at 375 px, and the link landing on
 `/feed?q=…&read=true`. Minor, shared with Feed: the sheet's Area segment labels truncate at 375 px.
 PR [#79](https://github.com/amitsharmaak/distil/pull/79). No migration and no environment change.
+
+### Deep research R2: grounded numbered citations — 2026-09-30
+
+**Scope: engine and UI halves.** Branch `claude/research-r2-citations` from `main` `10f367f`,
+with `main` merged in after R1 landed (`8280fdc`, merge `d43ddfa`); spec: checkpoint "Deep
+research readability: diagnosis and phased plan — 2026-09-29", **R2**. Implementation complete
+and verified by deterministic tests, one orchestrated local run (`79e2f8cc`, which exposed the
+synthesis regression below) and two synthesis replay calls; the page was checked in the browser
+by the orchestrator (superscripts, `#source-n` jump, auto-open and `:target` highlight work).
+Not merged, not deployed.
+
+**References re-verified on `10f367f`.** URL scrape at `research.ts:552-553`, "with source URLs"
+prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, untouched),
+`GeminiProviderImpl.generateTextWithSearch` returning only `response.text()` (now
+`providers.ts` ~175; the spec's `:161` pointed at the `tools` comment), the synthesis template's
+"inline source links", `RESEARCH_TIMEOUTS_MS` unchanged.
+
+**What changed and why.**
+
+- **Provider.** `GeminiProviderImpl.generateTextWithSearch` returns `sources` from
+  `groundingMetadata.groundingChunks` (`web.uri`, `web.title`; http(s) only, de-duplicated) via
+  `parseGroundingSources`. OpenAI and Anthropic have no search method; the test fake returns
+  `sources: []`. The unused non-tenant `generateTextWithSearch` still returns a string.
+- **Tenant facade** (`createTenantAIRouter(...).generateTextWithSearch`) returns
+  `{ text, sources, grounded }`; `grounded: false` with no sources on both plain fallbacks (no
+  Gemini provider; grounding refused for quota). It accepts a prompt pair
+  `{ grounded, ungrounded }` so the fallback can ask for recalled sources without an extra call.
+  Tenant admission, accounting and audit unchanged.
+- **Redirect resolution** (`src/lib/ai/research-sources.ts`, search and deepen stages). Only
+  `https://vertexaisearch.cloud.google.com/grounding-api-redirect/…` links are requested, `GET`
+  with `redirect: "manual"`, at most 8 per stage in parallel under one 3 s budget; the
+  `Location` is accepted only when it is an absolute http(s) URL on another host without
+  credentials. Any failure keeps the redirect; the grounding title (usually the domain) is kept,
+  falling back to the final domain. No other host is ever fetched; nothing is logged.
+- **Prompts.** Search and deepening (`researchNotesPrompt`) ask for specific facts, figures,
+  dates, named examples and disagreements, and no URLs. The ungrounded variant also asks for a
+  trailing ` ```sources ` JSON block of at most three sources the model is confident exist;
+  `extractRecalledSources` parses it (also a `json` fence or a bare trailing array), caps at
+  three, and strips it and a dangling "Sources:" label from the notes; malformed or truncated
+  blocks give no sources and keep the text. Synthesis gets the findings (each section lists
+  "Sources for this section: [n]…") plus a numbered, de-duplicated list `[n] title — domain`
+  (at most 40), and must cite with `[n]` only, no URLs and no Sources section. The four-heading
+  template otherwise stays (R3 replaces it); "inline source links" is gone.
+- **Citations.** After synthesis `finalizeCitations` keeps only cited sources, renumbers them
+  1..k in order of first citation, rewrites markers (`[3]`, `[1, 4]`, `[2-4]` → adjacent `[n]`),
+  drops ids not in the list (a marker left empty is removed) and leaves `[x](url)` links and
+  `[n]:` definitions alone.
+- **Model calls unchanged** (plan, one per sub-question, gaps, one per gap, synthesis).
+- **UI (on R1's `src/components/research/`).** A report whose stored sources are objects
+  (`hasNumberedSources`) is rendered in numbered mode; legacy `string[]` reports keep R1's
+  behaviour exactly (cited/other split, domain chips, markers untouched).
+  - `linkCitationMarkers` (`report-markdown.ts`) rewrites each run of adjacent known markers
+    (`[2]`, `[1][3]`, `[1, 3]`) into one in-page link `[1,3](#source-1 "distil:ref")`, outside
+    fenced and inline code, links, images, escaped brackets and `[n]:` definitions; unknown ids
+    stay plain text; line numbers are preserved so heading ids still match.
+  - `createCitationLink` (`report-body.tsx`) renders such a link as one `<sup>` group of
+    numbers, each linking to `#source-n` with "title — domain" as tooltip and "Source n: …" as
+    accessible name; clicking opens the collapsed sources disclosure before the jump. No new
+    dependency.
+  - The sources list becomes "Sources (k)", collapsed, ordered by id, each row `id="source-n"`
+    with `scroll-mt-20` and a `:target` highlight, title and domain plus external link; no
+    "Other links" disclosure. When no source is `grounded`, a visible one-line note reads
+    "Sources recalled by the model, not verified by search". The header count is the number of
+    object sources. An empty `[]` renders like a report without sources.
+
+**Stored shapes.**
+
+- `research_reports.sources` (existing text column, no migration): JSON array of
+  `{ id, url, title, domain, grounded }`, cited-only, `id` matching the `[n]` markers.
+  Legacy reports keep `string[]`; both routes pass either through `JSON.parse` unchanged.
+- Run state (`research_reports.progress`) **version 2**: `findings` and `deepening` hold
+  `{ question, notes, sources: [{ url, title }], grounded } | null`. Version 1 still parses and is
+  upgraded in memory (the next write stores v2): each string finding becomes notes with its
+  question from `subQuestions`/`gaps`, and its inline URLs (at most 8) become ungrounded sources
+  titled by domain, so in-flight runs finish and only what synthesis cites survives.
+
+**Verification.** `npm run check` green after the synthesis fix (lint 0 errors; typecheck; 236
+suites, 1,840 tests). Fix tests: headless answer retried then stored on the good retry,
+failed after the attempts, `assertCompleteReport` cases, synthesis call options, per-section
+"Sources:" lines (`research-stages.unit`), `rejectTruncated` for Gemini and Anthropic and
+thought-part filtering (`summary-provider.unit`), prompt wording (`prompts.unit`), derived
+titles, trimming, generic/opaque segments and unresolved-redirect display
+(`research-sources.unit`). UI tests (`src/app/research/[id]/__tests__/`): marker linking, grouping,
+unknown ids, code/link/definition exclusions and line preservation (`report-markdown.unit`),
+`hasNumberedSources` (`research-sources.unit`), superscript mapping, tooltips and accessible
+names, click-to-open, anchor ids, unverified note shown and hidden, legacy reports unchanged,
+empty `[]`, and a stored-report fixture rendered through the full `ResearchReportView`
+(`report-components.component`); the page test now expects "Sources (1)" for object sources.
+Engine tests: grounding-chunk parsing (`summary-provider.unit`), facade shape and fallback
+prompt selection (`router-search.unit`), redirect resolution with a mocked fetch — success,
+timeout, errors/unsafe locations, cap, non-Google hosts untouched, de-duplication
+(`research-sources.unit`), recalled-block parsing, catalog and renumbering, v1 resume and v1
+synthesis, grounded stage walk, malformed block (`research-stages.unit`), prompts
+(`prompts.unit`), object and legacy sources through both routes
+(`src/app/api/ai/research/__tests__/report-sources.unit`).
+
+**Grounding works live (correcting the earlier assumption).** In local run `79e2f8cc` the
+free-tier key's `research-search` calls on `gemini-3-flash-preview` were grounded: all 7 stored
+sources are `grounded: true`, and 6 of 7 redirects resolved to real hosts
+(`machinelearning.apple.com`, `developer.android.com`, `anthropic.com`, …), matching the R2
+redirect assumption. Grounding titles are bare domains ("apple.com"). One source stayed an
+unresolved redirect (titled "biggo.com"); the run logged nothing that tells whether it was over
+the 8-per-stage cap, hit the 3 s budget or got a non-3xx, so search stages now log counts only
+(`research_grounding_sources`: sources, redirects, overCap, unresolved; no URLs). The earlier
+belief that grounding is refused on the free-tier key may have been specific to the older
+search model or quota at the time; not re-investigated.
+
+**Synthesis regression found live and fixed (2026-09-30).** Run `79e2f8cc` (synthesis on
+`gemini-3.5-flash` with the Anthropic key blanked) completed but stored an 87-word, headless
+report starting mid-sentence with the model's own deliberation about source numbering.
+Diagnosis (audit row plus one replay call on a synthetic 7-finding fixture): the call used the
+provider-default 4,096 output tokens; the model spent 3,929 on thinking, stopped with
+`finishReason: MAX_TOKENS`, and returned one text part holding the cut-off tail of its
+reasoning. Not a post-processing bug (`finalizeCitations` and block stripping never trim the
+head). Fixes:
+
+- Synthesis gets `maxTokens: 12_000` (`RESEARCH_SYNTHESIZE_MAX_TOKENS`) and
+  `rejectTruncated: true`, a new `GenerateOptions` flag: Gemini `MAX_TOKENS`, OpenAI `length` and
+  Anthropic `max_tokens` then throw `invalid_output`, so the stage retries instead of storing a
+  cut-off answer.
+- Guard: `assertCompleteReport` fails the attempt when the answer has no `##` heading; after the
+  retry budget the report is marked failed ("incomplete report") rather than stored.
+- Gemini answer text excludes `thought: true` parts (`geminiText`); none appeared in the replay,
+  but `response.text()` would include them.
+- Prompt: each findings section now carries its sources on a "Sources: [n] title — domain" line
+  under its heading (no separate numbered list, which invited a mapping exercise); the report
+  must use the four `##` headings and "begin directly with the line ## Executive Summary", with no
+  title, notes, planning or reasoning.
+- Replay with the fix (second and last live call): `STOP`, starts with `## Executive Summary`,
+  1,939 words, 4 `##` and 10 `###` headings, all 7 sources cited. **Margin is thin:** 42.7 s of
+  the 50 s timeout and 11,866 of 12,000 output tokens (8,436 thinking). A heavier input can hit
+  the timeout or the cap; both now retry and then fail cleanly instead of storing garbage.
+  Lowering Gemini's thinking level (`thinkingConfig`) was not tried live (budget); R3's
+  per-section writing removes the single large call. Production synthesis runs on
+  `claude-sonnet-4-6`, where this did not occur.
+
+**Display titles (UI, applies to stored rows).** `normalizeSources` replaces a missing or
+domain-like title ("apple.com") with one derived from the URL's last meaningful path segment
+(`titleFromUrl`: decoded, separators to spaces, first letter capitalised, ≤ 80 characters at a
+word boundary; generic segments like "news"/"index" and opaque ids skipped), else no title so
+the row shows the domain alone. An unresolved grounding redirect shows only its grounding
+domain: no path in the list, domain taken from the title when needed.
+
+**Before/after vs `5a9cf55a`.** Before: 41 scraped URLs listed and 8 cited, links inline in the
+text. Run `79e2f8cc` (before the synthesis fix): 7 cited, grounded, numbered source objects,
+but a broken 87-word report. The fixed synthesis replay on a synthetic fixture: 1,939 words,
+7/7 sources cited with `[n]` markers and no URLs. A full local run with the fix is still to
+be done by the orchestrator.
+
+**Not deployed. Nothing changed in Vercel or Neon.**
 
 ### Deep research R1: readable report page — 2026-09-30
 

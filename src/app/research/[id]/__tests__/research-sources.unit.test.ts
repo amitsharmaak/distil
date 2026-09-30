@@ -1,5 +1,9 @@
 import {
+  displayTitle,
   domainOf,
+  hasNumberedSources,
+  isGroundingRedirect,
+  titleFromUrl,
   normalizeSources,
   shortPath,
   splitSources,
@@ -140,5 +144,80 @@ describe("splitSources", () => {
   it("returns everything as other when the report links nothing", () => {
     const sources = normalizeSources(["https://a.example", "https://b.example"]);
     expect(splitSources(sources, "No links.")).toEqual({ cited: [], other: sources });
+  });
+});
+
+describe("display titles and unresolved redirects", () => {
+  const redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQabc123";
+
+  it("derives a readable title from the URL when grounding titled the page with its domain", () => {
+    const [apple, android, arxiv, kept] = normalizeSources([
+      {
+        id: 1,
+        url: "https://machinelearning.apple.com/research/introducing-third-generation-foundation-models",
+        title: "apple.com",
+        domain: "machinelearning.apple.com",
+        grounded: true,
+      },
+      {
+        id: 2,
+        url: "https://developer.android.com/ai/gemini_nano.html",
+        title: "android.com",
+        domain: "developer.android.com",
+        grounded: true,
+      },
+      { id: 3, url: "https://arxiv.org/abs/2601.01234", title: "arxiv.org", grounded: true },
+      { id: 4, url: "https://a.example/x-y", title: "A real title", grounded: true },
+    ]);
+    expect(apple.title).toBe("Introducing third generation foundation models");
+    expect(android.title).toBe("Gemini nano");
+    expect(arxiv.title).toBeNull();
+    expect(arxiv.domain).toBe("arxiv.org");
+    expect(kept.title).toBe("A real title");
+  });
+
+  it("trims long derived titles at a word boundary and skips generic or opaque segments", () => {
+    const long = `https://a.example/news/${"very-long-words-".repeat(10)}end/index.html`;
+    const title = titleFromUrl(long)!;
+    expect(title.length).toBeLessThanOrEqual(80);
+    expect(title.endsWith("…")).toBe(true);
+    expect(title.startsWith("Very long words")).toBe(true);
+    expect(titleFromUrl("https://a.example/news/")).toBeNull();
+    expect(titleFromUrl("https://a.example/p/AbC123xyz")).toBeNull();
+    expect(titleFromUrl(redirect)).toBeNull();
+    expect(displayTitle("apple.com", "https://apple.com/")).toBeNull();
+  });
+
+  it("shows an unresolved redirect as its grounding domain, with no path", () => {
+    const [stored, bare] = normalizeSources([
+      { id: 1, url: redirect, title: "biggo.com", domain: "biggo.com", grounded: true },
+      { id: 2, url: `${redirect}2`, title: "www.Example.org", grounded: true },
+    ]);
+    expect(stored).toMatchObject({ title: null, domain: "biggo.com" });
+    expect(bare).toMatchObject({ title: null, domain: "example.org" });
+    expect(shortPath(redirect)).toBe("");
+    expect(isGroundingRedirect(redirect)).toBe(true);
+    expect(isGroundingRedirect("https://biggo.com/grounding-api-redirect/x")).toBe(false);
+  });
+
+  it("leaves legacy string sources untitled", () => {
+    expect(normalizeSources(["https://a.example/some-article"])[0].title).toBeNull();
+  });
+});
+
+describe("hasNumberedSources", () => {
+  it("recognises R2 source objects, raw or as JSON", () => {
+    const objects = [{ id: 1, url: "https://a.example", title: "A", domain: "a.example" }];
+    expect(hasNumberedSources(objects)).toBe(true);
+    expect(hasNumberedSources(JSON.stringify(objects))).toBe(true);
+  });
+
+  it("treats legacy URL lists, empty lists and garbage as not numbered", () => {
+    expect(hasNumberedSources(["https://a.example"])).toBe(false);
+    expect(hasNumberedSources([])).toBe(false);
+    expect(hasNumberedSources("[]")).toBe(false);
+    expect(hasNumberedSources("not json")).toBe(false);
+    expect(hasNumberedSources(null)).toBe(false);
+    expect(hasNumberedSources([{ url: "https://a.example" }, "https://b.example"])).toBe(false);
   });
 });

@@ -255,6 +255,64 @@ export function estimateReadingMinutes(wordCount: number): number {
   return Math.max(1, Math.round(wordCount / WORDS_PER_MINUTE));
 }
 
+/** Link title marking a group of numbered citation markers (`[1][3]`) rewritten by `linkCitationMarkers`. */
+export const CITATION_REF_TITLE = "distil:ref";
+
+/** Element id of numbered source `n` in the sources list. */
+export function sourceAnchorId(id: number): string {
+  return `source-${id}`;
+}
+
+/**
+ * A run of adjacent numbered markers, `[2]` or `[1][3]` (also `[1, 3]`), not preceded by `]` or
+ * `!` (reference-style link text, images) and not followed by `(` or `:` (inline links, link
+ * reference definitions).
+ */
+const MARKER_RUN_RE = /(?<![\]!\\])((?:\[\d{1,3}(?:\s*,\s*\d{1,3})*\])+)(?![(:])/g;
+const INLINE_CODE_RE = /(`+)[\s\S]*?\1/g;
+
+/** Ids in a marker run, in order, de-duplicated. */
+export function markerRunIds(run: string): number[] {
+  const ids = (run.match(/\d{1,3}/g) ?? []).map(Number);
+  return [...new Set(ids)];
+}
+
+function linkMarkersInText(text: string, knownIds: Set<number>): string {
+  return text.replace(MARKER_RUN_RE, (run: string) => {
+    const ids = markerRunIds(run).filter((id) => knownIds.has(id));
+    if (ids.length === 0) return run;
+    return `[${ids.join(",")}](#${sourceAnchorId(ids[0])} "${CITATION_REF_TITLE}")`;
+  });
+}
+
+/**
+ * Rewrites numbered citation markers into in-page links to the sources list, one link per run of
+ * adjacent markers (`[1][3]` → `[1,3](#source-1 "distil:ref")`), which the link component renders
+ * as one superscript group. Ids missing from `knownIds` stay plain text (a run with no known id
+ * is left untouched). Fenced and inline code are never changed; line structure is preserved, so
+ * heading line numbers stay valid.
+ */
+export function linkCitationMarkers(markdown: string, knownIds: Iterable<number>): string {
+  const known = new Set(knownIds);
+  if (known.size === 0) return markdown;
+  const out: string[] = [];
+  forEachLine(markdown, (line, _index, inFence) => {
+    if (inFence) {
+      out.push(line);
+      return;
+    }
+    let result = "";
+    let last = 0;
+    for (const match of line.matchAll(INLINE_CODE_RE)) {
+      const at = match.index ?? 0;
+      result += linkMarkersInText(line.slice(last, at), known) + match[0];
+      last = at + match[0].length;
+    }
+    out.push(result + linkMarkersInText(line.slice(last), known));
+  });
+  return out.join("\n");
+}
+
 /** Full preparation pipeline used by the report page. */
 export function prepareReport(markdown: string): PreparedReport {
   const cleaned = compactCitationLinks(stripTitleAndRules(markdown ?? ""));
