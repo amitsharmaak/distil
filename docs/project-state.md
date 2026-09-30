@@ -512,6 +512,9 @@ own hash. No database, environment variable, Production deployment or open PR wa
   5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. After the final
   merge of `origin/main` `4f1ee3e` and removal of all measurement code, `npm run check` passed:
   lint 0 errors / 5 unchanged warnings, formatting and TypeScript clean, 233 suites / 1,828 tests.
+  After merging the released P8 state from `origin/main` `1d2831a`, the focused sidebar and Feed
+  suites passed 22 tests and the final `npm run check` passed: lint 0 errors / 5 unchanged warnings,
+  formatting and TypeScript clean, 236 suites / 1,856 tests.
   (A stale `.next/dev` route cache still referenced Ask on the first typecheck; moving that generated
   cache aside produced the clean result.) The local in-app browser at
   `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately selects it, increments the
@@ -679,6 +682,7 @@ tenant's daily `ai.requests` quota (a budget stop is clean; re-run the next day)
 dies after enqueueing its successor but before finishing can overlap with that successor for a
 few items; `classifyItemArea` skips already-classified items, so the cost is at most a duplicate
 call. The account-lifecycle queue now also carries the backfill jobs.
+
 ### Ask Distil removed (A1) — 2026-09-30
 
 Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get
