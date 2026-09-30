@@ -32,7 +32,10 @@ it("marks the stable Sonnet system preamble as ephemeral cache content", async (
   });
   await expect(
     new AnthropicProviderImpl("key").generateText("question", "claude-sonnet-4-6")
-  ).resolves.toEqual({ value: "answer", usage: { inputTokens: 60, outputTokens: 4 } });
+  ).resolves.toEqual({
+    value: "answer",
+    usage: { inputTokens: 60, outputTokens: 4, cacheWriteTokens: 20, cacheReadTokens: 30 },
+  });
   expect(mockAnthropicCreate).toHaveBeenCalledWith(
     expect.objectContaining({
       system: [expect.objectContaining({ cache_control: { type: "ephemeral" } })],

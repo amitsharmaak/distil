@@ -39,6 +39,12 @@ describe("Topbar", () => {
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "true");
   });
 
+  it("carries the standalone safe-area hook so it sticks below the iPhone status bar", () => {
+    render(<Topbar />);
+
+    expect(screen.getByRole("banner")).toHaveClass("distil-topbar", "sticky", "top-0");
+  });
+
   it("does not render a search input, notification bell or agent controls", () => {
     render(<Topbar />);
 

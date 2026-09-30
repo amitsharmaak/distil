@@ -172,6 +172,11 @@
   body {
     padding-top: var(--safe-top);
   }
+  /* The sticky top bar pins to the viewport, not to the padded body, so it needs the same
+     offset or it slides under the iPhone status bar once the page scrolls (BUG-PWA-001). */
+  .distil-topbar {
+    top: var(--safe-top);
+  }
 }
 
 /* Section labels — small-caps editorial dividers */

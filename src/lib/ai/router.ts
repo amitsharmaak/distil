@@ -17,6 +17,8 @@ import {
   PROVIDER_FALLBACK_MODELS,
   MODEL_COSTS,
   GEMINI_SEARCH_QUERY_COST,
+  ANTHROPIC_CACHE_WRITE_MULTIPLIER,
+  ANTHROPIC_CACHE_READ_MULTIPLIER,
 } from "./ai-config";
 import { aiLogger } from "@/lib/logger";
 import { getTraceId } from "@/lib/middleware/trace";
@@ -59,7 +61,14 @@ export function estimateCost(model: string, usage: ProviderUsage): number {
   const searchCost = (usage.searchQueries ?? 0) * GEMINI_SEARCH_QUERY_COST;
   const costs = MODEL_COSTS[model];
   if (!costs) return searchCost;
-  const inputCost = (usage.inputTokens / 1_000_000) * costs.input;
+  const cacheWrite = usage.cacheWriteTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
+  const uncachedInput = Math.max(0, usage.inputTokens - cacheWrite - cacheRead);
+  const billableInput =
+    uncachedInput +
+    cacheWrite * ANTHROPIC_CACHE_WRITE_MULTIPLIER +
+    cacheRead * ANTHROPIC_CACHE_READ_MULTIPLIER;
+  const inputCost = (billableInput / 1_000_000) * costs.input;
   const outputCost = (usage.outputTokens / 1_000_000) * costs.output;
   return inputCost + outputCost + searchCost;
 }
@@ -69,6 +78,8 @@ function measuredUsage(usage: ProviderUsage, prompt: string, output: string): Pr
     inputTokens: usage.inputTokens || estimateTokens(prompt),
     outputTokens: usage.outputTokens || estimateTokens(output),
     searchQueries: usage.searchQueries,
+    cacheWriteTokens: usage.cacheWriteTokens,
+    cacheReadTokens: usage.cacheReadTokens,
   };
 }
 

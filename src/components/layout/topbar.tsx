@@ -45,7 +45,7 @@ export function Topbar({
   useShortcut(BACK_ESC, goBack, !!backHref);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="distil-topbar sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {backHref ? (
         <Link
           href={backHref}
