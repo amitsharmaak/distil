@@ -5,7 +5,9 @@
  * the area switch, unread, and every facet. Like the bar, it reads the URL
  * state (`filters`) and reports URL changes through `onChange`; every change
  * applies at once, so "Done" only closes the sheet. A side panel on wider
- * screens, a bottom sheet on phones.
+ * screens, a bottom sheet on phones. Today uses the same sheet without the
+ * unread, archive and layout controls (`unreadQueue`, no `viewMode`), and
+ * shows Sort only while it lists results (`showSort`).
  */
 
 import * as React from "react";
@@ -215,8 +217,16 @@ interface FeedFilterSheetProps {
   activeCount: number;
   topicOptions: string[];
   collectionOptions: { id: string; name: string }[];
-  viewMode: "card" | "compact";
-  onViewModeChange: (mode: "card" | "compact") => void;
+  /** The card/compact layout toggle; hidden when the page has no layouts. */
+  viewMode?: "card" | "compact";
+  onViewModeChange?: (mode: "card" | "compact") => void;
+  /**
+   * The page lists only the unread queue (Today): the "Unread only" switch
+   * and the Archive control have nothing to change there and are hidden.
+   */
+  unreadQueue?: boolean;
+  /** Hide Sort (and the layout toggle beside it) where the view has a fixed order. */
+  showSort?: boolean;
 }
 
 export function FeedFilterSheet({
@@ -227,6 +237,8 @@ export function FeedFilterSheet({
   collectionOptions,
   viewMode,
   onViewModeChange,
+  unreadQueue = false,
+  showSort = true,
 }: FeedFilterSheetProps) {
   const [open, setOpen] = React.useState(false);
   const wide = useWideScreen();
@@ -238,6 +250,33 @@ export function FeedFilterSheet({
     ...filters.contentTypes,
     ...(X_POSTS.isActive(filters) ? ["x" as const] : []),
   ];
+  const layoutToggle =
+    viewMode && onViewModeChange ? (
+      <div role="group" aria-label="Layout" className="flex rounded-lg bg-muted p-0.5">
+        {(
+          [
+            ["card", "Card layout", LayoutGrid],
+            ["compact", "Compact layout", List],
+          ] as const
+        ).map(([mode, label, Icon]) => (
+          <button
+            key={mode}
+            type="button"
+            aria-label={label}
+            aria-pressed={viewMode === mode}
+            onClick={() => onViewModeChange(mode)}
+            className={cn(
+              "inline-flex h-7 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              viewMode === mode
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </button>
+        ))}
+      </div>
+    ) : undefined;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -273,42 +312,16 @@ export function FeedFilterSheet({
         </SheetHeader>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
-          <Section
-            title="Sort"
-            action={
-              <div role="group" aria-label="Layout" className="flex rounded-lg bg-muted p-0.5">
-                {(
-                  [
-                    ["card", "Card layout", LayoutGrid],
-                    ["compact", "Compact layout", List],
-                  ] as const
-                ).map(([mode, label, Icon]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    aria-label={label}
-                    aria-pressed={viewMode === mode}
-                    onClick={() => onViewModeChange(mode)}
-                    className={cn(
-                      "inline-flex h-7 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                      viewMode === mode
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </button>
-                ))}
-              </div>
-            }
-          >
-            <Segmented
-              label="Sort"
-              options={sortOptions}
-              value={filters.sort}
-              onSelect={(sort) => onChange({ sort })}
-            />
-          </Section>
+          {showSort && (
+            <Section title="Sort" action={layoutToggle}>
+              <Segmented
+                label="Sort"
+                options={sortOptions}
+                value={filters.sort}
+                onSelect={(sort) => onChange({ sort })}
+              />
+            </Section>
+          )}
 
           <Section title="Area">
             <Segmented
@@ -324,32 +337,34 @@ export function FeedFilterSheet({
             />
           </Section>
 
-          <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-3.5 py-3">
-            <div>
-              <p id="filter-unread-label" className="text-[13px] font-medium text-foreground">
-                Unread only
-              </p>
-              <p className="text-xs text-muted-foreground">Hide items you have read</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={unreadOnly}
-              aria-labelledby="filter-unread-label"
-              onClick={() => onChange(UNREAD.toggle(filters))}
-              className={cn(
-                "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                unreadOnly ? "bg-primary" : "bg-muted-foreground/30"
-              )}
-            >
-              <span
+          {!unreadQueue && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-3.5 py-3">
+              <div>
+                <p id="filter-unread-label" className="text-[13px] font-medium text-foreground">
+                  Unread only
+                </p>
+                <p className="text-xs text-muted-foreground">Hide items you have read</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={unreadOnly}
+                aria-labelledby="filter-unread-label"
+                onClick={() => onChange(UNREAD.toggle(filters))}
                 className={cn(
-                  "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-                  unreadOnly ? "translate-x-[18px]" : "translate-x-0.5"
+                  "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                  unreadOnly ? "bg-primary" : "bg-muted-foreground/30"
                 )}
-              />
-            </button>
-          </div>
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                    unreadOnly ? "translate-x-[18px]" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+            </div>
+          )}
 
           <Section title="Type">
             <ChipGroup
@@ -401,16 +416,18 @@ export function FeedFilterSheet({
             </Section>
           )}
 
-          <Section title="Archive">
-            <Segmented
-              label="Archive"
-              options={ARCHIVE_OPTIONS}
-              value={filters.archive}
-              onSelect={(archive) =>
-                onChange({ archive: archive === "exclude" ? undefined : archive })
-              }
-            />
-          </Section>
+          {!unreadQueue && (
+            <Section title="Archive">
+              <Segmented
+                label="Archive"
+                options={ARCHIVE_OPTIONS}
+                value={filters.archive}
+                onSelect={(archive) =>
+                  onChange({ archive: archive === "exclude" ? undefined : archive })
+                }
+              />
+            </Section>
+          )}
 
           <Section title="Date added">
             <div className="grid grid-cols-2 gap-3">
