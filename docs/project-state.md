@@ -106,8 +106,19 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
   spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
   **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
-  report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
-  Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
+  report on Production. **Daily AI budget raised to $2 (Amit, 2026-09-30):** Claude replaced
+  the Production `DISTIL_DAILY_AI_BUDGET` value with `2` through the Vercel CLI (previous value
+  not read; the env pull that would have exposed all secrets was refused) and it took effect with
+  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **R3 verified on Production (2026-09-30, at
+  Amit's request, through his Chrome):** run `4d1cbcb5` (baseline question) completed in 5.5
+  min: 3,760 words, TL;DR 26 words, 6 question-specific sections with 2 tables, 23 sources all
+  grounded and all cited (34 catalogued), no URLs in the text, no placeholders; section writes
+  took 18–31 s each against the 45 s stage deadline, and no "Task timed out" in the logs. The
+  page renders as locally (TOC rail with sub-headings, superscript citations). Note: length
+  overshot the 1,500–2,500-word target (six sections at the top of the 250–450-word range plus
+  tables). **Capped (Amit, 2026-09-30):** at most 4 sections and 2,500 words per report, PR
+  [#100](https://github.com/amitsharmaak/distil/pull/100) `13e1632` (checkpoint "Deep research:
+  cap reports at 4 sections and 2,500 words — 2026-09-30"); not yet seen on a live run.
   **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
   marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
   2026-09-30").
@@ -514,6 +525,49 @@ called" assertions (vacuous without the module). Kept: the `item_embeddings` tab
 `openai` package (still used by `src/lib/ai/providers.ts` and `scripts/check-ai-models.ts`).
 Checks: `npm run check` (234 suites, 1,898 tests), `tests/harness` (76) and
 `audit:phase3-security` pass. No schema, route or environment change.
+
+### Deep research: cap reports at 4 sections and 2,500 words — 2026-09-30
+
+**Why.** Production run `4d1cbcb5` (R3) wrote 3,760 words: six sections, each at the top of the
+250–450-word range, plus two tables. Amit's decision (2026-09-30): at most 4 sections and at most
+2,500 words for the whole report. Branch `claude/research-cap-length` from `origin/main`.
+Implementation complete and verified by deterministic tests; no live model call, no dev server.
+Not merged, not deployed; nothing changed in Vercel or Neon.
+
+**What changed.**
+
+- **Outline.** `researchOutlinePrompt` asks for 3–4 sections ("never more than 4", report at most
+  2,500 words). `MAX_REPORT_SECTIONS` is 4: `parseOutline` keeps the first four valid sections
+  (trimmed, not merged, with their findings and source ids); `fallbackOutline` makes one section
+  per usable finding for the first four and folds the rest, with their sources, into the last.
+- **Per-section budget.** `sectionWordBudget(outline)` in `src/lib/ai/research-report.ts`:
+  `max = clamp(floor((2,500 − frame) / sections, to 10), 200, 550)`, `min = 0.75 × max` (to 10),
+  where the frame is the word count of the report assembled with empty section bodies (headings,
+  TL;DR trimmed to 60 words, takeaways, caveats), measured from the outline. A typical frame is
+  ~200–350 words, so four sections get ~540–550 words each and two or three sections 550 (the
+  clamp). The section prompt says "about min–max words, never more than max" instead of the
+  fixed 250–450. Write token caps unchanged (Claude 2,000 ≈ 1,400 words; Gemini 5,000 with low
+  thinking), inside the 45 s stage deadline.
+- **Hard cap at assembly.** `capReportSections` runs in `completeReport` before
+  `finalizeCitations`: while the assembled report (same `countSectionWords`, `[n]` not counted)
+  exceeds 2,500 words, the longest section that can lose a block drops its last blank-line
+  separated block (never a table block, never a section's only block, a dangling `###`
+  subheading goes with it; fences are not split). Citations are finalised afterwards, so a
+  source cited only in a dropped paragraph is not listed. `research_report_assembled` logs the
+  new counters `wordsBefore` and `trimmed` (added to the logger's count allowlist).
+- **In-flight runs.** No state version bump. A v3 run outlined before the cap keeps its stored
+  outline (up to six sections): every section is written with the budget computed for that
+  outline (~350–380 words for six) and the assembly cap keeps the report within 2,500 words.
+  Trimming the stored outline was rejected because it would discard sections already written
+  and the sources they cite.
+
+**Verification.** `npm run check` passes. New/updated tests: outline trimmed to 4 and the prompt
+wording (`prompts.unit.test.ts`); fallback ≤4 with folded findings and sources, budget math for
+2/3/4/6 sections, budget in the write prompt for 2–4 sections, assembly trims an over-long
+six-section report to ≤2,500 words keeping a table whole, list block dropped whole, dangling
+subheading dropped (`research-report.unit.test.ts`); an in-flight six-section state finishes
+completed within 2,500 words with all headings (`research-stages.unit.test.ts`); new log
+counters (`logger.security.unit.test.ts`). Not verified live.
 
 ### Deep research: fail an unwritten report — 2026-09-30
 
