@@ -759,7 +759,6 @@ export interface RepositorySet {
   agent: AgentRepository;
   /** Tenant-only PostgreSQL feed query surface. */
   feed: { list(query?: FeedQuery): Promise<FeedPage> };
-  /** Tenant-only retrieval surface used before any answer prompt is assembled. */
   /** Tenant-only preference, scheduling, and digest persistence surface. */
   digestExperience: DigestStore;
 }
