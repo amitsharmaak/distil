@@ -6,7 +6,11 @@ import { NeonHttpAuthRepository } from "@/lib/auth/neon-http-repository";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { authFailureResponse } from "@/lib/auth/http";
 import { legacyAuthDisabledResponse } from "@/lib/auth/legacy-bridge";
-import { getNeonAuthServer, NeonAuthConfigurationError } from "@/lib/auth/neon-server";
+import {
+  getNeonAuthServer,
+  NEON_SESSION_DATA_TTL_SECONDS,
+  NeonAuthConfigurationError,
+} from "@/lib/auth/neon-server";
 import {
   AuthRepositoryUnavailableError,
   getAuthRepositoryPort,
@@ -131,7 +135,7 @@ describe("auth runtime adapters", () => {
       baseUrl: environment.NEON_AUTH_BASE_URL,
       cookies: {
         secret: environment.NEON_AUTH_COOKIE_SECRET,
-        sessionDataTtl: 300,
+        sessionDataTtl: NEON_SESSION_DATA_TTL_SECONDS,
         sameSite: "lax",
       },
       logLevel: "warn",
