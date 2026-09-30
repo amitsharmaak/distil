@@ -1,20 +1,15 @@
 import { getPostgresClient } from "@/lib/database";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import { AuthRepositoryUnavailableError } from "@/lib/auth/repository-errors";
 
-export class AuthRepositoryUnavailableError extends Error {
-  constructor() {
-    super("Authentication repositories are unavailable");
-    this.name = "AuthRepositoryUnavailableError";
-  }
-}
+export { AuthRepositoryUnavailableError } from "@/lib/auth/repository-errors";
 
 let authRepositoryPromise: Promise<AuthRepositoryPort> | undefined;
 
 /**
- * The proxy's account lookup adapter. Feature-off deployments never read this.
- * Feature-on deployments fail closed when PostgreSQL is not configured. Only
- * the auth adapter is constructed, on the shared (globalThis-memoised) client,
- * so the proxy never loads the full repository set or opens a second pool.
+ * Full authentication repository for route and lifecycle workflows. It stays
+ * on the shared postgres.js client; the proxy's narrower HTTP lookup lives in
+ * proxy-repository-runtime.ts.
  */
 export async function getAuthRepositoryPort(): Promise<AuthRepositoryPort> {
   authRepositoryPromise ??= Promise.all([

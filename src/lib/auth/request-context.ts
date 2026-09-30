@@ -7,7 +7,7 @@ import {
   type ProviderIdentity,
   type ResolvedAuthRequest,
 } from "@/lib/auth/account";
-import type { AuthRepositoryPort } from "@/lib/auth/ports";
+import type { AuthIdentityLookupPort } from "@/lib/auth/ports";
 
 export const FRESH_AUTH_WINDOW_MS = 10 * 60 * 1000;
 
@@ -63,7 +63,7 @@ export async function readProviderIdentity(
 
 async function resolveNeonAuthRequestWithPolicy(
   provider: ProviderIdentityPort,
-  repositories: AuthRepositoryPort,
+  repositories: AuthIdentityLookupPort,
   requestId?: string,
   now = new Date(),
   allowDeletionPending = false
@@ -101,7 +101,7 @@ async function resolveNeonAuthRequestWithPolicy(
 
 export function resolveNeonAuthRequest(
   provider: ProviderIdentityPort,
-  repositories: AuthRepositoryPort,
+  repositories: AuthIdentityLookupPort,
   requestId?: string,
   now = new Date()
 ): Promise<ResolvedAuthRequest> {
@@ -111,7 +111,7 @@ export function resolveNeonAuthRequest(
 /** Exact recovery capability for deletion status/cancellation and the Account shell. */
 export function resolveNeonLifecycleRecoveryRequest(
   provider: ProviderIdentityPort,
-  repositories: AuthRepositoryPort,
+  repositories: AuthIdentityLookupPort,
   requestId?: string,
   now = new Date()
 ): Promise<ResolvedAuthRequest> {

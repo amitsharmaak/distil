@@ -39,8 +39,8 @@ const fakes = {
 jest.mock("@/lib/auth/neon-server", () => ({
   getNeonProxyProvider: () => fakes.provider,
 }));
-jest.mock("@/lib/auth/repository-runtime", () => ({
-  getAuthRepositoryPort: async () => {
+jest.mock("@/lib/auth/proxy-repository-runtime", () => ({
+  getProxyAuthRepositoryPort: async () => {
     fakes.loadRepositories();
     return fakes.authRepositories;
   },
