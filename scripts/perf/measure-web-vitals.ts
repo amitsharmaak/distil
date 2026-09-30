@@ -236,7 +236,6 @@ function startServer(databaseUrl: string) {
       FEATURE_CONNECTORS: "false",
       FEATURE_KNOWLEDGE_UI: "true",
       FEATURE_SEARCH: "true",
-      FEATURE_ANSWERS: "true",
       FEATURE_PERSONALIZATION: "true",
       FEATURE_DIGESTS: "true",
       DISTIL_LEGACY_USER_ID: userId,

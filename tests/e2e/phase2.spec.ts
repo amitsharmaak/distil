@@ -1,12 +1,9 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/browser/test";
 
-const allPhase2UiEnabled = [
-  "FEATURE_KNOWLEDGE_UI",
-  "FEATURE_SEARCH",
-  "FEATURE_ANSWERS",
-  "FEATURE_DIGESTS",
-].every((name) => process.env[name]?.trim().toLowerCase() === "true");
+const allPhase2UiEnabled = ["FEATURE_KNOWLEDGE_UI", "FEATURE_SEARCH", "FEATURE_DIGESTS"].every(
+  (name) => process.env[name]?.trim().toLowerCase() === "true"
+);
 
 async function mockTodayFeed(page: Page) {
   await page.route("**/api/v1/feed?*", (route) =>
@@ -89,12 +86,10 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   // Desktop shows the sidebar entry plus the top bar icon; mobile shows the icon only.
   await expect(page.locator('a[href="/search"]:visible').first()).toBeVisible();
   expect(await page.locator('a[href="/search"]:visible').count()).toBeLessThanOrEqual(2);
-  // Ask lives in the desktop sidebar only; the phone bar is Today / Feed / Save / Settings.
+  // Ask Distil was removed; the phone bar is Today / Feed / Save / Settings.
+  await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
   if (isMobile) {
-    await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Save" })).toBeVisible();
-  } else {
-    await expect(page.getByRole("link", { name: "Ask" })).toBeVisible();
   }
   // Digests left primary navigation in the 2026-09 simplification; Settings links to it.
   await expect(page.getByRole("link", { name: "Digests" })).toHaveCount(0);

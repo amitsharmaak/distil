@@ -11,13 +11,7 @@ export function isReaderPath(pathname: string): boolean {
   return /^\/feed\/[^/]+$/.test(pathname);
 }
 
-export function AppShell({
-  children,
-  showAnswers = true,
-}: {
-  children: React.ReactNode;
-  showAnswers?: boolean;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -35,11 +29,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        showAnswers={showAnswers}
-      />
+      <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <div
         className={`min-w-0 flex-1 transition-all duration-300 ${
           sidebarCollapsed ? "md:pl-16" : "md:pl-64"
