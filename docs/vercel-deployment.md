@@ -151,3 +151,12 @@ Rollback changes the application deployment only:
 Do not run destructive down migrations, delete imported rows, or replace the source SQLite file as
 part of application rollback. If database recovery is required, treat it as a separate incident
 with an explicit restore plan.
+
+## Docs-only commits do not build
+
+`vercel.json` sets `ignoreCommand` to `scripts/vercel-ignore-build.sh`, Vercel's Ignored Build Step.
+It compares `HEAD` with `VERCEL_GIT_PREVIOUS_SHA` (the last successful deployment of the branch)
+and skips the build when every changed file is under `docs/`, is a Markdown file, or is under
+`.github/`. Any other change, a missing previous SHA, or a previous SHA outside the shallow clone
+builds as before. Vercel's exit-code convention is inverted: exit 0 skips, exit 1 builds. This
+overrides the dashboard's Ignored Build Step setting, so change it here, not in the dashboard.
