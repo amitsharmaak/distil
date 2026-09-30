@@ -6,6 +6,33 @@ import { Zap, RefreshCw, Sparkles, FileText, Minimize2, Maximize2 } from "lucide
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
+
+const TOGGLE_VIEW: ShortcutDef = {
+  id: "reader.toggleSummary",
+  keys: [{ key: "s" }],
+  label: "Toggle AI summary / original",
+  group: "Reading",
+  scope: "reader",
+};
+const TOGGLE_LENGTH: ShortcutDef = {
+  id: "reader.toggleLength",
+  keys: [{ key: "d" }],
+  label: "Toggle brief / detailed",
+  group: "Reading",
+  scope: "reader",
+};
+const REGENERATE: ShortcutDef = {
+  id: "reader.regenerate",
+  keys: [{ key: "s", shift: true }],
+  label: "Regenerate summary",
+  group: "Reading",
+  scope: "reader",
+};
+
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background";
 
 const Markdown = dynamic(() => import("@/components/markdown").then((module) => module.Markdown));
 
@@ -288,6 +315,22 @@ export function AISummary({
 
   const hasAISummary = !!briefSummary || !!detailedSummary;
 
+  useShortcut(
+    TOGGLE_VIEW,
+    () => setViewMode((mode) => (mode === "ai" ? "original" : "ai")),
+    hasAISummary
+  );
+  useShortcut(
+    TOGGLE_LENGTH,
+    () => void handleLengthChange(summaryLength === "brief" ? "detailed" : "brief"),
+    hasAISummary && viewMode === "ai" && !loading
+  );
+  useShortcut(
+    REGENERATE,
+    () => void generate(summaryLength, true),
+    hasAISummary && viewMode === "ai" && !loading
+  );
+
   return (
     <div>
       {/* Controls bar — pill toggles with hairline separator */}
@@ -297,9 +340,14 @@ export function AISummary({
           {hasAISummary && (
             <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 p-0.5">
               <button
+                type="button"
+                aria-pressed={viewMode === "ai"}
+                aria-keyshortcuts="s"
+                title="AI summary · S"
                 onClick={() => setViewMode("ai")}
                 className={cn(
                   "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
+                  focusRing,
                   viewMode === "ai"
                     ? "bg-foreground/65 text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -309,9 +357,14 @@ export function AISummary({
                 AI Summary
               </button>
               <button
+                type="button"
+                aria-pressed={viewMode === "original"}
+                aria-keyshortcuts="s"
+                title="Original · S"
                 onClick={() => setViewMode("original")}
                 className={cn(
                   "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150",
+                  focusRing,
                   viewMode === "original"
                     ? "bg-foreground/65 text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -327,10 +380,15 @@ export function AISummary({
           {hasAISummary && viewMode === "ai" && (
             <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 p-0.5">
               <button
+                type="button"
+                aria-pressed={summaryLength === "brief"}
+                aria-keyshortcuts="d"
+                title="Brief · D"
                 onClick={() => handleLengthChange("brief")}
                 disabled={loading}
                 className={cn(
                   "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
+                  focusRing,
                   summaryLength === "brief"
                     ? "bg-foreground/65 text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -340,10 +398,15 @@ export function AISummary({
                 Brief
               </button>
               <button
+                type="button"
+                aria-pressed={summaryLength === "detailed"}
+                aria-keyshortcuts="d"
+                title="Detailed · D"
                 onClick={() => handleLengthChange("detailed")}
                 disabled={loading}
                 className={cn(
                   "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all duration-150 disabled:opacity-50",
+                  focusRing,
                   summaryLength === "detailed"
                     ? "bg-foreground/65 text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -358,9 +421,15 @@ export function AISummary({
           {/* Regenerate */}
           {hasAISummary && viewMode === "ai" && (
             <button
+              type="button"
+              aria-keyshortcuts="Shift+S"
+              title="Regenerate · Shift+S"
               onClick={() => generate(summaryLength, true)}
               disabled={loading}
-              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-150 disabled:opacity-50"
+              className={cn(
+                "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-150 disabled:opacity-50",
+                focusRing
+              )}
             >
               <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
               Regenerate

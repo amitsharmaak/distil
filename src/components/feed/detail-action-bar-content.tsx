@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,6 +11,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Check,
+  Link2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -18,6 +20,21 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DeepResearch } from "@/components/feed/deep-research";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
+
+const def = (id: string, keys: ShortcutDef["keys"], label: string): ShortcutDef => ({
+  id,
+  keys,
+  label,
+  group: "Reading",
+  scope: "reader",
+});
+
+const MARK_UNREAD = def("reader.markUnread", [{ key: "u", shift: true }], "Mark as unread");
+const OPEN_ORIGINAL = def("reader.openOriginal", [{ key: "o" }], "Open original in new tab");
+const LIKE = def("reader.like", [{ key: "+" }], "Like");
+const DISLIKE = def("reader.dislike", [{ key: "-" }], "Dislike");
+const DEEP_RESEARCH = def("reader.deepResearch", [{ key: "d", shift: true }], "Deep research");
+const COPY_LINK = def("reader.copyLink", [{ key: "c", shift: true }], "Copy link");
 
 const MARK_READ: ShortcutDef = {
   id: "reader.markRead",
@@ -55,6 +72,21 @@ export function DetailActionBar({
   const [submitting, setSubmitting] = useState(false);
   const [read, setRead] = useState(isRead);
   const [markingRead, setMarkingRead] = useState(false);
+  const [researchOpen, setResearchOpen] = useState(false);
+  const researchBtn = useRef<HTMLButtonElement>(null);
+  const handleResearchOpenChange = useCallback((next: boolean) => {
+    setResearchOpen(next);
+    if (!next) setTimeout(() => researchBtn.current?.focus(), 0);
+  }, []);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    []
+  );
 
   async function handleRate(value: number) {
     if (submitting) return;
@@ -95,7 +127,45 @@ export function DetailActionBar({
     }
   }, [read, markingRead, itemId, nextId, suffix, router]);
 
+  const handleMarkUnread = useCallback(async () => {
+    if (!read || markingRead) return;
+    setMarkingRead(true);
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: false }),
+      });
+      if (res.ok) setRead(false);
+    } catch {
+      /* stays read */
+    } finally {
+      setMarkingRead(false);
+    }
+  }, [read, markingRead, itemId]);
+
+  const handleCopyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+    } catch {
+      return;
+    }
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+  }, []);
+
+  const openOriginal = useCallback(() => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [url]);
+
   useShortcut(MARK_READ, () => void handleMarkRead(), !read);
+  useShortcut(MARK_UNREAD, () => void handleMarkUnread(), read);
+  useShortcut(OPEN_ORIGINAL, openOriginal);
+  useShortcut(LIKE, () => void handleRate(1));
+  useShortcut(DISLIKE, () => void handleRate(-1));
+  useShortcut(DEEP_RESEARCH, () => setResearchOpen(true));
+  useShortcut(COPY_LINK, () => void handleCopyLink());
 
   const iconBtn =
     "h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-colors";
@@ -113,13 +183,13 @@ export function DetailActionBar({
                     <Link
                       href={`/feed/${prevId}${suffix}`}
                       aria-label="Previous item"
-                      aria-keyshortcuts="ArrowLeft"
+                      aria-keyshortcuts="ArrowLeft k"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Previous (←)</TooltipContent>
+                <TooltipContent side="top">Previous item · K</TooltipContent>
               </Tooltip>
             ) : (
               <Button
@@ -140,13 +210,13 @@ export function DetailActionBar({
                     <Link
                       href={`/feed/${nextId}${suffix}`}
                       aria-label="Next item"
-                      aria-keyshortcuts="ArrowRight"
+                      aria-keyshortcuts="ArrowRight j"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Next (→)</TooltipContent>
+                <TooltipContent side="top">Next item · J</TooltipContent>
               </Tooltip>
             ) : (
               <Button
@@ -171,19 +241,60 @@ export function DetailActionBar({
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="View original"
+                    aria-keyshortcuts="o"
                   >
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">View original</TooltipContent>
+              <TooltipContent side="top">View original · O</TooltipContent>
             </Tooltip>
 
-            <DeepResearch itemId={itemId} defaultQuery={title}>
-              <Button variant="ghost" size="icon" className={iconBtn} aria-label="Deep research">
-                <FlaskConical className="h-4 w-4" />
-              </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={iconBtn}
+                  ref={researchBtn}
+                  aria-label="Deep research"
+                  aria-keyshortcuts="Shift+D"
+                  onClick={() => setResearchOpen(true)}
+                >
+                  <FlaskConical className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Deep research · Shift+D</TooltipContent>
+            </Tooltip>
+            <DeepResearch
+              itemId={itemId}
+              defaultQuery={title}
+              open={researchOpen}
+              onOpenChange={handleResearchOpenChange}
+            >
+              {null}
             </DeepResearch>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`${iconBtn} ${copied ? "text-green-500" : ""}`}
+                  onClick={() => void handleCopyLink()}
+                  aria-label="Copy link"
+                  aria-keyshortcuts="Shift+C"
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {copied ? "Copied" : "Copy link · Shift+C"}
+              </TooltipContent>
+            </Tooltip>
+            <span role="status" className="sr-only">
+              {copied ? "Copied" : ""}
+            </span>
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -197,12 +308,13 @@ export function DetailActionBar({
                   }`}
                   onClick={() => handleRate(1)}
                   aria-label={rating === 1 ? "Liked" : "Like"}
+                  aria-keyshortcuts="+"
                   disabled={submitting}
                 >
                   <ThumbsUp className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{rating === 1 ? "Liked" : "Like"}</TooltipContent>
+              <TooltipContent side="top">{rating === 1 ? "Liked" : "Like"} · +</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -217,12 +329,15 @@ export function DetailActionBar({
                   }`}
                   onClick={() => handleRate(-1)}
                   aria-label={rating === -1 ? "Disliked" : "Dislike"}
+                  aria-keyshortcuts="-"
                   disabled={submitting}
                 >
                   <ThumbsDown className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{rating === -1 ? "Disliked" : "Dislike"}</TooltipContent>
+              <TooltipContent side="top">
+                {rating === -1 ? "Disliked" : "Dislike"} · -
+              </TooltipContent>
             </Tooltip>
 
             <Separator orientation="vertical" className="mx-1.5 h-4" />
@@ -243,8 +358,27 @@ export function DetailActionBar({
                   <Check className={`h-4 w-4 ${read ? "stroke-[2.5]" : ""}`} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{read ? "Read" : "Mark as read (r)"}</TooltipContent>
+              <TooltipContent side="top">{read ? "Read" : "Mark as read · R"}</TooltipContent>
             </Tooltip>
+
+            {read && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={iconBtn}
+                    onClick={() => void handleMarkUnread()}
+                    aria-label="Mark as unread"
+                    aria-keyshortcuts="Shift+U"
+                    disabled={markingRead}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Mark as unread · Shift+U</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>
