@@ -6,8 +6,8 @@ argument-hint: [task-name]
 ---
 
 Start the task named `$ARGUMENTS` following `AGENTS.md` §7. The goal is one session, one
-worktree, one branch, always cut from fresh `origin/main`. Do not edit
-`docs/project-state.md` at task start; the checkpoint is written by `/finish-task`.
+worktree, one branch, always cut from fresh `origin/main`. Read the handoff with `npm run state`
+before starting. Do not write a state-log entry at task start; `/finish-task` writes it.
 
 1. **Refuse to start on dirty state.** Run `git status --short`. If the current tree has
    changes that are not yours, stop and report them; never stash, reset or check out over them.
