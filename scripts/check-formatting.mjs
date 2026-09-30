@@ -21,7 +21,11 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-const result = spawnSync("npx", ["prettier", "--check", "--ignore-unknown", ...files], {
+// PRETTIER_BIN lets a workflow without node_modules point at a standalone Prettier install.
+const [command, ...prefix] = process.env.PRETTIER_BIN
+  ? [process.env.PRETTIER_BIN]
+  : ["npx", "prettier"];
+const result = spawnSync(command, [...prefix, "--check", "--ignore-unknown", ...files], {
   encoding: "utf8",
   stdio: "inherit",
 });

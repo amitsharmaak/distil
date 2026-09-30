@@ -38,10 +38,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: Install Prettier at the repository's pinned version
+      - name: Install only Prettier, at the repository's pinned version
+        # Installed outside the checkout so npm does not pull the whole dependency tree.
         run: |
           version="$(node -p "require('./package.json').devDependencies.prettier")"
-          npm install --no-save --no-audit --no-fund "prettier@${version}"
+          mkdir -p "$RUNNER_TEMP/prettier"
+          cd "$RUNNER_TEMP/prettier"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "prettier@${version}"
+          echo "PRETTIER_BIN=$RUNNER_TEMP/prettier/node_modules/.bin/prettier" >> "$GITHUB_ENV"
       - name: Validate the state log
         run: node scripts/state-handoff.mjs --check
       - name: Check formatting of changed files
