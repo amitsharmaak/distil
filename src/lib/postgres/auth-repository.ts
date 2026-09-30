@@ -4,6 +4,7 @@ import type {
   AuthRepositoryPort,
   ConsumeInvitationInput,
   InvitationRecord,
+  InvitationSummary,
 } from "@/lib/auth/ports";
 import type { LinkedAccount, ProviderIdentity } from "@/lib/auth/account";
 import { mapAuthAccount, type AuthAccountRow } from "@/lib/auth/account-row";
@@ -31,14 +32,12 @@ function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function mapInvitation(row: InvitationRow | undefined): InvitationRecord | undefined {
-  if (!row) return undefined;
+type InvitationSummaryRow = Omit<InvitationRow, "email_hash" | "token_salt" | "token_hash">;
+
+function mapInvitationSummary(row: InvitationSummaryRow): InvitationSummary {
   return {
     id: row.id,
     normalizedEmail: row.normalized_email,
-    emailHash: row.email_hash,
-    tokenSalt: row.token_salt,
-    tokenHash: row.token_hash,
     status: row.status,
     issuedByActorId: row.issued_by_actor_id,
     issuanceReason: row.issuance_reason,
@@ -51,6 +50,16 @@ function mapInvitation(row: InvitationRow | undefined): InvitationRecord | undef
     ...(row.consumed_by_user_id
       ? { consumedByUserId: userIdSchema.parse(row.consumed_by_user_id) }
       : {}),
+  };
+}
+
+function mapInvitation(row: InvitationRow | undefined): InvitationRecord | undefined {
+  if (!row) return undefined;
+  return {
+    ...mapInvitationSummary(row),
+    emailHash: row.email_hash,
+    tokenSalt: row.token_salt,
+    tokenHash: row.token_hash,
   };
 }
 
@@ -81,6 +90,18 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
       SELECT * FROM distil_find_invitation(${id}::uuid)
     `;
     return mapInvitation(row);
+  }
+
+  async listInvitations(limit: number): Promise<InvitationSummary[]> {
+    const rows = await this.sql<InvitationSummaryRow[]>`
+      SELECT id, normalized_email, status, issued_by_actor_id, issuance_reason, created_at,
+             expires_at, revoked_at, revoked_by_actor_id, revoke_reason, consumed_at,
+             consumed_by_user_id
+      FROM invitations
+      ORDER BY created_at DESC
+      LIMIT ${Math.max(1, Math.min(Math.trunc(limit), 200))}
+    `;
+    return rows.map(mapInvitationSummary);
   }
 
   async revokeInvitation(input: {

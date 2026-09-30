@@ -86,6 +86,7 @@ function authRepositories(account: LinkedAccount): AuthRepositoryPort {
   return {
     createInvitation: jest.fn(),
     findInvitationById: jest.fn(),
+    listInvitations: jest.fn(),
     revokeInvitation: jest.fn(),
     claimInvitationDispatch: jest.fn(),
     completeInvitationDispatch: jest.fn(),

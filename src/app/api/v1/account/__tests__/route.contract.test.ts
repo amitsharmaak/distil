@@ -46,8 +46,19 @@ describe("Phase 3 account profile route", () => {
         userId: "11111111-1111-4111-8111-111111111111",
         timezone: "UTC",
         status: "active",
+        isAdmin: false,
       },
     });
+  });
+
+  it("reports isAdmin only for a listed user session", async () => {
+    process.env.DISTIL_ADMIN_USER_IDS = context.userId;
+    try {
+      const response = await GET(new Request("https://distil.example/api/v1/account"));
+      await expect(response.json()).resolves.toMatchObject({ account: { isAdmin: true } });
+    } finally {
+      delete process.env.DISTIL_ADMIN_USER_IDS;
+    }
   });
 
   it("enforces same-origin mutations and rejects client-supplied account fields", async () => {

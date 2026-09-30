@@ -125,4 +125,39 @@ describe("PostgresAuthRepository", () => {
     ]);
     expect(fake.queries.join(" ")).not.toContain("UPDATE invitations");
   });
+
+  it("lists invitations newest first without selecting salts or hashes", async () => {
+    const fake = sqlDouble({
+      "FROM invitations": [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          normalized_email: "colleague@example.com",
+          status: "pending",
+          issued_by_actor_id: "11111111-1111-4111-8111-111111111111",
+          issuance_reason: "settings:invited from Settings",
+          created_at: new Date("2026-09-30T00:00:00.000Z"),
+          expires_at: "2026-10-07T00:00:00.000Z",
+          revoked_at: null,
+          revoked_by_actor_id: null,
+          revoke_reason: null,
+          consumed_at: null,
+          consumed_by_user_id: null,
+        },
+      ],
+    });
+    const repository = new PostgresAuthRepository(fake.sql);
+
+    const [summary] = await repository.listInvitations(50);
+    expect(summary).toEqual({
+      id: "33333333-3333-4333-8333-333333333333",
+      normalizedEmail: "colleague@example.com",
+      status: "pending",
+      issuedByActorId: "11111111-1111-4111-8111-111111111111",
+      issuanceReason: "settings:invited from Settings",
+      createdAt: "2026-09-30T00:00:00.000Z",
+      expiresAt: "2026-10-07T00:00:00.000Z",
+    });
+    expect(fake.queries[0]).toContain("ORDER BY created_at DESC");
+    expect(fake.queries[0]).not.toMatch(/token_hash|token_salt|email_hash|SELECT \*/);
+  });
 });

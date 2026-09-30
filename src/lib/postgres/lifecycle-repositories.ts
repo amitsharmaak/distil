@@ -611,7 +611,7 @@ export class PostgresControlPlaneLifecycleRepository implements ControlPlaneLife
     metadata?: Record<string, string | number | boolean>;
     at: string;
   }) {
-    if (!/^(account\.(suspend|delete|export|restore)|invitation\.revoke)$/u.test(input.action)) {
+    if (!/^(account\.(suspend|delete|export|restore)|invitation\.(issue|revoke))$/u.test(input.action)) {
       throw new Error("Unsupported privileged audit action");
     }
     const targetHash = createHash("sha256").update(String(input.targetUserId)).digest("hex");
