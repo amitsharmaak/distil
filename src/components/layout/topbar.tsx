@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 function formatDate() {
@@ -13,10 +13,8 @@ function formatDate() {
 }
 
 export function Topbar({
-  showSearch = true,
   backHref,
 }: {
-  showSearch?: boolean;
   /** When set, a "Back to feed" link replaces the date on small screens. */
   backHref?: string;
 }) {
@@ -34,15 +32,6 @@ export function Topbar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        {showSearch && (
-          <Link
-            href="/search"
-            aria-label="Search"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:h-9 md:w-9"
-          >
-            <Search className="h-[18px] w-[18px]" />
-          </Link>
-        )}
         <ThemeToggle collapsed className="h-11 w-11 md:h-9 md:w-9" />
       </div>
     </header>

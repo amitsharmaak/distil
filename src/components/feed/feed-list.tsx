@@ -24,16 +24,14 @@ import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
 import {
-  dateQueryValue,
   feedFilterKey,
   feedFilterState,
   feedRequestSearch,
   normalizeSearchQuery,
   type FeedFilterState,
 } from "@/lib/feed/feed-url";
-import { activeSheetFilters, type FilterUpdates } from "@/lib/feed/quick-filters";
-import type { FeedArchiveFilter, FeedSort } from "@/lib/feed/feed-query";
-import type { ContentItemSummary, ContentType, Priority, SourceType } from "@/lib/types";
+import { activeFilterChips, type FilterUpdates } from "@/lib/feed/quick-filters";
+import type { ContentItemSummary } from "@/lib/types";
 
 export interface FeedInitialPage {
   /** `feedFilterKey` of the URL the server rendered for; must match to be used. */
@@ -241,54 +239,34 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
 
   return (
     <div className="space-y-5">
-      {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
-        <div className="flex gap-3 text-sm text-muted-foreground">
-          <Link href="/collections" className="hover:text-foreground">
-            Collections
-          </Link>
-          <Link href="/archive" className="hover:text-foreground">
-            Archive
-          </Link>
-        </div>
-      </div>
-
+      {/* Page header: title and links, with the search and Filters on the right. */}
       <FilterBar
         filters={filters}
         onChange={replaceFilters}
         onSearchDraftChange={setSearchDraft}
         collectionNames={collectionNames}
+        leading={
+          <div className="flex items-baseline gap-4">
+            <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
+            <nav aria-label="Feed views" className="flex gap-3 text-sm text-muted-foreground">
+              <Link href="/collections" className="hover:text-foreground">
+                Collections
+              </Link>
+              <Link href="/archive" className="hover:text-foreground">
+                Archive
+              </Link>
+            </nav>
+          </div>
+        }
         sheet={
           <FeedFilterSheet
-            activeCount={activeSheetFilters(filters, collectionNames).length}
-            searching={Boolean(filters.searchQuery)}
+            filters={filters}
+            onChange={replaceFilters}
+            activeCount={activeFilterChips(filters, collectionNames).length}
+            topicOptions={topicOptions}
+            collectionOptions={collections}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            selectedSources={filters.sources}
-            onSourcesChange={(values: SourceType[]) => replaceFilters({ source: values })}
-            selectedTypes={filters.contentTypes}
-            onTypesChange={(values: ContentType[]) => replaceFilters({ contentType: values })}
-            selectedPriorities={filters.priorities}
-            onPrioritiesChange={(values: Priority[]) => replaceFilters({ priority: values })}
-            archive={filters.archive}
-            onArchiveChange={(value: FeedArchiveFilter) => replaceFilters({ archive: value })}
-            sort={filters.sort}
-            onSortChange={(value: FeedSort) => replaceFilters({ sort: value })}
-            selectedTopics={filters.topics}
-            onTopicsChange={(values: string[]) => replaceFilters({ topic: values })}
-            topicOptions={topicOptions}
-            selectedCollections={filters.collections}
-            onCollectionsChange={(values: string[]) => replaceFilters({ collection: values })}
-            collectionOptions={collections}
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
-            onDateFromChange={(value: string) =>
-              replaceFilters({ dateFrom: value ? dateQueryValue(value) : undefined })
-            }
-            onDateToChange={(value: string) =>
-              replaceFilters({ dateTo: value ? dateQueryValue(value, true) : undefined })
-            }
           />
         }
       />
