@@ -13,6 +13,11 @@ import { createAuthContext, type AuthContext } from "@/lib/contracts";
 import { countProviderCalls } from "@/lib/auth/auth-metrics";
 import { apiLogger } from "@/lib/logger";
 import { measurePhase } from "@/lib/observability/request-metrics";
+import {
+  P10_PREVIEW_NIL_USER_ID,
+  P10_PREVIEW_PROBE_HEADER,
+  P10_PREVIEW_PROBE_VALUE,
+} from "@/lib/auth/p10-preview-probe";
 
 /** Server-Timing phase covering provider verification and the account lookup. */
 const AUTH_PHASE = "auth";
@@ -62,9 +67,17 @@ async function resolveRequestAuthContextUnmeasured(
   if (readNeonAuthFoundation().enabled) {
     return (await resolveCurrentAccount(request, dependencies)).context;
   }
+  const configuredLegacyUserId = process.env.DISTIL_LEGACY_USER_ID;
+  // TEMPORARY P10 Preview probe: the proxy can add this header only after it
+  // has stripped inbound internal headers and verified the legacy session.
+  const legacyUserId =
+    configuredLegacyUserId === undefined &&
+    request.headers.get(P10_PREVIEW_PROBE_HEADER) === P10_PREVIEW_PROBE_VALUE
+      ? P10_PREVIEW_NIL_USER_ID
+      : (configuredLegacyUserId ?? "");
   return resolveLegacyAuthRequest(request, {
     sessionSecret: environment.sessionSecret,
-    legacyUserId: process.env.DISTIL_LEGACY_USER_ID ?? "",
+    legacyUserId,
     requestId: request.headers.get(TRACE_HEADER) ?? undefined,
   });
 }

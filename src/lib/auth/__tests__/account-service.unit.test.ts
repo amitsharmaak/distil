@@ -9,6 +9,11 @@ import { decodeJsonBase64Url, encodeJsonBase64Url } from "@/lib/auth/hmac";
 import { apiLogger } from "@/lib/logger";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { createAuthContext } from "@/lib/contracts";
+import {
+  P10_PREVIEW_NIL_USER_ID,
+  P10_PREVIEW_PROBE_HEADER,
+  P10_PREVIEW_PROBE_VALUE,
+} from "@/lib/auth/p10-preview-probe";
 
 jest.mock("@/lib/auth/neon-server", () => ({ getNeonAuthServer: jest.fn() }));
 jest.mock("@/lib/auth/repository-runtime", () => ({ getAuthRepositoryPort: jest.fn() }));
@@ -149,6 +154,49 @@ describe("account service composition", () => {
         requestId: context.requestId,
       });
       expect(mockedGetServer).not.toHaveBeenCalled();
+    } finally {
+      if (previousUser === undefined) delete process.env.DISTIL_LEGACY_USER_ID;
+      else process.env.DISTIL_LEGACY_USER_ID = previousUser;
+    }
+  });
+
+  it("uses the nil tenant only for the proxy-owned Preview probe when the legacy id is absent", async () => {
+    mockedFoundation.mockReturnValue({ enabled: false, status: "disabled", missing: [] });
+    const previousUser = process.env.DISTIL_LEGACY_USER_ID;
+    delete process.env.DISTIL_LEGACY_USER_ID;
+    try {
+      const request = new Request("https://distil.example/feed?__distil_p10_probe=1", {
+        headers: {
+          "x-trace-id": context.requestId,
+          [P10_PREVIEW_PROBE_HEADER]: P10_PREVIEW_PROBE_VALUE,
+        },
+      });
+      await resolveRequestAuthContext(request);
+      expect(mockedResolveLegacy).toHaveBeenCalledWith(request, {
+        sessionSecret: "a-secure-session-secret-that-is-long-enough",
+        legacyUserId: P10_PREVIEW_NIL_USER_ID,
+        requestId: context.requestId,
+      });
+    } finally {
+      if (previousUser === undefined) delete process.env.DISTIL_LEGACY_USER_ID;
+      else process.env.DISTIL_LEGACY_USER_ID = previousUser;
+    }
+  });
+
+  it("does not replace a configured legacy id even when the Preview probe header is present", async () => {
+    mockedFoundation.mockReturnValue({ enabled: false, status: "disabled", missing: [] });
+    const previousUser = process.env.DISTIL_LEGACY_USER_ID;
+    process.env.DISTIL_LEGACY_USER_ID = context.userId;
+    try {
+      const request = new Request("https://distil.example/feed", {
+        headers: { [P10_PREVIEW_PROBE_HEADER]: P10_PREVIEW_PROBE_VALUE },
+      });
+      await resolveRequestAuthContext(request);
+      expect(mockedResolveLegacy).toHaveBeenCalledWith(request, {
+        sessionSecret: "a-secure-session-secret-that-is-long-enough",
+        legacyUserId: context.userId,
+        requestId: undefined,
+      });
     } finally {
       if (previousUser === undefined) delete process.env.DISTIL_LEGACY_USER_ID;
       else process.env.DISTIL_LEGACY_USER_ID = previousUser;

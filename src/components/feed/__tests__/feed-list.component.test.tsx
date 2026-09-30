@@ -3,8 +3,9 @@
  */
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FeedList } from "../feed-list";
+import { FeedList, nextFeedUrl } from "../feed-list";
 import type { ContentItem } from "@/lib/types";
+import { P10_PREVIEW_PROBE_PARAM, P10_PREVIEW_PROBE_VALUE } from "@/lib/auth/p10-preview-probe";
 
 let mockSearch = "";
 const mockReplace = jest.fn();
@@ -120,6 +121,15 @@ async function settleInitialFetch() {
     await Promise.resolve();
   });
 }
+
+it("preserves the temporary Preview probe across Feed filter navigations", () => {
+  const current = new URLSearchParams({
+    [P10_PREVIEW_PROBE_PARAM]: P10_PREVIEW_PROBE_VALUE,
+  });
+  expect(nextFeedUrl(current, { area: "work" })).toBe(
+    `/feed?${P10_PREVIEW_PROBE_PARAM}=${P10_PREVIEW_PROBE_VALUE}&area=work`
+  );
+});
 
 describe("FeedList without a server page (client fetch)", () => {
   let fetchMock: jest.MockedFunction<typeof fetch>;

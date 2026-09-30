@@ -9,6 +9,13 @@ import type { LinkedAccount } from "@/lib/auth/account";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { VerifiedProviderSession } from "@/lib/auth/neon-proxy";
 import { IDENTITY_HEADER, verifyIdentityToken } from "@/lib/auth/identity-token";
+import {
+  P10_PREVIEW_PROBE_HEADER,
+  P10_PREVIEW_PROBE_PARAM,
+  P10_PREVIEW_PROBE_VALUE,
+} from "@/lib/auth/p10-preview-probe";
+import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { createSessionToken } from "@/lib/auth/session";
 import { userIdSchema } from "@/lib/contracts";
 
 const userId = userIdSchema.parse("20000000-0000-4000-8000-000000000002");
@@ -75,6 +82,7 @@ const forgedHeaders = {
   "x-distil-user-id": "attacker-controlled",
   "x-distil-actor-kind": "system",
   "x-distil-proxy-timing": 'evil;dur=0;desc="x"',
+  [P10_PREVIEW_PROBE_HEADER]: "forged-probe",
   "x-trace-id": "30000000-0000-4000-8000-00000000dead",
   "x-request-header": "preserved",
 };
@@ -119,6 +127,7 @@ describe("proxy identity handoff", () => {
       expect(forwarded(response, IDENTITY_HEADER)).toBeNull();
       expect(forwarded(response, "x-distil-user-id")).toBeNull();
       expect(forwarded(response, "x-distil-actor-kind")).toBeNull();
+      expect(forwarded(response, P10_PREVIEW_PROBE_HEADER)).toBeNull();
       expect(forwarded(response, "x-request-header")).toBe("preserved");
       const traceId = forwarded(response, "x-trace-id");
       expect(traceId).toMatch(/^[0-9a-f-]{36}$/);
@@ -164,6 +173,7 @@ describe("proxy identity handoff", () => {
     expect(response.status).toBe(200);
     expect(forwarded(response, "x-distil-user-id")).toBeNull();
     expect(forwarded(response, "x-distil-proxy-timing")).toBeNull();
+    expect(forwarded(response, P10_PREVIEW_PROBE_HEADER)).toBeNull();
     const traceId = forwarded(response, "x-trace-id");
     await expect(
       verifyIdentityToken(forwarded(response, IDENTITY_HEADER), {
@@ -171,6 +181,67 @@ describe("proxy identity handoff", () => {
         traceId,
       })
     ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("adds the temporary probe header only after successful legacy auth with the exact flag", async () => {
+    const { proxy } = await import("@/proxy");
+    const secret = "legacy-preview-session-secret-with-32-bytes";
+    const token = await createSessionToken(secret);
+    const previous = {
+      feature: process.env.FEATURE_NEON_AUTH,
+      password: process.env.DISTIL_WEB_PASSWORD_HASH,
+      secret: process.env.DISTIL_SESSION_SECRET,
+      userId: process.env.DISTIL_LEGACY_USER_ID,
+    };
+    try {
+      Object.assign(process.env, {
+        FEATURE_NEON_AUTH: "false",
+        DISTIL_WEB_PASSWORD_HASH: "configured-for-preview",
+        DISTIL_SESSION_SECRET: secret,
+      });
+      delete process.env.DISTIL_LEGACY_USER_ID;
+      const probeUrl = `https://distil.example/feed?${P10_PREVIEW_PROBE_PARAM}=${P10_PREVIEW_PROBE_VALUE}`;
+      const unauthenticated = await proxy(
+        new NextRequest(probeUrl, { headers: { [P10_PREVIEW_PROBE_HEADER]: "forged-probe" } })
+      );
+      expect(unauthenticated.status).toBe(307);
+      expect(forwarded(unauthenticated, P10_PREVIEW_PROBE_HEADER)).toBeNull();
+
+      const headers = {
+        cookie: `${SESSION_COOKIE_NAME}=${token}`,
+        [P10_PREVIEW_PROBE_HEADER]: "forged-probe",
+      };
+      const probe = await proxy(new NextRequest(probeUrl, { headers }));
+      expect(probe.status).toBe(200);
+      expect(forwarded(probe, P10_PREVIEW_PROBE_HEADER)).toBe(P10_PREVIEW_PROBE_VALUE);
+
+      const ordinary = await proxy(new NextRequest("https://distil.example/feed", { headers }));
+      expect(ordinary.status).toBe(200);
+      expect(forwarded(ordinary, P10_PREVIEW_PROBE_HEADER)).toBeNull();
+    } finally {
+      if (previous.feature === undefined) delete process.env.FEATURE_NEON_AUTH;
+      else process.env.FEATURE_NEON_AUTH = previous.feature;
+      if (previous.password === undefined) delete process.env.DISTIL_WEB_PASSWORD_HASH;
+      else process.env.DISTIL_WEB_PASSWORD_HASH = previous.password;
+      if (previous.secret === undefined) delete process.env.DISTIL_SESSION_SECRET;
+      else process.env.DISTIL_SESSION_SECRET = previous.secret;
+      if (previous.userId === undefined) delete process.env.DISTIL_LEGACY_USER_ID;
+      else process.env.DISTIL_LEGACY_USER_ID = previous.userId;
+    }
+  });
+
+  it("never enables the temporary legacy probe on the Neon Auth path", async () => {
+    const { proxy } = await import("@/proxy");
+    const response = await proxy(
+      new NextRequest(
+        `https://distil.example/feed?${P10_PREVIEW_PROBE_PARAM}=${P10_PREVIEW_PROBE_VALUE}`,
+        { headers: forgedHeaders }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(forwarded(response, P10_PREVIEW_PROBE_HEADER)).toBeNull();
+    expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
   });
 
   it("answers unauthenticated requests with 401 for APIs and a sign-in redirect for pages", async () => {
