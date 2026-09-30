@@ -555,7 +555,7 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      listing — plan X1–X3" checkpoint and pick a phase (recommended X1)**, then start it with
      the single-session code prompt at the end of that checkpoint. Independently, start I1–I3
      with the prompt in the admin-invitations checkpoint.
-  1. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
+  2. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
      live capture and the jsdom runtime fix — 2026-09-17") extracted and indexed correctly, but
      the P6 brief summary was skipped with `AIProviderError AI_AUTHENTICATION`: the Gemini API
      key in Vercel's Production environment is rejected by the provider. Replace
@@ -564,10 +564,10 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
      secrets. Until then every capture lands without a generated summary (extractive brief only)
      and on-demand summaries fail the same way.
-  1. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
+  3. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
      migration applied to Production — 2026-09-18" below). `ai_summaries.content_hash` now exists
      there; wiring it into the summary cache key is P6's deferred item and a small follow-up.
-  1. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
+  4. Amit: look at Today, Feed, the reader and Settings at phone width and desktop (the
      simplified shell and P3's same-origin client have now been exercised by Claude through the
      in-app browser but not seen by a person), and make one browser-extension capture (the
      in-app `/save` path is verified; the extension path is not). Done 2026-09-19: the iPhone
@@ -576,16 +576,16 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      reached the API but was rejected by the worker (checkpoint "X/Twitter captures rejected by
      the durable worker — 2026-09-19"); fixed and released as PR #42 on 2026-09-20 (checkpoint
      "Release: PR #42 to Production — 2026-09-20").
-  1. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
+  5. Rely on the 02:30 UTC nightly Full gate; if the "Nightly full gate failed" issue opens,
      treat it as the first task of the next session.
-  1. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
+  6. Performance overhaul: done, measured live (checkpoint "Performance P5 live numbers —
      2026-09-18"). The remaining performance work is not in the plan, each a separate
      decision: the RLS/ordering architecture question from P7 (ordered index scans cannot cross
      the security barrier; adding the two unused indexes anyway would be a one-file `0011`
      stage), the ~130 ms `proxy-auth-db` lookup (`distil_resolve_auth_identity`, a SECURITY
      DEFINER lookup on `auth_identities`, the largest fixed per-request cost), and the
      multi-second Vercel + Neon cold start on the first request of a session.
-  1. Other engineering candidates, each as its own short-lived branch with a state update: the
+  7. Other engineering candidates, each as its own short-lived branch with a state update: the
      dead `notifications.ts` module and the unlinked `/topics`, `/sources`, `/research` routes are
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
