@@ -1,5 +1,9 @@
 import {
   CITATION_LINK_TITLE,
+  CITATION_REF_TITLE,
+  linkCitationMarkers,
+  markerRunIds,
+  sourceAnchorId,
   compactCitationLinks,
   countWords,
   createSlugger,
@@ -212,5 +216,43 @@ describe("prepareReport", () => {
 
   it("tolerates an empty report", () => {
     expect(prepareReport("")).toMatchObject({ summary: null, body: "", headings: [] });
+  });
+});
+
+describe("linkCitationMarkers", () => {
+  const ref = (ids: string, first: number) => `[${ids}](#source-${first} "${CITATION_REF_TITLE}")`;
+
+  it("turns each run of adjacent markers into one in-page link to the first source", () => {
+    expect(linkCitationMarkers("A [2]. B [1][3]. C [1, 2].", [1, 2, 3])).toBe(
+      `A ${ref("2", 2)}. B ${ref("1,3", 1)}. C ${ref("1,2", 1)}.`
+    );
+  });
+
+  it("keeps unknown ids as plain text and drops them from a mixed run", () => {
+    expect(linkCitationMarkers("X [9]. Y [1][9].", [1])).toBe(`X [9]. Y ${ref("1", 1)}.`);
+  });
+
+  it("leaves code, links, images, reference definitions and escaped brackets alone", () => {
+    const markdown = [
+      "Inline `a[1]` and [1](https://x.example) and ![1](img.png) and \\[1] and [text][1]",
+      "```",
+      "arr[1]",
+      "```",
+      "[1]: https://x.example",
+    ].join("\n");
+    expect(linkCitationMarkers(markdown, [1])).toBe(markdown);
+  });
+
+  it("changes nothing without known ids and keeps line numbers", () => {
+    expect(linkCitationMarkers("Claim [1].", [])).toBe("Claim [1].");
+    const markdown = "## Heading [1]\nText [1]\n## Next";
+    const linked = linkCitationMarkers(markdown, [1]);
+    expect(linked.split("\n")).toHaveLength(3);
+    expect(extractHeadings(linked).map((heading) => heading.line)).toEqual([1, 3]);
+  });
+
+  it("reads the ids of a marker run", () => {
+    expect(markerRunIds("[3][1, 3]")).toEqual([3, 1]);
+    expect(sourceAnchorId(4)).toBe("source-4");
   });
 });

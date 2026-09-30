@@ -1,12 +1,28 @@
 "use client";
 
 import { ChevronRight, ExternalLink } from "lucide-react";
+import { sourceAnchorId } from "./report-markdown";
 import { shortPath, type ResearchSource } from "./research-sources";
 
-function SourceRow({ source, numbered }: { source: ResearchSource; numbered: boolean }) {
+/** Shown when none of a report's numbered sources came from web search. */
+export const UNVERIFIED_SOURCES_NOTE = "Sources recalled by the model, not verified by search";
+
+function SourceRow({
+  source,
+  numbered,
+  anchored = false,
+}: {
+  source: ResearchSource;
+  numbered: boolean;
+  /** Give the row the `source-n` id that citation superscripts link to. */
+  anchored?: boolean;
+}) {
   const path = shortPath(source.url);
   return (
-    <li className="flex min-w-0 gap-2">
+    <li
+      id={anchored ? sourceAnchorId(source.id) : undefined}
+      className={`flex min-w-0 gap-2 ${anchored ? "scroll-mt-20 rounded-md target:bg-primary/10" : ""}`}
+    >
       {numbered && (
         <span className="w-6 shrink-0 pt-0.5 text-right font-mono text-xs text-muted-foreground tabular-nums">
           {source.id}.
@@ -53,17 +69,51 @@ const disclosureSummary =
 const chevron = "h-4 w-4 shrink-0 text-muted-foreground transition-transform";
 
 /**
- * Collapsed sources section. Cited sources come first; everything else the research touched sits
- * behind a second disclosure. Accepts normalised sources (see `normalizeSources`), so it serves
- * both the legacy URL list and R2's numbered source objects.
+ * R2's numbered sources: cited-only, ordered by id, each row carrying the `source-n` anchor the
+ * `[n]` superscripts link to. Collapsed by default (a citation click opens it). A one-line note
+ * says so when none of the sources came from web search.
+ */
+function NumberedSourcesList({ sources }: { sources: ResearchSource[] }) {
+  if (sources.length === 0) return null;
+  const ordered = [...sources].sort((a, b) => a.id - b.id);
+  const unverified = !sources.some((source) => source.grounded);
+  return (
+    <section aria-label="Sources" className="border-t border-border pt-4">
+      <details className="group/sources">
+        <summary className={`${disclosureSummary} py-1 text-sm font-semibold`}>
+          <ChevronRight className={`${chevron} group-open/sources:rotate-90`} aria-hidden="true" />
+          Sources ({sources.length})
+        </summary>
+        <ol className="mt-3 space-y-1.5 pl-1">
+          {ordered.map((source) => (
+            <SourceRow key={source.id} source={source} numbered anchored />
+          ))}
+        </ol>
+      </details>
+      {unverified && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="unverified-sources-note">
+          {UNVERIFIED_SOURCES_NOTE}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Collapsed sources section. For a legacy URL list, cited sources come first and everything else
+ * the research touched sits behind a second disclosure. With `numbered` (R2 source objects, all
+ * cited), it is one numbered list anchored for the `[n]` citations; `other` is ignored.
  */
 export function ResearchSourcesList({
   cited,
   other,
+  numbered: numberedSources = false,
 }: {
   cited: ResearchSource[];
   other: ResearchSource[];
+  numbered?: boolean;
 }) {
+  if (numberedSources) return <NumberedSourcesList sources={cited} />;
   const total = cited.length + other.length;
   if (total === 0) return null;
   // Numbered source objects carry titles; show their numbers so `[n]` markers can be matched.

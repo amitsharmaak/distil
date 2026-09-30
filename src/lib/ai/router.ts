@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import { toAIProviderError } from "./errors";
 import type { AIProvider, GenerateOptions, ProviderResult, ProviderUsage } from "./providers";
 import { createProviders } from "./providers";
-import type { GeminiProvider } from "./providers";
+import type { GeminiProvider, GroundingSource, SearchProviderResult } from "./providers";
 import type { AITask, ProviderName, ModelAssignment } from "./ai-config";
 import {
   DEFAULT_MODEL_CONFIG,
@@ -33,6 +33,22 @@ export interface UsageMetrics {
   model: string;
   provider: ProviderName;
   task: AITask;
+}
+
+/**
+ * Prompt for a search call. A pair lets the caller phrase the plain-generation
+ * fallback differently (for example, asking for recalled sources) without a
+ * second model call; a plain string is used on both paths.
+ */
+export type SearchPrompt = string | { grounded: string; ungrounded: string };
+
+/** Result of the tenant search facade. */
+export interface SearchTextResult {
+  text: string;
+  /** Web sources from search grounding; always empty when `grounded` is false. */
+  sources: GroundingSource[];
+  /** True when the Google Search grounded call answered; false on the plain fallback. */
+  grounded: boolean;
 }
 
 function estimateTokens(text: string): number {
@@ -280,26 +296,35 @@ class AIRouter {
    * (tenant admission, deferred audit and usage accounting) but calls the
    * Gemini grounded path on `GEMINI_SEARCH_MODEL`; without a Gemini provider it
    * degrades to the plain `research-search` routing so research still runs.
+   * Returns the web sources grounding attached; the plain fallback returns
+   * `grounded: false` with no sources.
    */
   async generateTenantTextWithSearch(
     context: AuthContext,
     repositories: RepositorySet,
-    prompt: string,
+    prompt: SearchPrompt,
     options?: GenerateOptions
-  ): Promise<string> {
+  ): Promise<SearchTextResult> {
     const task: AITask = "research-search";
+    const groundedPrompt = typeof prompt === "string" ? prompt : prompt.grounded;
+    const ungroundedPrompt = typeof prompt === "string" ? prompt : prompt.ungrounded;
+    const plain = async (): Promise<SearchTextResult> => ({
+      text: await this.generateTenantText(context, repositories, ungroundedPrompt, task, options),
+      sources: [],
+      grounded: false,
+    });
     const gemini = this.providers.get("gemini");
     if (!gemini || !("generateTextWithSearch" in gemini)) {
-      return this.generateTenantText(context, repositories, prompt, task, options);
+      return plain();
     }
     const tenant = parseAuthContext(context);
     await assertTenantAIBudget(repositories);
     const provider: ProviderName = "gemini";
     const model = GEMINI_SEARCH_MODEL;
     const start = Date.now();
-    let result: ProviderResult<string>;
+    let result: SearchProviderResult;
     try {
-      result = await (gemini as GeminiProvider).generateTextWithSearch(prompt, options);
+      result = await (gemini as GeminiProvider).generateTextWithSearch(groundedPrompt, options);
     } catch (error) {
       const failure = toAIProviderError(error, provider, model);
       // Google Search grounding is a separately entitled quota; a key whose
@@ -317,10 +342,17 @@ class AIRouter {
         },
         "Search grounding refused; using plain research-search routing"
       );
-      return this.generateTenantText(context, repositories, prompt, task, options);
+      return plain();
     }
-    this.accountTenantText(tenant, repositories, { task, provider, model, prompt, result, start });
-    return result.value;
+    this.accountTenantText(tenant, repositories, {
+      task,
+      provider,
+      model,
+      prompt: groundedPrompt,
+      result,
+      start,
+    });
+    return { text: result.value, sources: result.sources ?? [], grounded: true };
   }
 
   private accountTenantText(
@@ -617,7 +649,7 @@ export function createTenantAIRouter(context: AuthContext, repositories: Reposit
     generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions) {
       return _getRouter().generateTenantJSON<T>(tenant, repositories, prompt, task, options);
     },
-    generateTextWithSearch(prompt: string, options?: GenerateOptions) {
+    generateTextWithSearch(prompt: SearchPrompt, options?: GenerateOptions) {
       return _getRouter().generateTenantTextWithSearch(tenant, repositories, prompt, options);
     },
     generateJSONWithMetadata<T>(prompt: string, task: AITask, options?: GenerateOptions) {

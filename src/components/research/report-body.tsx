@@ -4,8 +4,14 @@ import { useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { Components, ExtraProps } from "react-markdown";
 import { ExternalLink } from "lucide-react";
-import { CITATION_LINK_TITLE, type ReportHeading } from "./report-markdown";
-import { domainOf } from "./research-sources";
+import {
+  CITATION_LINK_TITLE,
+  CITATION_REF_TITLE,
+  markerRunIds,
+  sourceAnchorId,
+  type ReportHeading,
+} from "./report-markdown";
+import { domainOf, type ResearchSource } from "./research-sources";
 
 const Markdown = dynamic(() => import("@/components/markdown").then((module) => module.Markdown));
 
@@ -130,14 +136,81 @@ function ReportTd({ node: _node, children, ...rest }: ComponentPropsWithoutRef<"
   );
 }
 
-/** Markdown element overrides for a report: heading ids, compact links, scrollable tables. */
-export function createReportComponents(headings: ReportHeading[]): Components {
+function sourceLabel(source: ResearchSource): string {
+  return source.title && source.title !== source.domain
+    ? `${source.title} — ${source.domain}`
+    : source.domain;
+}
+
+/**
+ * Opens the collapsed sources disclosure(s) around a source entry before the browser follows the
+ * `#source-n` fragment, so the jump lands on a visible row.
+ */
+function revealSource(id: number): void {
+  const target = document.getElementById(sourceAnchorId(id));
+  let element = target?.parentElement ?? null;
+  while (element) {
+    if (element instanceof HTMLDetailsElement) element.open = true;
+    element = element.parentElement;
+  }
+}
+
+/**
+ * Link renderer for reports with numbered sources. Links marked by `linkCitationMarkers` become
+ * one superscript group of citation numbers, each linking to its `#source-n` entry with the
+ * source's title and domain as tooltip and accessible name; every other link is a `ReportLink`.
+ */
+export function createCitationLink(sourcesById: Map<number, ResearchSource>) {
+  function CitationLink(props: LinkProps) {
+    if (props.title !== CITATION_REF_TITLE) return <ReportLink {...props} />;
+    const ids = markerRunIds(textOf(props.children)).filter((id) => sourcesById.has(id));
+    if (ids.length === 0) return <>{`[${textOf(props.children).split(",").join("][")}]`}</>;
+    return (
+      <sup className="ml-0.5 font-sans text-[0.7em] leading-none" data-citation-group="">
+        {ids.map((id, index) => {
+          const source = sourcesById.get(id)!;
+          const label = sourceLabel(source);
+          return (
+            <span key={id}>
+              {index > 0 && (
+                <span className="text-muted-foreground" aria-hidden="true">
+                  ,
+                </span>
+              )}
+              <a
+                href={`#${sourceAnchorId(id)}`}
+                title={label}
+                aria-label={`Source ${id}: ${label}`}
+                onClick={() => revealSource(id)}
+                data-citation=""
+                className="px-px font-medium text-primary! no-underline! tabular-nums hover:underline!"
+              >
+                {id}
+              </a>
+            </span>
+          );
+        })}
+      </sup>
+    );
+  }
+  CitationLink.displayName = "CitationLink";
+  return CitationLink;
+}
+
+/**
+ * Markdown element overrides for a report: heading ids, compact links, scrollable tables. With
+ * `sources` (numbered R2 sources), citation marker links render as superscript citations.
+ */
+export function createReportComponents(
+  headings: ReportHeading[],
+  sources?: ResearchSource[]
+): Components {
   const idsByLine = new Map(headings.map((heading) => [heading.line, heading.id]));
   return {
     h2: createHeading(2, idsByLine),
     h3: createHeading(3, idsByLine),
     h4: createHeading(4, idsByLine),
-    a: ReportLink,
+    a: sources ? createCitationLink(new Map(sources.map((s) => [s.id, s]))) : ReportLink,
     table: ReportTable,
     th: ReportTh,
     td: ReportTd,
@@ -151,13 +224,16 @@ export function createReportComponents(headings: ReportHeading[]): Components {
 export function ReportBody({
   markdown,
   headings,
+  sources,
   className,
 }: {
   markdown: string;
   headings: ReportHeading[];
+  /** Numbered (R2) sources the `[n]` citation links resolve to; omit for legacy reports. */
+  sources?: ResearchSource[];
   className?: string;
 }) {
-  const components = useMemo(() => createReportComponents(headings), [headings]);
+  const components = useMemo(() => createReportComponents(headings, sources), [headings, sources]);
   return (
     <div
       className={`distil-reader max-w-none break-words [&>:first-child]:mt-0! ${className ?? ""}`}
