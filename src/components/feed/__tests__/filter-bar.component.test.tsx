@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { FilterBar, SEARCH_DEBOUNCE_MS } from "../filter-bar";
 import { feedFilterState } from "@/lib/feed/feed-url";
 
-function renderBar(search = "", options: { collectionNames?: Record<string, string> } = {}) {
+function renderBar(search = "") {
   const onChange = jest.fn();
   const onSearchDraftChange = jest.fn();
   const view = render(
@@ -15,7 +15,6 @@ function renderBar(search = "", options: { collectionNames?: Record<string, stri
       filters={feedFilterState(new URLSearchParams(search))}
       onChange={onChange}
       onSearchDraftChange={onSearchDraftChange}
-      collectionNames={options.collectionNames}
       sheet={<button type="button">Filters</button>}
     />
   );
@@ -25,7 +24,6 @@ function renderBar(search = "", options: { collectionNames?: Record<string, stri
         filters={feedFilterState(new URLSearchParams(next))}
         onChange={onChange}
         onSearchDraftChange={onSearchDraftChange}
-        collectionNames={options.collectionNames}
         sheet={<button type="button">Filters</button>}
       />
     );
@@ -132,8 +130,7 @@ describe("FilterBar layout", () => {
 describe("FilterBar active filter chips", () => {
   it("shows every active filter as a removable chip and clears everything at once", () => {
     const { onChange } = renderBar(
-      "source=gmail&topic=AI&collection=c1&archive=include&dateFrom=2026-09-01T00:00:00.000Z&q=rust&area=work&contentType=video&priority=high&site=x.com&read=true",
-      { collectionNames: { c1: "Reading list" } }
+      "source=gmail&topic=AI&archive=include&dateFrom=2026-09-01T00:00:00.000Z&q=rust&area=work&contentType=video&priority=high&site=x.com&read=true"
     );
     for (const label of [
       "Work",
@@ -143,7 +140,6 @@ describe("FilterBar active filter chips", () => {
       "X posts",
       "Gmail",
       "AI",
-      "Reading list",
       "Including archived",
       "From 2026-09-01",
     ]) {

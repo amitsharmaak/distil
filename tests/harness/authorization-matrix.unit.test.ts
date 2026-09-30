@@ -88,7 +88,7 @@ describe("Phase 3 authorization matrix", () => {
       expect.arrayContaining([
         "GET /api/health",
         "GET /api/v1/captures/:id",
-        "DELETE /api/v1/collections/:id/items/:itemId",
+        "DELETE /api/v1/items/:id/annotations/:annotationId",
       ])
     );
   });
@@ -100,7 +100,7 @@ describe("Phase 3 authorization matrix", () => {
     const discovered = discoverNextRouteSurfaces(resolve(process.cwd(), "src/app/api"));
     const matrix = createPhase2Wave0AuthorizationMatrix(inventory);
 
-    expect(inventory).toHaveLength(123);
+    expect(inventory).toHaveLength(116);
     expect(() => assertRouteSurfaceInventory(inventory, discovered)).not.toThrow();
     expect(() =>
       assertAuthorizationCoverage(matrix, [...inventory, ...phase2Wave0WorkerSurfaces()])

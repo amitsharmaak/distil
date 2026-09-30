@@ -67,8 +67,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   auth. Invitations: `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`
   (invitation acceptance only; returning users sign in at `/sign-in`).
   Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
-  `/reset-password` page, and the account-center password section. Capture clients use separate
-  hashed, revocable capture tokens (`src/lib/auth/capture-tokens.ts`).
+  `/reset-password` page, and the account-center password section. Capture clients share one
+  hashed capture token per account, shown once at generation; regenerating revokes every earlier
+  token (`src/lib/auth/capture-tokens.ts`).
 - **Tenancy:** `src/lib/contracts/tenant-context.ts` defines `AuthContext` (`userId`,
   `actorKind`, `actorId`, `sessionId?`, `requestId`) and `SystemContext`. Every repository call,
   queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`, `ResearchRunMessageV1`), search,
@@ -105,7 +106,7 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `repositories.passages`). `content_chunks` and chunking at capture remain.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
-  `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
+  `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
   `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop sidebar link,
   Settings → Library link on mobile, and the flask button in the reader action bar; routes under
   `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were deleted in

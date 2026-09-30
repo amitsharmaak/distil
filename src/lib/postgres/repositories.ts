@@ -15,9 +15,6 @@ import type {
   AnnotationRepository,
   ContentChunkRepository,
   ContentVersionRepository,
-  CollectionItemRecord,
-  CollectionRecord,
-  CollectionRepository,
   DigestItemRecord,
   DigestRepository,
   DigestRunRecord,
@@ -398,89 +395,6 @@ class PostgresAnnotations implements AnnotationRepository {
   }
 }
 
-class PostgresCollections implements CollectionRepository {
-  constructor(private readonly sql: Sql) {}
-  private map(row: Row): CollectionRecord {
-    return {
-      id: String(row.id),
-      name: String(row.name),
-      description: row.description == null ? undefined : String(row.description),
-      createdAt: iso(row.created_at),
-      updatedAt: iso(row.updated_at),
-    };
-  }
-  private mapItem(row: Row): CollectionItemRecord {
-    return {
-      collectionId: String(row.collection_id),
-      itemId: String(row.item_id),
-      position: Number(row.position),
-      addedAt: iso(row.added_at),
-    };
-  }
-  async list() {
-    return (await this.sql<Row[]>`SELECT * FROM collections ORDER BY created_at ASC`).map((row) =>
-      this.map(row)
-    );
-  }
-  async find(id: string) {
-    const rows = await this.sql<Row[]>`SELECT * FROM collections WHERE id=${id}`;
-    return rows[0] ? this.map(rows[0]) : undefined;
-  }
-  async create(record: CollectionRecord) {
-    const rows = await this.sql<Row[]>`
-      INSERT INTO collections(id,name,description,created_at,updated_at)
-      VALUES(${record.id},${record.name},${record.description ?? null},${record.createdAt},${record.updatedAt}) RETURNING *`;
-    return this.map(rows[0]);
-  }
-  async update(id: string, patch: Parameters<CollectionRepository["update"]>[1]) {
-    const current = await this.find(id);
-    if (!current) return undefined;
-    const value = { ...current, ...patch };
-    const rows = await this.sql<Row[]>`
-      UPDATE collections SET name=${value.name},description=${value.description ?? null},updated_at=${value.updatedAt}
-      WHERE id=${id} RETURNING *`;
-    return rows[0] ? this.map(rows[0]) : undefined;
-  }
-  async delete(id: string) {
-    return (await this.sql`DELETE FROM collections WHERE id=${id} RETURNING id`).length > 0;
-  }
-  async addItem(record: CollectionItemRecord) {
-    return withTenantLocks(
-      this.sql,
-      [tenantLockKey("collection-item", record.collectionId, record.itemId)],
-      async (tx) => {
-        const updated = await tx<Row[]>`
-          UPDATE collection_items SET position=${record.position}
-          WHERE collection_id=${record.collectionId} AND item_id=${record.itemId}
-          RETURNING *
-        `;
-        if (updated[0]) return this.mapItem(updated[0]);
-        const inserted = await tx<Row[]>`
-          INSERT INTO collection_items(collection_id,item_id,position,added_at)
-          VALUES(${record.collectionId},${record.itemId},${record.position},${record.addedAt})
-          RETURNING *
-        `;
-        return this.mapItem(inserted[0]);
-      }
-    );
-  }
-  async removeItem(collectionId: string, itemId: string) {
-    return (
-      (
-        await this
-          .sql`DELETE FROM collection_items WHERE collection_id=${collectionId} AND item_id=${itemId} RETURNING item_id`
-      ).length > 0
-    );
-  }
-  async listItems(collectionId: string) {
-    return (
-      await this.sql<Row[]>`
-        SELECT * FROM collection_items WHERE collection_id=${collectionId}
-        ORDER BY position ASC,added_at ASC,item_id ASC`
-    ).map((row) => this.mapItem(row));
-  }
-}
-
 class PostgresItemEvents implements ItemEventRepository {
   constructor(private readonly sql: Sql) {}
   private map(row: Row): ItemEventRecord {
@@ -640,6 +554,10 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
   async create(v: Parameters<CaptureTokenRepository["create"]>[0]) {
     await this
       .sql`INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
+  }
+  async replaceActive(v: Parameters<CaptureTokenRepository["replaceActive"]>[0]) {
+    await this
+      .sql`WITH revoked AS (UPDATE capture_tokens SET revoked_at=${v.createdAt} WHERE revoked_at IS NULL RETURNING id) INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},NULL,NULL)`;
   }
   async findActiveByHash(hash: string) {
     const r = await this.sql<
@@ -2254,7 +2172,6 @@ export function createPostgresRepositories(sql: Sql, context?: AuthContext): Rep
     items: new PostgresItems(sql),
     itemNotes: new PostgresItemNotes(sql),
     annotations: new PostgresAnnotations(sql),
-    collections: new PostgresCollections(sql),
     itemEvents: new PostgresItemEvents(sql),
     digests: new PostgresDigests(sql),
     captures: new PostgresCaptures(sql),

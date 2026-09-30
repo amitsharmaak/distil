@@ -97,10 +97,7 @@ export interface ActiveFilterChip {
  * with the update that removes it. All filters live in the Filters sheet, so
  * the bar shows these as removable chips and nothing is ever active silently.
  */
-export function activeFilterChips(
-  state: FeedFilterState,
-  collectionNames: Record<string, string> = {}
-): ActiveFilterChip[] {
+export function activeFilterChips(state: FeedFilterState): ActiveFilterChip[] {
   const chips: ActiveFilterChip[] = [];
   for (const area of state.areas) {
     chips.push({
@@ -151,13 +148,6 @@ export function activeFilterChips(
       remove: { topic: state.topics.filter((entry) => entry !== topic) },
     });
   }
-  for (const collection of state.collections) {
-    chips.push({
-      key: `collection:${collection}`,
-      label: collectionNames[collection] ?? "Collection",
-      remove: { collection: state.collections.filter((entry) => entry !== collection) },
-    });
-  }
   if (state.archive !== "exclude") {
     chips.push({
       key: "archive",
@@ -194,7 +184,6 @@ export const CLEAR_ALL_FILTERS: FilterUpdates = {
   site: undefined,
   source: undefined,
   topic: undefined,
-  collection: undefined,
   archive: undefined,
   dateFrom: undefined,
   dateTo: undefined,

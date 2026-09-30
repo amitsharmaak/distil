@@ -84,7 +84,6 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       "items",
       "itemNotes",
       "annotations",
-      "collections",
       "itemEvents",
       "digests",
       "captures",
@@ -409,6 +408,24 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       remaining: 0,
       resetAt: "2026-01-01T00:01:00.000Z",
     });
+  });
+
+  test("replaces every active capture token in a single statement", async () => {
+    const fake = sqlDouble();
+    const repos = createPostgresRepositories(fake.sql);
+    await repos.captureTokens.replaceActive({
+      userId,
+      id: "token-2",
+      name: "Capture token",
+      tokenHash: "hash-2",
+      tokenPrefix: "dst_cap_456",
+      createdAt: "2026-01-02T00:00:00Z",
+    });
+    expect(fake.queries).toHaveLength(1);
+    expect(fake.queries[0]).toContain(
+      "WITH revoked AS (UPDATE capture_tokens SET revoked_at=? WHERE revoked_at IS NULL"
+    );
+    expect(fake.queries[0]).toContain("INSERT INTO capture_tokens");
   });
 
   test("supports OAuth lookup branches and nullable field mapping", async () => {

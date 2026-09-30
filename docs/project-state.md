@@ -18,6 +18,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
 - **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
   and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
   recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
+- **One capture token per account (PR [#90](https://github.com/amitsharmaak/distil/pull/90),
+  squash merged on 2026-09-30 at Amit's request after green CI; checkpoint "Single capture token —
+  2026-09-30"):** Amit found named per-client tokens overkill; capture sources are not tracked per
+  token. Settings → Capture now manages one token: generate, copy once, regenerate (which revokes
+  every earlier token, legacy ones included). Storage is unchanged (hash only, no reveal). Locally
+  verified (`npm run check`, `npm run test:integration`); the merge auto-deploys, but Production
+  was not checked here. Production's two legacy tokens keep working until Amit first regenerates;
+  he then pastes the new token into the extension and the iPhone Shortcut.
 - **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
   `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
   trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
@@ -39,6 +47,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   polish. The checkpoint holds the full key map, five decisions, a single-session code prompt and an
   orchestrated prompt (main thread delegates all execution to small worker models).
   Next: Amit answers the five decisions and picks a phase (recommended K1).
+- **Collections feature removed in code (branch `codex/remove-collections`, PR
+  [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
+  (code only) — 2026-09-30"):** the pages, API routes, UI controls,
+  feed filter/query plumbing, repository port/implementation, personalization events and
+  read-item resurfacing exceptions are removed. The `collections` and `collection_items` tables,
+  existing data, schema/migrations, and lifecycle export/deletion support are intentionally
+  unchanged. Local deterministic gate and production build pass; this branch is not merged or
+  deployed and made no database or cloud change. Next: review the PR. A future table drop requires
+  Amit's explicit approval and a Production-data check first.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -117,10 +134,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
   spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
   **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
-  report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
-  Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
-  Optional follow-up: fail a report instead of completing it when every section is a
-  placeholder.
+  report on Production. **Daily AI budget raised to $2 (Amit, 2026-09-30):** Claude replaced
+  the Production `DISTIL_DAILY_AI_BUDGET` value with `2` through the Vercel CLI (previous value
+  not read; the env pull that would have exposed all secrets was refused) and it took effect with
+  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **R3 verified on Production (2026-09-30, at
+  Amit's request, through his Chrome):** run `4d1cbcb5` (baseline question) completed in 5.5
+  min: 3,760 words, TL;DR 26 words, 6 question-specific sections with 2 tables, 23 sources all
+  grounded and all cited (34 catalogued), no URLs in the text, no placeholders; section writes
+  took 18–31 s each against the 45 s stage deadline, and no "Task timed out" in the logs. The
+  page renders as locally (TOC rail with sub-headings, superscript citations). Note: length
+  overshot the 1,500–2,500-word target (six sections at the top of the 250–450-word range plus
+  tables). **Capped (Amit, 2026-09-30):** at most 4 sections and 2,500 words per report, PR
+  [#100](https://github.com/amitsharmaak/distil/pull/100) `13e1632` (checkpoint "Deep research:
+  cap reports at 4 sections and 2,500 words — 2026-09-30"); not yet seen on a live run.
+  **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
+  marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
+  2026-09-30").
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -167,10 +196,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
     provider model id is "the new TypeSafe model GeV"? No id was assumed. Once named: confirm it
     with `npm run audit:ai-models`, switch the `classify-area` task in `src/lib/ai/ai-config.ts`,
     and compare a small local sample against flash-lite per area.
-  - **Minor open items:** (the Area label truncation at 375 px is fixed; checkpoint "Filters
-    sheet: segment labels fit on phones — 2026-09-30") `src/lib/ai/embeddings.ts` has no production importer (cleanup candidate); the local
-    e2e `phase2.spec.ts` reader step fails on a dev server without sign-in (CI's production-build
-    e2e passes).
+  - **Minor open items:** the local e2e `phase2.spec.ts` reader step fails on a dev server
+    without sign-in (CI's production-build e2e passes). Closed: the Area label truncation at
+    375 px (checkpoint "Filters sheet: segment labels fit on phones — 2026-09-30") and the unused
+    `src/lib/ai/embeddings.ts` (checkpoint "Unused embeddings module removed — 2026-09-30").
     **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, used and now
     spent):** merge each of F5, F6 and F7 once green and checked locally; one F6 Production
     backfill; F7 removes `GET /api/v1/search`; Amit removes the Vercel `FEATURE_SEARCH` variable
@@ -511,6 +540,112 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Unused embeddings module removed — 2026-09-30
+
+Amit asked to clean up `src/lib/ai/embeddings.ts` (`generateEmbedding`, `cosineSimilarity`,
+`findSimilarItems`, `embedItem`). It had no production importer: its last callers
+(`hybridSearch` and the Ask pipeline) went with F7 and A1, and it called OpenAI and Gemini
+directly rather than through the AI router. Removed the file, its `embedding` AI-path entry in
+`docs/authorization-matrix.json`, and the pipeline test's mock and two "embedItem was not
+called" assertions (vacuous without the module). Kept: the `item_embeddings` table and the
+`EmbeddingRepository` (`find`, `upsert`, `listRecent`, used by `src/lib/database.ts`), and the
+`openai` package (still used by `src/lib/ai/providers.ts` and `scripts/check-ai-models.ts`).
+Checks: `npm run check` (234 suites, 1,898 tests), `tests/harness` (76) and
+`audit:phase3-security` pass. No schema, route or environment change.
+
+### Deep research: cap reports at 4 sections and 2,500 words — 2026-09-30
+
+**Why.** Production run `4d1cbcb5` (R3) wrote 3,760 words: six sections, each at the top of the
+250–450-word range, plus two tables. Amit's decision (2026-09-30): at most 4 sections and at most
+2,500 words for the whole report. Branch `claude/research-cap-length` from `origin/main`.
+Implementation complete and verified by deterministic tests; no live model call, no dev server.
+Not merged, not deployed; nothing changed in Vercel or Neon.
+
+**What changed.**
+
+- **Outline.** `researchOutlinePrompt` asks for 3–4 sections ("never more than 4", report at most
+  2,500 words). `MAX_REPORT_SECTIONS` is 4: `parseOutline` keeps the first four valid sections
+  (trimmed, not merged, with their findings and source ids); `fallbackOutline` makes one section
+  per usable finding for the first four and folds the rest, with their sources, into the last.
+- **Per-section budget.** `sectionWordBudget(outline)` in `src/lib/ai/research-report.ts`:
+  `max = clamp(floor((2,500 − frame) / sections, to 10), 200, 550)`, `min = 0.75 × max` (to 10),
+  where the frame is the word count of the report assembled with empty section bodies (headings,
+  TL;DR trimmed to 60 words, takeaways, caveats), measured from the outline. A typical frame is
+  ~200–350 words, so four sections get ~540–550 words each and two or three sections 550 (the
+  clamp). The section prompt says "about min–max words, never more than max" instead of the
+  fixed 250–450. Write token caps unchanged (Claude 2,000 ≈ 1,400 words; Gemini 5,000 with low
+  thinking), inside the 45 s stage deadline.
+- **Hard cap at assembly.** `capReportSections` runs in `completeReport` before
+  `finalizeCitations`: while the assembled report (same `countSectionWords`, `[n]` not counted)
+  exceeds 2,500 words, the longest section that can lose a block drops its last blank-line
+  separated block (never a table block, never a section's only block, a dangling `###`
+  subheading goes with it; fences are not split). Citations are finalised afterwards, so a
+  source cited only in a dropped paragraph is not listed. `research_report_assembled` logs the
+  new counters `wordsBefore` and `trimmed` (added to the logger's count allowlist).
+- **In-flight runs.** No state version bump. A v3 run outlined before the cap keeps its stored
+  outline (up to six sections): every section is written with the budget computed for that
+  outline (~350–380 words for six) and the assembly cap keeps the report within 2,500 words.
+  Trimming the stored outline was rejected because it would discard sections already written
+  and the sources they cite.
+
+**Verification.** `npm run check` passes. New/updated tests: outline trimmed to 4 and the prompt
+wording (`prompts.unit.test.ts`); fallback ≤4 with folded findings and sources, budget math for
+2/3/4/6 sections, budget in the write prompt for 2–4 sections, assembly trims an over-long
+six-section report to ≤2,500 words keeping a table whole, list block dropped whole, dangling
+subheading dropped (`research-report.unit.test.ts`); an in-flight six-section state finishes
+completed within 2,500 words with all headings (`research-stages.unit.test.ts`); new log
+counters (`logger.security.unit.test.ts`). Not verified live.
+
+### Single capture token — 2026-09-30
+
+**Decision (Amit, in chat):** separate named tokens per browser/phone are overkill for a personal
+ingest tool, and Distil does not track which client a capture came from via its token (captures
+still carry their own `source`). Chosen shape: one token per account, shown once at generation,
+regenerate to replace. Rejected: a revealable token gated by the account password — it needs
+reversible storage, and magic-link-only accounts have no password.
+
+**Change (no migration):**
+
+- `CaptureTokenRepository.replaceActive` revokes every active token for the tenant and inserts
+  the new one in a single statement (data-modifying CTE), scoped by RLS.
+- `issueCaptureToken` takes no name (fixed `Capture token`) and calls `replaceActive`.
+  `POST /api/v1/capture-tokens` needs no body. `GET` and `DELETE /api/v1/capture-tokens/:id` are
+  unchanged (DELETE has no UI caller now).
+- `TokenSettings` shows the newest active token's prefix, created and last-used dates, a note
+  when older legacy tokens are still active, Generate (first time) or Regenerate… with an inline
+  confirmation, and the one-time copy panel.
+- Docs: `AGENTS.md`, `docs/vercel-deployment.md`, `docs/iphone-shortcut.md`, extension README and
+  Options hint.
+
+**Verification:** `npm run check` (234 suites, 1,883 tests) and `npm run test:integration` pass
+locally. New tests: repository SQL shape, route contract, component flow, and an RLS integration
+test proving regeneration revokes only the caller's tokens. Not checked in a browser. Squash merged
+as PR #90 after green CI (auto-deploys to Production; not checked there).
+
+**Known limits:** two concurrent regenerations could leave two active tokens (no unique index,
+because existing accounts already hold several active tokens); the next regenerate clears it.
+All capture clients now share the 60 requests/minute limit keyed by token id.
+
+### Deep research: fail an unwritten report — 2026-09-30
+
+**Why.** Production run `8b17dcaf` (R3) hit the app's daily AI cost cap during the section
+writes; every write degraded to a placeholder and the report was stored as `completed` with 474
+words of TL;DR, takeaways and six placeholders. Amit asked for such a report to fail instead, so
+it can simply be retried.
+
+**What changed.** `completeReport` in `src/lib/ai/research.ts` now marks the report `failed`
+(progress cleared) when every outline section is a placeholder. The message says "the daily AI
+budget ran out before the report could be written. Please try again later." when a section write
+was refused with the router's `AI_BUDGET` error (recorded as an optional `budgetExhausted` flag
+in the run state; no version bump, older states simply lack it), otherwise "none of the report's
+sections could be written. Please try again." A counts-only `research_report_unwritten` warning
+is logged. A report with at least one written section still completes with placeholders for the
+rest (unchanged).
+
+**Verification.** `src/lib/ai/__tests__/research-stages.unit.test.ts`: the two single-section
+degrade tests now expect `failed`; new test for the budget message; the mixed written/placeholder
+test still completes. `npm run check` passes. Not verified live (needs the budget to run out).
 
 ### Filters sheet: segment labels fit on phones — 2026-09-30
 
@@ -6147,6 +6282,37 @@ Locally verified: TypeScript, ESLint and Prettier on all changed files; focused 
 27 tests; the content agent's full deterministic run passed 170 suites / 1,199 tests; changed-file
 coverage is above the 80% gate. Not run: E2E, PostgreSQL integration, build; CI supplies those.
 Not deployed. Both bugs move from the deferred backlog to fixed once the PR merges.
+
+### Collections feature removed (code only) — 2026-09-30
+
+Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with current
+`origin/main` in `816bbe4` and `a552c36`; PR
+[#98](https://github.com/amitsharmaak/distil/pull/98).
+
+- **Removed:** the two `/collections` pages; seven reviewed collection API methods across three
+  route files; collection list/detail/editor UI; reader membership controls; Feed/Today collection
+  queries, props, facet, URL state and quick-filter chips; the collection repository port and
+  PostgreSQL implementation; reader-service collection mutations and event emission; the
+  `collection_added` personalization signal; and the read-item exception in Feed and digest stale
+  resurfacing. Old `/search` links now forward only supported Feed parameters, while the Feed API
+  silently ignores retired parameters. Authorization inventories, reviewed counts, ownership docs,
+  route fixtures and tests were updated to match the smaller surface.
+- **Intentionally kept:** the `collections` and `collection_items` tables and existing rows;
+  `src/lib/postgres/schema.ts`; migration `0002`, tenant migrations `0005`–`0007`, and the tenant
+  manifest; lifecycle export and account-deletion handling for existing rows; and the unrelated
+  `createCaptureCollectionHandlers` REST-list helper. No migration, data deletion, database call,
+  environment change or deployment occurred.
+- **Locally verified after merging current `origin/main`:** `npm run check` passed with 235 suites
+  and 1,894 tests (zero failures; five pre-existing lint warnings, zero errors); `npm run build`
+  passed with Next.js 16.3.4 and emitted neither removed page; `npm run perf:bundle -- --write`
+  deterministically regenerated `docs/perf/route-bundle-stats.baseline.json` without the two
+  removed routes, and a second `npm run perf:bundle` reported zero delta. The requested final
+  `grep -rni collection src` returns only the intentionally kept schema/migrations/tenant manifest,
+  lifecycle export, capture-handler name and tests that freeze those kept contracts.
+- **External state:** PR #98 opened; not merged, not deployed, no Preview or Production
+  verification, no database or cloud mutation. External CI is pending at this checkpoint.
+- **Follow-up:** Drop collections/collection_items tables — requires Amit's explicit approval;
+  confirm Production has no collection data worth keeping first.
 
 ## Current cross-phase status
 

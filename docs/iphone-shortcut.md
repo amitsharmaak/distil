@@ -1,13 +1,14 @@
 # Save to Distil from iPhone
 
-The **Save to Distil** Shortcut sends a shared link directly to the durable capture API. Create a dedicated capture token for the Shortcut so it can be revoked without affecting the browser extension.
+The **Save to Distil** Shortcut sends a shared link directly to the durable capture API. It uses your account's single capture token, the same one the browser extension uses.
 
 ## Before you start
 
 1. Open Distil in Safari and sign in.
 2. Open **Settings → Capture**.
-3. Create a token named `iPhone Shortcut`.
-4. Copy the token immediately. Distil only displays the full value once.
+3. Copy your capture token. If you don't have it any more, choose **Regenerate…** (or
+   **Generate token** the first time). Distil only displays the full value once, and
+   regenerating turns off the previous token for every client.
 
 Treat the token like a password. Do not put it in screenshots, notes shared with other people, or a Shortcut published to the Gallery.
 
@@ -49,8 +50,9 @@ The Shortcut should not open Distil on success. A successful response means the 
 Both live in the **Get Contents of URL** action. To rotate the token or move the Shortcut to a
 different origin:
 
-1. Sign in at `https://distilai.app` in Safari, open **Settings → Capture**, create a replacement
-   token named `iPhone Shortcut`, copy it, and revoke the old one.
+1. Sign in at `https://distilai.app` in Safari, open **Settings → Capture**, choose
+   **Regenerate…**, and copy the new token. The old token stops working everywhere, so update the
+   browser extension too.
 2. In Shortcuts, long-press **Save to Distil**, tap **Edit**, and expand the **Get Contents of
    URL** action with **Show More**.
 3. Set **URL** to `https://distilai.app/api/v1/captures` and the `Authorization` header to
@@ -89,7 +91,7 @@ sign-in, so the old icon cannot be repaired in place:
 
 ## Real-device acceptance checklist
 
-Run this checklist on an iPhone 14 Pro Max in portrait orientation. Use a separate, revocable token for the Shortcut.
+Run this checklist on an iPhone 14 Pro Max in portrait orientation. Use the account's current capture token.
 
 - [ ] Chrome: share a normal article to **Save to Distil**; a saved notification appears and one receipt is created.
 - [ ] Safari: share the same article; the Shortcut reports saved and Distil returns the existing capture without creating another item.

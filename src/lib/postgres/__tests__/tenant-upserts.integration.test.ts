@@ -157,28 +157,6 @@ describe("tenant repositories through tenant_api security-barrier views", () => 
       expect.objectContaining({ body: expect.stringMatching(/^(first|second)$/) })
     );
 
-    await alpha.collections.create({
-      id: "tenant-upsert-collection",
-      name: "Upserts",
-      createdAt: at,
-      updatedAt: at,
-    });
-    await alpha.collections.addItem({
-      collectionId: "tenant-upsert-collection",
-      itemId: "tenant-upsert-item",
-      position: 0,
-      addedAt: at,
-    });
-    await alpha.collections.addItem({
-      collectionId: "tenant-upsert-collection",
-      itemId: "tenant-upsert-item",
-      position: 2,
-      addedAt: at,
-    });
-    expect(await alpha.collections.listItems("tenant-upsert-collection")).toEqual([
-      expect.objectContaining({ itemId: "tenant-upsert-item", position: 2 }),
-    ]);
-
     const eventResults = await Promise.all([
       alpha.itemEvents.append({
         id: "tenant-upsert-event-a",

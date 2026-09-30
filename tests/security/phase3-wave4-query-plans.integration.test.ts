@@ -252,7 +252,7 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
     const signals = await explain(`
       SELECT e.item_id FROM item_events e
       WHERE e.user_id = '${fixture.alpha.user.id}'::uuid
-        AND e.event_type IN ('feedback_recorded','collection_added','completed','archived')`);
+        AND e.event_type IN ('feedback_recorded','completed','archived')`);
     expect(signals).toMatch(
       /index (?:scan|only scan) using item_events_user_(?:type_occurred_)?idx/
     );

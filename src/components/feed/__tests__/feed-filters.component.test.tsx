@@ -16,7 +16,6 @@ function renderSheet(search = "", activeCount = 0) {
       onChange={onChange}
       activeCount={activeCount}
       topicOptions={["AI"]}
-      collectionOptions={[{ id: "c1", name: "Reading list" }]}
       viewMode="card"
       onViewModeChange={onViewModeChange}
     />
@@ -58,7 +57,7 @@ describe("FeedFilterSheet", () => {
     expect(onChange).toHaveBeenLastCalledWith({ site: ["example.com", "x.com"] });
   });
 
-  it("toggles priority, source, topic and collection chips", () => {
+  it("toggles priority, source and topic chips", () => {
     const { onChange } = renderSheet("priority=high");
     fireEvent.click(screen.getByRole("button", { name: "High" }));
     expect(onChange).toHaveBeenLastCalledWith({ priority: [] });
@@ -66,8 +65,6 @@ describe("FeedFilterSheet", () => {
     expect(onChange).toHaveBeenLastCalledWith({ source: ["gmail"] });
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
     expect(onChange).toHaveBeenLastCalledWith({ topic: ["AI"] });
-    fireEvent.click(screen.getByRole("button", { name: "Reading list" }));
-    expect(onChange).toHaveBeenLastCalledWith({ collection: ["c1"] });
   });
 
   it("offers Best match only while searching, and sets sort and archive", () => {
@@ -117,7 +114,6 @@ describe("FeedFilterSheet", () => {
         onChange={jest.fn()}
         activeCount={0}
         topicOptions={[]}
-        collectionOptions={[]}
         unreadQueue
         showSort={false}
       />
@@ -135,7 +131,6 @@ describe("FeedFilterSheet", () => {
         onChange={jest.fn()}
         activeCount={0}
         topicOptions={[]}
-        collectionOptions={[]}
         unreadQueue
       />
     );

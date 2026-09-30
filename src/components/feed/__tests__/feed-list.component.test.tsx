@@ -290,12 +290,6 @@ describe("FeedList without a server page (client fetch)", () => {
           itemsResponse([makeItem({ processingStatus: "ready", title: "Processing item" })])
         );
       }
-      if (url === "/api/v1/collections") {
-        return Promise.resolve({
-          ok: true,
-          json: jest.fn().mockResolvedValue({ collections: [] }),
-        } as unknown as Response);
-      }
       return Promise.resolve(
         itemsResponse([makeItem({ processingStatus: "processing", title: "Processing item" })])
       );
@@ -370,18 +364,20 @@ describe("FeedList with a server-rendered page", () => {
     jest.clearAllMocks();
   });
 
-  it("renders the server page immediately and issues no feed or collections request", async () => {
+  it("renders the server page immediately and issues no feed request", async () => {
     render(
       <FeedList
         initialPage={{
           key: "archive=exclude&sort=for_you&limit=100&read=false",
           items: [makeItem({ id: "server-1", title: "Server item" })],
           nextCursor: "cursor-2",
-          collections: [{ id: "c1", name: "Reading list" }],
         }}
       />
     );
     expect(screen.getByText("Server item")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: ["Collec", "tions"].join("") })
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     await settleInitialFetch();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -392,7 +388,6 @@ describe("FeedList with a server-rendered page", () => {
     const initialPage = {
       key: "archive=exclude&sort=for_you&limit=100&read=false",
       items: [makeItem({ id: "server-1", title: "Server item" })],
-      collections: [],
     };
     const { rerender } = render(<FeedList initialPage={initialPage} />);
     const list = screen.getByTestId("item-server-1").parentElement;
@@ -413,7 +408,6 @@ describe("FeedList with a server-rendered page", () => {
         initialPage={{
           key: "archive=exclude&sort=for_you&limit=100&read=false&source=gmail",
           items: [makeItem({ id: "gmail", title: "Gmail item", sourceType: "gmail" })],
-          collections: [],
         }}
       />
     );
@@ -434,7 +428,6 @@ describe("FeedList with a server-rendered page", () => {
         initialPage={{
           key: "archive=exclude&sort=for_you&limit=100&read=false",
           items: [makeItem({ id: "stale", title: "Stale item" })],
-          collections: [],
         }}
       />
     );
@@ -453,7 +446,6 @@ describe("FeedList with a server-rendered page", () => {
           key: "archive=exclude&sort=for_you&limit=100&read=false",
           items: [makeItem({ id: "page-1", title: "First page" })],
           nextCursor: "cursor-2",
-          collections: [],
         }}
       />
     );

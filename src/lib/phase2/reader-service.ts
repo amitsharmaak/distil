@@ -2,8 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
   AnnotationRecord,
-  CollectionItemRecord,
-  CollectionRecord,
   ItemEventRecord,
   ItemNoteRecord,
   RepositorySet,
@@ -86,33 +84,12 @@ export const annotationUpdateSchema = z
     "startOffset and endOffset must be provided together and endOffset must be greater"
   );
 
-export const collectionCreateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200),
-    description: z.string().max(20_000).nullable().optional(),
-    idempotencyKey: z.string().trim().min(1).max(128).optional(),
-  })
-  .strict();
-
-export const collectionUpdateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200).optional(),
-    description: z.string().max(20_000).nullable().optional(),
-  })
-  .strict()
-  .refine((value) => Object.keys(value).length > 0, "at least one collection field is required");
-
-export const membershipSchema = z
-  .object({ position: z.number().int().nonnegative().optional() })
-  .strict();
-
 export class ReaderError extends Error {
   constructor(
     readonly code:
       | "INVALID_REQUEST"
       | "ITEM_NOT_FOUND"
       | "ANNOTATION_NOT_FOUND"
-      | "COLLECTION_NOT_FOUND"
       | "TRANSCRIPT_UNAVAILABLE"
       | "CONFLICT",
     readonly status: 400 | 404 | 409,
@@ -370,121 +347,4 @@ export async function deleteAnnotation(
       404,
       `Annotation with id "${annotationId}" was not found`
     );
-}
-
-export async function listCollections(repositories: RepositorySet): Promise<CollectionRecord[]> {
-  return repositories.collections.list();
-}
-
-export async function createCollection(
-  repositories: RepositorySet,
-  input: z.infer<typeof collectionCreateSchema>
-): Promise<CollectionRecord> {
-  const id = input.idempotencyKey
-    ? deterministicId("collection", input.idempotencyKey)
-    : randomUUID();
-  const existing = await repositories.collections.find(id);
-  if (existing) return existing;
-  try {
-    return await repositories.collections.create({
-      id,
-      name: input.name,
-      description: input.description ?? undefined,
-      createdAt: isoNow(),
-      updatedAt: isoNow(),
-    });
-  } catch {
-    throw new ReaderError("CONFLICT", 409, "Collection already exists");
-  }
-}
-
-export async function getCollection(
-  repositories: RepositorySet,
-  id: string
-): Promise<{ collection: CollectionRecord; items: CollectionItemRecord[] }> {
-  const collection = await repositories.collections.find(id);
-  if (!collection)
-    throw new ReaderError("COLLECTION_NOT_FOUND", 404, `Collection with id "${id}" was not found`);
-  return { collection, items: await repositories.collections.listItems(id) };
-}
-
-export async function updateCollection(
-  repositories: RepositorySet,
-  id: string,
-  input: z.infer<typeof collectionUpdateSchema>
-): Promise<CollectionRecord> {
-  const updated = await repositories.collections.update(id, {
-    ...input,
-    description: input.description ?? undefined,
-    updatedAt: isoNow(),
-  });
-  if (!updated)
-    throw new ReaderError("COLLECTION_NOT_FOUND", 404, `Collection with id "${id}" was not found`);
-  return updated;
-}
-
-export async function deleteCollection(repositories: RepositorySet, id: string): Promise<void> {
-  if (!(await repositories.collections.delete(id)))
-    throw new ReaderError("COLLECTION_NOT_FOUND", 404, `Collection with id "${id}" was not found`);
-}
-
-export async function addCollectionItem(
-  repositories: RepositorySet,
-  collectionId: string,
-  itemId: string,
-  position?: number
-): Promise<CollectionItemRecord> {
-  // All three reads are independent; error precedence stays collection, then item.
-  const [collection, item, memberships] = await Promise.all([
-    repositories.collections.find(collectionId),
-    repositories.items.findById(itemId),
-    repositories.collections.listItems(collectionId),
-  ]);
-  if (!collection)
-    throw new ReaderError(
-      "COLLECTION_NOT_FOUND",
-      404,
-      `Collection with id "${collectionId}" was not found`
-    );
-  requireItem(item, itemId);
-  const existing = memberships.find((value) => value.itemId === itemId);
-  const record = await repositories.collections.addItem({
-    collectionId,
-    itemId,
-    position: position ?? existing?.position ?? 0,
-    addedAt: existing?.addedAt ?? isoNow(),
-  });
-  await repositories.itemEvents.append(
-    event(
-      itemId,
-      "collection_added",
-      { collectionId, position: record.position },
-      `${collectionId}:${itemId}:added:${record.addedAt}`
-    )
-  );
-  return record;
-}
-
-export async function removeCollectionItem(
-  repositories: RepositorySet,
-  collectionId: string,
-  itemId: string
-): Promise<void> {
-  const collection = await repositories.collections.find(collectionId);
-  if (!collection)
-    throw new ReaderError(
-      "COLLECTION_NOT_FOUND",
-      404,
-      `Collection with id "${collectionId}" was not found`
-    );
-  const removedAt = isoNow();
-  if (!(await repositories.collections.removeItem(collectionId, itemId))) return;
-  await repositories.itemEvents.append(
-    event(
-      itemId,
-      "collection_removed",
-      { collectionId },
-      `${collectionId}:${itemId}:removed:${removedAt}`
-    )
-  );
 }

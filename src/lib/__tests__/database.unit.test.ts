@@ -17,7 +17,7 @@ const methodNames: Record<string, string[]> = {
     "updatePriorityScore",
   ],
   captures: ["create", "findById", "findActiveOrReadyByNormalizedUrl", "list", "transition"],
-  captureTokens: ["create", "findActiveByHash", "list", "revoke", "touchLastUsed"],
+  captureTokens: ["create", "replaceActive", "findActiveByHash", "list", "revoke", "touchLastUsed"],
   rateLimits: ["consume"],
   oauthTokens: ["find", "listByProvider", "upsert", "delete"],
   summaries: ["find", "findAll", "upsert", "deleteForItem"],

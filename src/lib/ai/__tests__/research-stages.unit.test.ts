@@ -31,6 +31,12 @@ import {
   type ResearchRunStateV2,
 } from "../research";
 import type { FindingSource, ResearchSource } from "../research-sources";
+import {
+  countSectionWords,
+  MAX_REPORT_WORDS,
+  MAX_SECTION_WORDS,
+  sectionWordBudget,
+} from "../research-report";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { FakeResearchDispatcher } from "@/lib/queue/dispatchers";
 import type { RepositorySet, ResearchReportRecord } from "@/lib/repositories/ports";
@@ -985,6 +991,56 @@ describe("runResearchStage", () => {
     expect(reports.get(id)!.status).toBe("completed");
   });
 
+  it("finishes an in-flight six-section outline from before the cap within 2,500 words", async () => {
+    const { repositories, reports } = createRepositories();
+    const headings = ["One", "Two", "Three", "Four", "Five", "Six"];
+    const outline = {
+      shape: "landscape" as const,
+      tldr: "T [1].",
+      takeaways: ["K [2]."],
+      sections: headings.map((heading, index) => ({
+        heading,
+        purpose: "p",
+        findings: [index % 2],
+        sourceIds: [(index % 2) + 1],
+        format: "prose" as const,
+      })),
+      caveats: ["C."],
+    };
+    // Five sections written at the top of the old 250-450 range and beyond (~550 words each).
+    const long = (lead: string) =>
+      Array.from({ length: 5 }, (_, block) => body(`${lead} paragraph ${block} [1].`, 105)).join(
+        "\n\n"
+      );
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline,
+        sections: [...headings.slice(0, 5).map((heading) => long(heading)), null],
+        view: { stage: "writing", current: 6, total: 6, heading: "Six" },
+      })
+    );
+    const ai = createAI();
+    await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "write", index: 5 },
+      next: null,
+    });
+    expect(ai.generateText).toHaveBeenCalledTimes(1);
+    const prompt = ai.generateText.mock.calls[0]![0];
+    expect(prompt).toContain("Heading: Six");
+    const { max } = sectionWordBudget(outline);
+    expect(max).toBeLessThan(MAX_SECTION_WORDS);
+    expect(prompt).toContain(`never more than ${max}`);
+
+    const record = reports.get(id)!;
+    expect(record.status).toBe("completed");
+    expect(countSectionWords(record.report)).toBeLessThanOrEqual(MAX_REPORT_WORDS);
+    for (const heading of headings) expect(record.report).toContain(`## ${heading}\n\n`);
+    expect(record.report).toContain("About Six");
+    expect(JSON.parse(record.sources).length).toBeGreaterThan(0);
+  });
+
   it("acknowledges a report that is not visible to the tenant", async () => {
     const { repositories } = createRepositories();
     const ai = createAI();
@@ -1064,7 +1120,7 @@ describe("runResearchStage", () => {
       expect(parseResearchRunState(reports.get(id)?.progress, "").sections).toEqual([null]);
     });
 
-    it("writes the placeholder and completes when the last attempt hits the deadline", async () => {
+    it("fails the report when the only section's last attempt hits the deadline", async () => {
       const { repositories, reports, id } = await seedWriting({
         "write:0": MAX_STAGE_ATTEMPTS - 1,
       });
@@ -1072,10 +1128,12 @@ describe("runResearchStage", () => {
       await expect(
         runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
       ).resolves.toEqual({ outcome: "ran", stage: { kind: "write", index: 0 }, next: null });
-      expect(reports.get(id)!.status).toBe("completed");
-      expect(reports.get(id)!.report).toContain(
-        "## One\n\n*This section could not be written; see sources [1].*"
+      const report = reports.get(id)!;
+      expect(report.status).toBe("failed");
+      expect(report.report).toBe(
+        "Research failed: none of the report's sections could be written. Please try again."
       );
+      expect(report.progress).toBeNull();
     });
 
     it("counts a delivery the platform killed before it could record its failure", async () => {
@@ -1097,7 +1155,7 @@ describe("runResearchStage", () => {
       await expect(delivery).rejects.toBeInstanceOf(ResearchStageRetryError);
     });
 
-    it("writes the placeholder without a model call once every write delivery was killed", async () => {
+    it("gives up on the section without a model call once every write delivery was killed", async () => {
       const { repositories, reports, id } = await seedWriting({ "write:0": MAX_STAGE_ATTEMPTS });
       const ai = createAI();
       await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
@@ -1106,8 +1164,31 @@ describe("runResearchStage", () => {
         next: null,
       });
       expect(ai.generateText).not.toHaveBeenCalled();
-      expect(reports.get(id)!.status).toBe("completed");
-      expect(reports.get(id)!.report).toContain("*This section could not be written");
+      // The only section is a placeholder, so the report fails rather than completing empty.
+      expect(reports.get(id)!.status).toBe("failed");
+    });
+
+    it("says the AI budget ran out when every section write was refused by it", async () => {
+      const { repositories, reports, id } = await seedWriting();
+      const ai = createAI({
+        generateText: jest
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("The daily AI budget is exhausted"), { code: "AI_BUDGET" })
+          ),
+      });
+      for (let attempt = 1; attempt < MAX_STAGE_ATTEMPTS; attempt++) {
+        await expect(
+          runResearchStage({ context, repositories, reportId: id, ai })
+        ).rejects.toBeInstanceOf(ResearchStageRetryError);
+      }
+      await runResearchStage({ context, repositories, reportId: id, ai });
+      const report = reports.get(id)!;
+      expect(report.status).toBe("failed");
+      expect(report.report).toBe(
+        "Research failed: the daily AI budget ran out before the report could be written. Please try again later."
+      );
+      expect(report.sources).not.toContain("http");
     });
 
     it("falls back to the deterministic outline once every outline delivery was killed", async () => {

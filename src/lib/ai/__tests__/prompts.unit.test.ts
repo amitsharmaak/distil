@@ -334,7 +334,8 @@ describe("researchOutlinePrompt", () => {
     }
     expect(prompt).toContain('"tldr": 2-3 short sentences, at most 60 words');
     expect(prompt).toMatch(/3-5 key takeaways\. Each is one sentence carrying a concrete fact/);
-    expect(prompt).toMatch(/"sections": 3-6 sections/);
+    expect(prompt).toMatch(/"sections": 3-4 sections/);
+    expect(prompt).toContain("never more than 4");
     expect(prompt).toContain('"format": "table" when the content compares');
     expect(prompt).toMatch(/"caveats": 1-4 caveats or open questions/);
     expect(prompt).toContain("Output ONLY the JSON object");
@@ -360,6 +361,7 @@ describe("researchSectionPrompt", () => {
     format: "table" as const,
     findings: "### Q2\n\nSources: [2] Bench — example.org\n\n- 120 ms",
     hasSources: true,
+    words: { min: 410, max: 550 },
   };
 
   it("names this section among the report's sections and gives its findings only", () => {
@@ -372,9 +374,10 @@ describe("researchSectionPrompt", () => {
     expect(prompt).toContain(input.findings);
   });
 
-  it("asks for a 250-450 word body without the heading, with [n] citations", () => {
+  it("asks for a body within its word budget, without the heading, with [n] citations", () => {
     const prompt = researchSectionPrompt(input);
-    expect(prompt).toContain("250-450 words");
+    expect(prompt).toContain("about 410-550 words, never more than 550");
+    expect(prompt).not.toContain("250-450");
     expect(prompt).toContain("Do not repeat the heading and do not start with a heading");
     expect(prompt).toContain("never # or ##");
     expect(prompt).toContain('bracketed numbers from the "Sources:" line');

@@ -188,7 +188,8 @@ describe("PostgresDigestStore", () => {
       created_at: new Date("2026-09-01T00:00:00.000Z"),
     };
     const priorityStore = tenantStore(fakeSql(() => [candidate]) as never);
-    const resurfacedStore = tenantStore(fakeSql(() => [candidate]) as never);
+    const resurfacedSql = fakeSql(() => [candidate]);
+    const resurfacedStore = tenantStore(resurfacedSql as never);
 
     await expect(priorityStore.listPriorityCandidates()).resolves.toEqual([
       expect.objectContaining({
@@ -200,6 +201,8 @@ describe("PostgresDigestStore", () => {
     await expect(resurfacedStore.listResurfacedCandidates()).resolves.toEqual([
       expect.objectContaining({ id: "candidate-1", createdAt: "2026-09-01T00:00:00.000Z" }),
     ]);
+    expect(resurfacedSql.statements[0]).toContain("AND NOT i.is_read");
+    expect(resurfacedSql.statements[0]).not.toContain(["collec", "tion_items"].join(""));
 
     const fallbackStore = tenantStore(
       fakeSql(() => [{ ...candidate, summary: null, manual_priority: "high" }]) as never

@@ -205,7 +205,7 @@ describe("proxy identity handoff", () => {
     const headers = { "x-forwarded-for": "203.0.113.7" };
     let last: Response | undefined;
     for (let attempt = 0; attempt < 61; attempt += 1) {
-      last = await proxy(new NextRequest("https://distil.example/api/v1/collections", { headers }));
+      last = await proxy(new NextRequest("https://distil.example/api/v1/feed", { headers }));
     }
     expect(last?.status).toBe(429);
     expect(fakes.provider.verifySession).toHaveBeenCalledTimes(60);

@@ -21,7 +21,6 @@ const SAFE_FIELDS = new Set([
   "sessionId",
   "captureId",
   "itemId",
-  "collectionId",
   "jobId",
   "exportId",
   "deletionId",
@@ -82,6 +81,8 @@ const COUNT_FIELDS = new Set([
   "takeaways",
   "caveats",
   "words",
+  "wordsBefore",
+  "trimmed",
 ]);
 
 /**

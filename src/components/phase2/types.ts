@@ -27,7 +27,6 @@ export type ReaderKnowledgeFixture = {
   source: string;
   body: string[];
   note: string;
-  collections: { id: string; name: string; selected: boolean }[];
   annotations: AnnotationFixture[];
   intelligenceState: IntelligenceState;
   degradedReason?: string;

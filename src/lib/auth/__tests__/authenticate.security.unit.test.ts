@@ -24,6 +24,7 @@ const sessionContext = createAuthContext({
 function dependencies() {
   const captureTokens: jest.Mocked<CaptureTokenRepository> = {
     create: jest.fn(),
+    replaceActive: jest.fn(),
     findActiveByHash: jest.fn().mockResolvedValue({
       userId: sessionContext.userId,
       id: tokenId,
