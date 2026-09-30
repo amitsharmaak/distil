@@ -69,7 +69,8 @@ disabled in hosted deployments (`FEATURE_CONNECTORS=false`), so their routes ret
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — shared working guidance and current architecture (source of truth)
-- [docs/project-state.md](docs/project-state.md) — roadmap, status, decisions, next steps
+- [docs/state/](docs/state/README.md) — append-only state log; `npm run state` prints the current handoff
+- [docs/project-state.md](docs/project-state.md) — roadmap and history through 2026-09-30 (frozen)
 - [docs/vercel-deployment.md](docs/vercel-deployment.md) — deployment topology and environment
   variables
 - [docs/runbooks/](docs/runbooks/) — operational runbooks (auth activation, backup/restore,
