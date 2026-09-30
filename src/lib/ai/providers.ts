@@ -24,6 +24,30 @@ export interface GenerateOptions {
    * not store a cut-off answer, e.g. a thinking model spending the budget on reasoning.
    */
   rejectTruncated?: boolean;
+  /**
+   * How much a Gemini thinking model may reason before answering. Reasoning counts against
+   * `maxTokens` and the timeout, so short structured calls ask for less. Gemini 3 models get
+   * `thinkingConfig.thinkingLevel`, Gemini 2.5 Flash/Pro an equivalent `thinkingBudget`; other
+   * models and providers ignore it.
+   */
+  thinking?: GeminiThinkingLevel;
+}
+
+export type GeminiThinkingLevel = "low" | "high";
+
+const GEMINI_25_THINKING_BUDGET: Record<GeminiThinkingLevel, number> = { low: 1024, high: 8192 };
+
+/** `generationConfig.thinkingConfig` for a Gemini model, or nothing when it has no such control. */
+export function geminiThinkingConfig(
+  model: string,
+  level: GeminiThinkingLevel | undefined
+): { thinkingConfig?: Record<string, unknown> } {
+  if (!level) return {};
+  if (/^gemini-3/.test(model)) return { thinkingConfig: { thinkingLevel: level } };
+  if (/^gemini-2\.5-(flash|pro)/.test(model)) {
+    return { thinkingConfig: { thinkingBudget: GEMINI_25_THINKING_BUDGET[level] } };
+  }
+  return {};
 }
 
 export interface ProviderUsage {
@@ -162,6 +186,8 @@ export class GeminiProviderImpl implements GeminiProvider {
       generationConfig: {
         maxOutputTokens: options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
         temperature: options?.temperature,
+        // The API accepts thinkingConfig; the SDK's GenerationConfig type predates it.
+        ...geminiThinkingConfig(model, options?.thinking),
       },
     });
     const result = await m.generateContent(prompt, {
@@ -188,6 +214,7 @@ export class GeminiProviderImpl implements GeminiProvider {
         temperature: options?.temperature,
         responseMimeType: "application/json",
         responseSchema: options?.responseSchema,
+        ...geminiThinkingConfig(model, options?.thinking),
       },
     });
     try {
@@ -327,7 +354,13 @@ export class AnthropicProviderImpl implements AIProvider {
         ...(sonnetSystem ? { system: sonnetSystem } : {}),
         messages: [{ role: "user", content: prompt }],
       },
-      { timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+      {
+        timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        // The SDK retries twice by default; a caller bounded by a queue lease asks for one attempt.
+        ...(options?.maxAttempts === undefined
+          ? {}
+          : { maxRetries: Math.max(0, options.maxAttempts - 1) }),
+      }
     );
     const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {

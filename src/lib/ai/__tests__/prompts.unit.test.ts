@@ -10,7 +10,8 @@ import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import {
   researchNotesPrompt,
   researchPlanPrompt,
-  researchSynthesizePrompt,
+  researchOutlinePrompt,
+  researchSectionPrompt,
 } from "@/lib/prompts/research";
 import type { ContentItem } from "@/lib/types";
 import type { BriefSummaryOutput, UserPreferenceProfile } from "../types";
@@ -298,48 +299,98 @@ describe("researchPlanPrompt", () => {
     const prompt = researchPlanPrompt(query);
     expect(prompt).toContain("JSON array");
   });
+
+  it("chooses sub-questions for the kind of question instead of fixed angles", () => {
+    const prompt = researchPlanPrompt(query);
+    expect(prompt).toContain("First decide what kind of question this is");
+    expect(prompt).toContain('Comparison ("X vs Y"');
+    expect(prompt).toMatch(/How-to:/);
+    expect(prompt).not.toContain("Implications and future outlook");
+  });
 });
 
-// ── researchSynthesizePrompt ──────────────────────────────────────────────────
+// ── researchOutlinePrompt / researchSectionPrompt ────────────────────────────
 
-describe("researchSynthesizePrompt", () => {
-  it("includes the original query", () => {
-    const prompt = researchSynthesizePrompt("Claude Code voice mode", "findings here");
-    expect(prompt).toContain("Claude Code voice mode");
-  });
-
-  it("includes the findings", () => {
-    const findings = "Voice mode uses ASR pipeline. Available since March 2026.";
-    const prompt = researchSynthesizePrompt("query", findings);
+describe("researchOutlinePrompt", () => {
+  it("includes the question and the numbered findings", () => {
+    const findings = "### F1. How fast?\n\nSources: [1] Paper — arxiv.org\n\n- 40 tokens/s";
+    const prompt = researchOutlinePrompt("On-device AI", findings, true);
+    expect(prompt).toContain("## Research Question\nOn-device AI");
     expect(prompt).toContain(findings);
   });
 
-  it("requests all four report sections", () => {
-    const prompt = researchSynthesizePrompt("query", "findings");
-    expect(prompt).toContain("Executive Summary");
-    expect(prompt).toContain("Key Findings");
-    expect(prompt).toContain("Analysis");
-    expect(prompt).toContain("Conclusion");
+  it("asks for a shaped outline with TL;DR, fact-carrying takeaways, sections and caveats", () => {
+    const prompt = researchOutlinePrompt("q", "f", true);
+    for (const shape of [
+      "explainer",
+      "comparison",
+      "landscape",
+      "decision",
+      "how-to",
+      "timeline",
+      "other",
+    ]) {
+      expect(prompt).toContain(shape);
+    }
+    expect(prompt).toMatch(/"tldr": 2-3 sentences/);
+    expect(prompt).toMatch(/3-5 key takeaways\. Each is one sentence carrying a concrete fact/);
+    expect(prompt).toMatch(/"sections": 3-6 sections/);
+    expect(prompt).toContain('"format": "table" when the content compares');
+    expect(prompt).toMatch(/"caveats": 1-4 caveats or open questions/);
+    expect(prompt).toContain("Output ONLY the JSON object");
+    expect(prompt).not.toMatch(/Executive Summary/);
   });
 
-  it("cites by number from the source list and never asks for links", () => {
-    const prompt = researchSynthesizePrompt("query", "findings", true);
+  it("cites by number when there are sources and never asks for links", () => {
+    expect(researchOutlinePrompt("q", "f", true)).toContain(
+      'bracketed numbers from the "Sources:" line'
+    );
+    expect(researchOutlinePrompt("q", "f", true)).toContain("Never write URLs");
+    expect(researchOutlinePrompt("q", "f", false)).toContain("Do not add citation numbers");
+  });
+});
+
+describe("researchSectionPrompt", () => {
+  const input = {
+    query: "Which phone assistant?",
+    shape: "comparison" as const,
+    headings: ["Apple's approach", "How the assistants compare", "What to watch"],
+    index: 1,
+    purpose: "Compare latency and privacy.",
+    format: "table" as const,
+    findings: "### Q2\n\nSources: [2] Bench — example.org\n\n- 120 ms",
+    hasSources: true,
+  };
+
+  it("names this section among the report's sections and gives its findings only", () => {
+    const prompt = researchSectionPrompt(input);
+    expect(prompt).toContain("(a comparison report)");
+    expect(prompt).toContain("Heading: How the assistants compare");
+    expect(prompt).toContain("2. How the assistants compare  ← this section");
+    expect(prompt).toContain("1. Apple's approach\n");
+    expect(prompt).toContain("Purpose: Compare latency and privacy.");
+    expect(prompt).toContain(input.findings);
+  });
+
+  it("asks for a 250-450 word body without the heading, with [n] citations", () => {
+    const prompt = researchSectionPrompt(input);
+    expect(prompt).toContain("250-450 words");
+    expect(prompt).toContain("Do not repeat the heading and do not start with a heading");
+    expect(prompt).toContain("never # or ##");
     expect(prompt).toContain('bracketed numbers from the "Sources:" line');
-    expect(prompt).toContain("Never write URLs");
-    expect(prompt).not.toMatch(/inline source links|Include source links/);
+    expect(prompt).toContain("no Sources or References list");
   });
 
-  it("asks for the finished report only, starting with its first ## heading", () => {
-    const prompt = researchSynthesizePrompt("query", "findings");
-    expect(prompt).toContain('Begin directly with the line "## Executive Summary"');
-    expect(prompt).toMatch(/Do not include a title, preamble, notes, planning or reasoning/);
-    expect(prompt).toContain("## Key Findings");
-  });
-
-  it("asks for no citations when there are no sources", () => {
-    const prompt = researchSynthesizePrompt("query", "findings");
-    expect(prompt).not.toContain("## Numbered Sources");
-    expect(prompt).toContain("Do not add citation numbers");
+  it("describes the section format", () => {
+    expect(researchSectionPrompt(input)).toContain("GitHub-flavoured markdown table");
+    expect(researchSectionPrompt({ ...input, format: "steps" })).toContain(
+      "numbered list of steps"
+    );
+    expect(researchSectionPrompt({ ...input, format: "bullets" })).toContain("bold lead-in");
+    expect(researchSectionPrompt({ ...input, format: "prose" })).toContain("paragraphs");
+    expect(researchSectionPrompt({ ...input, hasSources: false })).toContain(
+      "Do not add citation numbers"
+    );
   });
 });
 

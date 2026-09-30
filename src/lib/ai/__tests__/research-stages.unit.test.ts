@@ -3,22 +3,31 @@ jest.mock("../router", () => ({
   createTenantAIRouter: jest.fn(),
   getEffectiveModel: jest.fn(() => ({ provider: "gemini", model: "gemini-test" })),
 }));
+jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
 
+import { createTenantAIRouter, getEffectiveModel } from "../router";
+import { getTenantRepositories } from "@/lib/database";
+import { createResearchRunMessageV1 } from "@/lib/contracts/tenant-jobs";
+import { consumeResearchRunMessage } from "@/lib/queue/research-consumer";
 import {
-  assertCompleteReport,
-  IncompleteReportError,
   failStaleReport,
   MAX_STAGE_ATTEMPTS,
   nextResearchStage,
   parseResearchRunState,
   publicResearchProgress,
+  RESEARCH_STAGE_DEADLINE_MS,
+  RESEARCH_TIMEOUTS_MS,
+  ResearchDeadlineError,
+  researchReportMaxTokens,
   ResearchStageRetryError,
+  withStageDeadline,
   runResearchStage,
   STALE_RESEARCH_MS,
   startResearch,
   type ResearchAI,
   type ResearchRunState,
   type ResearchRunStateV1,
+  type ResearchRunStateV2,
 } from "../research";
 import type { FindingSource, ResearchSource } from "../research-sources";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
@@ -88,17 +97,86 @@ function recalledAnswer(prompt: SearchPromptArg) {
   };
 }
 
+/** A section body long enough to pass the minimum-length guard. */
+function body(lead: string, words = 70): string {
+  return `${lead} ${Array.from({ length: words }, (_, index) => `word${index}`).join(" ")}.`;
+}
+
+/** Outline the model returns by default: F numbers refer to the usable findings in order. */
+function modelOutline(overrides: Record<string, unknown> = {}) {
+  return {
+    shape: "comparison",
+    tldr: "Short answer drawn from Q2 [2].",
+    takeaways: ["First fact from Q1 [1].", "A fact with an unknown source [9]."],
+    sections: [
+      {
+        heading: "How Q1 works",
+        purpose: "Explain Q1.",
+        findings: [1],
+        sourceIds: [1],
+        format: "prose",
+      },
+      {
+        heading: "Q2 and the gap side by side",
+        purpose: "Compare.",
+        findings: [2, 3],
+        sourceIds: [2, 3],
+        format: "table",
+      },
+    ],
+    caveats: ["The gap evidence is thin [3]."],
+    ...overrides,
+  };
+}
+
+/** The heading a section prompt is written for. */
+function sectionHeading(prompt: string): string {
+  return prompt.match(/^Heading: (.+)$/m)?.[1] ?? "";
+}
+
 function createAI(overrides: Partial<ResearchAI> = {}): jest.Mocked<ResearchAI> {
   return {
-    generateText: jest.fn(async (_prompt: string, task: string) => {
+    generateText: jest.fn(async (prompt: string, task: string) => {
       if (task === "research-plan") return JSON.stringify(["Q1", "Q2"]);
-      if (task === "research-synthesize") return "## Report";
+      if (task === "research-synthesize") return body(`About ${sectionHeading(prompt)} [1].`);
       return "text";
     }),
-    generateJSON: jest.fn(async () => ({ gaps: ["Gap A"] })),
+    generateJSON: jest.fn(async (_prompt: string, task: string) =>
+      task === "research-synthesize" ? modelOutline() : { gaps: ["Gap A"] }
+    ),
     generateTextWithSearch: jest.fn(async (prompt: SearchPromptArg) => recalledAnswer(prompt)),
     ...overrides,
   } as jest.Mocked<ResearchAI>;
+}
+
+/** A version 3 state whose findings are complete and whose next stage is the outline. */
+function readyForOutline(overrides: Partial<ResearchRunState> = {}): ResearchRunState {
+  return {
+    version: 3,
+    updatedAt: "2026-09-30T10:01:00.000Z",
+    view: { stage: "outlining" },
+    subQuestions: ["Q1", "Q2"],
+    findings: [
+      finding("Q1", "- Q1 fact one.\n- Q1 fact two here.", [
+        { url: "https://a.example/1", title: "A1" },
+      ]),
+      finding("Q2", "- Q2 fact one is here.", [{ url: "https://b.example/2", title: "B2" }]),
+    ],
+    gaps: [],
+    deepening: [],
+    sections: [],
+    attempts: {},
+    ...overrides,
+  };
+}
+
+async function seedState(repositories: RepositorySet, state: object) {
+  const { id } = await seedReport(repositories);
+  await repositories.research.updateReport(id, {
+    status: "running",
+    progress: JSON.stringify(state),
+  });
+  return id;
 }
 
 function finding(question: string, notes = "done", sources: FindingSource[] = []) {
@@ -146,7 +224,7 @@ describe("startResearch", () => {
 });
 
 describe("runResearchStage", () => {
-  it("walks plan → search × n → gaps → deepen × m → synthesize, one stage per call", async () => {
+  it("walks plan → search × n → gaps → deepen × m → outline → write × k, one stage per call", async () => {
     const { repositories, reports } = createRepositories({
       "item-1": { title: "Sky", summary: "Rayleigh scattering" },
     });
@@ -223,41 +301,114 @@ describe("runResearchStage", () => {
 
     await expect(run()).resolves.toMatchObject({
       stage: { kind: "deepen", index: 0 },
-      next: { kind: "synthesize" },
+      next: { kind: "outline" },
     });
     expect(ai.generateTextWithSearch).toHaveBeenLastCalledWith(
       expect.objectContaining({ grounded: expect.stringContaining("Gap A") }),
       { timeoutMs: 45_000, maxTokens: 2048 }
     );
+    expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({ stage: "outlining" });
 
-    // Synthesis cites [2] first, then [1]; [9] is not in the source list.
-    ai.generateText.mockResolvedValueOnce(
-      "## Report\n\nOn Q2 [2]. Both [1, 2]. Unknown [9]. Gap [3]."
+    // Outline: one JSON call over the numbered findings and their sources.
+    await expect(run()).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "outline" },
+      next: { kind: "write", index: 0 },
+    });
+    const outlineCall = ai.generateJSON.mock.calls.at(-1)!;
+    expect(outlineCall[1]).toBe("research-synthesize");
+    expect(outlineCall[2]).toEqual({
+      timeoutMs: 40_000,
+      maxTokens: 6_000,
+      maxAttempts: 1,
+      rejectTruncated: true,
+      responseSchema: expect.objectContaining({ required: expect.arrayContaining(["sections"]) }),
+      thinking: "low",
+    });
+    const outlinePrompt = outlineCall[0];
+    expect(outlinePrompt).toContain(
+      "### F1. Q1\n\nSources: [1] About Q1 — example.com\n\n- Fact about Q1"
+    );
+    expect(outlinePrompt).toContain("### F2. Q2\n\nSources: [2] About Q2 — example.com");
+    expect(outlinePrompt).toContain("### F3. Gap A\n\nSources: [3] About Gap A — example.com");
+    expect(outlinePrompt).not.toContain("```sources");
+    const state = parseResearchRunState(reports.get(id)?.progress, "");
+    expect(state.version).toBe(3);
+    expect(state.outline).toMatchObject({
+      shape: "comparison",
+      sections: [
+        { heading: "How Q1 works", findings: [0], sourceIds: [1], format: "prose" },
+        { heading: "Q2 and the gap side by side", findings: [1, 2], sourceIds: [2, 3] },
+      ],
+    });
+    expect(state.sections).toEqual([null, null]);
+    expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
+      stage: "writing",
+      current: 1,
+      total: 2,
+      heading: "How Q1 works",
+    });
+
+    // Write 1 of 2: only that section's findings.
+    await expect(run()).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "write", index: 0 },
+      next: { kind: "write", index: 1 },
+    });
+    const writeCall = ai.generateText.mock.calls.at(-1)!;
+    expect(writeCall[1]).toBe("research-synthesize");
+    expect(writeCall[2]).toEqual({
+      timeoutMs: 40_000,
+      maxTokens: 5_000,
+      maxAttempts: 1,
+      rejectTruncated: true,
+      thinking: "low",
+    });
+    expect(writeCall[0]).toContain("Heading: How Q1 works");
+    expect(writeCall[0]).toContain("Sources: [1] About Q1 — example.com");
+    expect(writeCall[0]).not.toContain("Fact about Q2");
+    expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
+      stage: "writing",
+      current: 2,
+      total: 2,
+      heading: "Q2 and the gap side by side",
+    });
+
+    // Write 2 of 2 (a table section) completes and assembles the report.
+    ai.generateText.mockImplementationOnce(
+      async () =>
+        `## Q2 and the gap side by side\n\nIntro sentence [3].\n\n| Option | Fact |\n| --- | --- |\n| Q2 | x [2] |\n| Gap | y [3] |\n\n${body("Closing")}\n\nSources:\n- [2] About Q2`
     );
     await expect(run()).resolves.toEqual({
       outcome: "ran",
-      stage: { kind: "synthesize" },
+      stage: { kind: "write", index: 1 },
       next: null,
     });
-    const synthesizeCall = ai.generateText.mock.calls.at(-1)!;
-    const synthesizePrompt = synthesizeCall[0];
-    expect(synthesizeCall[2]).toEqual({
-      timeoutMs: 50_000,
-      maxTokens: 12_000,
-      rejectTruncated: true,
-    });
-    expect(synthesizePrompt).toContain("## Q1\n\nSources: [1] About Q1 — example.com\n\n- Fact");
-    expect(synthesizePrompt).toContain("## Q2\n\nSources: [2] About Q2 — example.com");
-    expect(synthesizePrompt).toContain("## Additional Deepening");
-    expect(synthesizePrompt).toContain("Sources: [3] About Gap A — example.com");
-    expect(synthesizePrompt).not.toContain("## Numbered Sources");
-    expect(synthesizePrompt).toContain('Begin directly with the line "## Executive Summary"');
-    expect(synthesizePrompt).not.toContain("```sources");
-    expect(synthesizePrompt).not.toContain("inline source links");
+    const tablePrompt = ai.generateText.mock.calls.at(-1)![0];
+    expect(tablePrompt).toContain("GitHub-flavoured markdown table");
+    expect(tablePrompt).toContain("Fact about Q2");
+    expect(tablePrompt).toContain("Fact about Gap A");
+    expect(tablePrompt).not.toContain("Fact about Q1");
+
     const final = reports.get(id)!;
     expect(final.status).toBe("completed");
-    expect(final.report).toBe("## Report\n\nOn Q2 [1]. Both [2][1]. Unknown. Gap [3].");
     expect(final.progress).toBeNull();
+    expect(final.completedAt).toBeDefined();
+    // TL;DR cites [2] first, then takeaways [1]; [9] is not in the catalog and is dropped.
+    expect(final.report).toBe(
+      [
+        "## TL;DR",
+        "Short answer drawn from Q2 [1].",
+        "## Key takeaways",
+        "- First fact from Q1 [2].\n- A fact with an unknown source.",
+        "## How Q1 works",
+        body("About How Q1 works [2]."),
+        "## Q2 and the gap side by side",
+        `Intro sentence [3].\n\n| Option | Fact |\n| --- | --- |\n| Q2 | x [1] |\n| Gap | y [3] |\n\n${body("Closing")}`,
+        "## Caveats and open questions",
+        "- The gap evidence is thin [3].",
+      ].join("\n\n") + "\n"
+    );
     expect(JSON.parse(final.sources)).toEqual<ResearchSource[]>([
       {
         id: 1,
@@ -281,19 +432,22 @@ describe("runResearchStage", () => {
         grounded: false,
       },
     ]);
-    expect(final.completedAt).toBeDefined();
+    // Model calls: plan, 2 searches, gaps, 1 deepen, outline, 2 writes.
+    expect(ai.generateText).toHaveBeenCalledTimes(3);
+    expect(ai.generateJSON).toHaveBeenCalledTimes(2);
+    expect(ai.generateTextWithSearch).toHaveBeenCalledTimes(3);
 
     // A late duplicate delivery acknowledges without touching the model.
-    const calls = ai.generateText.mock.calls.length;
     await expect(run()).resolves.toEqual({ outcome: "skipped", reason: "terminal" });
-    expect(ai.generateText).toHaveBeenCalledTimes(calls);
+    expect(ai.generateText).toHaveBeenCalledTimes(3);
   });
 
   it("resumes a redelivered message from the first unfinished stage instead of restarting", async () => {
     const { repositories, reports } = createRepositories();
     const { id } = await seedReport(repositories);
     const ai = createAI();
-    const partial: ResearchRunState = {
+    // Written by R2 (version 2) before the upgrade.
+    const partial: ResearchRunStateV2 = {
       version: 2,
       updatedAt: "2026-09-21T10:01:00.000Z",
       view: { stage: "researching", current: 1, total: 2, question: "Q1" },
@@ -323,6 +477,7 @@ describe("runResearchStage", () => {
     const state = parseResearchRunState(reports.get(id)?.progress, "");
     expect(state.findings[0]).toEqual(finding("Q1", "already done"));
     expect(state.findings[1]).toMatchObject({ question: "Q2", grounded: false });
+    expect(JSON.parse(reports.get(id)!.progress!)).toMatchObject({ version: 3, sections: [] });
   });
 
   it("finishes a run whose state was written as version 1 before the upgrade", async () => {
@@ -347,7 +502,7 @@ describe("runResearchStage", () => {
       runResearchStage({ context, repositories, reportId: id, ai })
     ).resolves.toMatchObject({ stage: { kind: "search", index: 1 }, next: { kind: "gaps" } });
     const stored = JSON.parse(reports.get(id)!.progress!) as ResearchRunState;
-    expect(stored.version).toBe(2);
+    expect(stored.version).toBe(3);
     expect(stored.attempts).toEqual({ "search:1": 1 });
     expect(stored.findings[0]).toEqual({
       question: "Q1",
@@ -358,7 +513,7 @@ describe("runResearchStage", () => {
     expect(stored.findings[1]).toMatchObject({ question: "Q2" });
   });
 
-  it("synthesizes a version 1 state straight away, citing its scraped URLs", async () => {
+  it("continues a version 1 state at synthesis with the outline and write stages", async () => {
     const { repositories, reports } = createRepositories();
     const { id } = await seedReport(repositories);
     const legacy: ResearchRunStateV1 = {
@@ -375,11 +530,40 @@ describe("runResearchStage", () => {
       status: "running",
       progress: JSON.stringify(legacy),
     });
-    const ai = createAI({ generateText: jest.fn().mockResolvedValue("## R\nClaim [2].") });
-    await runResearchStage({ context, repositories, reportId: id, ai });
+    const ai = createAI({
+      generateJSON: jest.fn().mockResolvedValue(
+        modelOutline({
+          tldr: "Answer [2].",
+          takeaways: ["Only takeaway [2]."],
+          caveats: [],
+          sections: [
+            {
+              heading: "Q1 answered",
+              purpose: "p",
+              findings: [1],
+              sourceIds: [2],
+              format: "prose",
+            },
+          ],
+        })
+      ),
+      generateText: jest.fn().mockResolvedValue(body("Claim [2].")),
+    });
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).resolves.toMatchObject({ stage: { kind: "outline" }, next: { kind: "write", index: 0 } });
+    // The failed gap finding is not offered to the outline.
+    const outlinePrompt = ai.generateJSON.mock.calls[0]![0];
+    expect(outlinePrompt).toContain("### F1. Q1\n\nSources: [1] a.example; [2] b.example");
+    expect(outlinePrompt).not.toContain("### F2");
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).resolves.toMatchObject({ stage: { kind: "write", index: 0 }, next: null });
     const report = reports.get(id)!;
     expect(report.status).toBe("completed");
-    expect(report.report).toBe("## R\nClaim [1].");
+    expect(report.report).toBe(
+      `## TL;DR\n\nAnswer [1].\n\n## Key takeaways\n\n- Only takeaway [1].\n\n## Q1 answered\n\n${body("Claim [1].")}\n`
+    );
     expect(JSON.parse(report.sources)).toEqual([
       {
         id: 1,
@@ -397,9 +581,11 @@ describe("runResearchStage", () => {
     const redirect = `https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC123`;
     const ai = createAI({
       generateText: jest.fn(async (_prompt: string, task: string) =>
-        task === "research-plan" ? JSON.stringify(["Q1"]) : "## R\nGrounded claim [1]."
+        task === "research-plan" ? JSON.stringify(["Q1"]) : body("Grounded claim [1].")
       ),
-      generateJSON: jest.fn().mockResolvedValue({ gaps: [] }),
+      generateJSON: jest.fn(async (_prompt: string, task: string) =>
+        task === "research-gaps" ? { gaps: [] } : modelOutline()
+      ) as unknown as ResearchAI["generateJSON"],
       generateTextWithSearch: jest.fn(async () => ({
         text: "- Grounded fact.",
         sources: [{ url: redirect, title: "nature.com" }],
@@ -427,7 +613,10 @@ describe("runResearchStage", () => {
       grounded: true,
     });
     await run(); // gaps
-    await run(); // synthesize
+    await run(); // outline
+    await run(); // write 0
+    await run(); // write 1 and assembly
+    expect(reports.get(id)!.status).toBe("completed");
     expect(JSON.parse(reports.get(id)!.sources)).toEqual([
       {
         id: 1,
@@ -511,7 +700,7 @@ describe("runResearchStage", () => {
   });
 
   it("skips deepening when gap analysis fails", async () => {
-    const { repositories } = createRepositories();
+    const { repositories, reports } = createRepositories();
     const { id } = await seedReport(repositories);
     const ai = createAI({
       generateText: jest.fn().mockResolvedValue(JSON.stringify(["Q1"])),
@@ -523,110 +712,272 @@ describe("runResearchStage", () => {
       runResearchStage({ context, repositories, reportId: id, ai })
     ).resolves.toMatchObject({
       stage: { kind: "gaps" },
-      next: { kind: "synthesize" },
+      next: { kind: "outline" },
     });
+    expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({ stage: "outlining" });
   });
 
-  it("retries instead of storing a synthesis answer without a heading", async () => {
+  it("routes a redelivered synthesize message to the outline and publishes write 0", async () => {
     const { repositories, reports } = createRepositories();
-    const { id } = await seedReport(repositories);
-    const synthesizing: ResearchRunState = {
+    const id = await seedState(repositories, readyForOutline());
+    const ai = createAI();
+    jest.mocked(getTenantRepositories).mockResolvedValue(repositories);
+    jest
+      .mocked(createTenantAIRouter)
+      .mockReturnValue(ai as unknown as ReturnType<typeof createTenantAIRouter>);
+    const dispatcher = new FakeResearchDispatcher();
+    // Published by a pre-R3 deployment; the consumer runs the first unfinished stage instead.
+    await consumeResearchRunMessage(
+      createResearchRunMessageV1({
+        userId: context.userId,
+        reportId: id,
+        traceId: context.requestId,
+        step: "synthesize",
+      }),
+      dispatcher
+    );
+    expect(ai.generateJSON).toHaveBeenCalledWith(
+      expect.stringContaining("### F1. Q1"),
+      "research-synthesize",
+      expect.objectContaining({ maxAttempts: 1 })
+    );
+    expect(ai.generateText).not.toHaveBeenCalled();
+    expect(parseResearchRunState(reports.get(id)?.progress, "").outline).toBeDefined();
+    expect(dispatcher.messages).toEqual([
+      {
+        message: expect.objectContaining({ step: "write", index: 0, reportId: id }),
+        idempotencyKey: `research:${id}:write:0`,
+      },
+    ]);
+  });
+
+  it("continues a version 2 run that was waiting for synthesis with the outline", async () => {
+    const { repositories, reports } = createRepositories();
+    const v2: ResearchRunStateV2 = {
       version: 2,
       updatedAt: "2026-09-30T10:01:00.000Z",
       view: { stage: "synthesizing" },
-      subQuestions: ["Q1"],
-      findings: [finding("Q1", "done", [{ url: "https://a.example/x", title: "A" }])],
+      subQuestions: ["Q1", "Q2"],
+      findings: readyForOutline().findings,
       gaps: [],
       deepening: [],
-      attempts: {},
+      attempts: { synthesize: 1 },
     };
-    await repositories.research.updateReport(id, {
-      status: "running",
-      progress: JSON.stringify(synthesizing),
-    });
-    // Shaped like live run 79e2f8cc: the cut-off tail of the model's reasoning.
-    const reasoningTail =
-      " Core...\" [1].\n    *   (Wait, where did [2] come from? Let's match the numbered sources";
-    const ai = createAI({
-      generateText: jest
-        .fn()
-        .mockResolvedValueOnce(reasoningTail)
-        .mockResolvedValueOnce("## Executive Summary\n\nDone [1]."),
-    });
-
+    const id = await seedState(repositories, v2);
+    const ai = createAI();
     await expect(
       runResearchStage({ context, repositories, reportId: id, ai })
-    ).rejects.toBeInstanceOf(ResearchStageRetryError);
-    expect(reports.get(id)!.status).toBe("running");
-    expect(reports.get(id)!.report).toBe("");
-    expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
-      synthesize: 1,
+    ).resolves.toMatchObject({ stage: { kind: "outline" }, next: { kind: "write", index: 0 } });
+    expect(ai.generateText).not.toHaveBeenCalled();
+    const stored = JSON.parse(reports.get(id)!.progress!) as ResearchRunState;
+    expect(stored.version).toBe(3);
+    expect(stored.outline?.sections).toHaveLength(2);
+    expect(stored.sections).toEqual([null, null]);
+    // The earlier synthesis attempt does not count against the outline.
+    expect(stored.attempts).toEqual({ synthesize: 1 });
+  });
+
+  it("resumes mid-write at the first unwritten section without repeating earlier stages", async () => {
+    const { repositories, reports } = createRepositories();
+    const outline = {
+      shape: "explainer" as const,
+      tldr: "T [1].",
+      takeaways: ["K [2]."],
+      sections: [
+        { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" as const },
+        { heading: "Two", purpose: "p", findings: [1], sourceIds: [2], format: "bullets" as const },
+        {
+          heading: "Three",
+          purpose: "p",
+          findings: [0, 1],
+          sourceIds: [],
+          format: "steps" as const,
+        },
+      ],
+      caveats: [],
+    };
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline,
+        sections: [body("Section one [1]."), null, null],
+        view: { stage: "writing", current: 2, total: 3, heading: "Two" },
+      })
+    );
+    const ai = createAI();
+    // The message that wrote section 0 is delivered again: section 1 runs.
+    await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "write", index: 1 },
+      next: { kind: "write", index: 2 },
     });
+    expect(ai.generateJSON).not.toHaveBeenCalled();
+    expect(ai.generateTextWithSearch).not.toHaveBeenCalled();
+    expect(ai.generateText).toHaveBeenCalledTimes(1);
+    const prompt = ai.generateText.mock.calls[0]![0];
+    expect(prompt).toContain("Heading: Two");
+    expect(prompt).toContain("2. Two  ← this section");
+    expect(prompt).toContain("bold lead-in");
+    expect(prompt).toContain("Q2 fact one");
+    expect(prompt).not.toContain("Q1 fact one");
+    const state = parseResearchRunState(reports.get(id)?.progress, "");
+    expect(state.sections[0]).toBe(body("Section one [1]."));
+    expect(state.sections[1]).toBe(body("About Two [1]."));
+    expect(state.sections[2]).toBeNull();
+    expect(state.view).toEqual({ stage: "writing", current: 3, total: 3, heading: "Three" });
 
     await runResearchStage({ context, repositories, reportId: id, ai });
     expect(reports.get(id)!.status).toBe("completed");
-    expect(reports.get(id)!.report).toBe("## Executive Summary\n\nDone [1].");
+    expect(reports.get(id)!.report).toContain("## Three\n\n");
   });
 
-  it("fails the report rather than storing garbage once headless answers exhaust the attempts", async () => {
+  it("retries an invalid outline, then falls back to a deterministic outline", async () => {
     const { repositories, reports } = createRepositories();
-    const { id } = await seedReport(repositories);
-    await repositories.research.updateReport(id, {
-      status: "running",
-      progress: JSON.stringify({
-        version: 2,
-        updatedAt: "2026-09-30T10:01:00.000Z",
-        view: { stage: "synthesizing" },
-        subQuestions: ["Q1"],
-        findings: [finding("Q1")],
-        gaps: [],
-        deepening: [],
-        attempts: { synthesize: MAX_STAGE_ATTEMPTS - 1 },
-      } satisfies ResearchRunState),
+    const id = await seedState(repositories, readyForOutline());
+    const ai = createAI({
+      generateJSON: jest
+        .fn()
+        .mockResolvedValueOnce({ shape: "explainer", tldr: "", sections: [] })
+        .mockRejectedValueOnce(new Error("invalid_output")),
     });
-    const ai = createAI({ generateText: jest.fn().mockResolvedValue("# Title only\nno sections") });
-    await runResearchStage({ context, repositories, reportId: id, ai });
-    expect(reports.get(id)!.status).toBe("failed");
-    expect(reports.get(id)!.report).toContain("incomplete report");
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).rejects.toBeInstanceOf(ResearchStageRetryError);
+    expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({ outline: 1 });
+
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).resolves.toMatchObject({ stage: { kind: "outline" }, next: { kind: "write", index: 0 } });
+    const state = parseResearchRunState(reports.get(id)?.progress, "");
+    expect(state.outline).toEqual({
+      shape: "other",
+      fallback: true,
+      tldr: "Q1 fact two here [1]. Q2 fact one is here [2].",
+      takeaways: ["Q1 fact two here [1].", "Q2 fact one is here [2]."],
+      sections: [
+        {
+          heading: "Q1",
+          purpose: "Answer the research question: Q1",
+          findings: [0],
+          sourceIds: [1],
+          format: "prose",
+        },
+        {
+          heading: "Q2",
+          purpose: "Answer the research question: Q2",
+          findings: [1],
+          sourceIds: [2],
+          format: "prose",
+        },
+      ],
+      caveats: [expect.stringContaining("could not be planned automatically")],
+    });
+    expect(state.view).toEqual({ stage: "writing", current: 1, total: 2, heading: "Q1" });
   });
 
-  it("recognises a finished report by its level-2 heading", () => {
-    expect(() => assertCompleteReport("## Executive Summary\ntext")).not.toThrow();
-    expect(() => assertCompleteReport("Intro\n\n  ## Key Findings\n- x")).not.toThrow();
-    expect(() => assertCompleteReport(" tail of reasoning [1].")).toThrow(IncompleteReportError);
-    expect(() => assertCompleteReport("### Only a subheading")).toThrow(IncompleteReportError);
-    expect(() => assertCompleteReport("##NoSpace")).toThrow(IncompleteReportError);
-  });
-
-  it("marks the report failed when synthesis exhausts its attempts", async () => {
+  it("writes a placeholder for a section that exhausts its attempts and still completes", async () => {
     const { repositories, reports } = createRepositories();
-    const { id } = await seedReport(repositories);
-    const synthesizing: ResearchRunState = {
-      version: 2,
-      updatedAt: "2026-09-21T10:01:00.000Z",
-      view: { stage: "synthesizing" },
-      subQuestions: ["Q1"],
-      findings: [finding("Q1")],
-      gaps: [],
-      deepening: [],
-      attempts: { synthesize: MAX_STAGE_ATTEMPTS - 1 },
-    };
-    await repositories.research.updateReport(id, {
-      status: "running",
-      progress: JSON.stringify(synthesizing),
-    });
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline: {
+          shape: "explainer",
+          tldr: "T [2].",
+          takeaways: ["K [2]."],
+          sections: [
+            { heading: "One", purpose: "p", findings: [0], sourceIds: [], format: "prose" },
+            { heading: "Two", purpose: "p", findings: [1], sourceIds: [2], format: "prose" },
+          ],
+          caveats: ["C."],
+        },
+        sections: [null, body("Section two [2].")],
+      })
+    );
     const ai = createAI({
       generateText: jest.fn().mockRejectedValue(new Error("Request aborted")),
     });
+    for (let attempt = 1; attempt < MAX_STAGE_ATTEMPTS; attempt++) {
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai })
+      ).rejects.toBeInstanceOf(ResearchStageRetryError);
+      expect(reports.get(id)!.status).toBe("running");
+    }
     await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
       outcome: "ran",
-      stage: { kind: "synthesize" },
+      stage: { kind: "write", index: 0 },
       next: null,
     });
     const report = reports.get(id)!;
-    expect(report.status).toBe("failed");
-    expect(report.report).toContain("Request aborted");
-    expect(report.progress).toBeNull();
+    expect(report.status).toBe("completed");
+    // The placeholder cites the section's findings' sources, so they survive renumbering.
+    expect(report.report).toContain(
+      "## One\n\n*This section could not be written; see sources [2].*\n\n## Two"
+    );
+    expect(JSON.parse(report.sources).map((source: ResearchSource) => source.url)).toEqual([
+      "https://b.example/2",
+      "https://a.example/1",
+    ]);
+  });
+
+  it("retries a section answer that is cut off or too short", async () => {
+    const { repositories, reports } = createRepositories();
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline: {
+          shape: "explainer",
+          tldr: "T.",
+          takeaways: ["K."],
+          sections: [
+            { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" },
+            { heading: "Two", purpose: "p", findings: [1], sourceIds: [2], format: "prose" },
+          ],
+          caveats: [],
+        },
+        sections: [null, null],
+      })
+    );
+    const ai = createAI({
+      generateText: jest
+        .fn()
+        .mockResolvedValueOnce("## One\n\nOnly a few words [1].")
+        .mockResolvedValueOnce(`## One\n\n${body("Now long enough [1].")}`),
+    });
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).rejects.toBeInstanceOf(ResearchStageRetryError);
+    expect(parseResearchRunState(reports.get(id)?.progress, "").sections).toEqual([null, null]);
+    await runResearchStage({ context, repositories, reportId: id, ai });
+    expect(parseResearchRunState(reports.get(id)?.progress, "").sections[0]).toBe(
+      body("Now long enough [1].")
+    );
+  });
+
+  it("assembles a stored state whose sections are all written without a model call", async () => {
+    const { repositories, reports } = createRepositories();
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline: {
+          shape: "explainer",
+          tldr: "T [1].",
+          takeaways: ["K."],
+          sections: [
+            { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" },
+          ],
+          caveats: [],
+        },
+        sections: [body("Done [1].")],
+      })
+    );
+    const ai = createAI();
+    await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "write", index: 1 },
+      next: null,
+    });
+    expect(ai.generateText).not.toHaveBeenCalled();
+    expect(reports.get(id)!.status).toBe("completed");
   });
 
   it("acknowledges a report that is not visible to the tenant", async () => {
@@ -643,12 +994,13 @@ describe("runResearchStage", () => {
 describe("progress projection and stale guard", () => {
   it("exposes only the stage view, never partial findings", () => {
     const state: ResearchRunState = {
-      version: 2,
+      version: 3,
       updatedAt: "2026-09-21T10:01:00.000Z",
       view: { stage: "researching", current: 1, total: 2, question: "Q1" },
       subQuestions: ["Q1", "Q2"],
       findings: [finding("Q1", "secret partial findings"), null],
       deepening: [],
+      sections: ["secret section draft"],
       attempts: {},
     };
     expect(publicResearchProgress(JSON.stringify(state))).toEqual(state.view);
@@ -662,11 +1014,12 @@ describe("progress projection and stale guard", () => {
 
   it("orders stages from durable state", () => {
     const base: ResearchRunState = {
-      version: 2,
+      version: 3,
       updatedAt: "",
       view: { stage: "planning" },
       findings: [],
       deepening: [],
+      sections: [],
       attempts: {},
     };
     expect(nextResearchStage(base)).toEqual({ kind: "plan" });
@@ -694,8 +1047,30 @@ describe("progress projection and stale guard", () => {
         gaps: [],
         deepening: [],
       })
-    ).toEqual({
-      kind: "synthesize",
+    ).toEqual({ kind: "outline" });
+    const outline = {
+      shape: "other" as const,
+      tldr: "t",
+      takeaways: ["k"],
+      sections: [
+        { heading: "A", purpose: "", findings: [0], sourceIds: [], format: "prose" as const },
+        { heading: "B", purpose: "", findings: [0], sourceIds: [], format: "prose" as const },
+      ],
+      caveats: [],
+    };
+    const outlined = { ...base, subQuestions: ["a"], findings: [finding("x")], gaps: [], outline };
+    expect(nextResearchStage({ ...outlined, sections: [null, null] })).toEqual({
+      kind: "write",
+      index: 0,
+    });
+    expect(nextResearchStage({ ...outlined, sections: ["done", null] })).toEqual({
+      kind: "write",
+      index: 1,
+    });
+    // All written (never stored in practice): a write past the last section only assembles.
+    expect(nextResearchStage({ ...outlined, sections: ["done", "done"] })).toEqual({
+      kind: "write",
+      index: 2,
     });
   });
 
@@ -705,13 +1080,14 @@ describe("progress projection and stale guard", () => {
     const updateReport = jest.fn();
     const repositories = { research: { updateReport } } as unknown as RepositorySet;
     const state: ResearchRunState = {
-      version: 2,
+      version: 3,
       updatedAt: new Date(now - STALE_RESEARCH_MS + 60_000).toISOString(),
-      view: { stage: "synthesizing" },
+      view: { stage: "writing", current: 1, total: 3, heading: "h" },
       subQuestions: ["a"],
       findings: [finding("x")],
       gaps: [],
       deepening: [],
+      sections: [null, null, null],
       attempts: {},
     };
     const report = { id: "r1", status: "running", createdAt, progress: JSON.stringify(state) };
@@ -724,5 +1100,70 @@ describe("progress projection and stale guard", () => {
       status: "failed",
     });
     expect(updateReport).toHaveBeenCalledWith("r1", expect.objectContaining({ status: "failed" }));
+  });
+});
+
+describe("outline and write budget", () => {
+  it("sizes the output budget for the provider research-synthesize routes to", () => {
+    expect(researchReportMaxTokens("outline")).toBe(6_000);
+    expect(researchReportMaxTokens("write")).toBe(5_000);
+    jest
+      .mocked(getEffectiveModel)
+      .mockReturnValue({ provider: "anthropic", model: "claude-sonnet-4-6" } as never);
+    expect(researchReportMaxTokens("outline")).toBe(2_500);
+    expect(researchReportMaxTokens("write")).toBe(2_000);
+    jest
+      .mocked(getEffectiveModel)
+      .mockReturnValue({ provider: "gemini", model: "gemini-test" } as never);
+    // Timeout plus stage deadline leave the lease room for reads, writes and the next publish.
+    expect(RESEARCH_TIMEOUTS_MS.outline).toBeLessThanOrEqual(40_000);
+    expect(RESEARCH_TIMEOUTS_MS.write).toBeLessThanOrEqual(40_000);
+    expect(RESEARCH_STAGE_DEADLINE_MS).toBeLessThanOrEqual(45_000);
+  });
+
+  it("stops waiting for a call that outlives the stage deadline", async () => {
+    jest.useFakeTimers();
+    try {
+      const never = new Promise<string>(() => undefined);
+      const pending = withStageDeadline(never, "write", 42_000);
+      const settled = expect(pending).rejects.toBeInstanceOf(ResearchDeadlineError);
+      jest.advanceTimersByTime(42_000);
+      await settled;
+      await expect(withStageDeadline(Promise.resolve("ok"), "write", 42_000)).resolves.toBe("ok");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("counts a write that hits the deadline as a failed attempt", async () => {
+    jest.useFakeTimers();
+    try {
+      const { repositories, reports } = createRepositories();
+      const id = await seedState(
+        repositories,
+        readyForOutline({
+          outline: {
+            shape: "explainer",
+            tldr: "T.",
+            takeaways: ["K."],
+            sections: [
+              { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" },
+            ],
+            caveats: [],
+          },
+          sections: [null],
+        })
+      );
+      const ai = createAI({ generateText: jest.fn(() => new Promise<string>(() => undefined)) });
+      const stage = runResearchStage({ context, repositories, reportId: id, ai });
+      const settled = expect(stage).rejects.toBeInstanceOf(ResearchStageRetryError);
+      await jest.advanceTimersByTimeAsync(RESEARCH_STAGE_DEADLINE_MS);
+      await settled;
+      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+        "write:0": 1,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
