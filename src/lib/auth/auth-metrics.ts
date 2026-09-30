@@ -4,6 +4,7 @@ import type { ProviderIdentityPort } from "@/lib/auth/request-context";
 import { measurePhase, recordProviderCall } from "@/lib/observability/request-metrics";
 
 export const PROXY_PROVIDER_PHASE = "proxy-auth-provider";
+export const PROXY_CONNECTION_PHASE = "proxy-auth-connect";
 export const PROXY_DATABASE_PHASE = "proxy-auth-db";
 
 /**
@@ -30,8 +31,15 @@ export function instrumentNeonProxyDependencies(dependencies: {
     new Proxy(target, {
       get(port, property) {
         if (property === "findAccountByIdentity") {
-          return (input: Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0]) =>
-            measurePhase(PROXY_DATABASE_PHASE, () => port.findAccountByIdentity(input));
+          return async (input: Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0]) => {
+            // P8 diagnostic only: the first identical lookup establishes the
+            // proxy's database connection and its result is deliberately
+            // ignored. The second lookup remains the authorization decision.
+            // On Preview, subtract the warm proxy-auth-db duration from
+            // proxy-auth-connect to estimate connection setup overhead.
+            await measurePhase(PROXY_CONNECTION_PHASE, () => port.findAccountByIdentity(input));
+            return measurePhase(PROXY_DATABASE_PHASE, () => port.findAccountByIdentity(input));
+          };
         }
         const value = Reflect.get(port, property, port) as unknown;
         return typeof value === "function" ? value.bind(port) : value;

@@ -9,6 +9,8 @@
  * handoff. P2 folds the route's repository calls into ONE tenant transaction
  * whose context is verified by a single statement, so GET /api/v1/feed costs
  * one transaction and three statements (verification, preferences, feed).
+ * P8 temporarily repeats the exact account lookup so Preview can distinguish
+ * connection setup from the warm authorization query before changing drivers.
  * Later phases lower the remaining assertions on purpose; an accidental
  * increase fails.
  */
@@ -183,7 +185,7 @@ function verificationStatements(): string[] {
 }
 
 describe("request cost fence (P2: one transaction, three statements)", () => {
-  it("proxy: one authenticated GET costs one provider call and one auth query", async () => {
+  it("proxy: one authenticated GET separates the connection probe from the auth query", async () => {
     const { proxy } = await import("@/proxy");
     const response = await proxy(
       new NextRequest("https://distil.example/api/v1/feed", { method: "GET" })
@@ -192,15 +194,24 @@ describe("request cost fence (P2: one transaction, three statements)", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
     expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
-    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(2);
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenNthCalledWith(1, {
+      provider: "neon",
+      providerSubject: "provider-subject",
+    });
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenNthCalledWith(2, {
+      provider: "neon",
+      providerSubject: "provider-subject",
+    });
 
     // API pass-throughs carry the timing as a forwarded request header (see
     // PROXY_TIMING_HEADER); Next.js exposes forwarded headers under this prefix.
     expect(response.headers.get("server-timing")).toBeNull();
     const proxyTiming = forwarded(response, PROXY_TIMING_HEADER);
     expect(proxyTiming).toMatch(/^proxy-auth-provider;dur=\d+\.\d;desc="calls=1"/);
+    expect(proxyTiming).toMatch(/, proxy-auth-connect;dur=\d+\.\d;desc="q=1"/);
     expect(proxyTiming).toMatch(/, proxy-auth-db;dur=\d+\.\d;desc="q=1"/);
-    expect(proxyTiming).toMatch(/, proxy;dur=\d+\.\d;desc="calls=1 q=1"$/);
+    expect(proxyTiming).toMatch(/, proxy;dur=\d+\.\d;desc="calls=1 q=2"$/);
   });
 
   it("proxy: pages receive the proxy timing directly and forged values are dropped", async () => {
@@ -212,7 +223,7 @@ describe("request cost fence (P2: one transaction, three statements)", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("server-timing")).toMatch(
-      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=1"$/
+      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=2"$/
     );
     expect(forwarded(response, PROXY_TIMING_HEADER)).toBe("");
   });
@@ -312,11 +323,12 @@ describe("request cost fence (P2: one transaction, three statements)", () => {
       })
     );
     expect(response.status).toBe(200);
-    // Whole request: exactly one provider call and one auth query, both in the proxy.
+    // Whole request: exactly one provider call plus the temporary connection
+    // probe and the authorization query, all in the proxy.
     expect(fakes.provider.verifySession).toHaveBeenCalledTimes(1);
-    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(1);
+    expect(fakes.authRepositories.findAccountByIdentity).toHaveBeenCalledTimes(2);
     expect(response.headers.get("server-timing")).toMatch(
-      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=1", auth;dur=\d+\.\d, db;dur=/
+      /^proxy-auth-provider;dur=\d+\.\d;desc="calls=1", proxy-auth-connect;dur=\d+\.\d;desc="q=1", proxy-auth-db;dur=\d+\.\d;desc="q=1", proxy;dur=\d+\.\d;desc="calls=1 q=2", auth;dur=\d+\.\d, db;dur=/
     );
   });
 
