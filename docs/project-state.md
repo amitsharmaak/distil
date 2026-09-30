@@ -36,28 +36,33 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **Keyboard navigation: K1–K4 implemented, PR
+- **Keyboard navigation: K1–K4 merged and deployed, PR
   [#101](https://github.com/amitsharmaak/distil/pull/101) (branch `claude/keyboard-k1`, worktree
-  `k1-prompt-455dd8`; checkpoints "Keyboard navigation K1–K4 … — 2026-09-30" and "Keyboard
-  navigation: audit and phased plan (K1–K4) — 2026-09-30"):** Amit's decisions: `1A 2A 3A 4A 5A`
-  (Gmail-style keys; on/off switch in localStorage; row markup fix inside K2; agent squash-merges
-  after green gates and a local browser check; order K1 → K2 → K3 → K4). For this task 4A/5A
-  (merge per phase, one phase per session) are superseded by "Amit, in chat, 2026-09-30: finish
-  all four phases, then merge and deploy to Production together": all four phases sit on one
-  branch in PR #101 and ship as one squash merge, which auto-deploys (release pin `unpinned`).
-  Shipped: shortcut engine, `?` help dialog and single-key switch, `g`-navigation (K1); `j`/`k`/`o`
-  row navigation on Feed and Today with the nested-button row markup fixed (K2); reader keys plus
-  Mark unread (Shift+U) and Copy link (Shift+C) (K3); Research, report and Settings keys, a
-  Settings shortcuts card, a keyboard-only e2e spec and `docs/user-guide.md` (K4). Verified locally:
-  in-app browser on the local loop and keyboard e2e 12 passed. Full gate at `ddb3547`:
-  `npm run check` 244 suites / 1,999 tests, 0 lint errors, 4 warnings; `npm run test:integration` 4
-  suites / 12 tests; `npm run test:extension` 12 passed; `npm run build` compiled;
-  `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in desktop-chromium, mobile-chromium and
-  mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the e2e server inherits
-  `.env.local` auth and feature variables, which reproduces on `origin/main` `eaec1d2` and does not
-  apply in CI (no `.env.local`); stages ran separately because `check:full` stops at the first
-  failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there). Not merged, not deployed. Next: squash-merge #101 once
-  CI is green, which deploys; then a Production smoke check of `?`, `g f`, `j`/`k` and Shift+U.
+  `k1-prompt-455dd8`; checkpoints "Release: PR #101 (keyboard navigation K1–K4) to Production —
+  2026-09-30", "Keyboard navigation K1–K4 … — 2026-09-30" and "Keyboard navigation: audit and phased
+  plan (K1–K4) — 2026-09-30"):** Amit's decisions: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch
+  in localStorage; row markup fix inside K2; agent squash-merges after green gates and a local
+  browser check; order K1 → K2 → K3 → K4). For this task 4A/5A (merge per phase, one phase per
+  session) are superseded by "Amit, in chat, 2026-09-30: finish all four phases, then merge and
+  deploy to Production together": all four phases sit on one branch in PR #101 and ship as one
+  squash merge, which auto-deploys (release pin `unpinned`). Shipped: shortcut engine, `?` help
+  dialog and single-key switch, `g`-navigation (K1); `j`/`k`/`o` row navigation on Feed and Today
+  with the nested-button row markup fixed (K2); reader keys plus Mark unread (Shift+U) and Copy link
+  (Shift+C) (K3); Research, report and Settings keys, a Settings shortcuts card, a keyboard-only e2e
+  spec and `docs/user-guide.md` (K4). Verified locally: in-app browser on the local loop and
+  keyboard e2e 12 passed. Full gate at `ddb3547`: `npm run check` 244 suites / 1,999 tests, 0 lint
+  errors, 4 warnings; `npm run test:integration` 4 suites / 12 tests; `npm run test:extension` 12
+  passed; `npm run build` compiled; `npm run test:e2e` ran `keyboard.spec.ts` 4/4 in
+  desktop-chromium, mobile-chromium and mobile-webkit, while `smoke`, `save` and `phase2` failed
+  (15) only because the e2e server inherits `.env.local` auth and feature variables, which
+  reproduces on `origin/main` `eaec1d2` and does not apply in CI (no `.env.local`); stages ran
+  separately because `check:full` stops at the first failing stage; e2e (anonymous env): 33 passed,
+  0 failed, 9 skipped (the DB-gated keyboard tests skip there). Squash merged by Amit on 2026-09-30
+  as `67f722c` after green CI (required check `quality-gate` passed on head `739d1f1`);
+  auto-deployed to Production (GitHub deployment for `67f722c`, created 2026-09-30T13:48:20Z, status
+  success). Production smoke check not yet done. Next: Amit runs the Production smoke check (`?`,
+  `g f`, `j`/`k`, Shift+U, ⌘R, ⌥←) and reports; on a bug, fix on a new branch from `main`; otherwise
+  the keyboard plan is closed and this bullet can be retired at the next handoff rewrite.
 - **Collections feature removed in code (branch `codex/remove-collections`, PR
   [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
   (code only) — 2026-09-30"):** the pages, API routes, UI controls,
@@ -551,6 +556,19 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Release: PR #101 (keyboard navigation K1–K4) to Production — 2026-09-30
+
+PR [#101](https://github.com/amitsharmaak/distil/pull/101) (keyboard navigation K1–K4, branch
+`claude/keyboard-k1`) was squash merged by Amit on 2026-09-30 as `67f722c` after green CI: the
+required check `quality-gate` passed on head `739d1f1` (the other CI jobs are skipped on PRs). The
+merge auto-deployed because the release pin is `unpinned`: the GitHub deployment record for
+`67f722c` (environment Production, created 2026-09-30T13:48:20Z) has status success, and
+`https://distilai.app` responds. This was the first deploy of K1–K4, shipped together per "Amit,
+in chat, 2026-09-30: finish all four phases, then merge and deploy to Production together". The
+Production smoke check (`?`, `g f`, `j`/`k`, Shift+U, ⌘R, ⌥←) is not yet done; Amit said in chat
+he will run it later and report any bugs. No cloud resource was touched apart from the automatic
+Vercel deploy; nothing changed in Neon.
 
 ### Keyboard navigation K4: Research, Settings, e2e and user guide — 2026-09-30
 
