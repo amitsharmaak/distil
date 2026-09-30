@@ -45,7 +45,7 @@ it("returns after one admission check and defers audit plus measured-token accou
   });
 
   await expect(
-    getRouter().generateTenantText(context, repositories, "prompt", "knowledge-answer")
+    getRouter().generateTenantText(context, repositories, "prompt", "summarize")
   ).resolves.toBe("answer");
 
   expect(repositories.lifecycle.consumeUsage).toHaveBeenCalledTimes(1);
