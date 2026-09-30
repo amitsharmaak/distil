@@ -478,6 +478,55 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Performance P8: Neon HTTP proxy identity lookup — 2026-09-30
+
+P8 is implemented on `codex/perf-p8-proxy-lookup` after merging current `origin/main`
+`4f1ee3e` (merge, not rebase). The proxy's exact-key internal-account lookup now uses
+`@neondatabase/serverless` `neon()` over stateless HTTP through a proxy-only narrow repository
+port. Routes, lifecycle work, queues and tenant repositories remain on the existing `postgres.js`
+clients. Both auth adapters share the same row mapper and the HTTP adapter still calls
+`distil_resolve_auth_identity($1, $2)` with bound parameters. The SECURITY DEFINER function,
+`distil_runtime` grant, status checks, denial behavior, signed identity handoff and CSRF ordering
+are unchanged; the reviewed boundary still contains the same 15 protected surfaces.
+
+The Step 1 stop condition passed before the driver change. On the old transport, a fresh Preview
+request measured `proxy-auth-connect` 1,823.9 ms (`q=2`), the identical established-connection
+lookup `proxy-auth-db` 5.4 ms (`q=1`), and proxy total 1,850.6 ms (`q=3`). Warm connect/query/total
+samples were 5.0/3.8/10.5 ms, 4.5/4.3/10.3 ms and 4.2/4.3/9.8 ms. This proved that the indexed
+SECURITY DEFINER query was not the bottleneck and authorized the HTTP transport change.
+
+Live HTTP evidence came from Preview deployment `dpl_Ev2efbGGhGY3JN9DtYGMZbP1c1Ym`, while the
+temporary two-call diagnostic was still present. Its fresh-deployment first HTTP/second HTTP/proxy
+sample was 1,617.1/25.9/1,674.0 ms. Warm repeats were 74.3/27.3/104.3 ms,
+7.4/9.5/18.3 ms, 9.5/11.0/21.6 ms and 23.3/9.5/37.0 ms; every repeat reported
+`q=1`/`q=1`/`q=2`. After the one-time HTTP-client warm-up, the stable samples are below the P8
+warm target of 30 ms, and the identical second lookup remained at or below 27.3 ms throughout.
+A nominal sample after more than six minutes was 56.4/25.7/113.9 ms, but it is not accepted as a
+whole-system idle result because P10 traffic kept the shared Neon database warm.
+
+The temporary `/feed?p8=1` legacy-auth response, auth hook, fixed missing subject, double lookup,
+`proxy-auth-connect` phase and diagnostic tests are removed in cleanup commit `e4915f7`. Final
+semantics are exactly one HTTP `findAccountByIdentity` call, measured as `proxy-auth-db` with
+`q=1`; `/feed?p8=1` is once again an ordinary Feed request. Permanent coverage mocks the HTTP
+client, asserts the existing function and bound parameters, shares and verifies the old row
+mapping, checks fail-closed/redacted runtime construction, proves postgres.js is not constructed
+for the proxy port, retains authorization/handoff coverage, and fences one provider call plus one
+account query.
+
+**Verification status.** Local focused verification passed 8 suites / 92 tests. Local
+`npm run check` passed after the `origin/main` merge: lint has 0 errors and the same 5 warnings in
+untouched files, formatting and TypeScript are clean, and all 234 suites / 1,830 tests pass.
+External GitHub CI has not run for the final cleanup commit yet. The recorded Preview deployment is
+live evidence for the HTTP adapter but predates removal of the temporary probe; the final branch is
+not released or merged at this checkpoint. Docker PostgreSQL cannot exercise Neon's HTTPS SQL
+transport, so local transport coverage uses a mocked `neon()` client and Preview supplies the live
+driver check.
+
+Still pending for the integration owner: take the true whole-system idle reading from the preserved
+old deployment after all shared-database traffic has been idle, then merge/release P8 only after its
+normal CI gate and record Production warm plus true-idle readings. No Production measurement,
+merge or release is claimed here.
+
 ### Ask Distil removed (A1) — 2026-09-30
 
 Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get
