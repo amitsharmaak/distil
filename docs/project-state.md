@@ -36,17 +36,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **Keyboard navigation: audited, plan K1–K4 recorded, nothing implemented (branch
-  `claude/distil-keyboard-shortcuts-5b189c`, docs only; checkpoint "Keyboard navigation: audit and
-  phased plan (K1–K4) — 2026-09-30"):** Amit finds the app hard to use from the keyboard. Audit:
-  three undocumented shortcuts exist (`/`, `r`, arrows), two swallow browser shortcuts (`⌘R`,
-  `⌥←`), rows cannot be walked without tabbing, buttons sit inside links, most icon buttons have
-  no accessible name. Plan: **K1** shortcut registry + `?` help dialog + `g`-navigation + bug
-  fixes; **K2** `j`/`k` row navigation on Feed and Today with the row markup fixed; **K3** reader
-  shortcuts plus Mark unread and Copy link; **K4** Research/Settings keys, keyboard-only e2e,
-  polish. The checkpoint holds the full key map, five decisions, a single-session code prompt and an
-  orchestrated prompt (main thread delegates all execution to small worker models).
-  Next: Amit answers the five decisions and picks a phase (recommended K1).
+- **Keyboard navigation: K1 implemented, PR pending (branch `claude/keyboard-k1`, worktree
+  `k1-prompt-455dd8`; checkpoints "Keyboard navigation K1: shortcut engine and help dialog —
+  2026-09-30" and "Keyboard navigation: audit and phased plan (K1–K4) — 2026-09-30"):** Amit's
+  decisions: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch in localStorage; row markup fix
+  inside K2; agent squash-merges after green gates and a local browser check; order K1 → K2 → K3
+  → K4). K1 adds a shortcut engine and provider, the `?` help dialog with a single-key switch,
+  `g`-navigation, `/`, `[` and Shift+T, and migrates the reader's ←/→ and `r` onto the registry;
+  the `⌘R`/`⌥←` swallowing is fixed. Verified locally (`npm run check` and the in-app browser on
+  the local loop); not merged, not deployed. Next: review and merge K1, then K2 (`j`/`k` rows and
+  row markup) from a fresh branch off `main`.
 - **Collections feature removed in code (branch `codex/remove-collections`, PR
   [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
   (code only) — 2026-09-30"):** the pages, API routes, UI controls,
@@ -540,6 +539,82 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Keyboard navigation K1: shortcut engine and help dialog — 2026-09-30
+
+**Why.** Phase K1 of the plan in checkpoint "Keyboard navigation: audit and phased plan (K1–K4) —
+2026-09-30". Branch `claude/keyboard-k1` (worktree `k1-prompt-455dd8`) from `main` `eaec1d2`.
+Orchestrated run: the main thread delegated to worker subagents, one integration commit per
+workstream. Amit's decisions, verbatim: `1A 2A 3A 4A 5A` (Gmail-style keys; on/off switch in
+localStorage; row markup fix inside K2; agent squash-merges after green gates and a local
+browser check; order K1 → K2 → K3 → K4). Implementation complete and verified locally; PR
+pending; nothing deployed, nothing changed in Vercel or Neon.
+
+**Commits.** `f38c4ac` engine; `eab4ce5` provider, help dialog, preference and Kbd; `e02ac94`
+wiring (provider mount, `g`-navigation, migrated listeners, a11y labels); `22a2605` Today at `/`
+gets list scope; `ca1560e` review fixes. 24 files, +1,320/−116.
+
+**What changed.**
+
+- **Engine** (pure, no React): `src/lib/shortcuts/{types,match,sequence}.ts`. `eventToKey`
+  normalises a keydown and returns null for undeclared meta/ctrl/alt, `isComposing` and
+  `defaultPrevented`; `keyEquals` compares key, `shift` and `mod` (Cmd on Mac, Ctrl elsewhere);
+  `SequenceMatcher` handles single keys and two-key sequences within 1 s. There is no
+  `registry.ts`: the provider holds the Map.
+- **React layer:** in `src/components/shortcuts/`: `shortcuts-provider`, `shortcuts-help-dialog`,
+  `shortcuts-preference`, `use-global-shortcuts`; plus `src/components/ui/kbd.tsx` and
+  `src/components/ui/switch.tsx` (shadcn). One window keydown listener in the provider;
+  `useShortcut` (handler kept in a ref), `useShortcutsSuspended` (counter), scope from the path.
+  It skips text fields and any open `[role="dialog"][data-state="open"]`; while the help dialog
+  is open only the help entries act.
+- **Wiring:** `app-shell` (provider, dialog and global keys; auth routes render outside it),
+  `sidebar` (Keyboard shortcuts entry, `aria-current`, labels when collapsed), `theme-toggle`,
+  `topbar`, `filter-bar`, `article-navigation`, `detail-action-bar-content`.
+- **Key map shipped:** `?` and ⌘/Ctrl+/ help; `/` search (focuses the page search box, else opens
+  `/feed?focus=search`, and the filter bar removes only that param); `g t` → `/` (Today lives at
+  `/`, not `/today`), `g f`, `g r`, `g s`; `[` sidebar; Shift+T theme; on the reader ←/→ and `r`
+  migrated from private listeners. `?`, ⌘/Ctrl+/ and `/` are always on.
+- **Bugs fixed by design:** the reader's ←/→ and `r` swallowed `⌥←` and `⌘R`; undeclared
+  meta/ctrl/alt now never match, so the browser keeps them.
+- **Accessibility:** `aria-label` and `aria-keyshortcuts` on the detail action bar icon buttons,
+  theme toggle and shortcuts entry; `aria-current="page"` on sidebar links.
+- **Preference:** `localStorage` key `distil.shortcuts.singleKey` (default on); off leaves only
+  always-on and modifier shortcuts. Toggle in the help dialog.
+- **Deviations from the brief:** punctuation resolves from `e.key` (with an `e.code` fallback for
+  Dead/Unidentified) instead of `e.code`, after review found `/` and `?` wrong on non-US layouts;
+  the `reader-view-overlay` Escape listener is left as is for a later phase; the sidebar and topbar
+  both render `ThemeToggle` (id `theme.toggle`) and only the sidebar one registers Shift+T; the
+  help dialog lists the help entry twice, once per key.
+
+**Tests.** Unit: `match`, `sequence`. Component: the provider against the real engine (only
+`next/navigation` mocked), help dialog, preference, detail action bar `r`, filter-bar focus
+param, theme-toggle Shift+T. Pre-fix gate: `npm run check` exit 0, 238 suites / 1,944 tests,
+0 lint errors, 4 warnings (below the 10 baseline). Post-fix gate (`ca1560e`): `npm run check`
+exit 0, 238 suites / 1,946 tests, 0 lint errors, 4 warnings.
+
+**Browser verification** (local loop, in-app browser, Docker Postgres, local owner; desktop,
+375 px and dark):
+
+- `?` on Today, Feed, reader (Reading group first), Research and Settings: pass.
+- `g f`, `g t`, `[` (aside 256 → 64 → 256 px), Shift+T (html class toggles): pass.
+- ⌘R and ⌥← verified by mechanism only (keydown no longer `defaultPrevented`, item stays unread),
+  because the pane cannot fire native accelerators. Amit should press them once.
+- `?` and `/` typed in the Save form appear as text; no dialog.
+- Sidebar entry and the Single-key switch (off silences `g r`, `?` still opens): pass.
+- 375 px: the dialog fits and scrolls. Dark mode: surface matches the Filters sheet.
+- Post-fix re-check: `?` opens and closes on `/feed`; `/` with the dialog closed focuses Search;
+  `[` and Shift+T as above (theme restored); with help open on `/settings`, `g f` and Shift+T
+  change nothing and `?` closes it; with help open on a reader page, ←, → and `r` leave the path
+  and unread state unchanged and Esc closes it. Console: two pre-existing, unrelated resource
+  errors (404/403). Observed, not attributed to K1: a reader URL drops `?filter=unread` after the
+  page settles, also before the fixes.
+
+**Limitations.** No row navigation yet; the help dialog lists only K1 entries; the two modifier
+checks need a human keypress; the reader overlay is not a dialog, so reader keys still act
+behind it (pre-existing).
+
+**Next.** Review and merge K1, then K2 per its brief from a fresh branch off `main` after this PR
+merges.
 
 ### Unused embeddings module removed — 2026-09-30
 
