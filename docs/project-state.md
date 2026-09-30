@@ -15,6 +15,14 @@ This section is the only forward-looking instruction block in this file. Everyth
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
+- **One capture token per account (PR [#90](https://github.com/amitsharmaak/distil/pull/90),
+  squash merged on 2026-09-30 at Amit's request after green CI; checkpoint "Single capture token —
+  2026-09-30"):** Amit found named per-client tokens overkill; capture sources are not tracked per
+  token. Settings → Capture now manages one token: generate, copy once, regenerate (which revokes
+  every earlier token, legacy ones included). Storage is unchanged (hash only, no reveal). Locally
+  verified (`npm run check`, `npm run test:integration`); the merge auto-deploys, but Production
+  was not checked here. Production's two legacy tokens keep working until Amit first regenerates;
+  he then pastes the new token into the extension and the iPhone Shortcut.
 - **Active objective:** Close the released app-slowness plan P8–P11. P8, P9 and P10 are merged
   and live; P11 remains the authorized no-change decision. The final post-P9 idle reading is
   recorded; only this handoff's docs-only PR remains. Phase 4 (mobile) remains unauthorized.
@@ -28,14 +36,6 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **One capture token per account (branch `claude/distil-single-capture-token-03f752`;
-  checkpoint "Single capture token — 2026-09-30"):** Amit found named per-client tokens overkill;
-  capture sources are not tracked per token. Settings → Capture now manages one token: generate,
-  copy once, regenerate (which revokes every earlier token, legacy ones included). Storage is
-  unchanged (hash only, no reveal). Locally verified (`npm run check`, `npm run
-test:integration`); not merged or deployed. After release, Production's two legacy tokens keep
-  working until Amit first regenerates; he then pastes the new token into the extension and the
-  iPhone Shortcut.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -509,8 +509,6 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
-<<<<<<< HEAD
-
 ### Single capture token — 2026-09-30
 
 **Decision (Amit, in chat):** separate named tokens per browser/phone are overkill for a personal
@@ -534,13 +532,12 @@ reversible storage, and magic-link-only accounts have no password.
 
 **Verification:** `npm run check` (234 suites, 1,883 tests) and `npm run test:integration` pass
 locally. New tests: repository SQL shape, route contract, component flow, and an RLS integration
-test proving regeneration revokes only the caller's tokens. Not checked in a browser; not merged
-or deployed.
+test proving regeneration revokes only the caller's tokens. Not checked in a browser. Squash merged
+as PR #90 after green CI (auto-deploys to Production; not checked there).
 
 **Known limits:** two concurrent regenerations could leave two active tokens (no unique index,
 because existing accounts already hold several active tokens); the next regenerate clears it.
 All capture clients now share the 60 requests/minute limit keyed by token id.
-=======
 
 ### Performance P11: cold-start settings retained — 2026-09-30
 
@@ -579,7 +576,6 @@ Vercel setting, plan, deployment, environment variable, database, or application
   Free with the mandatory five-minute suspension and leave Vercel Fluid enabled. The final
   Production sample met the route-commit target without a cloud change, but cold-start variance
   and the unmeasured full RSC stream remain the risk; no always-warm guarantee is claimed.
-  > > > > > > > origin/main
 
 ### Performance P9: 60-second read-only provider session cache — 2026-09-30
 
