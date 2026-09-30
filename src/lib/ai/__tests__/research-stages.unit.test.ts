@@ -12,7 +12,9 @@ import {
   nextResearchStage,
   parseResearchRunState,
   publicResearchProgress,
+  RESEARCH_STAGE_DEADLINE_MS,
   ResearchStageRetryError,
+  ResearchStageTimeoutError,
   runResearchStage,
   STALE_RESEARCH_MS,
   startResearch,
@@ -162,7 +164,7 @@ describe("runResearchStage", () => {
     expect(ai.generateText).toHaveBeenCalledWith(
       expect.stringContaining("Rayleigh scattering"),
       "research-plan",
-      { timeoutMs: 30_000 }
+      { timeoutMs: 30_000, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
     expect(reports.get(id)?.status).toBe("running");
     expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
@@ -181,7 +183,7 @@ describe("runResearchStage", () => {
         grounded: expect.stringContaining("Q1"),
         ungrounded: expect.stringContaining("Q1"),
       },
-      { timeoutMs: 45_000, maxTokens: 2048 }
+      { timeoutMs: 45_000, maxTokens: 2048, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
     const searchPrompt = ai.generateTextWithSearch.mock.calls.at(-1)![0] as {
       grounded: string;
@@ -213,6 +215,8 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateJSON).toHaveBeenCalledWith(expect.stringContaining("Q1"), "research-gaps", {
       timeoutMs: 30_000,
+      maxAttempts: 1,
+      signal: expect.any(AbortSignal),
     });
     expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
       stage: "deepening",
@@ -227,7 +231,7 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateTextWithSearch).toHaveBeenLastCalledWith(
       expect.objectContaining({ grounded: expect.stringContaining("Gap A") }),
-      { timeoutMs: 45_000, maxTokens: 2048 }
+      { timeoutMs: 45_000, maxTokens: 2048, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
 
     // Synthesis cites [2] first, then [1]; [9] is not in the source list.
@@ -242,9 +246,12 @@ describe("runResearchStage", () => {
     const synthesizeCall = ai.generateText.mock.calls.at(-1)!;
     const synthesizePrompt = synthesizeCall[0];
     expect(synthesizeCall[2]).toEqual({
-      timeoutMs: 50_000,
-      maxTokens: 12_000,
-      rejectTruncated: true,
+      timeoutMs: 45_000,
+      maxTokens: 2_400,
+      rejectTruncated: false,
+      maxAttempts: 1,
+      providerOverrides: { gemini: { maxTokens: 8_192, rejectTruncated: true } },
+      signal: expect.any(AbortSignal),
     });
     expect(synthesizePrompt).toContain("## Q1\n\nSources: [1] About Q1 — example.com\n\n- Fact");
     expect(synthesizePrompt).toContain("## Q2\n\nSources: [2] About Q2 — example.com");
@@ -637,6 +644,155 @@ describe("runResearchStage", () => {
       reason: "missing",
     });
     expect(ai.generateText).not.toHaveBeenCalled();
+  });
+
+  describe("stage deadline (Production run 8bb4d982 hit the 60 s function limit)", () => {
+    function synthesizingState(attempts: Record<string, number> = {}): ResearchRunState {
+      return {
+        version: 2,
+        updatedAt: "2026-09-30T10:01:00.000Z",
+        view: { stage: "synthesizing" },
+        subQuestions: ["Q1"],
+        findings: [finding("Q1")],
+        gaps: [],
+        deepening: [],
+        attempts,
+      };
+    }
+
+    async function seedSynthesizing(attempts?: Record<string, number>) {
+      const created = createRepositories();
+      const { id } = await seedReport(created.repositories);
+      await created.repositories.research.updateReport(id, {
+        status: "running",
+        progress: JSON.stringify(synthesizingState(attempts)),
+      });
+      return { ...created, id };
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("returns at the deadline when the provider never answers, aborting the request", async () => {
+      jest.useFakeTimers();
+      const { repositories, reports, id } = await seedSynthesizing();
+      let seenSignal: AbortSignal | undefined;
+      const ai = createAI({
+        generateText: jest.fn(
+          (_prompt: string, _task: string, options?: { signal?: AbortSignal }) => {
+            seenSignal = options?.signal;
+            return new Promise<string>(() => {}); // never settles, ignores the signal
+          }
+        ),
+      });
+
+      const outcome = runResearchStage({ context, repositories, reportId: id, ai }).catch(
+        (error: unknown) => error
+      );
+      await jest.advanceTimersByTimeAsync(RESEARCH_STAGE_DEADLINE_MS - 1);
+      expect(seenSignal?.aborted).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+
+      const error = await outcome;
+      expect(error).toBeInstanceOf(ResearchStageRetryError);
+      expect((error as Error).cause).toBeInstanceOf(ResearchStageTimeoutError);
+      expect(seenSignal?.aborted).toBe(true);
+      expect(RESEARCH_STAGE_DEADLINE_MS).toBeLessThanOrEqual(50_000);
+      expect(reports.get(id)!.status).toBe("running");
+      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+        synthesize: 1,
+      });
+    });
+
+    it("does not store a report that arrives after the deadline", async () => {
+      const { repositories, reports, id } = await seedSynthesizing();
+      let answer: (text: string) => void = () => {};
+      const ai = createAI({
+        generateText: jest.fn(() => new Promise<string>((resolve) => (answer = resolve))),
+      });
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
+      ).rejects.toBeInstanceOf(ResearchStageRetryError);
+      answer("## Executive Summary\n\nLate.");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(reports.get(id)!.status).toBe("running");
+      expect(reports.get(id)!.report).toBe("");
+    });
+
+    it("fails the report on the last attempt with a clear message", async () => {
+      const { repositories, reports, id } = await seedSynthesizing({
+        synthesize: MAX_STAGE_ATTEMPTS - 1,
+      });
+      const ai = createAI({ generateText: jest.fn(() => new Promise<string>(() => {})) });
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
+      ).resolves.toEqual({ outcome: "ran", stage: { kind: "synthesize" }, next: null });
+      expect(reports.get(id)!.status).toBe("failed");
+      expect(reports.get(id)!.report).toBe(
+        "Research failed: the report took too long to write. Please try again."
+      );
+      expect(reports.get(id)!.progress).toBeNull();
+    });
+
+    it("counts a delivery the platform killed before it could record its failure", async () => {
+      const { repositories, reports, id } = await seedSynthesizing();
+      const hung = createAI({ generateText: jest.fn(() => new Promise<string>(() => {})) });
+      // The attempt is written before the model call; a killed function never gets further.
+      const delivery = runResearchStage({
+        context,
+        repositories,
+        reportId: id,
+        ai: hung,
+        deadlineMs: 50,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(hung.generateText).toHaveBeenCalledTimes(1);
+      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+        synthesize: 1,
+      });
+      await expect(delivery).rejects.toBeInstanceOf(ResearchStageRetryError);
+    });
+
+    it("stops redelivering once every allowed delivery was killed", async () => {
+      const { repositories, reports, id } = await seedSynthesizing({
+        synthesize: MAX_STAGE_ATTEMPTS,
+      });
+      const ai = createAI();
+      await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+        outcome: "ran",
+        stage: { kind: "synthesize" },
+        next: null,
+      });
+      expect(ai.generateText).not.toHaveBeenCalled();
+      expect(reports.get(id)!.status).toBe("failed");
+      expect(reports.get(id)!.report).toContain("took too long");
+    });
+
+    it("degrades a search stage whose deliveries were all killed and moves on", async () => {
+      const { repositories, reports } = createRepositories();
+      const { id } = await seedReport(repositories);
+      await repositories.research.updateReport(id, {
+        status: "running",
+        progress: JSON.stringify({
+          version: 2,
+          updatedAt: "2026-09-30T10:01:00.000Z",
+          view: { stage: "researching", current: 0, total: 1, question: "Q1" },
+          subQuestions: ["Q1"],
+          findings: [null],
+          deepening: [],
+          attempts: { "search:0": MAX_STAGE_ATTEMPTS },
+        } satisfies ResearchRunState),
+      });
+      const ai = createAI();
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai })
+      ).resolves.toMatchObject({ stage: { kind: "search", index: 0 }, next: { kind: "gaps" } });
+      expect(ai.generateTextWithSearch).not.toHaveBeenCalled();
+      expect(parseResearchRunState(reports.get(id)?.progress, "").findings[0]).toEqual(
+        finding("Q1", "(Research on this question failed.)")
+      );
+    });
   });
 });
 
