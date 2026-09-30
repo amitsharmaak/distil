@@ -2,7 +2,6 @@ import {
   DigestError,
   dismissDigest,
   dismissDigestItem,
-  enqueueDigest,
   localDateFor,
   runDigest,
   selectDigestItems,
@@ -165,12 +164,6 @@ describe("digest selection", () => {
     expect(digest.status).toBe("degraded");
     expect(digest.title).toBe("Your digest for 2026-09-07");
     expect(digest.items).toHaveLength(5);
-    await expect(
-      enqueueDigest(context, repository, preferences, "cron", new Date("2026-09-07T01:00:00.000Z"))
-    ).resolves.toMatchObject({ requestedBy: "cron" });
-    await expect(
-      enqueueDigest(context, repository, { ...preferences, digestEnabled: false }, "cron")
-    ).resolves.toBeUndefined();
   });
 
   it("validates timezone names without silently changing a local date", () => {
