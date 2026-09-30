@@ -47,6 +47,15 @@ describe("SettingsPage", () => {
     expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "capture");
   });
 
+  it("fresh load: the first 2 press is handled (preventDefault) with no help-dialog cycle", () => {
+    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    // fireEvent returns false when a listener called preventDefault.
+    expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2" })).toBe(false);
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "account");
+    expect(fireEvent.keyDown(document.body, { key: "1", code: "Digit1" })).toBe(false);
+    expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "capture");
+  });
+
   it("? lists the Settings group", () => {
     render(
       <ShortcutsProvider>

@@ -232,7 +232,7 @@ export function DetailActionBar({
           </div>
 
           {/* ── Actions ── */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className={iconBtn} asChild>
