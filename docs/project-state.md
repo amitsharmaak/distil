@@ -94,6 +94,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   on Today) and F6 (area backfill) start from `main`. Separate follow-up after F7: move the area classifier
   onto the model Amit called "the new TypeSafe model GeV" (not yet identified; confirm the exact
   model before starting that task).
+  **F5–F7 orchestration authorizations (Amit, in chat, 2026-09-30; task-specific, for the F5/F6/F7
+  task only):** (1) Claude may squash merge each of F5, F6 and F7 to `main` (auto-deploys to
+  Production) once its gates are green and it has been checked locally, without asking per phase;
+  (2) Claude may trigger **one** F6 area backfill over Amit's Production library after F6 deploys;
+  (3) F7 removes `GET /api/v1/search` if nothing else calls it (`searchPassages` stays for Ask and
+  grounding) and removes `FEATURE_SEARCH` from code; **Amit removes any leftover `FEATURE_SEARCH`
+  variable in Vercel himself**; (4) the classifier-model follow-up is left out of this task
+  unless Amit names the exact provider model id.
 - **Adaptive brief and detailed summaries: S1 and S2 released, Detailed on Claude in Production
   (PR [#60](https://github.com/amitsharmaak/distil/pull/60), squash merged as `195189b` on
   2026-09-29; key record PR [#70](https://github.com/amitsharmaak/distil/pull/70), squash merged
