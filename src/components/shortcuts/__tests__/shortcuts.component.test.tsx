@@ -2,66 +2,18 @@
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ShortcutDef, ShortcutKey } from "@/lib/shortcuts/types";
+import { useGlobalShortcuts } from "../use-global-shortcuts";
+import { DetailActionBar } from "@/components/feed/detail-action-bar-content";
 import { ShortcutsProvider, useShortcut, useShortcutsSuspended } from "../shortcuts-provider";
 import { ShortcutsHelpDialog } from "../shortcuts-help-dialog";
 import { readSingleKeyShortcuts, setSingleKeyShortcuts } from "../shortcuts-preference";
 
 let mockPathname = "/feed";
-jest.mock("next/navigation", () => ({ usePathname: () => mockPathname }));
-
-jest.mock("@/lib/shortcuts/match", () => ({
-  isEditableTarget: (t: EventTarget | null) =>
-    t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"),
-  eventToKey: (e: KeyboardEvent) => {
-    if (e.isComposing || e.defaultPrevented || e.altKey) return null;
-    const mod = e.metaKey || e.ctrlKey;
-    if (mod && e.key !== "/" && e.key !== "r") return null;
-    const k: { key: string; shift?: boolean; mod?: boolean } = {
-      key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
-    };
-    if (mod) k.mod = true;
-    if (e.shiftKey && /^[a-z]$/i.test(e.key)) k.shift = true;
-    return k;
-  },
-  keyEquals: (a: ShortcutKey, b: ShortcutKey) =>
-    a.key === b.key && !!a.shift === !!b.shift && !!a.mod === !!b.mod,
-  isMacPlatform: () => true,
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
 }));
-
-jest.mock("@/lib/shortcuts/sequence", () => {
-  const eq = (a: ShortcutKey, b: ShortcutKey) =>
-    a.key === b.key && !!a.shift === !!b.shift && !!a.mod === !!b.mod;
-  class SequenceMatcher {
-    private pending: ShortcutKey | null = null;
-    private at = 0;
-    constructor(
-      private defs: () => ShortcutDef[],
-      private windowMs = 1000
-    ) {}
-    feed(key: ShortcutKey, now = Date.now()): ShortcutDef | null {
-      const defs = this.defs();
-      if (this.pending && now - this.at <= this.windowMs) {
-        const hit = defs.find(
-          (d) => d.keys.length === 2 && eq(d.keys[0], this.pending!) && eq(d.keys[1], key)
-        );
-        this.pending = null;
-        if (hit) return hit;
-      }
-      this.pending = null;
-      const single = defs.find((d) => d.keys.length === 1 && eq(d.keys[0], key));
-      if (single) return single;
-      if (defs.some((d) => d.keys.length === 2 && eq(d.keys[0], key))) {
-        this.pending = key;
-        this.at = now;
-      }
-      return null;
-    }
-    reset() {
-      this.pending = null;
-    }
-  }
-  return { SequenceMatcher };
-});
 
 const def = (id: string, keys: ShortcutKey[], extra: Partial<ShortcutDef> = {}): ShortcutDef => ({
   id,
@@ -125,6 +77,8 @@ describe("shortcuts provider", () => {
   beforeEach(() => {
     localStorage.clear();
     mockPathname = "/feed";
+    mockPush.mockClear();
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
   });
   afterEach(cleanup);
 
@@ -220,3 +174,94 @@ describe("single-key preference", () => {
     window.removeEventListener("distil-shortcuts-preference-change", seen);
   });
 });
+
+function Globals() {
+  useGlobalShortcuts(() => {});
+  return null;
+}
+
+describe("real-engine wiring", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockPush.mockClear();
+    mockPathname = "/feed/abc";
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+  });
+  afterEach(cleanup);
+
+  it("g then f pushes /feed", () => {
+    render(
+      <ShortcutsProvider>
+        <Globals />
+      </ShortcutsProvider>
+    );
+    fireEvent.keyDown(window, { key: "g" });
+    fireEvent.keyDown(window, { key: "f" });
+    expect(mockPush).toHaveBeenCalledWith("/feed");
+  });
+
+  it("/ pushes /feed?focus=search when the page has no search box", () => {
+    render(
+      <ShortcutsProvider>
+        <Globals />
+      </ShortcutsProvider>
+    );
+    fireEvent.keyDown(window, { key: "/" });
+    expect(mockPush).toHaveBeenCalledWith("/feed?focus=search");
+  });
+
+  it("does not preventDefault Cmd+R", () => {
+    render(
+      <ShortcutsProvider>
+        <DetailActionBar
+          itemId="1"
+          url="https://example.com"
+          title="T"
+          isRead={false}
+          prevId={null}
+          nextId={null}
+        />
+      </ShortcutsProvider>
+    );
+    const global = global_fetch();
+    expect(fireEvent.keyDown(window, { key: "r", metaKey: true })).toBe(true);
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  it("r marks read; preference off silences r but not ?", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(
+      <ShortcutsProvider>
+        <DetailActionBar
+          itemId="1"
+          url="https://example.com"
+          title="T"
+          isRead={false}
+          prevId={null}
+          nextId={null}
+        />
+        <ShortcutsHelpDialog />
+      </ShortcutsProvider>
+    );
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "r" });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    act(() => setSingleKeyShortcuts(false));
+    fetchMock.mockClear();
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "r" });
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "?" });
+    expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
+  });
+});
+
+function global_fetch() {
+  const f = jest.fn();
+  global.fetch = f as unknown as typeof fetch;
+  return f;
+}

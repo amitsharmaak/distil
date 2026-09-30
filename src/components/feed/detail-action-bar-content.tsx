@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,16 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeepResearch } from "@/components/feed/deep-research";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
+
+const MARK_READ: ShortcutDef = {
+  id: "reader.markRead",
+  keys: [{ key: "r" }],
+  label: "Mark as read and go to next",
+  group: "Reading",
+  scope: "reader",
+};
 
 export interface DetailActionBarProps {
   itemId: string;
@@ -85,22 +95,7 @@ export function DetailActionBar({
     }
   }, [read, markingRead, itemId, nextId, suffix, router]);
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "r" && e.key !== "R") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      e.preventDefault();
-      handleMarkRead();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleMarkRead]);
+  useShortcut(MARK_READ, () => void handleMarkRead(), !read);
 
   const iconBtn =
     "h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-colors";
@@ -115,15 +110,25 @@ export function DetailActionBar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                    <Link href={`/feed/${prevId}${suffix}`}>
+                    <Link
+                      href={`/feed/${prevId}${suffix}`}
+                      aria-label="Previous item"
+                      aria-keyshortcuts="ArrowLeft"
+                    >
                       <ChevronLeft className="h-4 w-4" />
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Previous</TooltipContent>
+                <TooltipContent side="top">Previous (←)</TooltipContent>
               </Tooltip>
             ) : (
-              <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" disabled>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 md:h-9 md:w-9"
+                aria-label="Previous item"
+                disabled
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             )}
@@ -132,15 +137,25 @@ export function DetailActionBar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                    <Link href={`/feed/${nextId}${suffix}`}>
+                    <Link
+                      href={`/feed/${nextId}${suffix}`}
+                      aria-label="Next item"
+                      aria-keyshortcuts="ArrowRight"
+                    >
                       <ChevronRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Next</TooltipContent>
+                <TooltipContent side="top">Next (→)</TooltipContent>
               </Tooltip>
             ) : (
-              <Button variant="ghost" size="icon" className="h-11 w-11 md:h-9 md:w-9" disabled>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 md:h-9 md:w-9"
+                aria-label="Next item"
+                disabled
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             )}
@@ -151,7 +166,12 @@ export function DetailActionBar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                  <a href={url} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="View original"
+                  >
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
@@ -176,6 +196,7 @@ export function DetailActionBar({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={() => handleRate(1)}
+                  aria-label={rating === 1 ? "Liked" : "Like"}
                   disabled={submitting}
                 >
                   <ThumbsUp className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`} />
@@ -195,6 +216,7 @@ export function DetailActionBar({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={() => handleRate(-1)}
+                  aria-label={rating === -1 ? "Disliked" : "Dislike"}
                   disabled={submitting}
                 >
                   <ThumbsDown className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`} />
@@ -214,12 +236,14 @@ export function DetailActionBar({
                     read ? "text-green-500" : "text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={handleMarkRead}
+                  aria-label={read ? "Read" : "Mark as read"}
+                  aria-keyshortcuts="r"
                   disabled={read || markingRead}
                 >
                   <Check className={`h-4 w-4 ${read ? "stroke-[2.5]" : ""}`} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{read ? "Read" : "Mark as read (R)"}</TooltipContent>
+              <TooltipContent side="top">{read ? "Read" : "Mark as read (r)"}</TooltipContent>
             </Tooltip>
           </div>
         </div>

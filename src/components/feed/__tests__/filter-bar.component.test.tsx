@@ -5,6 +5,14 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { FilterBar, SEARCH_DEBOUNCE_MS } from "../filter-bar";
+
+const mockReplace = jest.fn();
+let mockParams = "";
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+  usePathname: () => "/feed",
+  useSearchParams: () => new URLSearchParams(mockParams),
+}));
 import { feedFilterState } from "@/lib/feed/feed-url";
 
 function renderBar(search = "") {
@@ -29,6 +37,11 @@ function renderBar(search = "") {
     );
   return { onChange, onSearchDraftChange, rerender };
 }
+
+beforeEach(() => {
+  mockParams = "";
+  mockReplace.mockClear();
+});
 
 afterEach(() => {
   cleanup();
@@ -87,19 +100,22 @@ describe("FilterBar search", () => {
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 
-  it("focuses the search on '/' unless the user is typing in another field", () => {
+  it("marks the input as the page search box", () => {
     renderBar();
-    const input = screen.getByRole("searchbox");
-    fireEvent.keyDown(document.body, { key: "/" });
-    expect(input).toHaveFocus();
+    expect(screen.getByRole("searchbox")).toHaveAttribute("data-search-input");
+  });
 
-    input.blur();
-    const other = document.createElement("textarea");
-    document.body.appendChild(other);
-    other.focus();
-    fireEvent.keyDown(other, { key: "/" });
-    expect(other).toHaveFocus();
-    other.remove();
+  it("focuses the search for ?focus=search and removes only that param", () => {
+    mockParams = "focus=search&filter=unread";
+    renderBar();
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(mockReplace).toHaveBeenCalledWith("/feed?filter=unread");
+  });
+
+  it("does not steal focus without the param", () => {
+    renderBar();
+    expect(screen.getByRole("searchbox")).not.toHaveFocus();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });
 

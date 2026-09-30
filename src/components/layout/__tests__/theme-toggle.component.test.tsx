@@ -3,7 +3,18 @@
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ThemeToggle } from "../theme-toggle";
+import { ThemeToggle as Bare } from "../theme-toggle";
+import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+
+jest.mock("next/navigation", () => ({ usePathname: () => "/feed" }));
+
+function ThemeToggle(props: React.ComponentProps<typeof Bare>) {
+  return (
+    <ShortcutsProvider>
+      <Bare {...props} />
+    </ShortcutsProvider>
+  );
+}
 
 const mockToggle = jest.fn();
 const mockUseTheme = jest.fn();
@@ -45,6 +56,16 @@ describe("ThemeToggle", () => {
 
     fireEvent.click(button);
 
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles on Shift+T and advertises the shortcut", () => {
+    render(<ThemeToggle />);
+    expect(screen.getByRole("button", { name: "Toggle theme" })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Shift+T"
+    );
+    fireEvent.keyDown(window, { key: "T", shiftKey: true });
     expect(mockToggle).toHaveBeenCalledTimes(1);
   });
 });

@@ -32,7 +32,7 @@ export function Topbar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        <ThemeToggle collapsed className="h-11 w-11 md:h-9 md:w-9" />
+        <ThemeToggle collapsed registerShortcut={false} className="h-11 w-11 md:h-9 md:w-9" />
       </div>
     </header>
   );

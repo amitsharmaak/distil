@@ -10,6 +10,7 @@ let mockSearch = "";
 const mockReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/feed",
   useSearchParams: () => new URLSearchParams(mockSearch),
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), refresh: jest.fn() }),
 }));
