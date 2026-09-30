@@ -64,6 +64,7 @@ beforeEach(() => {
   process.env.DISTIL_LEGACY_USER_ID = authContext.userId;
   captureTokens = {
     create: jest.fn().mockResolvedValue(undefined),
+    replaceActive: jest.fn().mockResolvedValue(undefined),
     findActiveByHash: jest.fn(),
     list: jest.fn().mockResolvedValue([
       {
@@ -250,39 +251,30 @@ describe("/api/v1/capture-tokens", () => {
     expect(JSON.stringify(body)).not.toContain("tokenHash");
   });
 
-  it("POST enforces origin and validates the display name", async () => {
-    const cookie = await sessionCookie();
+  it("POST enforces origin", async () => {
     const hostile = await tokensPost(
       request("/api/v1/capture-tokens", {
         method: "POST",
-        headers: { cookie, origin: "https://hostile.example" },
-        json: { name: "iPhone" },
+        headers: { cookie: await sessionCookie(), origin: "https://hostile.example" },
       })
     );
     expect(hostile.status).toBe(403);
-    const invalid = await tokensPost(
-      request("/api/v1/capture-tokens", {
-        method: "POST",
-        headers: { cookie, origin },
-        json: { name: " " },
-      })
-    );
-    expect(invalid.status).toBe(400);
-    expect(captureTokens.create).not.toHaveBeenCalled();
+    expect(captureTokens.replaceActive).not.toHaveBeenCalled();
   });
 
-  it("POST creates a token, returns plaintext once, and stores only a hash", async () => {
+  it("POST replaces the active token, returns plaintext once, and stores only a hash", async () => {
     const response = await tokensPost(
       request("/api/v1/capture-tokens", {
         method: "POST",
         headers: { origin, cookie: await sessionCookie() },
-        json: { name: "iPhone" },
       })
     );
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.token.token).toMatch(/^dst_cap_/);
-    const persisted = captureTokens.create.mock.calls[0][0];
+    expect(body.token.name).toBe("Capture token");
+    expect(captureTokens.create).not.toHaveBeenCalled();
+    const persisted = captureTokens.replaceActive.mock.calls[0][0];
     expect(persisted.tokenHash).toBeDefined();
     expect(JSON.stringify(persisted)).not.toContain(body.token.token);
   });

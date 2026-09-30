@@ -29,6 +29,14 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
+- **One capture token per account (branch `claude/distil-single-capture-token-03f752`;
+  checkpoint "Single capture token — 2026-09-30"):** Amit found named per-client tokens overkill;
+  capture sources are not tracked per token. Settings → Capture now manages one token: generate,
+  copy once, regenerate (which revokes every earlier token, legacy ones included). Storage is
+  unchanged (hash only, no reveal). Locally verified (`npm run check`, `npm run
+test:integration`); not merged or deployed. After release, Production's two legacy tokens keep
+  working until Amit first regenerates; he then pastes the new token into the extension and the
+  iPhone Shortcut.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -484,6 +492,36 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Single capture token — 2026-09-30
+
+**Decision (Amit, in chat):** separate named tokens per browser/phone are overkill for a personal
+ingest tool, and Distil does not track which client a capture came from via its token (captures
+still carry their own `source`). Chosen shape: one token per account, shown once at generation,
+regenerate to replace. Rejected: a revealable token gated by the account password — it needs
+reversible storage, and magic-link-only accounts have no password.
+
+**Change (no migration):**
+
+- `CaptureTokenRepository.replaceActive` revokes every active token for the tenant and inserts
+  the new one in a single statement (data-modifying CTE), scoped by RLS.
+- `issueCaptureToken` takes no name (fixed `Capture token`) and calls `replaceActive`.
+  `POST /api/v1/capture-tokens` needs no body. `GET` and `DELETE /api/v1/capture-tokens/:id` are
+  unchanged (DELETE has no UI caller now).
+- `TokenSettings` shows the newest active token's prefix, created and last-used dates, a note
+  when older legacy tokens are still active, Generate (first time) or Regenerate… with an inline
+  confirmation, and the one-time copy panel.
+- Docs: `AGENTS.md`, `docs/vercel-deployment.md`, `docs/iphone-shortcut.md`, extension README and
+  Options hint.
+
+**Verification:** `npm run check` (234 suites, 1,883 tests) and `npm run test:integration` pass
+locally. New tests: repository SQL shape, route contract, component flow, and an RLS integration
+test proving regeneration revokes only the caller's tokens. Not checked in a browser; not merged
+or deployed.
+
+**Known limits:** two concurrent regenerations could leave two active tokens (no unique index,
+because existing accounts already hold several active tokens); the next regenerate clears it.
+All capture clients now share the 60 requests/minute limit keyed by token id.
 
 ### Deep research R3: adaptive, deeper report — 2026-09-30
 

@@ -7,7 +7,7 @@ A Chrome Manifest V3 extension that sends pages to Distil's durable capture API.
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Choose **Load unpacked** and select `browser-extension/`.
 3. Open the extension's **Options** page.
-4. The Distil origin defaults to `https://distilai.app`; change it only for local development (`http://localhost:3000`). Paste a dedicated capture token from Distil Settings.
+4. The Distil origin defaults to `https://distilai.app`; change it only for local development (`http://localhost:3000`). Paste your capture token from Distil Settings → Capture (one token per account, shared with the iPhone Shortcut).
 5. Approve access to that origin.
 
 The token is kept only in `chrome.storage.local`, is never rendered after it is saved, and is sent solely in the `Authorization` header to the configured origin. Pending captures are stored under an opaque SHA-256 namespace derived from the origin and capture token. Switching tokens never replays the previous account's queue; restore that original token to replay it, or explicitly discard it in Settings.
