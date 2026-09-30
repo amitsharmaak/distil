@@ -441,6 +441,44 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
+
+P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
+`.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`. Implementation commit
+`2df6b4b` changes only the sidebar, Feed client island and their component tests; this checkpoint
+is the following docs commit. No cloud configuration, database, Preview, Production or open PR
+was touched.
+
+- **Sidebar prefetches.** Before P10, every visible desktop-sidebar link used Next's default
+  prefetch. The 2026-09-29 Production trace saw nine first-load prefetches: Feed, Research, Ask,
+  Search, Settings, Save and three reader cards (Search has since been removed by PR #75). After
+  P10, Today and Feed keep default prefetch; Ask (when enabled), Research, Save and Settings set
+  `prefetch={false}`. Reader-card links remain unchanged, as required by the plan.
+- **Feed feedback.** A filter change still makes exactly one scroll-preserving
+  `router.replace` and the server remains responsible for the paginated, ranked result. The
+  selected filters and active count now update optimistically before the RSC navigation commits;
+  the old list remains visible with a subtle opacity change and `aria-busy=true` until the URL
+  matches. Rapid filter clicks compose into the same pending URL rather than losing an earlier
+  selection. No client-side facet filtering was added (the existing search-draft narrowing from
+  PR #75 is unchanged).
+- **Request behavior.** Initial desktop navigation no longer schedules the four rare sidebar
+  route prefetches, so those four proxy/auth passes disappear from that load. Today and Feed stay
+  warm through default prefetch. A Feed filter still issues one RSC request; P10 changes perceived
+  responsiveness, not its server request count.
+- **Locally verified.** `npm ci` ran before edits. Focused sidebar and Feed component suites pass
+  (23 tests), `npm run check:quick` passes (4 related suites / 33 tests), and `npm run check`
+  passes: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites / 1,738 tests. The
+  local in-app browser at `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately
+  selects it, increments the active count and commits `/feed?area=work`; closing the sheet shows
+  the Work chip. The local worktree has no `.env.local`, so feed API calls returned the expected
+  unconfigured-local error and real list rows were not available. The pending/dimmed list and
+  settled-server-page states are covered deterministically by the new component test.
+- **Remaining gates / restart.** No Preview, external CI, merge or deployment has happened.
+  Integration owner: fetch `codex/perf-p10-client-requests`; if `origin/main` advanced, merge it
+  (do not rebase), preserve both dated checkpoints and rerun `npm run check`; then create/merge
+  the P10 PR under Amit's recorded authorization. After deployment, confirm the four rare
+  sidebar prefetches are absent and one Feed filter navigation still produces one RSC request.
+
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
 Amit's feedback on the F3 filter bar: the search spanned the page, and the area switch and quick
