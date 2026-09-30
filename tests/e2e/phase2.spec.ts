@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/browser/test";
 
-const allPhase2UiEnabled = ["FEATURE_KNOWLEDGE_UI", "FEATURE_ANSWERS", "FEATURE_DIGESTS"].every(
+const allPhase2UiEnabled = ["FEATURE_KNOWLEDGE_UI", "FEATURE_DIGESTS"].every(
   (name) => process.env[name]?.trim().toLowerCase() === "true"
 );
 
@@ -57,12 +57,10 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   await page.goto("/");
   // Search lives in the Feed and Today headers; there is no separate Search destination.
   await expect(page.locator('a[href="/search"]')).toHaveCount(0);
-  // Ask lives in the desktop sidebar only; the phone bar is Today / Feed / Save / Settings.
+  // Ask Distil was removed; the phone bar is Today / Feed / Save / Settings.
+  await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
   if (isMobile) {
-    await expect(page.getByRole("link", { name: "Ask" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Save" })).toBeVisible();
-  } else {
-    await expect(page.getByRole("link", { name: "Ask" })).toBeVisible();
   }
   // Digests left primary navigation in the 2026-09 simplification; Settings links to it.
   await expect(page.getByRole("link", { name: "Digests" })).toHaveCount(0);
