@@ -65,51 +65,41 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   capture token. Capture tokens are bound to one user and must never be shared between accounts.
   Next: Amit issues the tester's invitation himself (Production mutation) and shares
   a zip of `browser-extension/` plus an iCloud Shortcut link with his token removed.
-- **Deep research readability R1–R4: in progress (orchestrated by Claude from worktree
-  `deep-research-readability-r1-r4-846d48`; plan PR
-  [#62](https://github.com/amitsharmaak/distil/pull/62), checkpoint "Deep research readability:
-  diagnosis and phased plan — 2026-09-29"):** Amit finds reports hard to consume (link bloat,
-  thin and poorly rendered content; baseline local run `5a9cf55a`: 789 words, 41 sources listed,
-  8 cited, one small-type card). **Decisions (Amit, 2026-09-30; task-specific authorization for
-  this task only):** (1) order R1 → R2 → R3; (2) storage in the existing `research_reports`
-  text columns, no migration; (3) R3 target 1,500–2,500 words with TL;DR and key takeaways on
-  top; (4) R4 decided after R3 (ask again then; a Production migration would need separate
-  approval); (5) Claude may squash merge each phase to `main` (auto-deploys to Production) once
-  its gates are green and it is checked locally, then confirm the deployment and
-  `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
-  only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
-  memory, labelled on the page). Phase branches: `claude/research-r1-page`,
-  `claude/research-r2-citations`, `claude/research-r3-adaptive`.
-  **R1 (readable page, UI only)** done and deployed: PR
-  [#81](https://github.com/amitsharmaak/distil/pull/81), squash merged as `8280fdc`; Production
-  deployment succeeded (05:28Z) and `/api/health` returned 200; checked locally on `5a9cf55a` at
-  desktop, 375 px and dark mode (checkpoint "Deep research R1: readable report page —
-  2026-09-30"). **R2 (numbered citations, engine + UI)** done: squash merged to `main`
-  (checkpoint "Deep research R2: grounded numbered citations — 2026-09-30"). Live local run
-  `79e2f8cc` (same question as the baseline) found that **search grounding works on the
-  free-tier key** for `research-search` (7 grounded sources, redirects resolved to publisher
-  URLs) and exposed a synthesis regression on the Gemini fallback (thinking exhausted the
-  4,096-token budget; the stored report was a reasoning fragment). Fixed on the branch (12,000
-  tokens, truncation rejected and retried, prompt starts at the first heading) and confirmed by
-  a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
-  keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
-  Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
-  Claude, and R3 splits the call. **R2 Production regression and hotfix:** a
-  Production run started at Amit's request (`8bb4d982`, same question) stalled at synthesis:
-  the queue consumer hit Vercel's 60 s limit twice because the Anthropic SDK retried the timed-out
-  50 s call internally and R2's 12,000-token budget let Claude write past it. Hotfix (checkpoint
-  "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
-  model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
-  Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
-  failed by the stale guard on its next read. **R3 (adaptive, deeper report)** done: outline → one write per
-  section → assembly, run state v3 (v1/v2 still finish), stepper fixed (checkpoint "Deep
-  research R3: adaptive, deeper report — 2026-09-30"); squash merged to `main`. Local full run
-  `10b849b6` (baseline question, Gemini fallback, Anthropic key blanked): **1,951 words**, TL;DR
-  51 words, 5 key takeaways, 4 question-specific sections (one GFM table) plus caveats, **25
-  sources, all grounded and all cited**, no URLs in the text, no placeholder; slowest stage 28 s
-  (search), outline 8 s, writes 11–14 s, whole run ~3.5 min; checked at desktop, 375 px (table
-  scrolls inside its box) and dark mode. **Not verified live:** the Claude (Production) timings
-  for outline/write. Next: ask Amit about R4 (decision 4: decide after R3).
+- **Deep research readability R1–R3: done and deployed; R4 dropped (orchestrated by Claude
+  from worktree `deep-research-readability-r1-r4-846d48`; plan PR
+  [#62](https://github.com/amitsharmaak/distil/pull/62); checkpoints "Deep research R1: readable
+  report page", "Deep research R2: grounded numbered citations", "Deep research R2 hotfix:
+  synthesis fits the 60 s function" and "Deep research R3: adaptive, deeper report", all
+  2026-09-30):** Amit found reports hard to consume (baseline local run `5a9cf55a`: 789 words,
+  fixed four-heading template, 41 sources listed / 8 cited, one small-type card). **Decisions
+  (Amit, 2026-09-30, task-specific):** order R1 → R2 → R3; storage in the existing
+  `research_reports` text columns (no migration); 1,500–2,500 words with TL;DR and key
+  takeaways; Claude may squash merge each phase after green gates and a local check; R2's
+  grounded path by fixtures was acceptable; **R4 (research-notes drill-down) dropped
+  permanently — do not re-propose it.** **Shipped (each deployed to Production, deployment
+  success, `/api/health` 200):** R1 PR [#81](https://github.com/amitsharmaak/distil/pull/81)
+  `8280fdc` (reading column, TL;DR, TOC, domain chips, collapsed cited/other sources); R2 PR
+  [#83](https://github.com/amitsharmaak/distil/pull/83) `0592c27` (grounding sources, `[n]`
+  citations, cited-only numbered source objects, superscript UI); R2 hotfix PR
+  [#84](https://github.com/amitsharmaak/distil/pull/84) `eaed15c` (the Anthropic SDK retried a
+  timed-out 50 s synthesis inside the 60 s function; one attempt per call, hard stage deadline,
+  per-provider budgets, killed deliveries counted); R3 PR
+  [#85](https://github.com/amitsharmaak/distil/pull/85) `5c879ea` (outline → one write per
+  section → assembly, run state v3, stepper fixed). **Result vs baseline (local run `10b849b6`,
+  same question, Gemini):** 1,951 words; TL;DR 51 words, 5 takeaways, 4 question-specific
+  sections with a table, caveats; 25 sources, all grounded and all cited, no URLs in the text;
+  slowest stage 28 s; checked at desktop, 375 px and dark mode. Search grounding turned out to
+  work on the free-tier key, so grounded sources were verified live locally, not only by
+  fixtures. **Production evidence:** run `8bb4d982` (R2) failed on the synthesis timeout that
+  #84 fixed. Run `8b17dcaf` (R3, at Amit's request, 13:14–13:23 local) completed its stages,
+  stepper and 19 grounded sources, but every section write was refused by the app's own daily
+  AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
+  spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
+  **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
+  report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
+  Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
+  Optional follow-up: fail a report instead of completing it when every section is a
+  placeholder.
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -737,7 +727,6 @@ sources).
    Production-shaped progress.
 2. Per-fact source attribution beyond the prompt would need the search notes to carry
    citations (not in scope).
-3. R4 (research notes drill-down) remains a separate decision.
 
 ### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
 
@@ -2164,7 +2153,7 @@ stored report.
    question, `---` rules between sections, no table of contents or section navigation, and the
    sources card below it. Only the executive summary is lifted out (by regex, `page.tsx:66`).
 
-**Plan — four PR-sized phases, each its own task from current `main`.** Re-verify every
+**Plan — three PR-sized phases, each its own task from current `main`.** Re-verify every
 file:line reference above against `main` before starting a phase. Every phase keeps existing
 stored reports rendering (legacy markdown with `string[]` sources) and records a dated
 checkpoint with a before/after comparison against the `5a9cf55a` baseline (789 words, 41 sources
@@ -2243,11 +2232,6 @@ words, whose sections keep the specifics from the findings.
   day) allows roughly one run a day.
 - Tests: full stage walk, resume mid-`write`, degraded section, assembled markdown shape, contract
   schema, `/research/[id]` stepper labels.
-
-**R4 — Research notes drill-down (optional; decide after R3).** Keep the per-question findings
-after completion (today `progress` is cleared on completion) so the page can offer a collapsed
-"How this was researched" list of sub-questions with their notes. Needs a storage decision
-(a `notes jsonb` column is a tenant migration stage like `summary-structure`).
 
 **Decisions for Amit (recommendation first).**
 
