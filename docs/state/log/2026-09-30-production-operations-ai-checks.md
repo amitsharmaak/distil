@@ -15,7 +15,9 @@ backfill, 23 items) and research (run `4d1cbcb5`) have all run on Production, so
 
 Later on 2026-09-30 Amit also confirmed in chat: `npm run audit:ai-models` has been run with the
 Production keys and passes; the local Anthropic key has been replaced; the original Wispr Flow
-note has been shared again on Production. Those three checks are closed. The standing facts in
+note has been shared again on Production. Those three checks are closed. Amit also decided to keep `OPENAI_API_KEY` in Vercel for
+possible future use, even though nothing on the default path reads it; do not re-propose removing
+it. The standing facts in
 `2026-09-30-production-operations.md` are unchanged.
 
 ## Verification
@@ -30,8 +32,6 @@ None.
 
 Open checks carried over, none blocking:
 
-- Optionally remove `OPENAI_API_KEY` from Vercel; nothing on the default path reads it (Amit;
-  cloud mutation, not authorized for the severity-3 sweep).
 - Optional password-login check deferred on 2026-09-16: sign in at `/sign-in`, land on Today,
   change the password once from `/account`, confirm the magic-link fallback.
 - Optional: confirm the re-shared Wispr Flow note produced an item on Production.
