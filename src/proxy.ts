@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { checkAuth } from "@/lib/middleware/auth";
+import { checkAuth, P8_PROXY_PROBE_HEADER } from "@/lib/middleware/auth";
 import { checkRateLimit } from "@/lib/middleware/rate-limit";
 import { handlePreflight, applyCors } from "@/lib/middleware/cors";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
@@ -98,6 +98,9 @@ async function handleProxy(inbound: NextRequest, metrics: RequestMetrics) {
 
   const traceId = crypto.randomUUID();
   let requestHeaders = new Headers(request.headers);
+  // The opt-in P8 diagnostic header is consumed by the legacy auth boundary;
+  // it is never forwarded to application code.
+  requestHeaders.delete(P8_PROXY_PROBE_HEADER);
   let providerHeaders: Headers | undefined;
 
   // FEATURE_NEON_AUTH is an exact opt-in. The legacy session path remains the

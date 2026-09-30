@@ -7,6 +7,21 @@ export const PROXY_PROVIDER_PHASE = "proxy-auth-provider";
 export const PROXY_CONNECTION_PHASE = "proxy-auth-connect";
 export const PROXY_DATABASE_PHASE = "proxy-auth-db";
 
+type IdentityLookupInput = Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0];
+
+/**
+ * P8 diagnostic only: repeat the exact identity lookup so Preview can compare
+ * the connection-establishing call with the same query on an established
+ * connection. The second result is the real lookup result.
+ */
+export async function measureP8ProxyIdentityLookup(
+  repositories: AuthRepositoryPort,
+  input: IdentityLookupInput
+): ReturnType<AuthRepositoryPort["findAccountByIdentity"]> {
+  await measurePhase(PROXY_CONNECTION_PHASE, () => repositories.findAccountByIdentity(input));
+  return measurePhase(PROXY_DATABASE_PHASE, () => repositories.findAccountByIdentity(input));
+}
+
 /**
  * Wrap the proxy's authorization dependencies so the provider round trip and
  * the account lookup are timed as named phases. Behaviour is unchanged: every
@@ -31,15 +46,7 @@ export function instrumentNeonProxyDependencies(dependencies: {
     new Proxy(target, {
       get(port, property) {
         if (property === "findAccountByIdentity") {
-          return async (input: Parameters<AuthRepositoryPort["findAccountByIdentity"]>[0]) => {
-            // P8 diagnostic only: the first identical lookup establishes the
-            // proxy's database connection and its result is deliberately
-            // ignored. The second lookup remains the authorization decision.
-            // On Preview, subtract the warm proxy-auth-db duration from
-            // proxy-auth-connect to estimate connection setup overhead.
-            await measurePhase(PROXY_CONNECTION_PHASE, () => port.findAccountByIdentity(input));
-            return measurePhase(PROXY_DATABASE_PHASE, () => port.findAccountByIdentity(input));
-          };
+          return (input: IdentityLookupInput) => measureP8ProxyIdentityLookup(port, input);
         }
         const value = Reflect.get(port, property, port) as unknown;
         return typeof value === "function" ? value.bind(port) : value;
