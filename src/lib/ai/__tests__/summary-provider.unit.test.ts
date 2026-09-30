@@ -8,7 +8,12 @@ jest.mock("@anthropic-ai/sdk", () => ({
   __esModule: true,
   default: jest.fn(() => ({ messages: { create: mockAnthropicCreate } })),
 }));
-import { AnthropicProviderImpl, GeminiProviderImpl } from "../providers";
+import {
+  AnthropicProviderImpl,
+  GeminiProviderImpl,
+  geminiText,
+  parseGroundingSources,
+} from "../providers";
 import { AIProviderError, classifyProviderFailure } from "../errors";
 import { sanitizeLogError } from "@/lib/logger";
 beforeEach(() => {
@@ -99,4 +104,97 @@ it.each([
   [new AIProviderError("invalid_output"), "invalid_output"],
 ])("classifies SDK errors without retaining payloads", (error, category) => {
   expect(classifyProviderFailure(error)).toBe(category);
+});
+it("returns grounding chunks with the grounded answer, de-duplicated and validated", async () => {
+  const redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc";
+  mockGenerateContent.mockResolvedValue({
+    response: {
+      text: () => "grounded notes",
+      usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 7 },
+      candidates: [
+        {
+          groundingMetadata: {
+            webSearchQueries: ["q1", "q2"],
+            groundingChunks: [
+              { web: { uri: redirect, title: " who.int " } },
+              { web: { uri: redirect, title: "duplicate" } },
+              { web: { uri: "ftp://not-web.example", title: "x" } },
+              { web: { title: "no uri" } },
+              { retrievedContext: { uri: "https://other.example" } },
+              { web: { uri: "https://direct.example/page" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  await expect(
+    new GeminiProviderImpl("key").generateTextWithSearch("synthetic", { timeoutMs: 45_000 })
+  ).resolves.toEqual({
+    value: "grounded notes",
+    usage: { inputTokens: 12, outputTokens: 7, searchQueries: 2 },
+    sources: [
+      { url: redirect, title: "who.int" },
+      { url: "https://direct.example/page", title: "" },
+    ],
+  });
+  expect(mockGenerateContent).toHaveBeenCalledWith("synthetic", { timeout: 45_000 });
+});
+it("rejects a Gemini answer cut off at the token limit when asked to", async () => {
+  const truncated = {
+    response: {
+      text: () => " tail of reasoning [1].",
+      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: " tail" }] } }],
+    },
+  };
+  mockGenerateContent.mockResolvedValue(truncated);
+  await expect(
+    new GeminiProviderImpl("key").generateText("synthetic", "model", {
+      maxTokens: 12_000,
+      rejectTruncated: true,
+    })
+  ).rejects.toMatchObject({ category: "invalid_output" });
+  expect(mockGetModel).toHaveBeenCalledWith(
+    expect.objectContaining({
+      generationConfig: expect.objectContaining({ maxOutputTokens: 12_000 }),
+    })
+  );
+  // Without the flag the text is returned as before.
+  await expect(
+    new GeminiProviderImpl("key").generateText("synthetic", "model")
+  ).resolves.toMatchObject({ value: " tail of reasoning [1]." });
+});
+it("rejects an Anthropic answer stopped at max_tokens when asked to", async () => {
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "partial" }],
+    stop_reason: "max_tokens",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+  await expect(
+    new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6", {
+      rejectTruncated: true,
+    })
+  ).rejects.toMatchObject({ category: "invalid_output" });
+  await expect(
+    new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6")
+  ).resolves.toMatchObject({ value: "partial" });
+});
+it("excludes thought parts from Gemini answer text", () => {
+  const parts = [{ text: "planning…", thought: true }, { text: "## Report" }, { text: "\nBody" }];
+  expect(
+    geminiText({
+      text: () => parts.map((part) => part.text).join(""),
+      candidates: [{ content: { parts } }],
+    })
+  ).toBe("## Report\nBody");
+  expect(geminiText({ text: () => "plain" })).toBe("plain");
+});
+it("returns no sources when the grounded answer carries no grounding metadata", async () => {
+  mockGenerateContent.mockResolvedValue({ response: { text: () => "memory notes" } });
+  await expect(
+    new GeminiProviderImpl("key").generateTextWithSearch("synthetic")
+  ).resolves.toMatchObject({ value: "memory notes", sources: [] });
+  expect(
+    parseGroundingSources({ candidates: [{ groundingMetadata: { groundingChunks: "x" } }] })
+  ).toEqual([]);
 });

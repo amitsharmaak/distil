@@ -2,10 +2,10 @@
 
 import { useMemo } from "react";
 import { ReportBody } from "./report-body";
-import { prepareReport, SUMMARY_ANCHOR_ID } from "./report-markdown";
+import { linkCitationMarkers, prepareReport, SUMMARY_ANCHOR_ID } from "./report-markdown";
 import { ReportToc } from "./report-toc";
 import { ReportToolbar } from "./report-toolbar";
-import { normalizeSources, splitSources } from "./research-sources";
+import { hasNumberedSources, normalizeSources, splitSources } from "./research-sources";
 import { ResearchSourcesList } from "./research-sources-list";
 
 export interface CompletedResearchReport {
@@ -35,11 +35,23 @@ function formatDate(value: string): string | null {
  * phones.
  */
 export function ResearchReportView({ report }: { report: CompletedResearchReport }) {
-  const prepared = useMemo(() => prepareReport(report.report), [report.report]);
-  const { cited, other } = useMemo(
-    () => splitSources(normalizeSources(report.sources), report.report),
-    [report.sources, report.report]
-  );
+  const numbered = useMemo(() => hasNumberedSources(report.sources), [report.sources]);
+  const { cited, other } = useMemo(() => {
+    const sources = normalizeSources(report.sources);
+    // R2 sources are cited-only and numbered to match the `[n]` markers; no split needed.
+    return numbered ? { cited: sources, other: [] } : splitSources(sources, report.report);
+  }, [numbered, report.sources, report.report]);
+  const prepared = useMemo(() => {
+    const base = prepareReport(report.report);
+    if (!numbered) return base;
+    const ids = cited.map((source) => source.id);
+    return {
+      ...base,
+      summary: base.summary === null ? null : linkCitationMarkers(base.summary, ids),
+      body: linkCitationMarkers(base.body, ids),
+    };
+  }, [report.report, numbered, cited]);
+  const citationSources = numbered ? cited : undefined;
 
   const sourceCount = cited.length > 0 ? cited.length : other.length;
   const date = formatDate(report.completedAt ?? report.createdAt);
@@ -93,13 +105,17 @@ export function ResearchReportView({ report }: { report: CompletedResearchReport
             <p className="mb-2 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
               TL;DR
             </p>
-            <ReportBody markdown={prepared.summary} headings={[]} />
+            <ReportBody markdown={prepared.summary} headings={[]} sources={citationSources} />
           </section>
         )}
 
-        <ReportBody markdown={prepared.body} headings={prepared.headings} />
+        <ReportBody
+          markdown={prepared.body}
+          headings={prepared.headings}
+          sources={citationSources}
+        />
 
-        <ResearchSourcesList cited={cited} other={other} />
+        <ResearchSourcesList cited={cited} other={other} numbered={numbered} />
       </article>
 
       <aside className="hidden lg:block">

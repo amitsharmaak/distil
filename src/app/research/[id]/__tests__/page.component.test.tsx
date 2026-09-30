@@ -262,7 +262,7 @@ describe("ResearchPage", () => {
 
     render(<ResearchPage />);
 
-    expect(await screen.findByText("Cited in this report (1)")).toBeInTheDocument();
+    expect(await screen.findByText("Sources (1)")).toBeInTheDocument();
     expect(screen.getByText("A post")).toBeInTheDocument();
   });
 

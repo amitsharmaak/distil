@@ -7,15 +7,23 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { Components, ExtraProps } from "react-markdown";
 
 import {
+  createCitationLink,
   createHeading,
   createReportComponents,
   ReportLink,
 } from "@/components/research/report-body";
-import { CITATION_LINK_TITLE, extractHeadings } from "@/components/research/report-markdown";
+import {
+  CITATION_LINK_TITLE,
+  CITATION_REF_TITLE,
+  extractHeadings,
+} from "@/components/research/report-markdown";
 import { ReportToc } from "@/components/research/report-toc";
 import { ResearchReportView } from "@/components/research/research-report-view";
 import { normalizeSources, splitSources } from "@/components/research/research-sources";
-import { ResearchSourcesList } from "@/components/research/research-sources-list";
+import {
+  ResearchSourcesList,
+  UNVERIFIED_SOURCES_NOTE,
+} from "@/components/research/research-sources-list";
 
 // react-markdown is ESM-only and is never loaded by the Jest harness; the mock records the
 // markdown and components each call receives.
@@ -315,7 +323,227 @@ describe("ResearchReportView", () => {
     expect(screen.getByTestId("report-stats")).toHaveTextContent(
       "2 sections · ~1 min read · 1 source"
     );
-    expect(screen.getByText("Cited in this report (1)")).toBeInTheDocument();
+    expect(screen.getByText("Sources (1)")).toBeInTheDocument();
+    expect(screen.queryByText(/Cited in this report/)).not.toBeInTheDocument();
     expect(screen.getByText("A post")).toBeInTheDocument();
+    expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();
+  });
+
+  it("treats an empty sources array like a report without sources", async () => {
+    render(
+      <ResearchReportView
+        report={{
+          query: "Q",
+          report: "Claim [1].",
+          sources: [],
+          createdAt: "2026-09-30T10:00:00.000Z",
+        }}
+      />
+    );
+    await screen.findByTestId("markdown");
+    expect(markdownCalls.at(-1)?.children).toBe("Claim [1].");
+    expect(markdownCalls.at(-1)?.components?.a).toBe(ReportLink);
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();
+  });
+
+  it("keeps legacy string[] reports on R1's behaviour, markers untouched", async () => {
+    render(
+      <ResearchReportView
+        report={{ ...legacyReport, report: `${legacyReport.report}\nSee [1].` }}
+      />
+    );
+    await screen.findAllByTestId("markdown");
+    const body = markdownCalls.at(-1)!;
+    expect(body.children).toContain("See [1].");
+    expect(body.children).not.toContain(CITATION_REF_TITLE);
+    expect(body.components?.a).toBe(ReportLink);
+    expect(screen.getByText("Other links the research touched (2)")).toBeInTheDocument();
+    expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();
+  });
+});
+
+describe("numbered citations (R2)", () => {
+  const sources = normalizeSources([
+    {
+      id: 1,
+      url: "https://www.who.int/r",
+      title: "WHO report",
+      domain: "who.int",
+      grounded: false,
+    },
+    { id: 2, url: "https://nih.gov/a", title: "nih.gov", domain: "nih.gov", grounded: false },
+  ]);
+  const CitationLink = createCitationLink(new Map(sources.map((source) => [source.id, source])));
+
+  it("renders a marker group as one superscript of source links with tooltips", () => {
+    const { container } = render(
+      <p>
+        Claim
+        <CitationLink href="#source-1" title={CITATION_REF_TITLE}>
+          1,2
+        </CitationLink>
+      </p>
+    );
+    const group = container.querySelector("sup[data-citation-group]");
+    expect(group).not.toBeNull();
+    const links = within(group as HTMLElement).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["#source-1", "#source-2"]);
+    expect(links[0]).toHaveAttribute("title", "WHO report — who.int");
+    expect(links[0]).toHaveAccessibleName("Source 1: WHO report — who.int");
+    expect(links[1]).toHaveAttribute("title", "nih.gov");
+    expect(links[0]).not.toHaveAttribute("target");
+    expect(group).toHaveTextContent("1,2");
+  });
+
+  it("renders unknown ids as plain text and other links as ReportLink", () => {
+    const { container } = render(
+      <p>
+        <CitationLink href="#source-9" title={CITATION_REF_TITLE}>
+          9,8
+        </CitationLink>{" "}
+        <CitationLink href="https://x.example/a" title={CITATION_LINK_TITLE}>
+          x
+        </CitationLink>
+      </p>
+    );
+    expect(container.querySelector("sup")).toBeNull();
+    expect(container).toHaveTextContent("[9][8]");
+    expect(container.querySelector("[data-citation-chip]")).not.toBeNull();
+  });
+
+  it("opens the collapsed sources list when a citation is clicked", () => {
+    const { container } = render(
+      <>
+        <CitationLink href="#source-2" title={CITATION_REF_TITLE}>
+          2
+        </CitationLink>
+        <ResearchSourcesList cited={sources} other={[]} numbered />
+      </>
+    );
+    const details = container.querySelector("details")!;
+    expect(details.open).toBe(false);
+    fireEvent.click(screen.getByRole("link", { name: /^Source 2/ }));
+    expect(details.open).toBe(true);
+  });
+
+  it("lists numbered sources with anchors and the unverified note when nothing is grounded", () => {
+    const { container, rerender } = render(
+      <ResearchSourcesList cited={[...sources].reverse()} other={[]} numbered />
+    );
+    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
+    const rows = container.querySelectorAll("li");
+    expect([...rows].map((row) => row.id)).toEqual(["source-1", "source-2"]);
+    expect(rows[0]).toHaveClass("scroll-mt-20");
+    expect(within(rows[0] as HTMLElement).getByRole("link")).toHaveAttribute(
+      "href",
+      "https://www.who.int/r"
+    );
+    expect(screen.getByTestId("unverified-sources-note")).toHaveTextContent(
+      UNVERIFIED_SOURCES_NOTE
+    );
+    expect(screen.queryByText(/Other links/)).not.toBeInTheDocument();
+
+    rerender(
+      <ResearchSourcesList
+        cited={[{ ...sources[0], grounded: true }, sources[1]]}
+        other={[]}
+        numbered
+      />
+    );
+    expect(screen.queryByTestId("unverified-sources-note")).not.toBeInTheDocument();
+    rerender(<ResearchSourcesList cited={[]} other={[]} numbered />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("stored R2 report fixture", () => {
+  beforeEach(() => {
+    markdownCalls.length = 0;
+  });
+
+  // Shaped exactly as the engine stores a completed report: markdown with renumbered [n]
+  // markers and the cited-only source objects (JSON in research_reports.sources).
+  const storedReport = {
+    query: "What are the main approaches to on-device AI assistants?",
+    report: [
+      "# Research Report: On-device assistants",
+      "",
+      "## Executive Summary",
+      "Phones run small models locally [1] and hand off hard tasks [2][3].",
+      "",
+      "## Key Findings",
+      "### Model size",
+      "- 3B-parameter models run at interactive speed [1].",
+      "- Unknown marker [7] stays text; code `x[1]` stays code.",
+      "## Conclusion",
+      "Hybrid designs dominate [3, 1].",
+    ].join("\n"),
+    sources: JSON.parse(
+      JSON.stringify([
+        {
+          id: 1,
+          url: "https://a.example/on-device",
+          title: "On-device models",
+          domain: "a.example",
+          grounded: false,
+        },
+        {
+          id: 2,
+          url: "https://b.example/cloud",
+          title: "Cloud handoff",
+          domain: "b.example",
+          grounded: false,
+        },
+        {
+          id: 3,
+          url: "https://c.example/hybrid",
+          title: "c.example",
+          domain: "c.example",
+          grounded: false,
+        },
+      ])
+    ) as unknown,
+    createdAt: "2026-09-30T10:00:00.000Z",
+    completedAt: "2026-09-30T10:04:00.000Z",
+  };
+
+  it("renders citations, numbered anchored sources, header count and the unverified note", async () => {
+    const { container } = render(<ResearchReportView report={storedReport} />);
+    await screen.findAllByTestId("markdown");
+
+    expect(screen.getByTestId("report-stats")).toHaveTextContent(
+      "2 sections · ~1 min read · 3 sources"
+    );
+    expect(markdownCalls).toHaveLength(2);
+    const [summary, body] = markdownCalls;
+    expect(summary.children).toBe(
+      `Phones run small models locally [1](#source-1 "${CITATION_REF_TITLE}") and hand off hard tasks [2,3](#source-2 "${CITATION_REF_TITLE}").`
+    );
+    expect(body.children).toContain(`interactive speed [1](#source-1 "${CITATION_REF_TITLE}").`);
+    expect(body.children).toContain("Unknown marker [7] stays text; code `x[1]` stays code.");
+    expect(body.children).toContain(`dominate [3,1](#source-3 "${CITATION_REF_TITLE}").`);
+
+    // The body's link component resolves the group against the stored sources.
+    const Link = body.components!.a as React.ComponentType<Record<string, unknown>>;
+    render(
+      <Link href="#source-3" title={CITATION_REF_TITLE}>
+        3,1
+      </Link>
+    );
+    expect(screen.getByRole("link", { name: "Source 3: Hybrid — c.example" })).toHaveAttribute(
+      "href",
+      "#source-3"
+    );
+    expect(
+      screen.getByRole("link", { name: "Source 1: On-device models — a.example" })
+    ).toBeVisible();
+
+    const rows = container.querySelectorAll("section[aria-label='Sources'] li");
+    expect([...rows].map((row) => row.id)).toEqual(["source-1", "source-2", "source-3"]);
+    expect(screen.getByText("Sources (3)")).toBeInTheDocument();
+    expect(screen.getByTestId("unverified-sources-note")).toHaveTextContent(
+      "Sources recalled by the model, not verified by search"
+    );
   });
 });
