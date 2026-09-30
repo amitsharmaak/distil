@@ -65,6 +65,7 @@
     "@mozilla/readability": "^0.6.0",
     "@neondatabase/auth": "0.5.0-beta",
     "@neondatabase/auth-ui": "file:vendor/neon-auth-ui-disabled",
+    "@neondatabase/serverless": "^1.1.0",
     "@slack/web-api": "^7.19.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/queue": "^0.5.1",
