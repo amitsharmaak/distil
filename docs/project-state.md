@@ -9,15 +9,26 @@ resuming work, and update it whenever material progress or a roadmap decision is
 intentionally contains no passwords, tokens, database connection strings, session secrets, or AI
 provider keys.
 
-## Current handoff — 2026-09-29
+## Current handoff — 2026-09-30
 
 This section is the only forward-looking instruction block in this file. Everything from
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
-- **Active objective:** Post-Phase-3 steady state. Use Production on `https://distilai.app` for
-  ordinary capture and reading, adding items one at a time and checking capture, readable
-  extraction, summary and search. No new phase has started; Phase 4 (mobile) is not authorized.
+- **Active objective:** Execute the app-slowness plan P8–P11 from the checkpoint "App slowness:
+  live diagnosis and phased plan (P8–P11) — 2026-09-29", with Codex as integration owner. P8 and
+  P10 start in parallel from fresh `origin/main`; P9 starts only after P8 is released; P11 is a
+  recorded no-change decision. Phase 4 (mobile) remains unauthorized.
+- **P8–P11 task-specific decisions and authorization (Amit, in chat, 2026-09-30; verbatim reply:
+  `1A 2A 3B 4A`):** (1A) P8 uses the Neon HTTP driver for the proxy account lookup. (2A) P9 may
+  trust the signed provider cookie cache for read-only navigations for up to 60 seconds; mutations,
+  auth/account-sensitive paths, and missing/expired caches remain uncached. (3B) P11 stays on the
+  Neon Free plan and accepts occasional cold wakes; no Neon setting, Vercel setting, or paid plan
+  change is authorized. Read-only reconnaissance found `distil-production` fixed at 0.25 CU with
+  mandatory scale-to-zero after five idle minutes, while Vercel Fluid Compute is already enabled.
+  (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
+  green and its Preview reading meets the phase goal; each merge auto-deploys because the release
+  pin is `unpinned`. This authorization is limited to this P8–P11 task.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
