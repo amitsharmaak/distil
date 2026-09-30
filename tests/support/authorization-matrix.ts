@@ -214,7 +214,6 @@ const publicRouteSurfaces = new Set([
   "POST /api/auth/password/reset",
 ]);
 
-const systemRouteSurfaces = new Set(["GET /api/cron/digests"]);
 const workerSurfaces = ["worker:capture", "worker:durable-job"] as const;
 
 function matrixId(surface: string): string {
@@ -241,17 +240,6 @@ export function createPhase2Wave0AuthorizationMatrix(
         resourceScope: "public",
         unauthenticated: "allow",
         actors: { user: "allow", "capture-token": "allow", system: "allow" },
-        concealCrossTenant: false,
-      };
-    }
-    if (systemRouteSurfaces.has(surface)) {
-      return {
-        id: matrixId(surface),
-        surface,
-        surfaceKind: "route",
-        resourceScope: "system",
-        unauthenticated: "deny",
-        actors: { user: "deny", "capture-token": "deny", system: "allow" },
         concealCrossTenant: false,
       };
     }
