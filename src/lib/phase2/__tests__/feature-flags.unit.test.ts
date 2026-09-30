@@ -8,7 +8,6 @@ describe("Phase 2 server feature flags", () => {
       serverRender: true,
       knowledgeUi: false,
       search: false,
-      answers: false,
       personalization: false,
       digests: false,
     });
@@ -22,7 +21,6 @@ describe("Phase 2 server feature flags", () => {
         FEATURE_SERVER_RENDER: "FALSE",
         FEATURE_KNOWLEDGE_UI: "true",
         FEATURE_SEARCH: "TRUE",
-        FEATURE_ANSWERS: "1",
         FEATURE_PERSONALIZATION: " false ",
         FEATURE_DIGESTS: " true ",
       })
@@ -32,7 +30,6 @@ describe("Phase 2 server feature flags", () => {
       serverRender: false,
       knowledgeUi: true,
       search: true,
-      answers: false,
       personalization: false,
       digests: true,
     });

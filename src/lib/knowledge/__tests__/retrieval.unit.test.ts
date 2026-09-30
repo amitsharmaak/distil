@@ -7,7 +7,6 @@ import {
 } from "../retrieval";
 import type { Sql } from "postgres";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
-import { answerFromKnowledge } from "../service";
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
@@ -160,21 +159,14 @@ describe("retrieval contracts", () => {
     ]);
   });
 
-  it("fails before answer generation when a cross-tenant canary reaches the row mapper", async () => {
+  it("fails when a cross-tenant canary reaches the row mapper", async () => {
     const fake = sqlDouble([[{ ...row, user_id: foreignUserId }]]);
     const store = new PostgresPassageSearchStore(fake.sql, context);
-    const generator = jest.fn();
 
-    await expect(
-      answerFromKnowledge({
-        context,
-        request: { query: "durable queue", messages: [] },
-        store,
-        generator,
-      })
-    ).rejects.toThrow("Tenant passage invariant failed");
+    await expect(store.searchKeyword({ query: "durable queue" })).rejects.toThrow(
+      "Tenant passage invariant failed"
+    );
 
-    expect(generator).not.toHaveBeenCalled();
     expect(fake.queries.join("\n")).toContain("i.user_id=");
   });
 });

@@ -1290,25 +1290,6 @@
       "testProfile": "owner",
       "notes": "POST checks Origin and enqueues the first items.area-backfill tenant job for the caller only; GET returns the caller's area counts and backfill run totals (counts only, no content)."
     },
-    {
-      "path": "/api/v1/answers",
-      "source": "src/app/api/v1/answers/route.ts",
-      "methods": ["POST"],
-      "currentAuth": "proxy_session_plus_route_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": [
-        "items",
-        "item_content_versions",
-        "content_chunks",
-        "collections",
-        "collection_items",
-        "audit_log"
-      ],
-      "currentFeatureGate": "DISTIL_PHASE2_ANSWERS",
-      "testProfile": "owner"
-    },
-    {
       "path": "/api/v1/capture-tokens/:id",
       "source": "src/app/api/v1/capture-tokens/[id]/route.ts",
       "methods": ["DELETE"],
@@ -1717,15 +1698,6 @@
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
       "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
-      "dataPath": "client experience; tenant API only",
-      "testProfile": "owner"
-    },
-    {
-      "path": "/ask",
-      "source": "src/app/ask/page.tsx",
-      "currentAuth": "proxy_session",
-      "requiredPrincipal": "user_session",
-      "currentFeatureGate": "DISTIL_PHASE2_ANSWERS",
       "dataPath": "client experience; tenant API only",
       "testProfile": "owner"
     },
@@ -2166,9 +2138,9 @@
     {
       "id": "grounded-answers",
       "source": "src/lib/knowledge/service.ts",
-      "entryPoints": ["answerFromKnowledge", "getItemIntelligence", "enqueueSummaryRegeneration"],
+      "entryPoints": ["getItemIntelligence", "enqueueSummaryRegeneration"],
       "currentScope": "caller-authenticated but repository/search context unscoped",
-      "requiredScope": "TenantContext reaches retrieval, artifact read and job envelope; prompt contains only owned excerpts"
+      "requiredScope": "TenantContext reaches artifact read and job envelope"
     },
     {
       "id": "grounded-intelligence-summary-runtime",
@@ -2180,13 +2152,6 @@
       ],
       "currentScope": "queue payload and repository set are global; artifact promotion, item/content/chunk reads, claim/evidence writes, budget lookup and audit deltas have no owner",
       "requiredScope": "TenantContext comes from the versioned job envelope; independently revalidate the entire same-owner graph before prompt assembly or writes; budget and audit deltas are per user"
-    },
-    {
-      "id": "agent-rag",
-      "source": "src/lib/agent/rag.ts",
-      "entryPoints": ["ragQuery"],
-      "currentScope": "all items/embeddings and global preferences",
-      "requiredScope": "tenant-scoped retrieval and preferences; no foreign canary in prompt/output"
     },
     {
       "id": "agent-tools",
@@ -2567,8 +2532,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 93,
-    "expectedPageFileCount": 20,
+    "expectedApiRouteFileCount": 92,
+    "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

@@ -108,7 +108,6 @@
   "POST /api/v1/account/deletion",
   "POST /api/v1/account/export",
   "POST /api/v1/account/sessions/revoke-others",
-  "POST /api/v1/answers",
   "POST /api/v1/areas/backfill",
   "POST /api/v1/capture-tokens",
   "POST /api/v1/captures",
