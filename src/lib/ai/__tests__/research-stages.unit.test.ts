@@ -1064,7 +1064,7 @@ describe("runResearchStage", () => {
       expect(parseResearchRunState(reports.get(id)?.progress, "").sections).toEqual([null]);
     });
 
-    it("writes the placeholder and completes when the last attempt hits the deadline", async () => {
+    it("fails the report when the only section's last attempt hits the deadline", async () => {
       const { repositories, reports, id } = await seedWriting({
         "write:0": MAX_STAGE_ATTEMPTS - 1,
       });
@@ -1072,10 +1072,12 @@ describe("runResearchStage", () => {
       await expect(
         runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
       ).resolves.toEqual({ outcome: "ran", stage: { kind: "write", index: 0 }, next: null });
-      expect(reports.get(id)!.status).toBe("completed");
-      expect(reports.get(id)!.report).toContain(
-        "## One\n\n*This section could not be written; see sources [1].*"
+      const report = reports.get(id)!;
+      expect(report.status).toBe("failed");
+      expect(report.report).toBe(
+        "Research failed: none of the report's sections could be written. Please try again."
       );
+      expect(report.progress).toBeNull();
     });
 
     it("counts a delivery the platform killed before it could record its failure", async () => {
@@ -1097,7 +1099,7 @@ describe("runResearchStage", () => {
       await expect(delivery).rejects.toBeInstanceOf(ResearchStageRetryError);
     });
 
-    it("writes the placeholder without a model call once every write delivery was killed", async () => {
+    it("gives up on the section without a model call once every write delivery was killed", async () => {
       const { repositories, reports, id } = await seedWriting({ "write:0": MAX_STAGE_ATTEMPTS });
       const ai = createAI();
       await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
@@ -1106,8 +1108,31 @@ describe("runResearchStage", () => {
         next: null,
       });
       expect(ai.generateText).not.toHaveBeenCalled();
-      expect(reports.get(id)!.status).toBe("completed");
-      expect(reports.get(id)!.report).toContain("*This section could not be written");
+      // The only section is a placeholder, so the report fails rather than completing empty.
+      expect(reports.get(id)!.status).toBe("failed");
+    });
+
+    it("says the AI budget ran out when every section write was refused by it", async () => {
+      const { repositories, reports, id } = await seedWriting();
+      const ai = createAI({
+        generateText: jest
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("The daily AI budget is exhausted"), { code: "AI_BUDGET" })
+          ),
+      });
+      for (let attempt = 1; attempt < MAX_STAGE_ATTEMPTS; attempt++) {
+        await expect(
+          runResearchStage({ context, repositories, reportId: id, ai })
+        ).rejects.toBeInstanceOf(ResearchStageRetryError);
+      }
+      await runResearchStage({ context, repositories, reportId: id, ai });
+      const report = reports.get(id)!;
+      expect(report.status).toBe("failed");
+      expect(report.report).toBe(
+        "Research failed: the daily AI budget ran out before the report could be written. Please try again later."
+      );
+      expect(report.sources).not.toContain("http");
     });
 
     it("falls back to the deterministic outline once every outline delivery was killed", async () => {

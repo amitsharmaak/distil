@@ -195,6 +195,8 @@ export interface ResearchRunState {
   /** Section bodies (markdown without the `##` heading), one per outline section. */
   sections: Array<string | null>;
   attempts: Record<string, number>;
+  /** Set when a section write was refused by the AI budget, to explain a failed report. */
+  budgetExhausted?: boolean;
 }
 
 /** Version 2 state, written by R2: structured findings, one synthesis call. */
@@ -219,6 +221,11 @@ export type ResearchAI = Pick<
   ReturnType<typeof createTenantAIRouter>,
   "generateText" | "generateJSON" | "generateTextWithSearch"
 >;
+
+/** The router's `AIQuotaExceededError`, matched by its stable code. */
+function isAIBudgetError(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === "AI_BUDGET";
+}
 
 /** Thrown when a stage did not finish before {@link RESEARCH_STAGE_DEADLINE_MS}. */
 export class ResearchStageTimeoutError extends Error {
@@ -593,6 +600,9 @@ export async function runResearchStage(
     else state.attempts[key] = priorAttempts;
   } catch (error) {
     state.attempts[key] = attempt;
+    if (stage.kind === "write" && isAIBudgetError(error)) {
+      state.budgetExhausted = true;
+    }
     aiLogger.warn(
       {
         event: "research_stage_failed",
@@ -877,6 +887,30 @@ async function completeReport(
   const sections = outline.sections.map(
     (section, index) => state.sections[index] ?? sectionPlaceholder(section.sourceIds)
   );
+  const placeholders = sections.filter(isSectionPlaceholder).length;
+  if (sections.length > 0 && placeholders === sections.length) {
+    // Nothing but the outline survived: a failed report the user can retry beats a
+    // "completed" one made of placeholders.
+    await repositories.research.updateReport(report.id, {
+      status: "failed",
+      report: state.budgetExhausted
+        ? "Research failed: the daily AI budget ran out before the report could be written. Please try again later."
+        : "Research failed: none of the report's sections could be written. Please try again.",
+      completedAt,
+      progress: null,
+    });
+    aiLogger.warn(
+      {
+        event: "research_report_unwritten",
+        jobId: report.id,
+        code: state.budgetExhausted ? "AI_BUDGET" : "SECTIONS_FAILED",
+        sections: sections.length,
+        placeholders,
+      },
+      "Research report failed: every section is a placeholder"
+    );
+    return;
+  }
   const { catalog } = reportInputs(state);
   const cited = finalizeCitations(assembleReport(outline, sections), catalog.sources);
   await repositories.research.updateReport(report.id, {
@@ -886,7 +920,6 @@ async function completeReport(
     completedAt,
     progress: null,
   });
-  const placeholders = sections.filter(isSectionPlaceholder).length;
   aiLogger.info(
     {
       event: "research_report_assembled",
