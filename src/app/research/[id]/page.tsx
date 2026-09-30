@@ -2,27 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import {
-  ArrowLeft,
-  ExternalLink,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Circle,
-  Copy,
-  Search,
-} from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
 import { useParams } from "next/navigation";
-import { DeepResearch } from "@/components/feed/deep-research";
-
-const Markdown = dynamic(() => import("@/components/markdown").then((module) => module.Markdown));
+import { ResearchReportView } from "@/components/research/research-report-view";
 
 /** How often to re-fetch the report when the SSE stream is unavailable. */
 const POLL_INTERVAL_MS = 3000;
@@ -39,7 +26,8 @@ interface ResearchReport {
   itemId?: string | null;
   query: string;
   report: string;
-  sources: string[];
+  /** Legacy `string[]` or (from R2) source objects; normalised by the report view. */
+  sources: unknown;
   model: string;
   status: string;
   createdAt: string;
@@ -63,41 +51,12 @@ function getStageIndex(stage: ResearchProgress["stage"]): number {
   return i >= 0 ? i : 0;
 }
 
-function extractExecutiveSummary(report: string): string | null {
-  const patterns = [
-    /##\s*Executive\s+Summary\s*\n([\s\S]*?)(?=\n##\s|$)/i,
-    /##\s*Summary\s*\n([\s\S]*?)(?=\n##\s|$)/i,
-    /#\s*Executive\s+Summary\s*\n([\s\S]*?)(?=\n#\s|$)/i,
-  ];
-  for (const re of patterns) {
-    const m = report.match(re);
-    if (m?.[1]?.trim()) return m[1].trim();
-  }
-  return null;
-}
-
-function reportWithoutExecutiveSummary(report: string): string {
-  const summary = extractExecutiveSummary(report);
-  if (!summary) return report;
-  const patterns = [
-    /##\s*Executive\s+Summary\s*\n[\s\S]*?(?=\n##\s|$)/i,
-    /##\s*Summary\s*\n[\s\S]*?(?=\n##\s|$)/i,
-    /#\s*Executive\s+Summary\s*\n[\s\S]*?(?=\n#\s|$)/i,
-  ];
-  let result = report;
-  for (const re of patterns) {
-    result = result.replace(re, "").trim();
-  }
-  return result;
-}
-
 export default function ResearchPage() {
   const params = useParams();
   const id = params.id as string;
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const fetchReport = useCallback(async () => {
     const res = await fetch(`${config.apiBaseUrl}/api/ai/research/${id}`);
@@ -194,13 +153,6 @@ export default function ResearchPage() {
     };
   }, [id, fetchReport]);
 
-  const handleCopyMarkdown = async () => {
-    if (!report?.report) return;
-    await navigator.clipboard.writeText(report.report);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   if (error) {
     return (
       <div className="mx-auto max-w-4xl py-12 text-center">
@@ -234,15 +186,29 @@ export default function ResearchPage() {
 
   const currentStageIndex = progress ? getStageIndex(progress.stage) : 0;
 
+  const backLink = (
+    <Link
+      href={report.itemId ? `/feed/${report.itemId}` : "/research"}
+      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="h-4 w-4" /> Back
+    </Link>
+  );
+
+  // Completed: the readable report page (reading column, TL;DR, contents, collapsed sources).
+  if (report.status === "completed") {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 pb-16">
+        {backLink}
+        <ResearchReportView report={report} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Back navigation */}
-      <Link
-        href={report.itemId ? `/feed/${report.itemId}` : "/research"}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back
-      </Link>
+      {backLink}
 
       {/* Header */}
       <div>
@@ -330,79 +296,6 @@ export default function ResearchPage() {
             <p className="text-sm">{report.report || "Research failed. Please try again."}</p>
           </CardContent>
         </Card>
-      )}
-
-      {/* Completed report */}
-      {report.status === "completed" && (
-        <>
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={handleCopyMarkdown}>
-              <Copy className="h-4 w-4" />
-              {copied ? "Copied!" : "Copy as Markdown"}
-            </Button>
-            <DeepResearch defaultQuery={report.query} itemId={report.itemId ?? undefined}>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Search className="h-4 w-4" /> Research Further
-              </Button>
-            </DeepResearch>
-          </div>
-
-          {/* Executive summary card */}
-          {(() => {
-            const summary = extractExecutiveSummary(report.report);
-            if (!summary) return null;
-            return (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Executive Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <Markdown>{summary}</Markdown>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })()}
-
-          {/* Report body */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <Markdown>{reportWithoutExecutiveSummary(report.report)}</Markdown>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Sources */}
-          {report.sources.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">
-                  Sources ({report.sources.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1.5">
-                  {report.sources.map((url, i) => (
-                    <li key={i}>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{url}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-        </>
       )}
     </div>
   );
