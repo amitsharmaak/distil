@@ -31,6 +31,12 @@ import {
   type ResearchRunStateV2,
 } from "../research";
 import type { FindingSource, ResearchSource } from "../research-sources";
+import {
+  countSectionWords,
+  MAX_REPORT_WORDS,
+  MAX_SECTION_WORDS,
+  sectionWordBudget,
+} from "../research-report";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { FakeResearchDispatcher } from "@/lib/queue/dispatchers";
 import type { RepositorySet, ResearchReportRecord } from "@/lib/repositories/ports";
@@ -983,6 +989,56 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateText).not.toHaveBeenCalled();
     expect(reports.get(id)!.status).toBe("completed");
+  });
+
+  it("finishes an in-flight six-section outline from before the cap within 2,500 words", async () => {
+    const { repositories, reports } = createRepositories();
+    const headings = ["One", "Two", "Three", "Four", "Five", "Six"];
+    const outline = {
+      shape: "landscape" as const,
+      tldr: "T [1].",
+      takeaways: ["K [2]."],
+      sections: headings.map((heading, index) => ({
+        heading,
+        purpose: "p",
+        findings: [index % 2],
+        sourceIds: [(index % 2) + 1],
+        format: "prose" as const,
+      })),
+      caveats: ["C."],
+    };
+    // Five sections written at the top of the old 250-450 range and beyond (~550 words each).
+    const long = (lead: string) =>
+      Array.from({ length: 5 }, (_, block) => body(`${lead} paragraph ${block} [1].`, 105)).join(
+        "\n\n"
+      );
+    const id = await seedState(
+      repositories,
+      readyForOutline({
+        outline,
+        sections: [...headings.slice(0, 5).map((heading) => long(heading)), null],
+        view: { stage: "writing", current: 6, total: 6, heading: "Six" },
+      })
+    );
+    const ai = createAI();
+    await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+      outcome: "ran",
+      stage: { kind: "write", index: 5 },
+      next: null,
+    });
+    expect(ai.generateText).toHaveBeenCalledTimes(1);
+    const prompt = ai.generateText.mock.calls[0]![0];
+    expect(prompt).toContain("Heading: Six");
+    const { max } = sectionWordBudget(outline);
+    expect(max).toBeLessThan(MAX_SECTION_WORDS);
+    expect(prompt).toContain(`never more than ${max}`);
+
+    const record = reports.get(id)!;
+    expect(record.status).toBe("completed");
+    expect(countSectionWords(record.report)).toBeLessThanOrEqual(MAX_REPORT_WORDS);
+    for (const heading of headings) expect(record.report).toContain(`## ${heading}\n\n`);
+    expect(record.report).toContain("About Six");
+    expect(JSON.parse(record.sources).length).toBeGreaterThan(0);
   });
 
   it("acknowledges a report that is not visible to the tenant", async () => {
