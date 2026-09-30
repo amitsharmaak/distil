@@ -109,8 +109,16 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   report on Production. **Daily AI budget raised to $2 (Amit, 2026-09-30):** Claude replaced
   the Production `DISTIL_DAILY_AI_BUDGET` value with `2` through the Vercel CLI (previous value
   not read; the env pull that would have exposed all secrets was refused) and it took effect with
-  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **Next:** run one report on
-  Production to see a full-length R3 report and measure Claude's outline/write timings.
+  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **R3 verified on Production (2026-09-30, at
+  Amit's request, through his Chrome):** run `4d1cbcb5` (baseline question) completed in 5.5
+  min: 3,760 words, TL;DR 26 words, 6 question-specific sections with 2 tables, 23 sources all
+  grounded and all cited (34 catalogued), no URLs in the text, no placeholders; section writes
+  took 18–31 s each against the 45 s stage deadline, and no "Task timed out" in the logs. The
+  page renders as locally (TOC rail with sub-headings, superscript citations). Note: length
+  overshot the 1,500–2,500-word target (six sections at the top of the 250–450-word range plus
+  tables). **Capped (Amit, 2026-09-30):** at most 4 sections and 2,500 words per report, PR
+  [#100](https://github.com/amitsharmaak/distil/pull/100) `13e1632` (checkpoint "Deep research:
+  cap reports at 4 sections and 2,500 words — 2026-09-30"); not yet seen on a live run.
   **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
   marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
   2026-09-30").
