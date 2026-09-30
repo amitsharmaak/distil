@@ -36,13 +36,24 @@ export function ContentCard({
 
   const SourceIcon = sourceIcons[item.sourceType];
   const strategy = detectStrategy(item.url);
-  const filterSuffix = filter ? `?filter=${filter}` : "";
+  const href = `/feed/${item.id}${filter ? `?filter=${filter}` : ""}`;
   const isProcessing = item.processingStatus === "processing";
 
   // A stored AI summary always beats the raw excerpt (long X posts get one too).
   const displaySummary = item.aiSummary
     ? stripMarkdown(item.aiSummary).slice(0, strategy.card.summaryMaxChars)
     : (item.summary ?? "").slice(0, strategy.card.summaryMaxChars);
+
+  const markRead =
+    !isProcessing && !item.isRead ? (
+      <span className="relative z-10">
+        <MarkReadButton
+          itemId={item.id}
+          isRead={item.isRead}
+          onRead={(read) => onMarkRead?.(item.id, read)}
+        />
+      </span>
+    ) : null;
 
   if (compact) {
     const compactContent = (
@@ -56,60 +67,64 @@ export function ContentCard({
         >
           {item.title}
         </span>
-        <div className="flex shrink-0 items-center gap-2">
-          {isProcessing ? (
-            <Badge variant="secondary" className="text-[10px] text-muted-foreground">
-              Analyzing…
-            </Badge>
-          ) : (
-            <>
-              {item.contentType !== "article" && (
-                <Badge variant="secondary" className="gap-1 text-[10px]">
-                  <ContentTypeIcon type={item.contentType} />
-                  {item.duration}
-                </Badge>
-              )}
-              <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
-                {item.priority}
+        {isProcessing ? (
+          <Badge variant="secondary" className="text-[10px] text-muted-foreground">
+            Analyzing…
+          </Badge>
+        ) : (
+          <>
+            {item.contentType !== "article" && (
+              <Badge variant="secondary" className="gap-1 text-[10px]">
+                <ContentTypeIcon type={item.contentType} />
+                {item.duration}
               </Badge>
-            </>
-          )}
-          <span className="w-14 text-right text-xs text-muted-foreground">
-            {timeAgo(item.createdAt)}
-          </span>
-          {!isProcessing && !item.isRead && (
-            <MarkReadButton
-              itemId={item.id}
-              isRead={item.isRead}
-              onRead={(read) => onMarkRead?.(item.id, read)}
-            />
-          )}
-        </div>
+            )}
+            <Badge variant="outline" className={`text-[10px] ${priorityColors[item.priority]}`}>
+              {item.priority}
+            </Badge>
+          </>
+        )}
+        <span className="w-14 text-right text-xs text-muted-foreground">
+          {timeAgo(item.createdAt)}
+        </span>
       </>
     );
 
     if (isProcessing) {
       return (
-        <div className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 opacity-75")}>
+        <article
+          data-row
+          data-item-id={item.id}
+          className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 opacity-75"
+        >
           {compactContent}
-        </div>
+        </article>
       );
     }
 
     return (
-      <Link
-        href={`/feed/${item.id}${filterSuffix}`}
-        className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent/50"
+      <article
+        data-row
+        data-item-id={item.id}
+        className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent/50"
       >
-        {compactContent}
-      </Link>
+        <Link
+          href={href}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {compactContent}
+        </Link>
+        {markRead}
+      </article>
     );
   }
 
-  const cardContent = (
+  return (
     <article
+      data-row
+      data-item-id={item.id}
       className={cn(
-        "relative rounded-xl border border-border bg-card p-5 transition-all",
+        "group relative rounded-xl border border-border bg-card p-5 transition-all",
         !isProcessing && "hover:shadow-md",
         !item.isRead && !isProcessing && "border-l-2 border-l-primary",
         isProcessing && "opacity-75"
@@ -134,33 +149,46 @@ export function ContentCard({
             </Badge>
           )}
           {!isProcessing && item.area && (
-            <AreaBadge itemId={item.id} area={item.area} aiArea={item.aiArea} />
+            <AreaBadge
+              itemId={item.id}
+              area={item.area}
+              aiArea={item.aiArea}
+              className="relative z-10"
+            />
           )}
           <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
         </div>
       </div>
 
-      {/* Title */}
-      <h3
-        className={cn(
-          "font-serif text-lg font-semibold leading-snug tracking-tight line-clamp-2",
-          item.isRead && "text-muted-foreground"
-        )}
-      >
-        {item.title}
-      </h3>
-
-      {/* Summary */}
+      {/* Title & summary: the link covers the whole card via its stretched pseudo-element */}
       {isProcessing ? (
-        <div className="mt-1.5 space-y-2">
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-[80%]" />
-          <Skeleton className="h-3 w-[75%]" />
-        </div>
+        <>
+          <h3 className="font-serif text-lg font-semibold leading-snug tracking-tight line-clamp-2">
+            {item.title}
+          </h3>
+          <div className="mt-1.5 space-y-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-[80%]" />
+            <Skeleton className="h-3 w-[75%]" />
+          </div>
+        </>
       ) : (
-        <p className="mt-2 font-serif text-[15px] leading-relaxed text-foreground/80 line-clamp-3">
-          {displaySummary}
-        </p>
+        <Link
+          href={href}
+          className="block rounded-sm after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <h3
+            className={cn(
+              "font-serif text-lg font-semibold leading-snug tracking-tight line-clamp-2",
+              item.isRead && "text-muted-foreground"
+            )}
+          >
+            {item.title}
+          </h3>
+          <p className="mt-2 font-serif text-[15px] leading-relaxed text-foreground/80 line-clamp-3">
+            {displaySummary}
+          </p>
+        </Link>
       )}
 
       {/* Footer */}
@@ -193,25 +221,9 @@ export function ContentCard({
               {item.priority}
             </Badge>
           )}
-          {!isProcessing && !item.isRead && (
-            <MarkReadButton
-              itemId={item.id}
-              isRead={item.isRead}
-              onRead={(read) => onMarkRead?.(item.id, read)}
-            />
-          )}
+          {markRead}
         </div>
       </div>
     </article>
-  );
-
-  if (isProcessing) {
-    return <div className="group block">{cardContent}</div>;
-  }
-
-  return (
-    <Link href={`/feed/${item.id}${filterSuffix}`} className="group block">
-      {cardContent}
-    </Link>
   );
 }
