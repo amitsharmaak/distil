@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Archive, FlaskConical, KeyRound, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConnectedBrowsers } from "@/components/capture/connected-browsers";
 import { TokenSettings } from "@/components/capture/token-settings";
 import { CaptureDiagnostics } from "@/components/capture/capture-diagnostics";
 import { KeyboardShortcutsCard } from "@/components/settings/keyboard-shortcuts-card";
@@ -65,6 +66,7 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="capture" className="mt-4 space-y-4">
+          <ConnectedBrowsers />
           <TokenSettings />
           <CaptureDiagnostics />
         </TabsContent>

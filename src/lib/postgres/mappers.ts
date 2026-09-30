@@ -113,15 +113,21 @@ export function mapCapture(row: Row): CaptureRecord {
   };
 }
 
-export function mapCaptureToken(row: Row): CaptureTokenRecord {
+/** A capture token as listed to its owner: everything except the hash. */
+export function mapCaptureTokenSummary(row: Row): Omit<CaptureTokenRecord, "tokenHash"> {
   return {
     userId: userIdSchema.parse(row.user_id),
     id: String(row.id),
     name: String(row.name),
-    tokenHash: String(row.token_hash),
     tokenPrefix: String(row.token_prefix),
+    kind: row.kind === "browser" ? "browser" : "manual",
+    ...(row.label == null ? {} : { label: String(row.label) }),
     createdAt: iso(row.created_at),
     lastUsedAt: row.last_used_at == null ? undefined : iso(row.last_used_at),
     revokedAt: row.revoked_at == null ? undefined : iso(row.revoked_at),
   };
+}
+
+export function mapCaptureToken(row: Row): CaptureTokenRecord {
+  return { ...mapCaptureTokenSummary(row), tokenHash: String(row.token_hash) };
 }

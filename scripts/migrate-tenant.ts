@@ -21,6 +21,7 @@ const USAGE = `Usage:
   npm run db:tenant:migrate -- --stage summary-structure --amit-user-id <uuid>
   npm run db:tenant:migrate -- --stage feed-search --amit-user-id <uuid>
   npm run db:tenant:migrate -- --stage life-areas --amit-user-id <uuid>
+  npm run db:tenant:migrate -- --stage browser-connections --amit-user-id <uuid>
 
 Only one stage is applied per invocation. Contract re-runs after verification inside the same transaction.`;
 

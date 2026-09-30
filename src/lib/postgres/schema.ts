@@ -1329,6 +1329,9 @@ export const captureTokens = pgTable(
     name: text().notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     tokenPrefix: text("token_prefix").notNull(),
+    /** `manual`: the account's pasted token; `browser`: one per connected browser extension. */
+    kind: text().notNull().default("manual"),
+    label: text(),
     createdAt: time("created_at").notNull(),
     lastUsedAt: time("last_used_at"),
     revokedAt: time("revoked_at"),
@@ -1337,6 +1340,8 @@ export const captureTokens = pgTable(
     uniqueIndex("capture_tokens_active_hash_idx")
       .on(t.tokenHash)
       .where(sql`${t.revokedAt} is null`),
+    check("capture_tokens_kind_check", sql`${t.kind} in ('manual', 'browser')`),
+    check("capture_tokens_label_check", sql`${t.label} is null or char_length(${t.label}) <= 120`),
   ]
 );
 export const rateLimitWindows = pgTable(

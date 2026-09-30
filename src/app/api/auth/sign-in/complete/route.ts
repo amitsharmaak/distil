@@ -23,7 +23,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       provider: neonMagicLinkProvider(auth),
       repositories: await getAuthRepositoryPort(),
       appOrigin,
-    })();
+      stateSecret: process.env.NEON_AUTH_COOKIE_SECRET,
+    })(request);
   } catch {
     const fallbackOrigin = process.env.NEXT_PUBLIC_API_BASE_URL ?? new URL(request.url).origin;
     return Response.redirect(new URL("/access-denied", fallbackOrigin));

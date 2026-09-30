@@ -226,4 +226,36 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+
+  it("applies the browser-connections stage only after the life-areas ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+      ["returning-auth", "0009_phase3_returning_auth.sql"],
+      ["perf-indexes", "0010_perf_indexes.sql"],
+      ["summary-structure", "0011_summary_structure.sql"],
+      ["feed-search", "0012_feed_search.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "browser-connections", ownerId })
+    ).rejects.toThrow("browser-connections requires the life-areas stage first");
+    fake.applied.push({
+      stage: "life-areas",
+      name: "0013_life_areas.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "browser-connections", ownerId })
+    ).resolves.toMatchObject({
+      stage: "browser-connections",
+      file: "0014_browser_connections.sql",
+      alreadyApplied: false,
+    });
+  });
 });

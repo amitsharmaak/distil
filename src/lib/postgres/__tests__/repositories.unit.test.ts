@@ -371,6 +371,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       name: "Phone",
       tokenHash: "hash",
       tokenPrefix: "dst_cap_123",
+      kind: "manual",
       createdAt: "2026-01-01T00:00:00Z",
     });
     await expect(repos.captureTokens.findActiveByHash("hash")).resolves.toMatchObject({
@@ -419,13 +420,28 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       name: "Capture token",
       tokenHash: "hash-2",
       tokenPrefix: "dst_cap_456",
+      kind: "manual",
       createdAt: "2026-01-02T00:00:00Z",
     });
     expect(fake.queries).toHaveLength(1);
     expect(fake.queries[0]).toContain(
-      "WITH revoked AS (UPDATE capture_tokens SET revoked_at=? WHERE revoked_at IS NULL"
+      "WITH revoked AS (UPDATE capture_tokens SET revoked_at=? WHERE revoked_at IS NULL AND kind=?"
     );
     expect(fake.queries[0]).toContain("INSERT INTO capture_tokens");
+    expect(fake.queries[0]).toContain("kind,label");
+  });
+
+  test("lists and revokes browser connections by kind without touching the other kind", async () => {
+    const fake = sqlDouble([[], [{ id: "conn-1" }], [], []]);
+    const repos = createPostgresRepositories(fake.sql);
+    await repos.captureTokens.list("browser");
+    await expect(repos.captureTokens.revoke("conn-1", "now", "browser")).resolves.toBe(true);
+    await repos.captureTokens.list();
+    await repos.captureTokens.revoke("conn-1", "now");
+    expect(fake.queries[0]).toContain("WHERE kind=? ORDER BY created_at DESC");
+    expect(fake.queries[1]).toContain("WHERE id=? AND kind=? AND revoked_at IS NULL");
+    expect(fake.queries[2]).not.toContain("kind=?");
+    expect(fake.queries[3]).not.toContain("kind=?");
   });
 
   test("supports OAuth lookup branches and nullable field mapping", async () => {
@@ -897,6 +913,8 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       name: "Phone",
       tokenHash: "hash",
       tokenPrefix: "dst_cap_",
+      kind: "browser",
+      label: "Chrome on macOS",
       createdAt: "2026-01-01Z",
       lastUsedAt: "2026-01-02Z",
       revokedAt: "2026-01-03Z",

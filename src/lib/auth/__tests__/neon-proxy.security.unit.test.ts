@@ -102,6 +102,11 @@ describe("composed Neon proxy authorization", () => {
     expect(isPublicNeonPath("/invite")).toBe(true);
     expect(isPublicNeonPath("/sign-in")).toBe(true);
     expect(isPublicNeonPath("/reset-password")).toBe(true);
+    // The connect page hosts the sign-in card, but every API it calls stays behind the session.
+    expect(isPublicNeonPath("/extension/connect")).toBe(true);
+    expect(isPublicNeonPath("/extension")).toBe(false);
+    expect(isPublicNeonPath("/api/v1/extension/connections")).toBe(false);
+    expect(isPublicNeonPath("/api/v1/extension/connections/123")).toBe(false);
     expect(isPublicNeonPath("/api/health")).toBe(true);
     expect(isPublicNeonPath("/api/v1/captures/123")).toBe(true);
     expect(isPublicNeonPath("/api/auth/devices/123")).toBe(false);

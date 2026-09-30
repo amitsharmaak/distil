@@ -102,6 +102,7 @@ describe("P3-PERF-001: tenant query plans through the restricted runtime role", 
       "summary-structure",
       "feed-search",
       "life-areas",
+      "browser-connections",
     ] as const) {
       await applyTenantMigrationStage({
         sql: owner.sql,

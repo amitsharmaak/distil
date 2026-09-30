@@ -13,6 +13,7 @@ import {
 const PUBLIC_PATHS = new Set([
   "/invite",
   "/sign-in",
+  "/extension/connect",
   "/access-denied",
   "/reset-password",
   "/api/health",

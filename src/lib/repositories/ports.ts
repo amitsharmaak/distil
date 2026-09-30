@@ -282,12 +282,18 @@ export interface CaptureRepository {
   ): Promise<CaptureRecord | undefined>;
 }
 
+/** `manual` is the account's pasted token; `browser` is one per connected browser extension. */
+export type CaptureTokenKind = "manual" | "browser";
+
 export interface CaptureTokenRecord {
   userId: UserId;
   id: string;
   name: string;
   tokenHash: string;
   tokenPrefix: string;
+  kind: CaptureTokenKind;
+  /** Human label for a browser connection, for example "Chrome on macOS". */
+  label?: string;
   createdAt: string;
   lastUsedAt?: string;
   revokedAt?: string;
@@ -295,11 +301,16 @@ export interface CaptureTokenRecord {
 
 export interface CaptureTokenRepository {
   create(record: CaptureTokenRecord): Promise<void>;
-  /** Revokes every active token for the tenant and inserts `record` in one statement. */
+  /**
+   * Revokes every active token of the same kind for the tenant and inserts `record` in one
+   * statement. Tokens of the other kind are untouched.
+   */
   replaceActive(record: CaptureTokenRecord): Promise<void>;
   findActiveByHash(tokenHash: string): Promise<CaptureTokenRecord | undefined>;
-  list(): Promise<Omit<CaptureTokenRecord, "tokenHash">[]>;
-  revoke(id: string, revokedAt: string): Promise<boolean>;
+  /** Lists the tenant's tokens without hashes, newest first; `kind` narrows the listing. */
+  list(kind?: CaptureTokenKind): Promise<Omit<CaptureTokenRecord, "tokenHash">[]>;
+  /** Revokes one active token; `kind` stops a route from revoking the other kind. */
+  revoke(id: string, revokedAt: string, kind?: CaptureTokenKind): Promise<boolean>;
   touchLastUsed(id: string, usedAt: string): Promise<void>;
 }
 

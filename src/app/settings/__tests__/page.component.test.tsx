@@ -11,6 +11,9 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
 }));
 
+jest.mock("@/components/capture/connected-browsers", () => ({
+  ConnectedBrowsers: () => <div>Connected browsers</div>,
+}));
 jest.mock("@/components/capture/token-settings", () => ({
   TokenSettings: () => <div>Token settings</div>,
 }));

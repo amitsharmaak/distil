@@ -221,6 +221,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       highValue: ["summary"],
       references: [ref("item", ["item_id"], "items")],
       uniqueness: [unique("item_prompt", ["item_id", "prompt_type"])],
+      jsonColumns: [json("structured", "Structured summary sections contain no row identifiers.")],
     }),
     tenant("feedback", {
       identity: ["id"],
@@ -385,6 +386,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     }),
     tenant("capture_tokens", {
       identity: ["id"],
+      migrationColumns: ["kind", "label"],
       highValue: ["token_hash", "token_prefix"],
       uniqueness: [unique("token_hash", ["token_hash"])],
     }),
