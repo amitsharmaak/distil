@@ -3,6 +3,7 @@ import type {
   GenerateOptions,
   GeminiProvider,
   ProviderResult,
+  SearchProviderResult,
 } from "@/lib/ai/providers";
 import type { ProviderName } from "@/lib/ai/ai-config";
 
@@ -66,10 +67,10 @@ export class FakeAIProvider implements AIProvider, GeminiProvider {
     return { value, usage: this.usage(prompt, JSON.stringify(value)) };
   }
 
-  async generateTextWithSearch(prompt: string): Promise<ProviderResult<string>> {
+  async generateTextWithSearch(prompt: string): Promise<SearchProviderResult> {
     this.calls.push({ operation: "search", prompt });
     const value = this.consume<string>(this.searchResults, "search");
-    return { value, usage: this.usage(prompt, value) };
+    return { value, usage: this.usage(prompt, value), sources: [] };
   }
 
   reset(): void {
