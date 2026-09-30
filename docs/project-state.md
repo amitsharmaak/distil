@@ -462,6 +462,64 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30
+
+**Scope: engine only.** Branch `claude/research-r2-synth-timeout` from `origin/main` `0d7d34b`
+(R2 is `0592c27`). Implementation complete and verified by deterministic tests (`npm run check`:
+237 suites, 1,884 tests). No live model calls. Not merged, not deployed.
+
+**Evidence (Production).** Run `8bb4d982…` reached synthesis (`research-synthesize` on Anthropic
+`claude-sonnet-4-6`), then the queue consumer `POST /api/queue/research-runs` failed on every
+delivery with "Vercel Runtime Timeout Error: Task timed out after 60 seconds".
+
+**Cause.** Three things together:
+
+1. `RESEARCH_TIMEOUTS_MS.synthesize` (50 s) was passed to the Anthropic SDK as a per-request
+   `timeout`. The Anthropic and OpenAI SDKs retry a timed-out request twice by default
+   (`maxRetries` 2), each retry with the full timeout, so the "50 s" call could run ~150 s. The
+   timeout did abort each HTTP attempt, but not the stage. (Gemini's grounded search had the same
+   shape through `withRetry`, 2 × 45 s.)
+2. R2 raised the synthesis budget to 12,000 tokens with `rejectTruncated`, so Claude wrote a
+   longer report than the ~50 s it has (Sonnet streams ~60–80 tokens/s); before R2 the 4,096
+   default capped it.
+3. The stage's attempt counter was incremented only in the `catch`. A delivery Vercel kills at
+   60 s never reaches it, so the stage was redelivered without bound (until the 15-minute stale
+   guard on the read routes failed the report).
+
+**Fix.**
+
+- `GenerateOptions` gains `signal` (passed to all three SDKs) and `providerOverrides` (per-provider
+  `maxTokens` / `rejectTruncated`, applied by the provider that serves the call); Anthropic and
+  OpenAI now honour `maxAttempts` as `maxRetries = maxAttempts - 1` (default unchanged when not
+  given). This also makes the existing `maxAttempts: 1` of `summarize-complex` (40 s on Claude)
+  and `classify-area` really single-attempt.
+- Every research model call makes one attempt (`maxAttempts: 1`); the queue redelivers a failed
+  stage.
+- Synthesis: 45 s timeout; 2,400 output tokens on Claude/GPT (~40 s at 60 tokens/s) with a report
+  that reaches the cap kept, not failed (it already has its headings); Gemini 8,192 tokens with
+  truncation rejected (the pinned `@google/generative-ai` 0.24.1 has no thinking-budget option).
+  Prompt unchanged; Claude reports may be shorter until R3 splits the call.
+- New hard stage deadline `RESEARCH_STAGE_DEADLINE_MS` (50 s, `withStageDeadline`): aborts the
+  stage's requests through the signal and rejects even if a provider ignores it, so the attempt is
+  recorded and the queue retry directive returns well inside 60 s. A late answer is not written
+  (`signal.throwIfAborted()` before the report and finding writes).
+- The attempt is written before the stage runs (restored on success, so attempts still count
+  failures only). A stage whose `MAX_STAGE_ATTEMPTS` (2) deliveries were all killed takes its
+  degraded outcome without calling the model; synthesis fails the report with "Research failed:
+  the report took too long to write. Please try again." Costs one progress write per stage.
+
+**Tests.** `research-stages.unit.test.ts`: a never-resolving provider under fake timers settles at
+exactly the deadline with the signal aborted and the attempt recorded; a late answer is not
+stored; the last attempt fails the report with the clear message; a killed delivery has already
+recorded its attempt; exhausted killed deliveries fail synthesis / degrade search without a model
+call; call options updated. `summary-provider.unit.test.ts`: Anthropic gets `maxRetries: 0` and
+the signal; `providerOverrides` gives Claude 2,400 (cut-off kept) and Gemini 8,192 (cut-off
+rejected).
+
+**Next.** Release decision for Amit; after deploy, rerun a research question on Production and
+check the synthesis latency in the audit log. Runs stuck like `8bb4d982` fail through the stale
+guard when read.
+
 ### Inline search F5: filter bar on Today — 2026-09-30
 
 Phase F5 of "Inline search, quick filters and life areas — 2026-09-29", built on the redesigned
