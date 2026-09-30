@@ -1,6 +1,8 @@
 import {
   assembleReport,
+  capReportSections,
   cleanHeading,
+  countSectionWords,
   cleanSectionBody,
   fallbackOutline,
   IncompleteSectionError,
@@ -9,12 +11,22 @@ import {
   limitTldr,
   MAX_TLDR_WORDS,
   MAX_REPORT_SECTIONS,
+  MAX_REPORT_WORDS,
+  MAX_SECTION_WORDS,
+  MIN_SECTION_BUDGET_WORDS,
   parseOutline,
+  reportFrameWords,
   sectionPlaceholder,
+  sectionWordBudget,
   type ResearchOutline,
 } from "../research-report";
 import { finalizeCitations, type SourceCatalog } from "../research-sources";
-import { itemPlanContext, RESEARCH_ITEM_CONTEXT_MAX_CHARS } from "../research";
+import {
+  buildSectionPrompt,
+  itemPlanContext,
+  RESEARCH_ITEM_CONTEXT_MAX_CHARS,
+  type ResearchRunState,
+} from "../research";
 
 jest.mock("@/lib/queue/research-dispatch", () => ({ resolveResearchDispatcher: jest.fn() }));
 jest.mock("../router", () => ({
@@ -138,7 +150,14 @@ describe("parseOutline", () => {
       catalog
     );
     expect(outline.shape).toBe("other");
-    expect(outline.sections).toHaveLength(MAX_REPORT_SECTIONS);
+    expect(MAX_REPORT_SECTIONS).toBe(4);
+    expect(outline.sections).toHaveLength(4);
+    expect(outline.sections.map((section) => section.heading)).toEqual([
+      "Section 0",
+      "Section 1",
+      "Section 2",
+      "Section 3",
+    ]);
     expect(outline.takeaways).toHaveLength(5);
     expect(outline.caveats).toHaveLength(4);
   });
@@ -208,8 +227,22 @@ describe("fallbackOutline", () => {
       notes: `- Fact number ${index} is specific.`,
     }));
     const outline = fallbackOutline(many, { sources: [], idsByFinding: [] });
-    expect(outline.sections).toHaveLength(MAX_REPORT_SECTIONS);
-    expect(outline.sections.at(-1)!.findings).toEqual([5, 6, 7]);
+    expect(outline.sections).toHaveLength(4);
+    expect(outline.sections.at(-1)!.findings).toEqual([3, 4, 5, 6, 7]);
+  });
+
+  it("keeps at most four sections and folds the extra findings' sources into the last", () => {
+    const six = Array.from({ length: 6 }, (_, index) => ({
+      question: `Question ${index}`,
+      notes: `- Fact number ${index} is specific.`,
+    }));
+    const outline = fallbackOutline(six, {
+      sources: [],
+      idsByFinding: [[1], [2], [3], [4], [5], [6]],
+    });
+    expect(outline.sections.length).toBeLessThanOrEqual(MAX_REPORT_SECTIONS);
+    expect(outline.sections.map((section) => section.findings)).toEqual([[0], [1], [2], [3, 4, 5]]);
+    expect(outline.sections.at(-1)!.sourceIds).toEqual([4, 5, 6]);
   });
 });
 
@@ -364,5 +397,148 @@ describe("limitTldr", () => {
     expect(assembleReport(outline, ["Body"])).toBe(
       `## TL;DR\n\n${sentence(40, "One")}\n\n## A\n\nBody\n`
     );
+  });
+});
+
+function outlineWith(count: number): ResearchOutline {
+  return {
+    shape: "comparison",
+    tldr: "A two-sentence answer with a figure of 42 percent [1]. It holds for most phones [2].",
+    takeaways: [
+      "Apple ships a 3B-parameter on-device model since 2024 [1].",
+      "Google's Gemini Nano runs on Pixel 8 and Galaxy S24 phones [2].",
+      "Hybrid assistants send about 30 percent of requests to the cloud [3].",
+    ],
+    sections: Array.from({ length: count }, (_, index) => ({
+      heading: `Section heading ${index + 1}`,
+      purpose: "p",
+      findings: [0],
+      sourceIds: [1],
+      format: "prose" as const,
+    })),
+    caveats: ["Benchmarks come from vendors [2].", "Figures may be out of date."],
+  };
+}
+
+describe("sectionWordBudget", () => {
+  it.each([2, 3, 4, 6])(
+    "shares 2,500 words minus the frame among %i sections within the clamp",
+    (count) => {
+      const outline = outlineWith(count);
+      const budget = sectionWordBudget(outline);
+      const share = Math.floor((MAX_REPORT_WORDS - reportFrameWords(outline)) / count / 10) * 10;
+      expect(budget.max).toBe(
+        Math.min(MAX_SECTION_WORDS, Math.max(MIN_SECTION_BUDGET_WORDS, share))
+      );
+      expect(budget.min).toBeLessThan(budget.max);
+      expect(budget.min).toBeGreaterThanOrEqual(150);
+      expect(reportFrameWords(outline) + count * budget.max).toBeLessThanOrEqual(MAX_REPORT_WORDS);
+    }
+  );
+
+  it("gives a six-section outline stored before the cap a smaller share", () => {
+    expect(sectionWordBudget(outlineWith(6)).max).toBeLessThan(
+      sectionWordBudget(outlineWith(4)).max
+    );
+    expect(sectionWordBudget(outlineWith(2)).max).toBe(MAX_SECTION_WORDS);
+  });
+
+  it.each([2, 3, 4])("puts the budget for %i sections into the section writer prompt", (count) => {
+    const outline = outlineWith(count);
+    const state: ResearchRunState = {
+      version: 3,
+      updatedAt: "2026-09-30T10:00:00.000Z",
+      view: { stage: "writing", current: 1, total: count, heading: "Section heading 1" },
+      subQuestions: ["Q1"],
+      findings: [
+        {
+          question: "Q1",
+          notes: "- Q1 fact.",
+          sources: [{ url: "https://a.example/1", title: "A1" }],
+          grounded: true,
+        },
+      ],
+      gaps: [],
+      deepening: [],
+      outline,
+      sections: outline.sections.map(() => null),
+      attempts: {},
+    };
+    const { min, max } = sectionWordBudget(outline);
+    const prompt = buildSectionPrompt("q", state, 0);
+    expect(prompt).toContain(`about ${min}-${max} words, never more than ${max}`);
+    expect(prompt).not.toContain("250-450");
+  });
+});
+
+describe("capReportSections", () => {
+  const paragraph = (lead: string, count = 100) => words(count, lead);
+  const table = [
+    "| Assistant | Latency |",
+    "| --- | --- |",
+    ...Array.from(
+      { length: 30 },
+      (_, index) => `| Model ${index} with long name | ${index} ms [2] |`
+    ),
+  ].join("\n");
+
+  it("leaves a report within the cap unchanged", () => {
+    const outline = outlineWith(2);
+    const sections = [paragraph("One [1]"), paragraph("Two [2]")];
+    const capped = capReportSections(outline, sections);
+    expect(capped.sections).toEqual(sections);
+    expect(capped.trimmed).toBe(0);
+    expect(capped.wordsAfter).toBe(capped.wordsBefore);
+  });
+
+  it("trims the longest sections at paragraph boundaries to 2,500 words, keeping tables whole", () => {
+    const outline = outlineWith(6);
+    const sections = outline.sections.map((_, index) =>
+      index === 1
+        ? [paragraph("Intro to the table [2]", 30), table, paragraph("After the table", 200)].join(
+            "\n\n"
+          )
+        : Array.from({ length: 6 }, (_, block) => paragraph(`S${index} B${block} [1]`)).join("\n\n")
+    );
+    const before = countSectionWords(assembleReport(outline, sections));
+    expect(before).toBeGreaterThan(3_500);
+
+    const capped = capReportSections(outline, sections);
+    const report = assembleReport(outline, capped.sections);
+    expect(capped.wordsBefore).toBe(before);
+    expect(capped.wordsAfter).toBe(countSectionWords(report));
+    expect(capped.wordsAfter).toBeLessThanOrEqual(MAX_REPORT_WORDS);
+    expect(capped.trimmed).toBeGreaterThan(0);
+    // The table survives whole; trimming removed the paragraph after it.
+    expect(capped.sections[1]).toContain(table);
+    expect(capped.sections[1]).not.toContain("After the table");
+    // Whole blocks are dropped from the end: each section keeps a prefix of its paragraphs.
+    capped.sections.forEach((body, index) => {
+      expect(sections[index]!.startsWith(body)).toBe(true);
+      expect(countSectionWords(body)).toBeGreaterThan(0);
+    });
+    // Every heading is still there.
+    outline.sections.forEach((section) => expect(report).toContain(`## ${section.heading}\n\n`));
+  });
+
+  it("never splits a table or a list block and stops when nothing more can go", () => {
+    const outline = outlineWith(1);
+    const list = Array.from({ length: 40 }, (_, index) => `- Item ${index} ${words(20)}`).join(
+      "\n"
+    );
+    const sections = [[paragraph("Lead", 20), table, list].join("\n\n")];
+    const capped = capReportSections(outline, sections, 100);
+    // The list goes as a whole block; the lead and the table stay.
+    expect(capped.sections[0]).toBe([paragraph("Lead", 20), table].join("\n\n"));
+    expect(capped.wordsAfter).toBeGreaterThan(100);
+  });
+
+  it("drops a ### subheading left dangling at the end of a section", () => {
+    const outline = outlineWith(1);
+    const sections = [
+      [paragraph("First"), "### A subpoint", paragraph("Second", 400)].join("\n\n"),
+    ];
+    const capped = capReportSections(outline, sections, 300);
+    expect(capped.sections[0]).toBe(paragraph("First"));
   });
 });

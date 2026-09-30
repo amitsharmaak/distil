@@ -91,8 +91,8 @@ not modify the source SQLite file.
 5. Run the SQLite importer in dry-run mode against the retained source and review counts.
 6. Run the importer with `--execute`; retain its verification output in the release record.
 7. Promote the verified commit to Production.
-8. Create separate capture tokens for the iPhone Shortcut and browser extension. Do not reuse an
-   administrative session or share one capture token across clients.
+8. Generate the account's capture token in Settings → Capture and paste it into the iPhone
+   Shortcut and browser extension. Do not reuse an administrative session as a capture credential.
 9. Complete the smoke checklist against the production origin.
 
 ### Release pin
@@ -125,7 +125,7 @@ authorization (`AGENTS.md` section 9).
 - The receipt progresses from `queued` through `processing` to `ready`.
 - Repeating the same canonical URL returns `200` with the existing receipt/item.
 - A controlled transient upstream failure can be retried and does not create a second item.
-- Revoking a dedicated test token causes subsequent Shortcut/extension requests to return
+- Regenerating the capture token causes requests still using the old token to return
   unauthorized while existing session login remains valid.
 - The queue consumer appears for topic `capture-requests`, has a 60-second Hobby Preview duration, and shows no
   continuously failing deliveries.

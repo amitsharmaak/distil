@@ -11,7 +11,6 @@ jest.mock("../../database", () => ({
 // These providers are tenant-bound now. Keep the mocks to prove this legacy
 // pipeline never reaches them without authenticated context and repositories.
 jest.mock("../../ai/summarize", () => ({ generateSummary: jest.fn() }));
-jest.mock("../../ai/embeddings", () => ({ embedItem: jest.fn() }));
 jest.mock("../../connectors/publishers/types", () => ({
   PublisherAuthRequired: class PublisherAuthRequired extends Error {},
 }));
@@ -32,7 +31,6 @@ import {
   updateRawContentItemId,
 } from "../../database";
 import { generateSummary } from "../../ai/summarize";
-import { embedItem } from "../../ai/embeddings";
 import { classify } from "../classifier";
 import { checkRelevance } from "../relevance";
 import { extractContent } from "../extractor";
@@ -114,7 +112,6 @@ it("persists every successful stage without invoking legacy enrichment providers
     })
   );
   expect(generateSummary).not.toHaveBeenCalled();
-  expect(embedItem).not.toHaveBeenCalled();
 });
 
 it("returns an existing ready item without running intelligence stages", async () => {
@@ -181,7 +178,6 @@ it("degrades extraction, analysis, and enrichment failures to deterministic fall
     enriched: { summary: "Inbox title", priorityScore: 50, priority: "medium" },
   });
   expect(generateSummary).not.toHaveBeenCalled();
-  expect(embedItem).not.toHaveBeenCalled();
 });
 
 it("turns thrown and non-Error persistence failures into rejected results", async () => {

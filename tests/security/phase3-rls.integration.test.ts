@@ -6,6 +6,8 @@ import {
   tenantProtectedTables,
 } from "@/lib/postgres/tenant-migration/manifest";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
+import { userIdSchema } from "@/lib/contracts/tenant-context";
+import { createPostgresRepositories } from "@/lib/postgres/repositories";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
 import {
   assertTenantMigrationInvariants,
@@ -314,6 +316,44 @@ describeWithTenantMigration(
       expect(counts).toEqual([
         ["1", "1", "1", "1"],
         ["1", "1", "1", "1"],
+      ]);
+    });
+
+    it("replaces only the caller's active capture tokens", async () => {
+      const seedToken = (userId: string, id: string) =>
+        pool.asTenant(
+          userId === fixture.alpha.user.id ? fixture.alpha.auth.session : fixture.beta.auth.session,
+          async (transaction) => {
+            await transaction`
+              INSERT INTO capture_tokens (user_id, id, name, token_hash, token_prefix, created_at)
+              VALUES (${userId}::uuid, ${id}, 'legacy', ${`hash-${id}`}, 'dst_cap_legacy', now())
+            `;
+          }
+        );
+      await seedToken(fixture.alpha.user.id, "alpha-old-1");
+      await seedToken(fixture.alpha.user.id, "alpha-old-2");
+      await seedToken(fixture.beta.user.id, "beta-old");
+
+      await pool.asTenant(fixture.alpha.auth.session, (transaction) =>
+        createPostgresRepositories(transaction as unknown as Sql).captureTokens.replaceActive({
+          userId: userIdSchema.parse(fixture.alpha.user.id),
+          id: "alpha-new",
+          name: "Capture token",
+          tokenHash: "hash-alpha-new",
+          tokenPrefix: "dst_cap_alphanew",
+          createdAt: "2026-09-30T00:00:00.000Z",
+        })
+      );
+
+      const rows = await owner.sql<{ id: string; active: boolean }[]>`
+        SELECT id, revoked_at IS NULL AS active FROM capture_tokens
+        WHERE id IN ('alpha-old-1', 'alpha-old-2', 'alpha-new', 'beta-old') ORDER BY id
+      `;
+      expect(rows).toEqual([
+        { id: "alpha-new", active: true },
+        { id: "alpha-old-1", active: false },
+        { id: "alpha-old-2", active: false },
+        { id: "beta-old", active: true },
       ]);
     });
 

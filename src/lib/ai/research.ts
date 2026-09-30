@@ -29,6 +29,7 @@ import {
 import { htmlToReadableText } from "@/lib/format";
 import {
   assembleReport,
+  capReportSections,
   cleanSectionBody,
   countSectionWords,
   fallbackOutline,
@@ -37,6 +38,7 @@ import {
   OUTLINE_RESPONSE_SCHEMA,
   parseOutline,
   sectionPlaceholder,
+  sectionWordBudget,
   type ResearchOutline,
 } from "./research-report";
 import {
@@ -101,8 +103,10 @@ export const RESEARCH_STAGE_DEADLINE_MS = 45_000;
 export const RESEARCH_SEARCH_MAX_TOKENS = 2048;
 
 /**
- * Output budgets for the outline (JSON, ~1k answer tokens) and one section (250-450 words,
- * ~600-700 answer tokens), sized so the budget itself cannot outrun the 40 s timeout by much.
+ * Output budgets for the outline (JSON, ~1k answer tokens) and one section (at most 550 words by
+ * `sectionWordBudget`, ~750 answer tokens), sized so the budget itself cannot outrun the 40 s
+ * timeout by much. The 2,000-token write cap (~1,400 words) leaves ample room over the 550-word
+ * maximum and stays inside the 45 s stage deadline; it is not raised.
  * - Default (Anthropic `claude-sonnet-4-6` in Production, no extended thinking; GPT likewise,
  *   ~60-80 output tokens/s): 2,500 / 2,000 tokens ≈ 31-42 s / 25-33 s at the cap; a real
  *   outline or section is well below (~12-16 s / ~8-11 s, estimated).
@@ -173,7 +177,11 @@ export interface ResearchFinding {
  * Current durable run-state version (3, R3: outline and sections). Versions 1
  * (string findings, before R2) and 2 (structured findings, single synthesis)
  * are still read and upgraded in memory; a run that was in flight across an
- * upgrade continues with the outline and write stages.
+ * upgrade continues with the outline and write stages. A version 3 run outlined before the
+ * four-section cap keeps its stored outline (up to six sections): every section is written, each
+ * within the budget `sectionWordBudget` computes for that outline, and assembly trims the report
+ * to 2,500 words. Trimming the stored outline instead would drop sections already written and
+ * the sources they cite, so the version is unchanged.
  */
 export const RESEARCH_RUN_STATE_VERSION = 3;
 
@@ -869,6 +877,7 @@ export function buildSectionPrompt(query: string, state: ResearchRunState, index
     format: section.format,
     findings: text || "(No findings were assigned to this section.)",
     hasSources,
+    words: sectionWordBudget(outline),
   });
 }
 
@@ -912,7 +921,10 @@ async function completeReport(
     return;
   }
   const { catalog } = reportInputs(state);
-  const cited = finalizeCitations(assembleReport(outline, sections), catalog.sources);
+  // Whole-report cap (MAX_REPORT_WORDS): trims the longest sections at block boundaries before
+  // the citations are finalised, so a source cited only in a dropped paragraph is not listed.
+  const capped = capReportSections(outline, sections);
+  const cited = finalizeCitations(assembleReport(outline, capped.sections), catalog.sources);
   await repositories.research.updateReport(report.id, {
     report: cited.report,
     sources: JSON.stringify(cited.sources),
@@ -927,6 +939,8 @@ async function completeReport(
       // Counts and the shape enum only.
       code: outline.fallback ? `${outline.shape}-fallback` : outline.shape,
       words: countSectionWords(cited.report),
+      wordsBefore: capped.wordsBefore,
+      trimmed: capped.trimmed,
       sections: sections.length,
       placeholders,
       cited: cited.sources.length,

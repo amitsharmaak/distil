@@ -81,6 +81,8 @@ const COUNT_FIELDS = new Set([
   "takeaways",
   "caveats",
   "words",
+  "wordsBefore",
+  "trimmed",
 ]);
 
 /**

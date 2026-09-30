@@ -295,6 +295,8 @@ export interface CaptureTokenRecord {
 
 export interface CaptureTokenRepository {
   create(record: CaptureTokenRecord): Promise<void>;
+  /** Revokes every active token for the tenant and inserts `record` in one statement. */
+  replaceActive(record: CaptureTokenRecord): Promise<void>;
   findActiveByHash(tokenHash: string): Promise<CaptureTokenRecord | undefined>;
   list(): Promise<Omit<CaptureTokenRecord, "tokenHash">[]>;
   revoke(id: string, revokedAt: string): Promise<boolean>;

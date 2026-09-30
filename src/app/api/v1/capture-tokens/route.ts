@@ -3,7 +3,7 @@ import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { authFailureResponse } from "@/lib/auth/http";
-import { AuthError, errorResponse } from "@/lib/auth/errors";
+import { errorResponse } from "@/lib/auth/errors";
 import { requireAllowedOrigin } from "@/lib/auth/origin";
 import { getTenantRepositories } from "@/lib/database";
 
@@ -23,23 +23,13 @@ export async function GET(request: Request): Promise<Response> {
   }
 }
 
+/** Generates the account's single capture token, revoking any previous one. */
 export async function POST(request: Request): Promise<Response> {
   try {
     requireAllowedOrigin(request, readAuthEnvironment().allowedOrigins);
     const context = await resolveRequestAuthContext(request);
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      throw new AuthError("INVALID_REQUEST", 400, "A JSON token name is required");
-    }
-    const name = (body as { name?: unknown })?.name;
-    if (typeof name !== "string" || !name.trim() || name.trim().length > 80) {
-      throw new AuthError("INVALID_REQUEST", 400, "Token name must be 1-80 characters");
-    }
-
     const repositories = await getTenantRepositories(context);
-    const token = await issueCaptureToken(context, repositories.captureTokens, name);
+    const token = await issueCaptureToken(context, repositories.captureTokens);
     return Response.json({ token }, { status: 201 });
   } catch (error) {
     return failure(error);

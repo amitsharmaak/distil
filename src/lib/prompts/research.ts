@@ -100,8 +100,8 @@ const NO_SOURCES_RULE = `No sources are available for these findings. Do not add
 /**
  * Outline prompt (JSON). `findings` lists each finding as `### F<n>. question` with its numbered
  * sources on a "Sources:" line, as synthesis did in R2. The outline decides the report's shape,
- * writes the TL;DR, key takeaways and caveats itself, and assigns findings to 3-6 sections that the
- * section writer then expands one call at a time.
+ * writes the TL;DR, key takeaways and caveats itself, and assigns findings to 3-4 sections that the
+ * section writer then expands one call at a time (the whole report stays within 2,500 words).
  */
 export function researchOutlinePrompt(query: string, findings: string, hasSources = false): string {
   return `You are a research editor planning a report from research notes. You write the short parts yourself and plan the sections a writer will expand.
@@ -117,7 +117,7 @@ ${findings}
    - explainer: how something works; comparison: options side by side; landscape: the approaches or players in a field; decision: whether or which to choose; how-to: steps to do something; timeline: how something developed.
 2. "tldr": 2-3 short sentences, at most 60 words in total, that directly answer the research question with the most important specifics.
 3. "takeaways": 3-5 key takeaways. Each is one sentence carrying a concrete fact from the findings (a figure, date, name or measured result), not advice.
-4. "sections": 3-6 sections that together answer the question, in reading order, each with:
+4. "sections": 3-4 sections that together answer the question, in reading order (never more than 4; the whole report is at most 2,500 words, so group related findings into one section), each with:
    - "heading": written for this question and specific to its content (not "Introduction", "Analysis", "Key Findings" or "Conclusion").
    - "purpose": one sentence on what the section must establish.
    - "findings": the F numbers of the findings the section draws on (every useful finding should be used by at least one section).
@@ -145,6 +145,8 @@ export interface ResearchSectionPromptInput {
   /** The findings this section draws on, each with its "Sources:" line. */
   findings: string;
   hasSources: boolean;
+  /** Word range for this section's body, from the report's 2,500-word budget. */
+  words: { min: number; max: number };
 }
 
 const FORMAT_RULES: Record<ResearchSectionFormat, string> = {
@@ -186,7 +188,7 @@ Purpose: ${input.purpose}
 ${input.findings}
 
 ## Instructions
-Write the body of the section "${heading}": 250-450 words for a knowledgeable reader who wants depth and clarity.
+Write the body of the section "${heading}": about ${input.words.min}-${input.words.max} words, never more than ${input.words.max} (the report has a fixed length budget), for a knowledgeable reader who wants depth and clarity.
 - Keep the specific facts, figures, dates and named examples from the findings; do not generalise them away. Use only these findings; where they disagree or are thin, say so.
 - Stay on this section's purpose; the other sections cover their own headings.
 - ${FORMAT_RULES[input.format]}
