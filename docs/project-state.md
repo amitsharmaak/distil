@@ -79,8 +79,12 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   `/api/health`; no research runs on Production; (6) R2's grounded path verified with fixtures
   only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
   memory, labelled on the page). Phase branches: `claude/research-r1-page`,
-  `claude/research-r2-citations`, `claude/research-r3-adaptive`. Progress: R1 and the R2 engine
-  half started in parallel.
+  `claude/research-r2-citations`, `claude/research-r3-adaptive`.
+  **R1 (readable page, UI only)** done: checked locally on `5a9cf55a` at desktop, 375 px and
+  dark mode (checkpoint "Deep research R1: readable report page — 2026-09-30"); squash merged
+  to `main` (auto-deploys to Production). **R2** engine half done on its branch (not merged; it
+  must not ship without its UI half, since object sources would break the old page); UI half
+  next, on top of R1. Then R3.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
