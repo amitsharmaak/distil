@@ -135,6 +135,44 @@ describe("classifyItemArea", () => {
     expect(items.setAiArea).toHaveBeenCalledTimes(1);
   });
 
+  it("sends only title, summary and metadata in title-summary mode (the backfill)", async () => {
+    const { items, repos } = repositories({ brief: undefined });
+    const examples = [{ title: "School trip", sourceType: "manual", area: "personal" as const }];
+    await classifyItemArea(context, repos, "item-1", {
+      now,
+      input: "title-summary",
+      examples,
+    });
+    const prompt = mockGenerateJSON.mock.calls[0][0] as string;
+    expect(prompt).toContain("- Title: Q3 planning sync");
+    expect(prompt).toContain("### Summary\nNotes from the planning call");
+    expect(prompt).not.toContain("Decisions: ship the beta");
+    expect(prompt).not.toContain("### Opening text");
+    // Preloaded examples are used as given; the batch reads corrections once.
+    expect(prompt).toContain('- "School trip" [manual] → personal');
+    expect(items.listAreaCorrections).not.toHaveBeenCalled();
+    expect(mockGenerateJSON.mock.calls[0][1]).toBe("classify-area");
+  });
+
+  it("prefers the brief's overview over the stored summary in title-summary mode", async () => {
+    const { repos } = repositories({
+      brief: { summary: "markdown", structured: { overview: "A planning call." } },
+    });
+    await classifyItemArea(context, repos, "item-1", { now, input: "title-summary" });
+    const prompt = mockGenerateJSON.mock.calls[0][0] as string;
+    expect(prompt).toContain("### Summary\nA planning call.");
+    expect(prompt).not.toContain("Notes from the planning call");
+  });
+
+  it("never spends a call on an item Amit sorted by hand when asked to skip them", async () => {
+    const { items, repos } = repositories({ state: { manualArea: "personal" } });
+    await expect(classifyItemArea(context, repos, "item-1", { skipManual: true })).resolves.toEqual(
+      { status: "skipped", reason: "manually-set" }
+    );
+    expect(mockGenerateJSON).not.toHaveBeenCalled();
+    expect(items.setAiArea).not.toHaveBeenCalled();
+  });
+
   it("skips missing and rejected items without calling a model", async () => {
     const missing = repositories({ state: undefined });
     await expect(classifyItemArea(context, missing.repos, "gone")).resolves.toEqual({

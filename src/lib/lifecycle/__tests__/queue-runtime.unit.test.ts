@@ -1,4 +1,9 @@
 import { createTenantJobEnvelopeV1 } from "@/lib/contracts/tenant-jobs";
+import {
+  AREA_BACKFILL_JOB_TYPE,
+  areaBackfillJobId,
+  emptyAreaTotals,
+} from "@/lib/jobs/area-backfill";
 import { objectContentHash, type TenantObjectStore } from "@/lib/storage/object-store";
 
 import {
@@ -70,12 +75,68 @@ function repositories(jobType = "account.export", payload: Record<string, unknow
 }
 
 describe("account lifecycle queue runtime", () => {
-  it("registers the export, retention-purge, and deletion handler allowlist", () => {
+  it("registers the export, retention-purge, area-backfill and deletion handler allowlist", () => {
     expect([...createLifecycleTenantJobHandlers().keys()]).toEqual([
       "account.export",
       "account.export-expire",
+      "items.area-backfill",
       "account.deletion",
     ]);
+  });
+
+  it("runs a persisted items.area-backfill job through its real handler", async () => {
+    const runId = "40000000-0000-4000-8000-000000000040";
+    const areaJobId = areaBackfillJobId(runId, 0);
+    const payload = {
+      jobId: areaJobId,
+      runId,
+      batchIndex: 0,
+      batchSize: 20,
+      maxBatches: 100,
+      afterId: null,
+      totals: emptyAreaTotals(),
+    };
+    const base = repositories(AREA_BACKFILL_JOB_TYPE, payload);
+    base.jobs.claim.mockResolvedValueOnce({
+      user_id: userId,
+      id: areaJobId,
+      job_type: AREA_BACKFILL_JOB_TYPE,
+      idempotency_key: `area-backfill:${runId}:0`,
+      payload,
+      status: "running",
+    });
+    const repos = {
+      ...base,
+      jobs: { ...base.jobs, recordResult: jest.fn() },
+      items: { listAreaBackfillCandidates: jest.fn().mockResolvedValue([]) },
+    };
+    const getObjectStore = jest.fn(() => objectStore());
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId: areaJobId,
+      jobType: AREA_BACKFILL_JOB_TYPE,
+      traceId,
+    });
+
+    await expect(
+      consumeLifecycleTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        getObjectStore,
+        getTenantJobDispatcher: async () => undefined,
+      })
+    ).resolves.toBe("completed");
+
+    expect(repos.items.listAreaBackfillCandidates).toHaveBeenCalledWith({
+      afterId: undefined,
+      limit: 20,
+    });
+    expect(repos.jobs.recordResult).toHaveBeenCalledWith(
+      areaJobId,
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(repos.jobs.complete).toHaveBeenCalledWith(areaJobId);
+    expect(repos.jobs.complete).not.toHaveBeenCalledWith(areaJobId, "No tenant handler registered");
+    expect(getObjectStore).not.toHaveBeenCalled();
   });
 
   it("claims a persisted export job and runs the real export handler", async () => {

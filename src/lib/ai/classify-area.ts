@@ -53,7 +53,27 @@ const areaResponseSchema: ResponseSchema = {
 
 export type AreaClassificationOutcome =
   | { status: "classified"; area: LifeArea; confidence: number }
-  | { status: "skipped"; reason: "missing" | "rejected" | "already-classified" };
+  | {
+      status: "skipped";
+      reason: "missing" | "rejected" | "already-classified" | "manually-set";
+    };
+
+/**
+ * What the classifier reads. `full` (capture) adds the opening text of the
+ * item; `title-summary` (the backfill, decision 7) sends only the title, the
+ * summary and the item's metadata, never body text.
+ */
+export type AreaInputMode = "full" | "title-summary";
+
+export interface ClassifyItemAreaOptions {
+  force?: boolean;
+  now?: () => Date;
+  input?: AreaInputMode;
+  /** Preloaded correction examples, so a batch reads them once instead of per item. */
+  examples?: AreaPromptExample[];
+  /** Skip an item Amit has already sorted by hand (the backfill never spends a call on it). */
+  skipManual?: boolean;
+}
 
 /** URL host without `www.`, the same form as the generated `items.site` column. */
 export function siteOf(url: string): string | undefined {
@@ -80,6 +100,19 @@ function briefText(record: { summary: string; structured?: unknown } | undefined
   return typeof structured?.overview === "string" ? structured.overview : record.summary;
 }
 
+/** Amit's most recent corrections, in the form the prompt shows them. */
+export async function loadAreaExamples(repositories: RepositorySet): Promise<AreaPromptExample[]> {
+  const corrections = await repositories.items.listAreaCorrections(AREA_MAX_EXAMPLES);
+  return corrections.map((correction) => ({
+    title: correction.title,
+    site: siteOf(correction.url),
+    author: correction.author,
+    publication: correction.publication,
+    sourceType: correction.sourceType,
+    area: correction.correctedArea,
+  }));
+}
+
 /**
  * Classifies one item into its life area and stores the answer. Idempotent:
  * an item that already has an AI area is skipped unless `force` is set, so a
@@ -89,29 +122,23 @@ export async function classifyItemArea(
   context: AuthContext,
   repositories: RepositorySet,
   itemId: string,
-  options: { force?: boolean; now?: () => Date } = {}
+  options: ClassifyItemAreaOptions = {}
 ): Promise<AreaClassificationOutcome> {
   const state = await repositories.items.findAreaState(itemId);
   if (!state) return { status: "skipped", reason: "missing" };
   if (state.areaClassifiedAt && !options.force) {
     return { status: "skipped", reason: "already-classified" };
   }
+  if (options.skipManual && state.manualArea) return { status: "skipped", reason: "manually-set" };
   const item = await repositories.items.findById(itemId);
   if (!item) return { status: "skipped", reason: "missing" };
   if (item.processingStatus === "rejected") return { status: "skipped", reason: "rejected" };
 
-  const [brief, corrections] = await Promise.all([
+  const titleAndSummaryOnly = options.input === "title-summary";
+  const [brief, examples] = await Promise.all([
     repositories.summaries.find(itemId, "brief"),
-    repositories.items.listAreaCorrections(AREA_MAX_EXAMPLES),
+    options.examples ?? loadAreaExamples(repositories),
   ]);
-  const examples: AreaPromptExample[] = corrections.map((correction) => ({
-    title: correction.title,
-    site: siteOf(correction.url),
-    author: correction.author,
-    publication: correction.publication,
-    sourceType: correction.sourceType,
-    area: correction.correctedArea,
-  }));
   const prompt = classifyAreaPrompt({
     item: {
       title: item.title,
@@ -122,8 +149,9 @@ export async function classifyItemArea(
       publication: item.publication,
       topics: item.topics,
     },
-    brief: briefText(brief),
-    excerpt: excerptOf(item),
+    // Title and summary only: the brief's overview, else the stored summary.
+    brief: titleAndSummaryOnly ? briefText(brief) || item.summary : briefText(brief),
+    excerpt: titleAndSummaryOnly ? undefined : excerptOf(item),
     examples,
   });
 
