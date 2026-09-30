@@ -2,12 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { parseAuthContext, type AuthContext } from "@/lib/contracts/tenant-context";
 
-import type {
-  DigestCandidate,
-  DigestItem,
-  DigestRun,
-  DigestStore,
-} from "./types";
+import type { DigestCandidate, DigestItem, DigestRun, DigestStore } from "./types";
 
 const selectionVersion = "deterministic-v1";
 
