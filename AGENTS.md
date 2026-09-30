@@ -96,8 +96,13 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
-  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
-  embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
+  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
+  item embeddings are optional JSONB (no pgvector) and no search path reads them.
+- **Search:** there is one search surface, the Feed/Today header search, served by
+  `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Inline search F7 retired
+  the Search page, `GET /api/v1/search`, the `GET /api/items?q=` branch (now 400),
+  `FEATURE_SEARCH`, `hybridSearch` and the passage-retrieval layer (`src/lib/knowledge/retrieval.ts`,
+  `repositories.passages`). `content_chunks` and chunking at capture remain.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
   `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
@@ -111,7 +116,7 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   authenticated-publisher framework still exist in code but are disabled in hosted deployments
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
-  `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`, `FEATURE_SEARCH`,
+  `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`,
   `FEATURE_PERSONALIZATION`, `FEATURE_DIGESTS`. Three kill switches default
   on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
   `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and

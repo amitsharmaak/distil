@@ -75,7 +75,6 @@ import { PostgresAuthRepository } from "./auth-repository";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { PostgresFeedQuery } from "@/lib/feed/feed-query";
-import { PostgresPassageSearchStore } from "@/lib/knowledge/retrieval";
 import { tenantLockKey, withTenantLocks } from "./tenant-lock";
 import { PostgresTenantLifecycleRepository } from "./lifecycle-repositories";
 import { PostgresConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
@@ -128,17 +127,11 @@ class PostgresItems implements ItemRepository {
     if (f.priority) conditions.push(this.sql`i.priority=${f.priority}`);
     if (f.isRead !== undefined) conditions.push(this.sql`i.is_read=${f.isRead}`);
     if (!f.includeProcessing) conditions.push(this.sql`i.processing_status='ready'`);
-    if (f.query?.trim())
-      conditions.push(
-        this.sql`i.search_vector @@ websearch_to_tsquery('english', ${f.query.trim()})`
-      );
     const where = conditions.length
       ? this.sql`WHERE ${conditions.reduce((a, b) => this.sql`${a} AND ${b}`)}`
       : this.sql``;
-    const order = f.query?.trim()
-      ? this
-          .sql`ORDER BY ts_rank(i.search_vector, websearch_to_tsquery('english', ${f.query.trim()})) DESC, i.created_at DESC`
-      : f.sort === "priority"
+    const order =
+      f.sort === "priority"
         ? this
             .sql`ORDER BY CASE i.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, i.created_at DESC`
         : f.sort === "ai_priority"
@@ -1141,13 +1134,6 @@ class PostgresEmbeddings implements EmbeddingRepository {
         VALUES(${id},${tx.json(e)},${model},now())
       `;
     });
-  }
-  async count() {
-    return Number(
-      first(
-        await this.sql<Array<{ count: number }>>`SELECT count(*)::int count FROM item_embeddings`
-      )?.count ?? 0
-    );
   }
   async listRecent(days = 30, limit = 500) {
     const r = await this.sql<
@@ -2297,9 +2283,6 @@ export function createPostgresRepositories(sql: Sql, context?: AuthContext): Rep
     feed: context
       ? new PostgresFeedQuery(sql, context)
       : tenantOnly<RepositorySet["feed"]>("Feed queries"),
-    passages: context
-      ? new PostgresPassageSearchStore(sql, context)
-      : tenantOnly<RepositorySet["passages"]>("Passage retrieval"),
     digestExperience: context
       ? new PostgresDigestStore(sql, context)
       : tenantOnly<RepositorySet["digestExperience"]>("Digest experience"),
