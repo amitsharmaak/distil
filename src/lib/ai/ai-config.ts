@@ -72,6 +72,13 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
 };
 
 /**
+ * Anthropic prompt caching, relative to the model's input rate: a cache write costs 1.25×
+ * and a cache read 0.1× (`platform.claude.com/docs/en/about-claude/pricing`, 2026-09-30).
+ */
+export const ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25;
+export const ANTHROPIC_CACHE_READ_MULTIPLIER = 0.1;
+
+/**
  * Cost (USD) of one Google Search query run by a grounded Gemini 3.x call: $14 per
  * 1,000 queries. A single grounded request can run several queries, each billed.
  * The 5,000 free queries per month (shared across Gemini 3.x) are not netted off,

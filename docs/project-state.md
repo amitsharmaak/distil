@@ -15,6 +15,25 @@ This section is the only forward-looking instruction block in this file. Everyth
 "Current cross-phase status" downward is a dated historical record; keep it as evidence and do not
 reinterpret it as a task list. Shared working rules for both agents live in `AGENTS.md`.
 
+- **Severity-3 sweep of the pending list (branch `claude/elegant-bohr-e32023`; checkpoint
+  "Pending-task sweep: stale items closed, cache pricing, PWA safe area — 2026-09-30"):** Amit
+  asked for a consolidated, severity-ranked list of everything pending and then to deal with the
+  severity-3 items. Done in code: Anthropic prompt-cache tokens are now priced at 1.25× (write) and
+  0.1× (read) of the input rate instead of the base rate; the sticky top bar now sits below the
+  iPhone status bar in standalone mode (`BUG-PWA-001`). Closed by evidence or by Amit in chat:
+  the Production AI credential step (summaries and research run on Production), the keyboard
+  Production smoke check (Amit, 2026-09-30), the billing-enabled Google AI decision (grounding
+  verified live on Production in R3), the embeddings-costing follow-up (module deleted),
+  `BUG-PWA-002` (the only `<img>` is on the legacy `/login` page and `/logo.png` is packaged and
+  allow-listed in `src/proxy.ts`; `/sign-in` renders no image) and `BUG-IOS-001` (the recipe in
+  `docs/iphone-shortcut.md` steps 2–4 already extracts the first URL and reports `No web link
+  found`; Amit's own Shortcut is rebuilt anyway by D1–D3). Still open and needing Amit: the
+  classifier model id (decision 12), `npm run audit:ai-models` against Production keys, removing
+  `OPENAI_API_KEY` from Vercel (cloud mutation, not authorized here), replacing the rejected local
+  Anthropic key, re-sharing the Wispr Flow note, and the device-only bugs `BUG-IOS-002` and
+  `BUG-READER-001`. The digest cron gap (severity 1 in the sweep) is untouched pending Amit's
+  choice between deleting the cron and registering handlers; first check whether
+  `FEATURE_DIGESTS` is set in Vercel Production.
 - **Active objective:** Three recorded plans await Amit's go-ahead: the Chrome extension
   token-free sign-in and Web Store listing (X1–X3, below), the iPhone Shortcut without a visible
   token (D1–D3, below, which builds on X1's token kinds) and admin invitations from Settings
@@ -100,8 +119,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   mobile-webkit, while `smoke`, `save` and `phase2` failed (15) only because the e2e server inherits
   `.env.local` auth and feature variables, which reproduces on `origin/main` `eaec1d2` and does not
   apply in CI (no `.env.local`); stages ran separately because `check:full` stops at the first
-  failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there). Not merged, not deployed. Next: squash-merge #101 once
-  CI is green, which deploys; then a Production smoke check of `?`, `g f`, `j`/`k` and Shift+U.
+  failing stage; e2e (anonymous env): 33 passed, 0 failed, 9 skipped (the DB-gated keyboard tests skip there). Merged as `67f722c` (PR #101) and auto-deployed; PR
+  [#103](https://github.com/amitsharmaak/distil/pull/103) records the release. Amit confirmed the
+  Production smoke check in chat on 2026-09-30. Nothing open.
 - **Collections feature removed in code (branch `codex/remove-collections`, PR
   [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
   (code only) — 2026-09-30"):** the pages, API routes, UI controls,
@@ -355,8 +375,10 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   redelivers a thrown callback on its own backoff. The follow-up that asks the queue for a 60 s
   redelivery explicitly is merged as PR [#53](https://github.com/amitsharmaak/distil/pull/53)
   (`ef579e6`, live on Production since 2026-09-22; checkpoint "Release: PR #53 to Production —
-  2026-09-22"). Open decision for Amit: a billing-enabled Google AI project for real web
-  grounding. No further step is pending on deep research.
+  2026-09-22"). The billing-enabled Google AI project decision is closed: search grounding
+  worked on the free-tier key in R2/R3 and Production run `4d1cbcb5` returned 23 grounded sources;
+  Amit confirmed research works on Production (chat, 2026-09-30). No further step is pending on
+  deep research.
 - **Deep research restored (PR [#49](https://github.com/amitsharmaak/distil/pull/49), squash
   merged as `dc875da` and live on Production since 2026-09-21; see "Release: PR #49 to
   Production — 2026-09-21" below):** Amit asked for the deep
@@ -566,15 +588,9 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      listing — plan X1–X3" checkpoint and pick a phase (recommended X1)**, then start it with
      the single-session code prompt at the end of that checkpoint. Independently, start I1–I3
      with the prompt in the admin-invitations checkpoint.
-  2. **Amit: fix the Production AI credential.** The first live capture (checkpoint "First
-     live capture and the jsdom runtime fix — 2026-09-17") extracted and indexed correctly, but
-     the P6 brief summary was skipped with `AIProviderError AI_AUTHENTICATION`: the Gemini API
-     key in Vercel's Production environment is rejected by the provider. Replace
-     `GEMINI_API_KEY` in Vercel (Production) with a valid key, redeploy (or push any commit), then
-     open the reader for the existing item and request a brief summary; expect a summary and no
-     `capture_summary_skipped` in the runtime logs. Claude does not read or write provider
-     secrets. Until then every capture lands without a generated summary (extractive brief only)
-     and on-demand summaries fail the same way.
+  2. Closed 2026-09-30: the Production AI credential step from 2026-09-17 is stale. Brief and
+     detailed summaries, area classification and deep research all run on Production (F6
+     backfill, R3 run `4d1cbcb5`, Amit in chat on 2026-09-30).
   3. Done 2026-09-18: the P7 `perf-indexes` stage is applied to Production (checkpoint "P7
      migration applied to Production — 2026-09-18" below). `ai_summaries.content_hash` now exists
      there; wiring it into the summary cache key is P6's deferred item and a small follow-up.
@@ -601,6 +617,69 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Pending-task sweep: stale items closed, cache pricing, PWA safe area — 2026-09-30
+
+**Why.** Amit asked for every pending task consolidated into one severity-ranked list with a
+suggested order, then said "deal with severity 3 problems now". Severity 3 was the follow-ups
+and small bugs: the classifier model id (decision 12), the AI-cost follow-ups, model and key
+hygiene, the Google AI billing decision, the Wispr Flow re-share, and the deferred bug backlog.
+Branch `claude/elegant-bohr-e32023` (worktree `elegant-bohr-e32023`) from `origin/main`
+`b8800b2`.
+
+**Facts Amit gave in chat (2026-09-30):** research works on Production; the keyboard-navigation
+smoke check on Production is done.
+
+**Changed in code**
+
+- **Anthropic prompt-cache pricing.** `ProviderUsage` gains optional `cacheWriteTokens` and
+  `cacheReadTokens` (both already inside `inputTokens`). `AnthropicProviderImpl` fills them from
+  `cache_creation_input_tokens` and `cache_read_input_tokens`. `estimateCost` bills the uncached
+  share at the input rate, writes at `ANTHROPIC_CACHE_WRITE_MULTIPLIER` (1.25×) and reads at
+  `ANTHROPIC_CACHE_READ_MULTIPLIER` (0.1×), both in `ai-config.ts`; `measuredUsage` passes the
+  fields through. Metrics' `tokens_in` is unchanged (still the total). Note for the record: the
+  2026-09-29 follow-up said nothing enables caching, but `AnthropicProviderImpl` does set
+  `cache_control: ephemeral` on the Sonnet system block; that block is far below Anthropic's
+  1,024-token cache minimum, so no cache tokens are produced today and recorded costs do not
+  change until a cacheable prompt exists.
+- **`BUG-PWA-001`.** In standalone (home-screen) mode `globals.css` padded `body` by
+  `--safe-top`, but the top bar is `position: sticky; top: 0`, so after the first scroll it pinned
+  to the viewport edge under the status bar and Dynamic Island. The header now carries
+  `distil-topbar`, and the same `display-mode: standalone` rule sets its `top` to `--safe-top`.
+  One-line CSS change plus a class; a component test asserts the hook.
+
+**Closed without code**
+
+- Handoff step 2 (Production Gemini key rejected, 2026-09-17): stale; every AI path has since run
+  on Production.
+- Keyboard K1–K4 Production smoke check: done by Amit.
+- Billing-enabled Google AI project: grounding works on the free-tier key (R2/R3 local and
+  Production run `4d1cbcb5`, 23 grounded sources).
+- Embeddings costing follow-up: `embeddings.ts` no longer exists.
+- `BUG-PWA-002`: the only brand `<img>` is `next/image` on the legacy `/login` page, `/logo.png`
+  (128×128 PNG) is in `public/` and allow-listed in `src/proxy.ts`; the Production `/sign-in`
+  page renders no image. There is no service worker, so "offline-safe" has no meaning in the
+  current app.
+- `BUG-IOS-001`: `docs/iphone-shortcut.md` steps 2–4 and the checklist already describe "Get URLs
+  from Shortcut Input → First Item → If empty, `No web link found`". Only Amit's own Shortcut
+  instance can be updated, and the D1–D3 plan rebuilds it.
+
+**Left open, each needing Amit**
+
+- Decision 12: the exact provider model id for the classifier switch.
+- `npm run audit:ai-models` with Production keys; removing `OPENAI_API_KEY` from Vercel is a
+  cloud mutation and was not authorized for this task.
+- The local `.env.local` Anthropic key, if still the rejected one.
+- Re-share the original Wispr Flow note.
+- `BUG-IOS-002` (touch highlighting) and `BUG-READER-001` (reading position): both need a physical
+  iPhone to reproduce and verify; not attempted blind.
+- Severity 1 from the sweep, the write-only digest cron: check `FEATURE_DIGESTS` in Vercel
+  Production first; if unset it is dormant housekeeping, if set choose between deleting the cron
+  route and `vercel.json` entry or registering handlers.
+
+**Verified locally:** `npm run check` at this branch: 244 suites / 2,001 tests passed, lint 0
+errors (baseline warnings only), typecheck clean. Not deployed; no cloud, database or environment
+change.
 
 ### iPhone Shortcut without a visible token: design and phased plan (D1–D3) — 2026-09-30
 
@@ -3313,10 +3392,11 @@ no external resources touched.
 
 - Anthropic cache-write and cache-read tokens are still added to input at the base rate
   (writes are 1.25×, reads 0.1×). Nothing enables prompt caching today, so this has no effect
-  yet.
+  yet. **Done 2026-09-30** (checkpoint "Pending-task sweep … — 2026-09-30").
 - `text-embedding-004` (`embeddings.ts`) is no longer on Google's pricing page (current:
   Gemini Embedding 2, $0.20 per 1M). Embeddings are not costed at all. Run
-  `npm run audit:ai-models` to confirm it still answers.
+  `npm run audit:ai-models` to confirm it still answers. **Moot since 2026-09-30:** the module
+  was deleted (checkpoint "Unused embeddings module removed — 2026-09-30").
 - Historical `ai_audit_log` and usage rows keep their old, lower estimates.
 
 ### Life areas F4: area badge and one-tap reclassify — 2026-09-29
@@ -9047,11 +9127,11 @@ already passing capture, PWA keyboard, Today, grounded-answer, citation, abstent
 These issues are real but are not Phase 1 closure blockers. Address them together in a later bug-fix
 wave, then run only focused regression checks against the affected surfaces.
 
-- [ ] **BUG-PWA-001 — iPhone top safe area:** keep the authenticated global header below the status
+- [x] **BUG-PWA-001 — iPhone top safe area (fixed 2026-09-30, checkpoint "Pending-task sweep"):** keep the authenticated global header below the status
       bar and Dynamic Island in standalone mode.
-- [ ] **BUG-PWA-002 — login brand asset:** replace the broken-image placeholder with the intended
+- [x] **BUG-PWA-002 — login brand asset (closed 2026-09-30 by evidence, checkpoint "Pending-task sweep"):** replace the broken-image placeholder with the intended
       packaged icon/logo and verify it offline-safe.
-- [ ] **BUG-IOS-001 — shared text URL extraction:** update the Shortcut so text payloads such as
+- [ ] **BUG-IOS-001 — shared text URL extraction (recipe documented; Amit's Shortcut instance is rebuilt by D1–D3):** update the Shortcut so text payloads such as
       Google News extract the first HTTP(S) URL and empty matches show `No web link found` rather
       than a conversion error.
 - [ ] **BUG-IOS-002 — touch highlighting:** make iOS text selection open the anchored-highlight save

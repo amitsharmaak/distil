@@ -69,6 +69,12 @@ export interface ProviderUsage {
   outputTokens: number;
   /** Google Search queries a grounded Gemini call ran; each one is billed separately. */
   searchQueries?: number;
+  /**
+   * Anthropic prompt-cache tokens. Both are already counted inside `inputTokens`; they are
+   * broken out because a cache write bills at 1.25× the input rate and a cache read at 0.1×.
+   */
+  cacheWriteTokens?: number;
+  cacheReadTokens?: number;
 }
 
 export interface ProviderResult<T> {
@@ -415,14 +421,15 @@ export class AnthropicProviderImpl implements AIProvider {
     if (options?.rejectTruncated && message.stop_reason === "max_tokens") {
       throw new AIProviderError("invalid_output", this.name, model);
     }
+    const cacheWriteTokens = message.usage.cache_creation_input_tokens ?? 0;
+    const cacheReadTokens = message.usage.cache_read_input_tokens ?? 0;
     return {
       value: textBlock.text,
       usage: {
-        inputTokens:
-          message.usage.input_tokens +
-          (message.usage.cache_creation_input_tokens ?? 0) +
-          (message.usage.cache_read_input_tokens ?? 0),
+        inputTokens: message.usage.input_tokens + cacheWriteTokens + cacheReadTokens,
         outputTokens: message.usage.output_tokens,
+        ...(cacheWriteTokens ? { cacheWriteTokens } : {}),
+        ...(cacheReadTokens ? { cacheReadTokens } : {}),
       },
     };
   }
