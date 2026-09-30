@@ -135,16 +135,6 @@ describe("FeedList without a server page (client fetch)", () => {
     jest.clearAllMocks();
   });
 
-  it("mounts the temporary measurement UI when legacy Preview has no server page", async () => {
-    mockSearch = "p10measure=1";
-    fetchMock.mockResolvedValue(itemsResponse([]));
-
-    render(<FeedList initialPage={null} />);
-
-    expect(screen.getByRole("complementary", { name: "P10 Preview measurement" })).toBeVisible();
-    await settleInitialFetch();
-  });
-
   it("trusts server filtering, keeps the rejected guard, and marks an item read optimistically", async () => {
     fetchMock.mockResolvedValue(
       itemsResponse([
@@ -396,25 +386,6 @@ describe("FeedList with a server-rendered page", () => {
     await settleInitialFetch();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
-  });
-
-  it("mounts the temporary measurement UI only for its exact query and preserves it on filters", () => {
-    mockSearch = "p10measure=1";
-    render(
-      <FeedList
-        initialPage={{
-          key: "archive=exclude&sort=for_you&limit=100&read=false",
-          items: [makeItem({ id: "server-1", title: "Server item" })],
-          collections: [],
-        }}
-      />
-    );
-
-    expect(screen.getByRole("complementary", { name: "P10 Preview measurement" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?p10measure=1&source=gmail", {
-      scroll: false,
-    });
   });
 
   it("selects filters optimistically and dims the current list until the URL commits", async () => {

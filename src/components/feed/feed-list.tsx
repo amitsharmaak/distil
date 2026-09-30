@@ -23,7 +23,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
-import { P10MeasurementHarness, p10MeasurementEnabled } from "@/components/feed/p10-measurement";
 import {
   feedFilterKey,
   feedFilterState,
@@ -248,9 +247,6 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
 
   return (
     <div className="space-y-5">
-      {p10MeasurementEnabled(searchParams) && (
-        <P10MeasurementHarness apiPath={requestPath(filters)} />
-      )}
       {/* Page header: title and links, with the search and Filters on the right. */}
       <FilterBar
         filters={optimisticFilters}
