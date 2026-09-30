@@ -28,8 +28,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
-- **Collections feature removed in code (branch `codex/remove-collections`, PR pending; checkpoint
-  "Collections feature removed (code only) — 2026-09-30"):** the pages, API routes, UI controls,
+- **Collections feature removed in code (branch `codex/remove-collections`, PR
+  [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
+  (code only) — 2026-09-30"):** the pages, API routes, UI controls,
   feed filter/query plumbing, repository port/implementation, personalization events and
   read-item resurfacing exceptions are removed. The `collections` and `collection_items` tables,
   existing data, schema/migrations, and lifecycle export/deletion support are intentionally
@@ -5718,7 +5719,7 @@ Not deployed. Both bugs move from the deferred backlog to fixed once the PR merg
 ### Collections feature removed (code only) — 2026-09-30
 
 Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with current
-`origin/main` in `816bbe4`; PR pending at this checkpoint.
+`origin/main` in `816bbe4`; PR [#98](https://github.com/amitsharmaak/distil/pull/98).
 
 - **Removed:** the two `/collections` pages; seven reviewed collection API methods across three
   route files; collection list/detail/editor UI; reader membership controls; Feed/Today collection
@@ -5740,8 +5741,8 @@ Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with 
   removed routes, and a second `npm run perf:bundle` reported zero delta. The requested final
   `grep -rni collection src` returns only the intentionally kept schema/migrations/tenant manifest,
   lifecycle export, capture-handler name and tests that freeze those kept contracts.
-- **External state:** not merged, not deployed, no Preview or Production verification, no database
-  or cloud mutation. External CI has not run yet.
+- **External state:** PR #98 opened; not merged, not deployed, no Preview or Production
+  verification, no database or cloud mutation. External CI is pending at this checkpoint.
 - **Follow-up:** Drop collections/collection_items tables — requires Amit's explicit approval;
   confirm Production has no collection data worth keeping first.
 
