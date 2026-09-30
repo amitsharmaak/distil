@@ -1539,23 +1539,6 @@
       "testProfile": "owner"
     },
     {
-      "path": "/api/v1/search",
-      "source": "src/app/api/v1/search/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session_plus_route_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": [
-        "items",
-        "item_content_versions",
-        "content_chunks",
-        "collections",
-        "collection_items"
-      ],
-      "currentFeatureGate": "DISTIL_PHASE2_SEARCH",
-      "testProfile": "owner"
-    },
-    {
       "path": "/api/v1/account",
       "source": "src/app/api/v1/account/route.ts",
       "methods": ["GET", "PATCH"],
@@ -1807,8 +1790,7 @@
       "source": "src/app/search/page.tsx",
       "currentAuth": "proxy_session",
       "requiredPrincipal": "user_session",
-      "currentFeatureGate": "DISTIL_PHASE2_SEARCH",
-      "dataPath": "/api/v1/search",
+      "dataPath": "none; redirects to /feed with the same query parameters",
       "testProfile": "owner"
     },
     {
@@ -1872,12 +1854,6 @@
       "kind": "direct-postgres-query",
       "currentScope": "singleton preferences and globally unique dates",
       "requiredScope": "user on preferences, candidates, runs, items, jobs and conflict keys"
-    },
-    {
-      "source": "src/lib/knowledge/retrieval.ts",
-      "kind": "direct-postgres-query",
-      "currentScope": "unscoped item/chunk/collection candidate CTEs",
-      "requiredScope": "user predicate before keyword, semantic, recent fallback and collection filters"
     },
     {
       "source": "src/lib/import/sqlite-importer.ts",
@@ -2118,24 +2094,6 @@
     }
   ],
   "searchAndAiPaths": [
-    {
-      "id": "legacy-hybrid-search",
-      "source": "src/lib/ai/search.ts",
-      "entryPoints": ["hybridSearch"],
-      "currentScope": "all items and embeddings",
-      "requiredScope": "tenant-scoped keyword and semantic candidates before scoring"
-    },
-    {
-      "id": "passage-retrieval",
-      "source": "src/lib/knowledge/retrieval.ts",
-      "entryPoints": [
-        "PostgresPassageSearchStore.searchKeyword",
-        "PostgresPassageSearchStore.listRecent",
-        "searchPassages"
-      ],
-      "currentScope": "all item/chunk candidates",
-      "requiredScope": "tenant predicate in base CTE; collection IDs owner-checked"
-    },
     {
       "id": "grounded-answers",
       "source": "src/lib/knowledge/service.ts",
@@ -2533,7 +2491,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 92,
+    "expectedApiRouteFileCount": 91,
     "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

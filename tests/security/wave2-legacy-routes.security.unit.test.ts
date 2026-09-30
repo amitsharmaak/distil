@@ -10,13 +10,11 @@ jest.mock("@/lib/ai/preferences", () => ({
 }));
 
 jest.mock("@/lib/ai/prioritize", () => ({ reprioritize: jest.fn() }));
-jest.mock("@/lib/ai/search", () => ({ hybridSearch: jest.fn() }));
 jest.mock("@/lib/capture/composition", () => ({ composeCaptureRoutes: jest.fn() }));
 
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
 import { getAgentConfig, getPreferences, saveAgentConfig } from "@/lib/ai/preferences";
 import { reprioritize } from "@/lib/ai/prioritize";
-import { hybridSearch } from "@/lib/ai/search";
 import { composeCaptureRoutes } from "@/lib/capture/composition";
 import { NextRequest } from "next/server";
 import { GET as feedbackGet } from "@/app/api/ai/feedback/[itemId]/route";
@@ -32,7 +30,6 @@ const mockedGetPreferences = jest.mocked(getPreferences);
 const mockedGetAgentConfig = jest.mocked(getAgentConfig);
 const mockedSaveAgentConfig = jest.mocked(saveAgentConfig);
 const mockedReprioritize = jest.mocked(reprioritize);
-const mockedHybridSearch = jest.mocked(hybridSearch);
 const mockedComposeCaptureRoutes = jest.mocked(composeCaptureRoutes);
 const createCapture = jest.fn();
 
@@ -160,7 +157,7 @@ describe("Wave 2 legacy route tenant boundaries", () => {
     ).toEqual({ summaries: [] });
   });
 
-  it("maps legacy item-list filters into the tenant repository and tenant search", async () => {
+  it("maps legacy item-list filters into the tenant repository and rejects the retired q search", async () => {
     repositories.items.list.mockResolvedValue([]);
     const plain = await itemsGet(new NextRequest("https://distil.example/api/items"));
     expect(plain.status).toBe(200);
@@ -168,26 +165,27 @@ describe("Wave 2 legacy route tenant boundaries", () => {
       expect.objectContaining({ includeProcessing: false })
     );
 
-    mockedHybridSearch.mockResolvedValue([]);
-    const searched = await itemsGet(
+    const filtered = await itemsGet(
       new NextRequest(
-        "https://distil.example/api/items?source=gmail&type=article&priority=high&unread=true&limit=5&sort=priority&q=tenant&includeProcessing=true"
+        "https://distil.example/api/items?source=gmail&type=article&priority=high&unread=true&limit=5&sort=priority&includeProcessing=true"
       )
     );
-    expect(searched.status).toBe(200);
-    expect(mockedHybridSearch).toHaveBeenCalledWith(
-      repositories,
-      "tenant",
-      expect.objectContaining({
-        sourceType: "gmail",
-        contentType: "article",
-        priority: "high",
-        isRead: false,
-        limit: 5,
-        sort: "priority",
-        includeProcessing: true,
-      })
+    expect(filtered.status).toBe(200);
+    expect(repositories.items.list).toHaveBeenLastCalledWith({
+      sourceType: "gmail",
+      contentType: "article",
+      priority: "high",
+      isRead: false,
+      limit: 5,
+      sort: "priority",
+      includeProcessing: true,
+    });
+
+    const retiredSearch = await itemsGet(
+      new NextRequest("https://distil.example/api/items?q=tenant")
     );
+    expect(retiredSearch.status).toBe(400);
+    expect(repositories.items.list).toHaveBeenCalledTimes(2);
   });
 
   it("preserves item not-found concealment and successful tenant mutations", async () => {

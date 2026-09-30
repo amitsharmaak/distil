@@ -49,11 +49,14 @@ transaction (not the pooled connection), RLS policies keyed on `current_setting(
 can't leak across requests that happen to reuse the same physical connection from the pooler —
 each transaction re-asserts its own tenant identity from a verified `AuthContext`.
 
-### Why search degrades explicitly
+### Why there is one search surface
 
-Per `AGENTS.md` §3: PostgreSQL full-text search is the primary path; embeddings are optional
-JSONB (no `pgvector`) and retrieval degrades explicitly rather than silently. This means a missing
-or failed embedding step should fall back to FTS-only ranking instead of returning empty results.
+There is one search surface: the Feed/Today header search on `GET /api/v1/feed`, which is
+PostgreSQL full-text search (`src/lib/feed/`). Item embeddings are optional JSONB (no `pgvector`)
+and no search path reads them. Inline search F7 (2026-09-30), after Ask Distil was removed,
+retired the Search page, `GET /api/v1/search`, the `q` branch of `GET /api/items`, the
+`FEATURE_SEARCH` flag, `hybridSearch` (`src/lib/ai/search.ts`) and the passage-retrieval layer
+(`src/lib/knowledge/retrieval.ts`). `content_chunks` and chunking at capture stay.
 
 ### Why summaries validate before caching
 

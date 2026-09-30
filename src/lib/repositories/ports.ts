@@ -22,7 +22,6 @@ import type { UserId } from "@/lib/contracts/tenant-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import type { DigestStore } from "@/lib/digests/types";
 import type { FeedPage, FeedQuery } from "@/lib/feed/feed-query";
-import type { PassageSearchStore } from "@/lib/knowledge/retrieval";
 import type { ConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
 import type {
   ControlPlaneLifecycleRepository,
@@ -37,7 +36,6 @@ export interface ItemFilters {
   limit?: number;
   offset?: number;
   sort?: "recent" | "priority" | "ai_priority";
-  query?: string;
   includeProcessing?: boolean;
 }
 
@@ -466,7 +464,6 @@ export interface EmbeddingRepository {
     itemId: string
   ): Promise<{ itemId: string; embedding: number[]; model: string; createdAt: string } | undefined>;
   upsert(itemId: string, embedding: number[], model: string): Promise<void>;
-  count(): Promise<number>;
   listRecent(
     daysBack?: number,
     limit?: number
@@ -762,8 +759,6 @@ export interface RepositorySet {
   agent: AgentRepository;
   /** Tenant-only PostgreSQL feed query surface. */
   feed: { list(query?: FeedQuery): Promise<FeedPage> };
-  /** Tenant-only retrieval surface used before any answer prompt is assembled. */
-  passages: PassageSearchStore;
   /** Tenant-only preference, scheduling, and digest persistence surface. */
   digestExperience: DigestStore;
 }
