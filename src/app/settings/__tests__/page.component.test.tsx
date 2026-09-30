@@ -89,25 +89,50 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Account tab")).toBeInTheDocument();
   });
 
-  it("shows the Invitations tab only to an admin", async () => {
+  it("shows no Invitations or Troubleshooting tab to a non-admin and keeps diagnostics out of Capture", async () => {
     mockAccount(false);
-    const { unmount } = render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: ShortcutsProvider });
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/account", expect.anything())
     );
     expect(screen.queryByRole("button", { name: /Invitations/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Troubleshooting/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Invitations settings")).not.toBeInTheDocument();
-    unmount();
-
-    mockAccount(true);
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
-    expect(await screen.findByText("Invitations settings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Invitations/ })).toBeInTheDocument();
+    expect(screen.queryByText("Capture diagnostics")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/captures"),
+      expect.anything()
+    );
   });
 
   it("stays a member view when the account request fails", async () => {
     render(<SettingsPage />, { wrapper: ShortcutsProvider });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByText("Invitations settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Capture diagnostics")).not.toBeInTheDocument();
+  });
+
+  it("gives an admin the Invitations tab and a Troubleshooting tab holding the diagnostics", async () => {
+    mockAccount(true, 3);
+    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    expect(await screen.findByText("Invitations settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Invitations/ })).toBeInTheDocument();
+    const troubleshooting = screen.getByRole("button", { name: /Troubleshooting/ });
+    expect(troubleshooting).toBeInTheDocument();
+    await waitFor(() => expect(troubleshooting).toHaveTextContent("3"));
+    expect(screen.getByText("Capture diagnostics")).toBeInTheDocument();
+  });
+
+  it("omits the failure badge when nothing failed", async () => {
+    mockAccount(true, 0);
+    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    const troubleshooting = await screen.findByRole("button", { name: /Troubleshooting/ });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/captures"),
+        expect.anything()
+      )
+    );
+    expect(troubleshooting).not.toHaveTextContent(/\d/);
   });
 });
