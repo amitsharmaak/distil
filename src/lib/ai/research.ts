@@ -52,6 +52,7 @@ import {
   type SourceCatalog,
 } from "./research-sources";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
+import type { GenerateOptions } from "./providers";
 import {
   createResearchRunMessageV1,
   researchRunIdempotencyKey,
@@ -65,17 +66,11 @@ import type { ResearchDispatcher } from "@/lib/queue/dispatchers";
  * Per-call provider timeouts. The provider default (15 s) is sized for
  * summaries; grounded searches and report writing produce far longer
  * outputs. Each stage runs inside one 60 s queue invocation (the callback
- * lease). A grounded search stage may add up to
- * `GROUNDING_RESOLVE_TIMEOUT_MS` (3 s) to resolve Google redirect links.
- *
- * Outline and write budget (R3): the model call gets 40 s and one provider
- * attempt (`maxAttempts: 1`, so the Anthropic SDK does not retry a timed-out
- * request inside the same invocation); {@link RESEARCH_STAGE_DEADLINE_MS}
- * stops waiting at 42 s even if an SDK fails to abort. Around the call the
- * stage reads the report, may mark it running and writes the state (or the
- * assembled report) and the consumer publishes the next message: well under
- * 3 s together, so a stage ends by ~45 s, 15 s inside the lease. The stage
- * machinery retries by redelivery.
+ * lease) and is cut off at {@link RESEARCH_STAGE_DEADLINE_MS}; every call
+ * makes one attempt (`maxAttempts: 1`) because the queue redelivers a failed
+ * stage. A grounded search stage may add up to `GROUNDING_RESOLVE_TIMEOUT_MS`
+ * (3 s) to resolve Google redirect links. Outline and write calls get 40 s,
+ * well inside the stage deadline.
  */
 export const RESEARCH_TIMEOUTS_MS = {
   plan: 30_000,
@@ -85,8 +80,18 @@ export const RESEARCH_TIMEOUTS_MS = {
   write: 40_000,
 } as const;
 
-/** Hard stop for an outline or write model call, whatever the provider SDK does. */
-export const RESEARCH_STAGE_DEADLINE_MS = 42_000;
+/**
+ * Hard deadline for one stage inside the 60 s function. When it passes, the
+ * stage's provider requests are aborted (the signal reaches the SDK's HTTP
+ * request) and the attempt is recorded as failed. Before the stage the attempt
+ * is recorded (one state write) and after it the state or assembled report is
+ * written and the next message published, together well under 3 s, so an
+ * invocation ends by ~48 s, ≥12 s inside the lease. Before this deadline, a
+ * timed-out Anthropic synthesis was retried inside the SDK (default 2
+ * retries, each with the full timeout), and Vercel killed the function at
+ * 60 s before the attempt was recorded (Production run `8bb4d982`).
+ */
+export const RESEARCH_STAGE_DEADLINE_MS = 45_000;
 
 /**
  * Output budget for one search or deepening answer. The provider default
@@ -97,58 +102,32 @@ export const RESEARCH_SEARCH_MAX_TOKENS = 2048;
 
 /**
  * Output budgets for the outline (JSON, ~1k answer tokens) and one section (250-450 words,
- * ~600-700 answer tokens), per provider, sized so the budget itself cannot outrun the 40 s
- * timeout by much.
- * - Anthropic (Production, `claude-sonnet-4-6`, no extended thinking, ~60-80 output tokens/s):
- *   2,500 / 2,000 tokens ≈ 31-42 s / 25-33 s at the cap; a real outline or section is well below.
- * - Gemini (`gemini-3.5-flash` without the Anthropic key): thinking counts against the same
- *   budget. On the provider default (4096) the old single synthesis spent ~3,900 tokens thinking
- *   and returned only the cut-off tail of its reasoning (local run `79e2f8cc`); these calls ask
- *   for low thinking and keep headroom for it. Probe (2026-09-30, synthetic fixture, low
- *   thinking): outline 845 answer tokens, no thinking reported, 5.0 s; a 359-word table section
- *   574 answer + 1,712 thinking tokens, 10.0 s (~230 tokens/s, so 5,000 tokens ≈ 22 s).
- * `rejectTruncated` turns a cut-off answer into a retry either way.
+ * ~600-700 answer tokens), sized so the budget itself cannot outrun the 40 s timeout by much.
+ * - Default (Anthropic `claude-sonnet-4-6` in Production, no extended thinking; GPT likewise,
+ *   ~60-80 output tokens/s): 2,500 / 2,000 tokens ≈ 31-42 s / 25-33 s at the cap; a real
+ *   outline or section is well below (~12-16 s / ~8-11 s, estimated).
+ * - Gemini (`gemini-3.5-flash` without the Anthropic key), via `providerOverrides`: thinking
+ *   counts against the same budget. On the provider default (4096) the old single synthesis
+ *   spent ~3,900 tokens thinking and returned only the cut-off tail of its reasoning (local run
+ *   `79e2f8cc`); these calls ask for low thinking and keep headroom for it. Probe (2026-09-30,
+ *   synthetic fixture, low thinking): outline 845 answer tokens, no thinking reported, 5.0 s; a
+ *   359-word table section 574 answer + 1,712 thinking tokens, 10.0 s (~230 tokens/s, so 5,000
+ *   tokens ≈ 22 s).
+ * `rejectTruncated` turns a cut-off answer into a retry on every provider.
  */
-export const RESEARCH_REPORT_MAX_TOKENS = {
-  anthropic: { outline: 2_500, write: 2_000 },
-  gemini: { outline: 6_000, write: 5_000 },
-} as const;
+export const RESEARCH_OUTLINE_OPTIONS = {
+  timeoutMs: RESEARCH_TIMEOUTS_MS.outline,
+  maxTokens: 2_500,
+  rejectTruncated: true,
+  providerOverrides: { gemini: { maxTokens: 6_000, thinking: "low" } },
+} as const satisfies GenerateOptions;
 
-/** The outline or write output budget for the provider `research-synthesize` routes to. */
-export function researchReportMaxTokens(kind: "outline" | "write"): number {
-  const { provider } = getEffectiveModel("research-synthesize");
-  return provider === "anthropic"
-    ? RESEARCH_REPORT_MAX_TOKENS.anthropic[kind]
-    : RESEARCH_REPORT_MAX_TOKENS.gemini[kind];
-}
-
-/** Thrown when an outline or write call is still running at {@link RESEARCH_STAGE_DEADLINE_MS}. */
-export class ResearchDeadlineError extends Error {
-  constructor(readonly kind: string) {
-    super(`research ${kind} call exceeded the stage deadline`);
-    this.name = "ResearchDeadlineError";
-  }
-}
-
-/**
- * Resolves with the call, or rejects at the deadline so the stage records a failed attempt and
- * returns inside the lease even if the provider SDK has not aborted its request.
- */
-export async function withStageDeadline<T>(
-  call: Promise<T>,
-  kind: string,
-  ms: number = RESEARCH_STAGE_DEADLINE_MS
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ResearchDeadlineError(kind)), ms);
-  });
-  try {
-    return await Promise.race([call, deadline]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+export const RESEARCH_WRITE_OPTIONS = {
+  timeoutMs: RESEARCH_TIMEOUTS_MS.write,
+  maxTokens: 2_000,
+  rejectTruncated: true,
+  providerOverrides: { gemini: { maxTokens: 5_000, thinking: "low" } },
+} as const satisfies GenerateOptions;
 
 /** Characters of the source item (title, summary, readable text) given to the plan prompt. */
 export const RESEARCH_ITEM_CONTEXT_MAX_CHARS = 6_000;
@@ -240,6 +219,40 @@ export type ResearchAI = Pick<
   ReturnType<typeof createTenantAIRouter>,
   "generateText" | "generateJSON" | "generateTextWithSearch"
 >;
+
+/** Thrown when a stage did not finish before {@link RESEARCH_STAGE_DEADLINE_MS}. */
+export class ResearchStageTimeoutError extends Error {
+  constructor(readonly stageKey: string) {
+    super(`research stage ${stageKey} did not finish in time`);
+    this.name = "ResearchStageTimeoutError";
+  }
+}
+
+/**
+ * Runs `work` with an abort signal and settles by `deadlineMs` at the latest:
+ * the signal is aborted and the promise rejects with
+ * {@link ResearchStageTimeoutError}, even when `work` ignores the signal.
+ */
+export async function withStageDeadline<T>(
+  key: string,
+  deadlineMs: number,
+  work: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new ResearchStageTimeoutError(key);
+      controller.abort(error);
+      reject(error);
+    }, deadlineMs);
+  });
+  try {
+    return await Promise.race([work(controller.signal), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Thrown when a stage failed but may be redelivered; the queue retries the message. */
 export class ResearchStageRetryError extends Error {
@@ -528,6 +541,8 @@ export interface RunResearchStageInput {
   now?: () => Date;
   /** Injected in tests; used only to resolve Google grounding redirect links. */
   fetchImpl?: typeof fetch;
+  /** Injected in tests; defaults to {@link RESEARCH_STAGE_DEADLINE_MS}. */
+  deadlineMs?: number;
 }
 
 export type RunResearchStageResult =
@@ -553,14 +568,30 @@ export async function runResearchStage(
   const stage = nextResearchStage(state);
   const key = stageKey(stage);
   const ai = input.ai ?? createTenantAIRouter(context, repositories);
-  if (report.status !== "running") {
-    await repositories.research.updateReport(reportId, { status: "running" });
+  const deadlineMs = input.deadlineMs ?? RESEARCH_STAGE_DEADLINE_MS;
+
+  // The attempt is recorded before the stage runs, so a delivery the platform kills (a function
+  // timeout never reaches the catch below) still counts against the bound.
+  const priorAttempts = state.attempts[key] ?? 0;
+  const attempt = Math.min(priorAttempts + 1, MAX_STAGE_ATTEMPTS);
+  if (priorAttempts < MAX_STAGE_ATTEMPTS) {
+    state.attempts[key] = attempt;
+    state.updatedAt = now().toISOString();
+    await setState(repositories, reportId, state, { status: "running" });
   }
 
   try {
-    await executeStage(ai, repositories, report, state, stage, input.fetchImpl);
+    if (priorAttempts >= MAX_STAGE_ATTEMPTS) {
+      // Every allowed delivery of this stage was cut off before it could record its failure.
+      throw new ResearchStageTimeoutError(key);
+    }
+    await withStageDeadline(key, deadlineMs, (signal) =>
+      executeStage(ai, repositories, report, state, stage, signal, input.fetchImpl)
+    );
+    // Attempts count failures only; a successful stage leaves the earlier count unchanged.
+    if (priorAttempts === 0) delete state.attempts[key];
+    else state.attempts[key] = priorAttempts;
   } catch (error) {
-    const attempt = (state.attempts[key] ?? 0) + 1;
     state.attempts[key] = attempt;
     aiLogger.warn(
       {
@@ -583,7 +614,10 @@ export async function runResearchStage(
     if (!degraded) {
       await repositories.research.updateReport(reportId, {
         status: "failed",
-        report: `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        report:
+          error instanceof ResearchStageTimeoutError
+            ? "Research failed: the report took too long to write. Please try again."
+            : `Research failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         completedAt: now().toISOString(),
         progress: null,
       });
@@ -617,7 +651,8 @@ export async function runResearchStage(
 /**
  * Records the outcome a stage falls back to after its retry budget: a plan
  * becomes the query itself, a failed search or deepening question a
- * placeholder, gaps an empty list. Synthesis has no fallback (returns false).
+ * placeholder, gaps an empty list, the outline a deterministic outline and a
+ * section a placeholder. Every stage degrades, so none fails the report.
  */
 function applyDegradedOutcome(
   report: ResearchReportRecord,
@@ -908,8 +943,12 @@ async function executeStage(
   report: ResearchReportRecord,
   state: ResearchRunState,
   stage: ResearchStage,
+  signal: AbortSignal,
   fetchImpl?: typeof fetch
 ): Promise<void> {
+  // One attempt per call: the queue redelivers a failed stage, and SDK-internal retries would
+  // run past the function's 60 s limit.
+  const call = { maxAttempts: 1, signal } as const;
   switch (stage.kind) {
     case "plan": {
       let itemContext: string | undefined;
@@ -922,7 +961,7 @@ async function executeStage(
       const planText = await ai.generateText(
         researchPlanPrompt(report.query, itemContext),
         "research-plan",
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.plan }
+        { timeoutMs: RESEARCH_TIMEOUTS_MS.plan, ...call }
       );
       setSubQuestions(state, parseSubQuestions(planText, report.query));
       return;
@@ -933,8 +972,11 @@ async function executeStage(
       const result = await ai.generateTextWithSearch(notesPrompts(question, "question"), {
         timeoutMs: RESEARCH_TIMEOUTS_MS.search,
         maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
+        ...call,
       });
-      state.findings[index] = await toFinding(question, result, report.id, fetchImpl);
+      const found = await toFinding(question, result, report.id, fetchImpl);
+      signal.throwIfAborted();
+      state.findings[index] = found;
       state.view = researchingView(state, index);
       return;
     }
@@ -944,7 +986,7 @@ async function executeStage(
         const result = await ai.generateJSON<{ gaps: string[] }>(
           researchGapsPrompt(report.query, combinedFindings(state)),
           "research-gaps",
-          { timeoutMs: RESEARCH_TIMEOUTS_MS.gaps }
+          { timeoutMs: RESEARCH_TIMEOUTS_MS.gaps, ...call }
         );
         gaps = Array.isArray(result?.gaps)
           ? result.gaps.filter((gap): gap is string => typeof gap === "string").slice(0, MAX_GAPS)
@@ -965,8 +1007,11 @@ async function executeStage(
       const result = await ai.generateTextWithSearch(notesPrompts(question, "gap"), {
         timeoutMs: RESEARCH_TIMEOUTS_MS.search,
         maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
+        ...call,
       });
-      state.deepening[index] = await toFinding(question, result, report.id, fetchImpl);
+      const found = await toFinding(question, result, report.id, fetchImpl);
+      signal.throwIfAborted();
+      state.deepening[index] = found;
       state.view = deepeningView(state, index);
       return;
     }
@@ -974,19 +1019,14 @@ async function executeStage(
     case "outline": {
       // `synthesize` is never computed from state since R3; kept for exhaustiveness.
       const { prompt, catalog, usable } = buildOutlinePrompt(report.query, state);
-      const raw = await withStageDeadline(
-        ai.generateJSON<unknown>(prompt, "research-synthesize", {
-          timeoutMs: RESEARCH_TIMEOUTS_MS.outline,
-          maxTokens: researchReportMaxTokens("outline"),
-          maxAttempts: 1,
-          rejectTruncated: true,
-          responseSchema: OUTLINE_RESPONSE_SCHEMA,
-          thinking: "low",
-        }),
-        "outline"
-      );
+      const raw = await ai.generateJSON<unknown>(prompt, "research-synthesize", {
+        ...RESEARCH_OUTLINE_OPTIONS,
+        responseSchema: OUTLINE_RESPONSE_SCHEMA,
+        ...call,
+      });
       // Invalid JSON or an unusable outline throws: the stage retries, then falls back.
       const outline = parseOutline(raw, usable, catalog);
+      signal.throwIfAborted();
       setOutline(state, outline);
       aiLogger.info(
         {
@@ -1004,18 +1044,16 @@ async function executeStage(
       const section = state.outline?.sections[index];
       // Past the last section: nothing to write, the caller assembles.
       if (!section) return;
-      const answer = await withStageDeadline(
-        ai.generateText(buildSectionPrompt(report.query, state, index), "research-synthesize", {
-          timeoutMs: RESEARCH_TIMEOUTS_MS.write,
-          maxTokens: researchReportMaxTokens("write"),
-          maxAttempts: 1,
-          rejectTruncated: true,
-          thinking: "low",
-        }),
-        "write"
+      const answer = await ai.generateText(
+        buildSectionPrompt(report.query, state, index),
+        "research-synthesize",
+        { ...RESEARCH_WRITE_OPTIONS, ...call }
       );
       // A cut-off or near-empty answer fails the attempt so the stage is retried.
-      state.sections[index] = cleanSectionBody(answer, section.heading);
+      const body = cleanSectionBody(answer, section.heading);
+      // A stage past its deadline has already been recorded as a failed attempt.
+      signal.throwIfAborted();
+      state.sections[index] = body;
       return;
     }
   }

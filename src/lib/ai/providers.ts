@@ -17,7 +17,21 @@ export interface GenerateOptions {
   temperature?: number;
   timeoutMs?: number;
   responseSchema?: ResponseSchema;
+  /**
+   * Total tries for one call. Gemini retries transient failures in `withRetry`; the Anthropic and
+   * OpenAI SDKs get `maxRetries = maxAttempts - 1` (their own default is 2 retries, each with the
+   * full `timeoutMs`, so a 50 s timeout could run for 150 s). Omitted: each SDK's default.
+   */
   maxAttempts?: number;
+  /** Aborts the underlying HTTP request (a caller-side deadline, e.g. a queue stage). */
+  signal?: AbortSignal;
+  /**
+   * Per-provider overrides of the output budget and truncation handling, applied by the provider
+   * that serves the call (the router picks the provider, so the caller cannot branch on it).
+   */
+  providerOverrides?: Partial<
+    Record<ProviderName, Pick<GenerateOptions, "maxTokens" | "rejectTruncated" | "thinking">>
+  >;
   /**
    * Throw `invalid_output` instead of returning text when the model stopped at the output-token
    * limit (Gemini `MAX_TOKENS`, OpenAI `length`, Anthropic `max_tokens`). For callers that must
@@ -96,6 +110,41 @@ export interface GeminiProvider extends AIProvider {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+
+/** The options with this provider's `providerOverrides` entry applied. */
+export function resolveProviderOptions(
+  options: GenerateOptions | undefined,
+  provider: ProviderName
+): GenerateOptions | undefined {
+  const override = options?.providerOverrides?.[provider];
+  return override ? { ...options, ...override } : options;
+}
+
+/** Per-request SDK options: timeout, abort signal and, when bounded, the SDK retry count. */
+export function sdkRequestOptions(options?: GenerateOptions): {
+  timeout: number;
+  signal?: AbortSignal;
+  maxRetries?: number;
+} {
+  return {
+    timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    ...(options?.signal ? { signal: options.signal } : {}),
+    ...(options?.maxAttempts !== undefined
+      ? { maxRetries: Math.max(0, options.maxAttempts - 1) }
+      : {}),
+  };
+}
+
+/** Gemini per-request options (the Gemini SDK does not retry on its own). */
+function geminiRequestOptions(options?: GenerateOptions): {
+  timeout: number;
+  signal?: AbortSignal;
+} {
+  return {
+    timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    ...(options?.signal ? { signal: options.signal } : {}),
+  };
+}
 
 /**
  * Billable Gemini usage. Thinking tokens are reported apart from the answer
@@ -179,8 +228,9 @@ export class GeminiProviderImpl implements GeminiProvider {
   async generateText(
     prompt: string,
     model: string,
-    options?: GenerateOptions
+    requested?: GenerateOptions
   ): Promise<ProviderResult<string>> {
+    const options = resolveProviderOptions(requested, this.name);
     const m = this.genai.getGenerativeModel({
       model,
       generationConfig: {
@@ -190,9 +240,7 @@ export class GeminiProviderImpl implements GeminiProvider {
         ...geminiThinkingConfig(model, options?.thinking),
       },
     });
-    const result = await m.generateContent(prompt, {
-      timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    });
+    const result = await m.generateContent(prompt, geminiRequestOptions(options));
     if (
       options?.rejectTruncated &&
       result.response.candidates?.[0]?.finishReason === "MAX_TOKENS"
@@ -205,8 +253,9 @@ export class GeminiProviderImpl implements GeminiProvider {
   async generateJSON<T>(
     prompt: string,
     model: string,
-    options?: GenerateOptions
+    requested?: GenerateOptions
   ): Promise<ProviderResult<T>> {
+    const options = resolveProviderOptions(requested, this.name);
     const m = this.genai.getGenerativeModel({
       model,
       generationConfig: {
@@ -219,7 +268,7 @@ export class GeminiProviderImpl implements GeminiProvider {
     });
     try {
       const result = await withRetry(
-        () => m.generateContent(prompt, { timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }),
+        () => m.generateContent(prompt, geminiRequestOptions(options)),
         {
           maxAttempts: options?.maxAttempts ?? 2,
           baseDelay: 250,
@@ -242,8 +291,9 @@ export class GeminiProviderImpl implements GeminiProvider {
 
   async generateTextWithSearch(
     prompt: string,
-    options?: GenerateOptions
+    requested?: GenerateOptions
   ): Promise<SearchProviderResult> {
+    const options = resolveProviderOptions(requested, this.name);
     const m = this.genai.getGenerativeModel({
       model: GEMINI_SEARCH_MODEL,
       generationConfig: {
@@ -256,7 +306,7 @@ export class GeminiProviderImpl implements GeminiProvider {
     });
     try {
       const result = await withRetry(
-        () => m.generateContent(prompt, { timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }),
+        () => m.generateContent(prompt, geminiRequestOptions(options)),
         {
           maxAttempts: options?.maxAttempts ?? 2,
           baseDelay: 250,
@@ -286,8 +336,9 @@ export class OpenAIProviderImpl implements AIProvider {
   async generateText(
     prompt: string,
     model: string,
-    options?: GenerateOptions
+    requested?: GenerateOptions
   ): Promise<ProviderResult<string>> {
+    const options = resolveProviderOptions(requested, this.name);
     const completion = await this.client.chat.completions.create(
       {
         model,
@@ -295,7 +346,7 @@ export class OpenAIProviderImpl implements AIProvider {
         max_tokens: options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
         temperature: options?.temperature,
       },
-      { timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+      sdkRequestOptions(options)
     );
     const content = completion.choices[0]?.message?.content;
     if (!content) {
@@ -335,8 +386,9 @@ export class AnthropicProviderImpl implements AIProvider {
   async generateText(
     prompt: string,
     model: string,
-    options?: GenerateOptions
+    requested?: GenerateOptions
   ): Promise<ProviderResult<string>> {
+    const options = resolveProviderOptions(requested, this.name);
     const sonnetSystem = model.includes("sonnet")
       ? [
           {
@@ -354,13 +406,7 @@ export class AnthropicProviderImpl implements AIProvider {
         ...(sonnetSystem ? { system: sonnetSystem } : {}),
         messages: [{ role: "user", content: prompt }],
       },
-      {
-        timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        // The SDK retries twice by default; a caller bounded by a queue lease asks for one attempt.
-        ...(options?.maxAttempts === undefined
-          ? {}
-          : { maxRetries: Math.max(0, options.maxAttempts - 1) }),
-      }
+      sdkRequestOptions(options)
     );
     const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {

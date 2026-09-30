@@ -16,10 +16,11 @@ import {
   parseResearchRunState,
   publicResearchProgress,
   RESEARCH_STAGE_DEADLINE_MS,
+  RESEARCH_OUTLINE_OPTIONS,
   RESEARCH_TIMEOUTS_MS,
-  ResearchDeadlineError,
-  researchReportMaxTokens,
+  RESEARCH_WRITE_OPTIONS,
   ResearchStageRetryError,
+  ResearchStageTimeoutError,
   withStageDeadline,
   runResearchStage,
   STALE_RESEARCH_MS,
@@ -240,7 +241,7 @@ describe("runResearchStage", () => {
     expect(ai.generateText).toHaveBeenCalledWith(
       expect.stringContaining("Rayleigh scattering"),
       "research-plan",
-      { timeoutMs: 30_000 }
+      { timeoutMs: 30_000, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
     expect(reports.get(id)?.status).toBe("running");
     expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
@@ -259,7 +260,7 @@ describe("runResearchStage", () => {
         grounded: expect.stringContaining("Q1"),
         ungrounded: expect.stringContaining("Q1"),
       },
-      { timeoutMs: 45_000, maxTokens: 2048 }
+      { timeoutMs: 45_000, maxTokens: 2048, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
     const searchPrompt = ai.generateTextWithSearch.mock.calls.at(-1)![0] as {
       grounded: string;
@@ -291,6 +292,8 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateJSON).toHaveBeenCalledWith(expect.stringContaining("Q1"), "research-gaps", {
       timeoutMs: 30_000,
+      maxAttempts: 1,
+      signal: expect.any(AbortSignal),
     });
     expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({
       stage: "deepening",
@@ -305,7 +308,7 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateTextWithSearch).toHaveBeenLastCalledWith(
       expect.objectContaining({ grounded: expect.stringContaining("Gap A") }),
-      { timeoutMs: 45_000, maxTokens: 2048 }
+      { timeoutMs: 45_000, maxTokens: 2048, maxAttempts: 1, signal: expect.any(AbortSignal) }
     );
     expect(publicResearchProgress(reports.get(id)?.progress)).toEqual({ stage: "outlining" });
 
@@ -319,11 +322,12 @@ describe("runResearchStage", () => {
     expect(outlineCall[1]).toBe("research-synthesize");
     expect(outlineCall[2]).toEqual({
       timeoutMs: 40_000,
-      maxTokens: 6_000,
-      maxAttempts: 1,
+      maxTokens: 2_500,
       rejectTruncated: true,
+      providerOverrides: { gemini: { maxTokens: 6_000, thinking: "low" } },
       responseSchema: expect.objectContaining({ required: expect.arrayContaining(["sections"]) }),
-      thinking: "low",
+      maxAttempts: 1,
+      signal: expect.any(AbortSignal),
     });
     const outlinePrompt = outlineCall[0];
     expect(outlinePrompt).toContain(
@@ -359,10 +363,11 @@ describe("runResearchStage", () => {
     expect(writeCall[1]).toBe("research-synthesize");
     expect(writeCall[2]).toEqual({
       timeoutMs: 40_000,
-      maxTokens: 5_000,
-      maxAttempts: 1,
+      maxTokens: 2_000,
       rejectTruncated: true,
-      thinking: "low",
+      providerOverrides: { gemini: { maxTokens: 5_000, thinking: "low" } },
+      maxAttempts: 1,
+      signal: expect.any(AbortSignal),
     });
     expect(writeCall[0]).toContain("Heading: How Q1 works");
     expect(writeCall[0]).toContain("Sources: [1] About Q1 — example.com");
@@ -989,6 +994,164 @@ describe("runResearchStage", () => {
     });
     expect(ai.generateText).not.toHaveBeenCalled();
   });
+
+  describe("stage deadline (Production run 8bb4d982 hit the 60 s function limit)", () => {
+    const oneSection = {
+      shape: "explainer" as const,
+      tldr: "T [1].",
+      takeaways: ["K [1]."],
+      sections: [
+        { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" as const },
+      ],
+      caveats: [],
+    };
+
+    async function seedWriting(attempts: Record<string, number> = {}) {
+      const created = createRepositories();
+      const id = await seedState(
+        created.repositories,
+        readyForOutline({ outline: oneSection, sections: [null], attempts })
+      );
+      return { ...created, id };
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("returns at the deadline when the provider never answers, aborting the request", async () => {
+      jest.useFakeTimers();
+      const { repositories, reports, id } = await seedWriting();
+      let seenSignal: AbortSignal | undefined;
+      const ai = createAI({
+        generateText: jest.fn(
+          (_prompt: string, _task: string, options?: { signal?: AbortSignal }) => {
+            seenSignal = options?.signal;
+            return new Promise<string>(() => {}); // never settles, ignores the signal
+          }
+        ),
+      });
+
+      const outcome = runResearchStage({ context, repositories, reportId: id, ai }).catch(
+        (error: unknown) => error
+      );
+      await jest.advanceTimersByTimeAsync(RESEARCH_STAGE_DEADLINE_MS - 1);
+      expect(seenSignal?.aborted).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+
+      const error = await outcome;
+      expect(error).toBeInstanceOf(ResearchStageRetryError);
+      expect((error as Error).cause).toBeInstanceOf(ResearchStageTimeoutError);
+      expect(seenSignal?.aborted).toBe(true);
+      expect(reports.get(id)!.status).toBe("running");
+      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+        "write:0": 1,
+      });
+    });
+
+    it("does not store a section that arrives after the deadline", async () => {
+      const { repositories, reports, id } = await seedWriting();
+      let answer: (text: string) => void = () => {};
+      const ai = createAI({
+        generateText: jest.fn(() => new Promise<string>((resolve) => (answer = resolve))),
+      });
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
+      ).rejects.toBeInstanceOf(ResearchStageRetryError);
+      answer(body("Late [1]."));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(reports.get(id)!.status).toBe("running");
+      expect(parseResearchRunState(reports.get(id)?.progress, "").sections).toEqual([null]);
+    });
+
+    it("writes the placeholder and completes when the last attempt hits the deadline", async () => {
+      const { repositories, reports, id } = await seedWriting({
+        "write:0": MAX_STAGE_ATTEMPTS - 1,
+      });
+      const ai = createAI({ generateText: jest.fn(() => new Promise<string>(() => {})) });
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai, deadlineMs: 5 })
+      ).resolves.toEqual({ outcome: "ran", stage: { kind: "write", index: 0 }, next: null });
+      expect(reports.get(id)!.status).toBe("completed");
+      expect(reports.get(id)!.report).toContain(
+        "## One\n\n*This section could not be written; see sources [1].*"
+      );
+    });
+
+    it("counts a delivery the platform killed before it could record its failure", async () => {
+      const { repositories, reports, id } = await seedWriting();
+      const hung = createAI({ generateText: jest.fn(() => new Promise<string>(() => {})) });
+      // The attempt is written before the model call; a killed function never gets further.
+      const delivery = runResearchStage({
+        context,
+        repositories,
+        reportId: id,
+        ai: hung,
+        deadlineMs: 50,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(hung.generateText).toHaveBeenCalledTimes(1);
+      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+        "write:0": 1,
+      });
+      await expect(delivery).rejects.toBeInstanceOf(ResearchStageRetryError);
+    });
+
+    it("writes the placeholder without a model call once every write delivery was killed", async () => {
+      const { repositories, reports, id } = await seedWriting({ "write:0": MAX_STAGE_ATTEMPTS });
+      const ai = createAI();
+      await expect(runResearchStage({ context, repositories, reportId: id, ai })).resolves.toEqual({
+        outcome: "ran",
+        stage: { kind: "write", index: 0 },
+        next: null,
+      });
+      expect(ai.generateText).not.toHaveBeenCalled();
+      expect(reports.get(id)!.status).toBe("completed");
+      expect(reports.get(id)!.report).toContain("*This section could not be written");
+    });
+
+    it("falls back to the deterministic outline once every outline delivery was killed", async () => {
+      const { repositories, reports } = createRepositories();
+      const id = await seedState(
+        repositories,
+        readyForOutline({ attempts: { outline: MAX_STAGE_ATTEMPTS } })
+      );
+      const ai = createAI();
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai })
+      ).resolves.toMatchObject({ stage: { kind: "outline" }, next: { kind: "write", index: 0 } });
+      expect(ai.generateJSON).not.toHaveBeenCalled();
+      expect(parseResearchRunState(reports.get(id)?.progress, "").outline).toMatchObject({
+        fallback: true,
+        sections: [{ heading: "Q1" }, { heading: "Q2" }],
+      });
+    });
+
+    it("degrades a search stage whose deliveries were all killed and moves on", async () => {
+      const { repositories, reports } = createRepositories();
+      const { id } = await seedReport(repositories);
+      await repositories.research.updateReport(id, {
+        status: "running",
+        progress: JSON.stringify({
+          version: 2,
+          updatedAt: "2026-09-30T10:01:00.000Z",
+          view: { stage: "researching", current: 0, total: 1, question: "Q1" },
+          subQuestions: ["Q1"],
+          findings: [null],
+          deepening: [],
+          attempts: { "search:0": MAX_STAGE_ATTEMPTS },
+        } satisfies ResearchRunStateV2),
+      });
+      const ai = createAI();
+      await expect(
+        runResearchStage({ context, repositories, reportId: id, ai })
+      ).resolves.toMatchObject({ stage: { kind: "search", index: 0 }, next: { kind: "gaps" } });
+      expect(ai.generateTextWithSearch).not.toHaveBeenCalled();
+      expect(parseResearchRunState(reports.get(id)?.progress, "").findings[0]).toEqual(
+        finding("Q1", "(Research on this question failed.)")
+      );
+    });
+  });
 });
 
 describe("progress projection and stale guard", () => {
@@ -1104,64 +1267,39 @@ describe("progress projection and stale guard", () => {
 });
 
 describe("outline and write budget", () => {
-  it("sizes the output budget for the provider research-synthesize routes to", () => {
-    expect(researchReportMaxTokens("outline")).toBe(6_000);
-    expect(researchReportMaxTokens("write")).toBe(5_000);
-    jest
-      .mocked(getEffectiveModel)
-      .mockReturnValue({ provider: "anthropic", model: "claude-sonnet-4-6" } as never);
-    expect(researchReportMaxTokens("outline")).toBe(2_500);
-    expect(researchReportMaxTokens("write")).toBe(2_000);
-    jest
-      .mocked(getEffectiveModel)
-      .mockReturnValue({ provider: "gemini", model: "gemini-test" } as never);
-    // Timeout plus stage deadline leave the lease room for reads, writes and the next publish.
-    expect(RESEARCH_TIMEOUTS_MS.outline).toBeLessThanOrEqual(40_000);
-    expect(RESEARCH_TIMEOUTS_MS.write).toBeLessThanOrEqual(40_000);
+  it("caps output per provider and keeps every stage inside the lease", () => {
+    expect(RESEARCH_OUTLINE_OPTIONS).toEqual({
+      timeoutMs: 40_000,
+      maxTokens: 2_500,
+      rejectTruncated: true,
+      providerOverrides: { gemini: { maxTokens: 6_000, thinking: "low" } },
+    });
+    expect(RESEARCH_WRITE_OPTIONS).toEqual({
+      timeoutMs: 40_000,
+      maxTokens: 2_000,
+      rejectTruncated: true,
+      providerOverrides: { gemini: { maxTokens: 5_000, thinking: "low" } },
+    });
+    // Provider timeouts sit inside the one stage deadline, which leaves the lease room for the
+    // attempt write before, the state write after and the next publish.
+    expect(RESEARCH_TIMEOUTS_MS.outline).toBeLessThan(RESEARCH_STAGE_DEADLINE_MS);
+    expect(RESEARCH_TIMEOUTS_MS.write).toBeLessThan(RESEARCH_STAGE_DEADLINE_MS);
     expect(RESEARCH_STAGE_DEADLINE_MS).toBeLessThanOrEqual(45_000);
   });
 
-  it("stops waiting for a call that outlives the stage deadline", async () => {
+  it("aborts the signal and rejects at the deadline even when the work ignores it", async () => {
     jest.useFakeTimers();
     try {
-      const never = new Promise<string>(() => undefined);
-      const pending = withStageDeadline(never, "write", 42_000);
-      const settled = expect(pending).rejects.toBeInstanceOf(ResearchDeadlineError);
+      let seen: AbortSignal | undefined;
+      const pending = withStageDeadline("write:0", 42_000, (signal) => {
+        seen = signal;
+        return new Promise<string>(() => undefined);
+      });
+      const settled = expect(pending).rejects.toBeInstanceOf(ResearchStageTimeoutError);
       jest.advanceTimersByTime(42_000);
       await settled;
-      await expect(withStageDeadline(Promise.resolve("ok"), "write", 42_000)).resolves.toBe("ok");
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it("counts a write that hits the deadline as a failed attempt", async () => {
-    jest.useFakeTimers();
-    try {
-      const { repositories, reports } = createRepositories();
-      const id = await seedState(
-        repositories,
-        readyForOutline({
-          outline: {
-            shape: "explainer",
-            tldr: "T.",
-            takeaways: ["K."],
-            sections: [
-              { heading: "One", purpose: "p", findings: [0], sourceIds: [1], format: "prose" },
-            ],
-            caveats: [],
-          },
-          sections: [null],
-        })
-      );
-      const ai = createAI({ generateText: jest.fn(() => new Promise<string>(() => undefined)) });
-      const stage = runResearchStage({ context, repositories, reportId: id, ai });
-      const settled = expect(stage).rejects.toBeInstanceOf(ResearchStageRetryError);
-      await jest.advanceTimersByTimeAsync(RESEARCH_STAGE_DEADLINE_MS);
-      await settled;
-      expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
-        "write:0": 1,
-      });
+      expect(seen?.aborted).toBe(true);
+      await expect(withStageDeadline("write:0", 42_000, async () => "ok")).resolves.toBe("ok");
     } finally {
       jest.useRealTimers();
     }

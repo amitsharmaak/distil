@@ -1,13 +1,13 @@
 /**
- * The filter bar's vocabulary, shared by every page that shows it (Feed now,
- * Today in F5): the search stays in the bar, every filter sits in the Filters
+ * The filter bar's vocabulary, shared by every page that shows it (Feed and
+ * Today): the search stays in the bar, every filter sits in the Filters
  * sheet, and the bar shows what is active as removable chips. Each entry maps to URL parameters, so the URL stays the single
  * source of truth and a filtered view can be shared or restored with Back.
  *
  * Client-safe: no zod or other server-only imports.
  */
 
-import type { FeedFilterState } from "@/lib/feed/feed-url";
+import { normalizeSearchQuery, type FeedFilterState } from "@/lib/feed/feed-url";
 import { LIFE_AREAS, type LifeArea, type Priority } from "@/lib/types";
 
 /** URL parameter changes; `undefined` removes the parameter. */
@@ -204,3 +204,29 @@ export const CLEAR_ALL_FILTERS: FilterUpdates = {
 export const RESET_SHEET_FILTERS: FilterUpdates = Object.fromEntries(
   Object.entries(CLEAR_ALL_FILTERS).filter(([name]) => name !== "q")
 );
+
+/**
+ * The URL a filter change navigates to on `pathname` (`/feed` or `/`): the
+ * current parameters with `updates` applied. Dropping the search drops a
+ * relevance sort too, and any change starts again from the first page.
+ */
+export function filtersUrl(
+  pathname: string,
+  current: URLSearchParams,
+  updates: FilterUpdates
+): string {
+  const params = new URLSearchParams(current);
+  for (const [name, value] of Object.entries(updates)) {
+    params.delete(name);
+    if (Array.isArray(value)) value.forEach((entry) => params.append(name, entry));
+    else if (value) params.set(name, value);
+  }
+  // Relevance only exists for a search; dropping the search drops that sort too.
+  if (!normalizeSearchQuery(params.get("q") ?? "")) {
+    params.delete("q");
+    if (params.get("sort") === "relevance") params.delete("sort");
+  }
+  params.delete("cursor");
+  const search = params.toString();
+  return search ? `${pathname}?${search}` : pathname;
+}
