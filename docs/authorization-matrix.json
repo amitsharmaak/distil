@@ -982,17 +982,6 @@
       "testProfile": "owner"
     },
     {
-      "path": "/api/cron/digests",
-      "source": "src/app/api/cron/digests/route.ts",
-      "methods": ["GET"],
-      "currentAuth": "proxy_session_plus_cron_secret",
-      "requiredPrincipal": "cron_service",
-      "scope": "service-fanout",
-      "resources": ["personal_preferences", "digest_jobs", "job_queue"],
-      "testProfile": "service",
-      "notes": "Current proxy session requirement conflicts with provider cron. Required route only fans out tenant-scoped jobs."
-    },
-    {
       "path": "/api/gmail/sync",
       "source": "src/app/api/gmail/sync/route.ts",
       "methods": ["POST"],
@@ -1980,13 +1969,6 @@
       "requiredTenant": "custom handler contract requires TenantContext and declared resources; deny unscoped handler"
     },
     {
-      "id": "digest-cron",
-      "source": "src/app/api/cron/digests/route.ts",
-      "currentTenant": "single global preference/job",
-      "requiredTenant": "service-authenticated fan-out to one job per opted-in user",
-      "resources": ["personal_preferences", "digest_jobs", "job_queue"]
-    },
-    {
       "id": "local-sync-scheduler-gmail",
       "source": "src/lib/sync-scheduler.ts",
       "currentTenant": "global timers/settings/tokens",
@@ -2425,7 +2407,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 49,
-    "expectedApiRouteFileCount": 88,
+    "expectedApiRouteFileCount": 87,
     "expectedPageFileCount": 17,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

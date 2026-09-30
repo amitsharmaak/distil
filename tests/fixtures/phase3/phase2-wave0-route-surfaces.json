@@ -28,7 +28,6 @@
   "GET /api/auth/slack",
   "GET /api/auth/slack/callback",
   "GET /api/auth/slack/status",
-  "GET /api/cron/digests",
   "GET /api/health",
   "GET /api/items",
   "GET /api/items/rejected",
