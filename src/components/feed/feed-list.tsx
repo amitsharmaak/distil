@@ -16,13 +16,15 @@
  * server-side user) the island fetches the page itself.
  */
 
-import { startTransition, useCallback, useEffect, useState, useTransition } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import {
   feedFilterKey,
   feedFilterState,
@@ -31,6 +33,7 @@ import {
   type FeedFilterState,
 } from "@/lib/feed/feed-url";
 import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
+import type { ShortcutDef } from "@/lib/shortcuts/types";
 import type { ContentItemSummary } from "@/lib/types";
 
 export interface FeedInitialPage {
@@ -66,6 +69,26 @@ function matchesDraft(item: ContentItemSummary, needle: string): boolean {
   );
 }
 
+const listShortcut = { group: "Lists", scope: "list" } as const;
+const FILTERS_SHORTCUT: ShortcutDef = {
+  id: "list.filters",
+  keys: [{ key: "f" }],
+  label: "Open filters",
+  ...listShortcut,
+};
+const UNREAD_SHORTCUT: ShortcutDef = {
+  id: "list.toggleUnread",
+  keys: [{ key: "u" }],
+  label: "Show or hide read items",
+  ...listShortcut,
+};
+const LAYOUT_SHORTCUT: ShortcutDef = {
+  id: "list.toggleLayout",
+  keys: [{ key: "c" }],
+  label: "Toggle card / compact",
+  ...listShortcut,
+};
+
 export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -80,6 +103,9 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [areaOpenId, setAreaOpenId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [isPending, startNavigation] = useTransition();
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const optimisticFilters = pendingUrl
@@ -212,6 +238,16 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     );
   }
 
+  useRowNavigation(listRef, {
+    onMarkRead: (id) => handleMarkRead(id, true),
+    onOpenArea: (id) => setAreaOpenId(id),
+  });
+  useShortcut(FILTERS_SHORTCUT, () => setFiltersOpen(true));
+  useShortcut(UNREAD_SHORTCUT, () =>
+    replaceFilters({ read: optimisticFilters.showRead ? "false" : "true" })
+  );
+  useShortcut(LAYOUT_SHORTCUT, () => setViewMode((mode) => (mode === "card" ? "compact" : "card")));
+
   const emptyMessage = filters.searchQuery
     ? `Nothing matches “${filters.searchQuery}” with these filters.`
     : narrowing
@@ -219,7 +255,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
       : "No items match your filters.";
 
   return (
-    <div className="space-y-5">
+    <div ref={listRef} className="space-y-5">
       {/* Page header: title and links, with the search and Filters on the right. */}
       <FilterBar
         filters={optimisticFilters}
@@ -243,6 +279,8 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
             topicOptions={topicOptions}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
+            open={filtersOpen}
+            onOpenChange={setFiltersOpen}
           />
         }
       />
@@ -275,6 +313,8 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
               compact={viewMode === "compact"}
               onMarkRead={handleMarkRead}
               filter={filters.showRead ? "all" : "unread"}
+              areaOpen={areaOpenId === item.id}
+              onAreaOpenChange={(open) => setAreaOpenId(open ? item.id : null)}
             />
           ))
         )}
@@ -283,6 +323,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
         <div className="flex justify-center">
           <button
             type="button"
+            data-load-more
             className="min-h-11 rounded-md border px-4 text-sm font-medium hover:bg-accent"
             onClick={() => void fetchItems(nextCursor, true)}
           >

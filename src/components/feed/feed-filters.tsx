@@ -224,6 +224,9 @@ interface FeedFilterSheetProps {
   unreadQueue?: boolean;
   /** Hide Sort (and the layout toggle beside it) where the view has a fixed order. */
   showSort?: boolean;
+  /** Controlled open state (the `f` shortcut); the sheet owns it when omitted. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function FeedFilterSheet({
@@ -235,8 +238,12 @@ export function FeedFilterSheet({
   onViewModeChange,
   unreadQueue = false,
   showSort = true,
+  open: openProp,
+  onOpenChange,
 }: FeedFilterSheetProps) {
-  const [open, setOpen] = React.useState(false);
+  const [ownOpen, setOwnOpen] = React.useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const wide = useWideScreen();
   const unreadOnly = UNREAD.isActive(filters);
   const sortOptions: { value: FeedSort; label: string }[] = filters.searchQuery

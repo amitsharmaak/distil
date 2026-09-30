@@ -23,11 +23,16 @@ export function ContentCard({
   compact = false,
   onMarkRead,
   filter,
+  areaOpen,
+  onAreaOpenChange,
 }: {
   item: ContentItem;
   compact?: boolean;
   onMarkRead?: (id: string, read: boolean) => void;
   filter?: string;
+  /** Controlled open state of the area menu (the `a` shortcut). */
+  areaOpen?: boolean;
+  onAreaOpenChange?: (open: boolean) => void;
 }) {
   // Rejected items are handled in Settings for review — do not render.
   if (item.processingStatus === "rejected") {
@@ -154,6 +159,8 @@ export function ContentCard({
               area={item.area}
               aiArea={item.aiArea}
               className="relative z-10"
+              open={areaOpen}
+              onOpenChange={onAreaOpenChange}
             />
           )}
           <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>

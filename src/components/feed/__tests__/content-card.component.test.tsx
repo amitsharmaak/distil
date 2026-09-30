@@ -22,6 +22,16 @@ const item = {
   processingStatus: "done",
 } as unknown as ContentItem;
 
+describe("ContentCard area control", () => {
+  it("forwards the controlled open state to the area menu", () => {
+    const onAreaOpenChange = jest.fn();
+    render(<ContentCard item={item} areaOpen onAreaOpenChange={onAreaOpenChange} />);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(onAreaOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
 describe.each([false, true])("ContentCard (compact=%s)", (compact) => {
   it("renders an article row with sibling link and buttons", () => {
     jest.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);

@@ -1,7 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
 import { Bookmark, Clock3 } from "lucide-react";
+import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import { toSummaryDigest } from "@/lib/format";
 import type { KnowledgeItem } from "./types";
 
@@ -32,7 +34,7 @@ type TodayPrototypeProps = {
 
 function TodayItem({ item }: { item: KnowledgeItem }) {
   return (
-    <li>
+    <li data-row data-item-id={item.id}>
       <Link
         href={item.href}
         className="block rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
@@ -175,10 +177,15 @@ export function TodayPrototype({
   busy?: boolean;
   children?: React.ReactNode;
 }) {
+  // One navigation order across both sections (or the filtered list). Today has
+  // no per-row mark-read or area control, so only j/k/o are registered here.
+  const rowsRef = useRef<HTMLDivElement>(null);
+  useRowNavigation(rowsRef);
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-8 px-4 py-6 sm:px-6">
+    <section className="mx-auto w-full max-w-3xl space-y-8 px-4 py-6 sm:px-6">
       <header>{header ?? <TodayHeading />}</header>
       <div
+        ref={rowsRef}
         className={busy ? "space-y-8 opacity-60 transition-opacity" : "space-y-8"}
         aria-busy={busy}
       >
@@ -189,7 +196,7 @@ export function TodayPrototype({
             <TodayDefaultSections priority={priority} revisiting={revisiting} />
           ))}
       </div>
-    </main>
+    </section>
   );
 }
 
