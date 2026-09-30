@@ -116,7 +116,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   took 18–31 s each against the 45 s stage deadline, and no "Task timed out" in the logs. The
   page renders as locally (TOC rail with sub-headings, superscript citations). Note: length
   overshot the 1,500–2,500-word target (six sections at the top of the 250–450-word range plus
-  tables); tighten the per-section range if Amit finds it too long.
+  tables). **Capped (Amit, 2026-09-30):** at most 4 sections and 2,500 words per report, PR
+  [#100](https://github.com/amitsharmaak/distil/pull/100) `13e1632` (checkpoint "Deep research:
+  cap reports at 4 sections and 2,500 words — 2026-09-30"); not yet seen on a live run.
   **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
   marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
   2026-09-30").
