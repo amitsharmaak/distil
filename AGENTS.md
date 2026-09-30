@@ -96,14 +96,13 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
-  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text first;
-  embeddings are optional JSONB (no pgvector) and retrieval degrades explicitly.
-- **Search:** one user-facing search surface: the Feed/Today header search, served by
-  `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Ask and grounded answers
-  retrieve passages through the passage-retrieval layer (`src/lib/knowledge/retrieval.ts`:
-  `PassageSearchStore.searchKeyword`, `searchPassages`). `hybridSearch` (`src/lib/ai/search.ts`)
-  remains only for `src/lib/agent/rag.ts`. The Search page, `GET /api/v1/search`, the
-  `GET /api/items?q=` branch (now 400) and `FEATURE_SEARCH` were retired in inline search F7.
+  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
+  item embeddings are optional JSONB (no pgvector) and no search path reads them.
+- **Search:** there is one search surface, the Feed/Today header search, served by
+  `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Inline search F7 retired
+  the Search page, `GET /api/v1/search`, the `GET /api/items?q=` branch (now 400),
+  `FEATURE_SEARCH`, `hybridSearch` and the passage-retrieval layer (`src/lib/knowledge/retrieval.ts`,
+  `repositories.passages`). `content_chunks` and chunking at capture remain.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
   `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,

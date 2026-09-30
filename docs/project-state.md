@@ -480,46 +480,64 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 ### Inline search F7: legacy search path retired — 2026-09-30
 
-Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`). Completes F7 after
-the UI part landed in #75. Implementation complete and locally verified; not deployed.
+Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`, then merged with
+`origin/main` at `9c93a95` and at `4f1ee3e`, after A1 removed Ask Distil). Completes F7 after the
+UI part landed in #75. Implementation complete and locally verified; not deployed.
 
 - **Callers checked first.** No caller of `GET /api/items?q=` or `GET /api/v1/search` remains:
   the browser extension posts only to `/api/v1/captures`, the iPhone Shortcut
   (`docs/iphone-shortcut.md`) posts only to `/api/v1/captures`, the UI has no `/search` links and
-  no `/api/items` list fetch, and Ask does not call either route. The only references were the
-  routes' own tests, the Phase 2 e2e mock, the authorization matrix and the route-surface fixture.
-- **`GET /api/items`.** The `q` branch and its `hybridSearch` import are gone. A request carrying
-  `q` (even empty) now gets **400** with CORS headers and a message pointing to
-  `GET /api/v1/feed?q=`, rather than a silently unfiltered list; the other filters are unchanged.
-  The route otherwise ignores unknown parameters, so `q` is the one explicit rejection. The SQLite
-  compatibility and Wave 2 security tests were rewritten for this.
-- **`GET /api/v1/search` deleted** with its contract test. Authorization matrix entry removed,
-  `expectedApiRouteFileCount` 92 → 91, the `/search` page entry now records "redirects to /feed"
-  with no feature gate, route-surface fixture 123 → 122 surfaces, and the two harness counts
-  updated.
+  no `/api/items` list fetch. The only references were the routes' own tests, the Phase 2 e2e
+  mock, the authorization matrix and the route-surface fixture.
+- **`GET /api/items`.** The `q` branch is gone. A request carrying `q` (even empty) now gets
+  **400** with CORS headers and a message pointing to `GET /api/v1/feed?q=`, rather than a
+  silently unfiltered list; the other filters are unchanged. The route otherwise ignores unknown
+  parameters, so `q` is the one explicit rejection. The SQLite compatibility and Wave 2 security
+  tests were rewritten for this.
+- **`GET /api/v1/search` deleted** with its contract test. Its authorization-matrix entry is
+  removed and the `/search` page entry now records "redirects to /feed" with no feature gate.
+  Counts recomputed from the merged tree: 90 API route files, 19 pages, 121 route surfaces in the
+  fixture; the harness assertions match.
 - **`FEATURE_SEARCH` removed from code**: `readPhase2FeatureFlags` no longer has `search`; the
   Phase 3 activation preflight no longer lists it; tests, `.env.local.example`, the web-vitals
   script, the Phase 2 e2e flag list and AGENTS.md updated. **Amit:** delete any leftover
   `FEATURE_SEARCH` variable in Vercel yourself; nothing reads it now, so leaving it is harmless.
-- **What stays.** `searchPassages` and `PostgresPassageSearchStore` (`src/lib/knowledge/retrieval.ts`)
-  stay as the passage-retrieval layer; grounded answers call `store.searchKeyword` directly, so
-  `searchPassages` now has only its unit test as a caller (candidate for a later cleanup).
-  `hybridSearch` (`src/lib/ai/search.ts`) stays because `src/lib/agent/rag.ts` imports it, but
-  `rag.ts` itself has no production importer since the `/api/agent/**` routes were deleted in P4
-  (also a later cleanup candidate). The `/search` → `/feed?…` redirect page stays.
-- **Docs.** AGENTS.md §3 gains a Search bullet (one search surface: Feed/Today header search on
-  `GET /api/v1/feed`; Ask uses the passage-retrieval layer) and drops `FEATURE_SEARCH` from the
-  flag list; `docs/ARCHITECTURE.md` says the same.
-- **Verification.** `npm run check` passes (230 suites, 1725 tests), `tests/harness` passes, and
-  `npm run audit:phase3-security` passes. Grep finds no `FEATURE_SEARCH`, `/api/v1/search` or
-  `DISTIL_PHASE2_SEARCH` outside this file. The `/search` redirect unit test passes. In
-  `tests/e2e/phase2.spec.ts` (all Phase 2 flags on, desktop and mobile Chromium, port 3107) the new
-  `/search?q=padel` → `/feed?q=padel` step passes (run against the local Docker database with
-  the auth variables blank, as in CI). The test then fails at the later `/feed/phase2-fixture`
-  reader step: the page returns 500 with `AccessDeniedError: unauthenticated`. That failure
-  predates this change: a probe of the same reader step on `origin/main` (`9c93a95`) returns the
-  same 500. On `main` the spec fails even earlier, at its stale `a[href="/search"]` assertion. No
-  migration, env var or cloud change.
+- **Retrieval code deleted (no production caller once Ask and the two routes were gone).** Checked
+  first that `src/lib/ai/research.ts`, `grounding.ts`, chunking at capture, the knowledge jobs,
+  the backfill and every script use none of it.
+  - `src/lib/ai/search.ts` (`hybridSearch`, semantic item search) and its unit test.
+  - `src/lib/knowledge/retrieval.ts` (`searchPassages`, `PostgresPassageSearchStore` with
+    `searchKeyword` / `listRecent`, the `searchSemantic` store type, `validateEmbeddingSpace`,
+    the passage types) with its unit test and its PostgreSQL integration test (the tenant canary
+    for a store nothing calls any more); the `export *` in `src/lib/knowledge/index.ts`.
+  - `repositories.passages` (`RepositorySet` in `src/lib/repositories/ports.ts` and
+    `src/lib/postgres/repositories.ts`), `EmbeddingRepository.count()`, and the `query` filter
+    of `ItemFilters` with its full-text clause in the PostgreSQL items list (only `hybridSearch`
+    passed it). Repository unit and integration tests adjusted.
+  - `docs/authorization-matrix.json`: the `retrieval.ts` direct-query entry and the
+    `legacy-hybrid-search` and `passage-retrieval` search paths.
+- **What stays, and why.** `content_chunks`, `chunkContent` and the chunk writes at capture, the
+  knowledge jobs and backfill, `grounding.ts`, all schema (including `items.search_vector` and
+  `item_embeddings`; no migration), `embeddings.find` / `upsert` / `listRecent` (used by
+  `src/lib/database.ts`), and the legacy SQLite `src/lib/db.ts` `ItemFilters.query` (compatibility
+  code only). `src/lib/ai/embeddings.ts` (`generateEmbedding`, `embedItem`, `findSimilarItems`)
+  stays: it was already without a production importer before this branch, and embedding writes
+  are out of scope; candidate for a separate cleanup. The `/search` → `/feed?…` redirect stays.
+- **Docs.** AGENTS.md §3 has a Search bullet: one search surface, the Feed/Today header search on
+  `GET /api/v1/feed`, and a record of what F7 retired; `FEATURE_SEARCH` is out of the flag list.
+  `docs/ARCHITECTURE.md` says the same ("Why there is one search surface").
+- **Verification.** `npm run check` passes (230 suites, 1,806 tests; the 5 lint warnings
+  predate this branch), `tests/harness` passes, `npm run audit:phase3-security` passes, and the
+  PostgreSQL `repositories.integration` suite passes (9 tests) against a Testcontainers database.
+  Grep finds no `FEATURE_SEARCH`, `/api/v1/search`, `DISTIL_PHASE2_SEARCH`, `hybridSearch`,
+  `searchPassages`, `PassageSearchStore` or `knowledge/retrieval` outside this file and the
+  historical notes. The `/search` redirect unit test passes. In `tests/e2e/phase2.spec.ts` (run
+  before the A1 merge, all Phase 2 flags on, desktop and mobile Chromium, port 3107, local Docker
+  database with the auth variables blank as in CI) the `/search?q=padel` → `/feed?q=padel` step
+  passes; the test then fails at the later `/feed/phase2-fixture` reader step with 500
+  `AccessDeniedError: unauthenticated`. That failure predates this change: the same reader step
+  on `origin/main` (`9c93a95`) returns the same 500. No migration, env var or cloud change.
+
 ### Ask Distil removed (A1) — 2026-09-30
 
 Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get
