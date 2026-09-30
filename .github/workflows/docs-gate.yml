@@ -1,0 +1,53 @@
+name: Docs gate
+
+# Runs when a pull request or a push to main touches docs/ or Markdown files.
+# ci.yml ignores those paths, so this workflow reports the required
+# `quality-gate` status check for docs-only changes in about a minute:
+# state-log validation plus Prettier on the changed files, no install of the
+# full dependency tree. A change that mixes docs and code runs both workflows;
+# both must pass.
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "**/*.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The changed-file prettier check compares against origin/main.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install only Prettier, at the repository's pinned version
+        # Installed outside the checkout so npm does not pull the whole dependency tree.
+        run: |
+          version="$(node -p "require('./package.json').devDependencies.prettier")"
+          mkdir -p "$RUNNER_TEMP/prettier"
+          cd "$RUNNER_TEMP/prettier"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "prettier@${version}"
+          echo "PRETTIER_BIN=$RUNNER_TEMP/prettier/node_modules/.bin/prettier" >> "$GITHUB_ENV"
+      - name: Validate the state log
+        run: node scripts/state-handoff.mjs --check
+      - name: Check formatting of changed files
+        run: node scripts/check-formatting.mjs
