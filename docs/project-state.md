@@ -101,8 +101,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
   model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
   Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
-  failed by the stale guard on its next read. Next: R3 on `claude/research-r3-adaptive`, then
-  ask Amit about R4.
+  failed by the stale guard on its next read. **R3 (adaptive, deeper report)** done: outline → one write per
+  section → assembly, run state v3 (v1/v2 still finish), stepper fixed (checkpoint "Deep
+  research R3: adaptive, deeper report — 2026-09-30"); squash merged to `main`. Local full run
+  `10b849b6` (baseline question, Gemini fallback, Anthropic key blanked): **1,951 words**, TL;DR
+  51 words, 5 key takeaways, 4 question-specific sections (one GFM table) plus caveats, **25
+  sources, all grounded and all cited**, no URLs in the text, no placeholder; slowest stage 28 s
+  (search), outline 8 s, writes 11–14 s, whole run ~3.5 min; checked at desktop, 375 px (table
+  scrolls inside its box) and dark mode. **Not verified live:** the Claude (Production) timings
+  for outline/write. Next: ask Amit about R4 (decision 4: decide after R3).
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -485,6 +492,347 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research R3: adaptive, deeper report — 2026-09-30
+
+**Scope: engine (plus the stepper).** Branch `claude/research-r3-adaptive` from `origin/main`
+`0592c27` (R1 `8280fdc` and R2 included); spec: checkpoint "Deep research readability:
+diagnosis and phased plan — 2026-09-29", **R3**, with Amit's decisions (storage stays in the
+existing `research_reports` text columns, no migration; 1,500–2,500 words with a TL;DR and key
+takeaways on top). Implementation complete and verified by deterministic tests and two live
+probe calls; no full run, no dev server. Not merged, not deployed; nothing changed in Vercel or
+Neon.
+
+**References re-checked on `0592c27`.** `RESEARCH_RUN_STEPS` / `ResearchRunStepKind` and the
+strict Zod message schema in `src/lib/contracts/tenant-jobs.ts`; `RESEARCH_TIMEOUTS_MS`
+(synthesize 50 s) and `RESEARCH_SYNTHESIZE_MAX_TOKENS` (12,000) in `src/lib/ai/research.ts`;
+`nextResearchStage` / `runResearchStage` / `applyDegradedOutcome`; the unbounded plan context
+(`[item.title, item.summary, item.fullContent]`, now `research.ts` ~`:861`, was `:490`);
+`researchSynthesizePrompt`'s fixed four headings; `htmlToReadableText` in `src/lib/format.ts`;
+the stepper's fixed four stages in `src/app/research/[id]/page.tsx`. All as the spec described.
+
+**What changed and why.**
+
+- **Stages.** The single `synthesize` stage is replaced by `outline` → one `write` per section →
+  assembly. Each is one queue message on the existing resumable machinery (durable attempts,
+  redelivery, degraded outcome after `MAX_STAGE_ATTEMPTS`). Assembly makes no model call and runs
+  in the invocation that writes the last section, in the same database write that completes the
+  report, so a stored state always has a section left to write (should one ever be read with
+  none left, `nextResearchStage` returns a write past the last section, which only assembles).
+- **Outline** (`generateJSON`, task `research-synthesize`, `researchOutlinePrompt`, Gemini
+  response schema `OUTLINE_RESPONSE_SCHEMA`): `shape` (explainer, comparison, landscape,
+  decision, how-to, timeline, other), a 2–3 sentence TL;DR, 3–5 takeaways each carrying a fact
+  with `[n]`, 3–6 sections (heading written for the question, purpose, the findings — `F1…Fk`,
+  failed search placeholders left out — and source ids it draws on, format prose / table / steps
+  / bullets) and 1–4 caveats. The input is every usable finding with its "Sources: [n] title —
+  domain" line, as R2's synthesis had. `parseOutline` (zod) trims to the caps instead of
+  rejecting (unknown shape → `other`, unknown format → `prose`, unknown source ids and duplicate
+  or reserved headings dropped, a section without a valid finding draws on all usable findings)
+  and rejects only an outline with no TL;DR, no takeaway, or fewer than two sections when two or
+  more findings are usable. Invalid JSON or an unusable outline fails the attempt; after the
+  retry `fallbackOutline` builds one deterministically: one prose section per usable finding
+  (research order, beyond six folded into the last), TL;DR and takeaways from the findings' first
+  facts with their first source cited, and a caveat saying the outline was automatic (plus how
+  many questions failed).
+- **Write** (`generateText`, `research-synthesize`, `researchSectionPrompt`): one section,
+  250–450 words, from that section's findings only (each with its Sources line), knowing the
+  other headings so it stays on its own ground; `[n]` citations with the global catalog ids; a
+  GFM table for `table`, a numbered list for `steps`, bold-lead bullets for `bullets`, paragraphs
+  for `prose`; body only. `cleanSectionBody` unwraps an outer markdown fence, drops a leading
+  heading that repeats the section heading (or any leading `#`/`##`), demotes remaining
+  `#`/`##` to `###` outside code, cuts a trailing Sources/References block, and fails the
+  attempt under 60 words. After the retry budget the section becomes
+  `*This section could not be written; see sources [n]…*`, citing that section's sources so they
+  survive, and the report still completes.
+- **Assembly** (`assembleReport`): `## TL;DR`, `## Key takeaways` (bullets), one `##` per
+  section, `## Caveats and open questions` (bullets; empty lists are omitted), then R2's
+  `finalizeCitations` over the whole document (cited-only, renumbered 1..k in order of first
+  citation, unknown ids dropped). Stored as markdown in `research_reports.report` (Copy as
+  Markdown unchanged) with the source objects in `research_reports.sources`. The source catalog is
+  rebuilt from the stored findings on each stage (deterministic; findings do not change after
+  the outline), so `[n]` ids agree across outline, writes and assembly.
+- **Plan prompt** chooses sub-questions for the kind of question (explainer, comparison,
+  landscape, decision, how-to, timeline examples) instead of the fixed background / current state
+  / players / outlook list. Item context is `itemPlanContext`: title, stored summary and the
+  article through `htmlToReadableText`, capped at 6,000 characters on a word boundary.
+- **Contract.** `RESEARCH_RUN_STEPS` gains `outline` and `write`; `synthesize` stays accepted. The
+  schema refines `write` to require its section `index` (idempotency key
+  `research:<id>:write:<i>`). A redelivered or pre-upgrade `synthesize` message is consumed as a
+  tick like any other: the consumer runs the first unfinished stage, which is `outline`, and
+  publishes `write` 0.
+- **Provider.** `GenerateOptions.thinking` (`"low" | "high"`): Gemini 3 models get
+  `generationConfig.thinkingConfig.thinkingLevel`, Gemini 2.5 Flash/Pro a `thinkingBudget`
+  (1,024 / 8,192), other models and providers ignore it (the SDK type predates the field; the API
+  accepted it live). It can be given per provider through the hotfix's `providerOverrides`
+  (which now accepts `thinking` besides `maxTokens` and `rejectTruncated`); the outline and write
+  calls set it only for Gemini.
+- **Stepper** (`/research/[id]`): Planning → Researching → Deepening → **Outlining** →
+  **Writing (2/5): <heading>**. A legacy `synthesizing` view shows as Outlining. Progress is
+  parsed by one helper for the read route (a JSON string), SSE events, objects, and defensively a
+  string of a string; unknown stages are ignored. Fix for the Production report on run
+  `8bb4d982` (progress `{"stage":"deepening","current":2,"total":2,…}` while the page showed
+  "Researching (0/1)"): a finished Researching step read "Researching (0/1)" from its defaults
+  and the Deepening step never showed its counts, so the page looked stuck on research; now a
+  finished step reads "Researched sub-questions" and the current one "Deepening (2/2): <gap>".
+
+**Lease budget (one mechanism, after merging the R2 hotfix `eaed15c`).** Every stage, including
+outline and write, runs under the hotfix's `withStageDeadline`: the attempt is written to the
+state before the stage starts (so a delivery Vercel kills still counts), the stage gets an
+`AbortSignal` that reaches the SDK's HTTP request, and at the deadline the signal is aborted and
+the attempt fails. The deadline is now **45 s** for all stages (the hotfix had 50 s; R3's
+separate 42 s outline/write deadline and its own Anthropic retry cap are gone). Outline and
+write calls: provider timeout 40 s, `maxAttempts: 1` (the SDKs get `maxRetries: 0` through the
+hotfix's `sdkRequestOptions`), `rejectTruncated: true`, and per-provider budgets via
+`providerOverrides` (`RESEARCH_OUTLINE_OPTIONS`, `RESEARCH_WRITE_OPTIONS`): default (Anthropic
+`claude-sonnet-4-6`, no extended thinking, and GPT; ~60–80 tokens/s) outline 2,500 and write
+2,000 tokens ≈ 31–42 s and 25–33 s even at the cap, while a real outline (~1,000 tokens) or
+450-word section (~650 tokens) should take ~12–16 s and ~8–11 s (estimated); Gemini
+(`gemini-3.5-flash`, low thinking, ~230 tokens/s measured) outline 6,000 and write 5,000 ≈ 26 s
+and 22 s at the cap. Invocation: report read + attempt write (<1 s) + stage ≤ 45 s + state or
+assembled-report write and next publish (<2 s) ≈ ≤ 48 s, ≥ 12 s inside the 60 s lease. Search
+stages keep their 45 s provider timeout, so the deadline now also bounds a slow grounded answer
+plus its redirect resolution at 45 s. Exhausted attempts, including every delivery killed
+before it could record its failure, degrade instead of failing the report: an outline becomes
+the deterministic fallback outline, a section the placeholder.
+
+**Run state version 3 and compatibility.** `research_reports.progress` adds `outline` (the
+normalised outline) and `sections` (`string | null` per outline section); stored reports are
+untouched. Version 2 states (R2) and version 1 states (before R2) still parse and are upgraded
+in memory (v1 → v2 as before, then `sections: []`, no outline); the next write stores v3.
+Decision: an in-flight v1/v2 run that reaches (or is waiting at) synthesis goes through outline
+and write rather than finishing on the old single call — one code path, the old synthesis prompt
+and its 12,000-token call (the one timing out on Production) are removed, and the findings the
+old run gathered are exactly what the outline needs. A `synthesize` attempt count in an old
+state does not count against the outline. `publicResearchProgress` still sends only the view.
+
+**Model calls per run.** Before (R2): plan 1 + search 3–5 + gaps 1 + deepen 0–2 + synthesis 1 =
+6–10. After: plan 1 + search 3–5 + gaps 1 + deepen 0–2 + outline 1 + write 3–6 = 9–16 (typical
+5 sections: ~13), before retries. On a Gemini-only key every non-search call (plan, gaps,
+outline, writes: 6–9 per run) lands on `gemini-3.5-flash`'s free-tier bucket of 20 requests a
+day, so about two runs a day locally. In Production the outline and writes run on
+`claude-sonnet-4-6`. Wall clock adds roughly one outline (~5–15 s) and 3–6 writes (~10 s each on
+Gemini) plus a queue hop per stage.
+
+**Live probes (2 calls, `gemini-3.5-flash`, Gemini SDK direct with the exact R3 prompts, schema
+and config; synthetic heat-pump fixture of 5 findings / ~24 facts / 10 sources, no captured
+content; Anthropic not involved; probe script deleted).**
+
+| Call                                  | Time   | Prompt tokens | Answer tokens | Thinking tokens | Finish | Shape                                                                                                                                                                 |
+| ------------------------------------- | ------ | ------------- | ------------- | --------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| outline (6,000 cap)                   | 5.0 s  | 1,591         | 845           | none reported   | STOP   | `decision`; TL;DR 76 words; 4 takeaways, all with `[n]`; 5 sections (bullets, prose, table, bullets, prose) each mapped to one finding and its two sources; 3 caveats |
+| write, table section (4,000 cap then) | 10.0 s | 881           | 574           | 1,712           | STOP   | 359 words, no heading, one GFM table, citations only from that section's sources, no URLs                                                                             |
+
+`thinkingLevel: "low"` was accepted by the API. The write used 2,286 of its 4,000 tokens, so
+the Gemini write cap was raised to 5,000 for headroom. Observations: the TL;DR ran long (76
+words for "2–3 sentences"); the writer cited both of a finding's sources on nearly every claim,
+because sources are attached per finding, not per fact (as in R2).
+
+**Expected before / after.** Baseline `5a9cf55a` (pre-R2): 789 words, the fixed Executive
+Summary / Key Findings / Analysis / Conclusion template (five themes of three one-line bullets),
+41 URLs listed / 8 cited. R2 (replay on a synthetic fixture): 1,939 words, same four headings, 7/7
+cited `[n]` sources, one 12,000-token call at 42.7 of 50 s. R3: 3–6 sections × 250–450 words
+plus TL;DR, takeaways and caveats ≈ 1,000–2,900 words, ~2,000 for the typical five sections
+(inside the 1,500–2,500 target); structure chosen per question (shape, question-specific
+headings, a table where the outline asks for one); TL;DR callout and TOC from R1 (`## TL;DR`
+is lifted, the TOC lists Key takeaways, each section and its `###`, and Caveats); cited-only,
+renumbered sources as in R2; no single call above ~16 s on either provider in the normal case.
+To confirm with the orchestrator's full run.
+
+**After the hotfix merge (same branch, follow-ups from the orchestrator).**
+
+- Merge of `origin/main` (`eaed15c`, PR #84): conflicts in `research.ts`, `providers.ts`, the
+  stage tests and this file, resolved as described under Lease budget. The hotfix's deadline
+  tests now run against a write stage (abort at the deadline, late answer not stored, last attempt
+  → placeholder and completed report, killed delivery counted, all deliveries killed → placeholder
+  without a model call, outline → fallback outline without a model call, search degrade).
+- Logger: R2's `research_grounding_sources` counts were dropped by the allowlist. `logger.ts`
+  gains a separate counter allowlist (`sources`, `redirects`, `overCap`, `unresolved`, `cited`,
+  `sections`, `placeholders`, `takeaways`, `caveats`, `words`) that keeps only non-negative safe
+  integers — a string (e.g. a URL) in those fields is dropped. The grounding event now logs its
+  counts; `research_outline_planned` and `research_report_assembled` log shape as `code` and the
+  counts in those fields instead of the earlier packed string.
+- TL;DR: the outline prompt asks for 2–3 short sentences, at most 60 words; assembly trims a
+  longer TL;DR to whole sentences within 60 words (`limitTldr`; citation markers not counted; a
+  single overlong sentence is cut with an ellipsis).
+- Header count: R1's "N sections" counts only body `##` sections; TL;DR / Summary, "Key
+  takeaways" and "Caveats (and open questions)" are excluded (`isBodySectionHeading`). Legacy
+  four-heading reports keep their count (Executive Summary was already lifted out).
+- Citations: the section prompt asks to cite only the source(s) that support each claim, chosen
+  by their titles (each finding's Sources line already lists number, title and domain), not every
+  source of a finding. No extra model calls.
+
+**Verification.** `npm run check` after the merge and follow-ups: lint 0 errors (5 warnings, all
+in files this branch does not change), typecheck clean, Jest **238 suites / 1,932 tests** passed.
+Before the merge: 237 / 1,879. Covered in addition to the list below: logger counters
+(`logger.security.unit`), `limitTldr` and assembly trimming (`research-report.unit`), section count
+for R3 and legacy reports (`report-markdown.unit`, `report-components.component` now "3
+sections"), per-claim citation wording (`prompts.unit`), Gemini thinking through
+`providerOverrides` (`summary-provider.unit`), outline/write options and the 45 s deadline
+(`research-stages.unit`). No live calls after the merge.
+
+Earlier coverage: `research-stages.unit` (full stage walk plan → search × 2 → gaps → deepen →
+outline → write × 2 with call options, prompts, views and the exact assembled markdown and
+renumbered sources; resume mid-write; a redelivered `synthesize` message through
+`consumeResearchRunMessage` runs the outline and publishes `write` 0; v2 run waiting for
+synthesis; v2 and v1 resume; v1 at synthesis through outline and write; invalid outline retried
+then deterministic fallback; exhausted section → placeholder citing its sources and the report
+completes; short answer retried; all-written state assembles without a model call; stage
+ordering), `research-report.unit` (outline normalisation, F-number mapping, caps, rejections,
+fallback outline, section cleaning, assembly shape and renumbering, placeholders, plan context),
+`prompts.unit`, `summary-provider.unit` (thinking config mapping), `tenant-jobs.security.unit`
+(research message steps, `write` needs an index, `synthesize` accepted, idempotency keys),
+`page.component` (Outlining / Writing labels, legacy `synthesizing`, string-encoded and
+double-encoded progress), `report-components.component` (an R3-shaped stored report: TL;DR
+callout, body starts at Key takeaways, table and placeholder citations linked, TOC entries,
+sources).
+
+**Gaps and next steps.**
+
+1. No full run yet (orchestrator's). Check: word count and section count, Sonnet timings per
+   stage against the budget above, citation spread per claim, TL;DR length, and the stepper on
+   Production-shaped progress.
+2. Per-fact source attribution beyond the prompt would need the search notes to carry
+   citations (not in scope).
+3. R4 (research notes drill-down) remains a separate decision.
+
+### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
+
+P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
+`.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
+`origin/main` `6901bc9` merged after Preview verification (no rebase). Implementation commit
+`2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
+SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
+own hash. No database, environment variable, Production deployment or open PR was changed.
+
+- **Sidebar prefetches.** Before P10, every visible desktop-sidebar link used Next's default
+  prefetch. The 2026-09-29 Production trace saw nine first-load prefetches: Feed, Research, Ask,
+  Search, Settings, Save and three reader cards (Search has since been removed by PR #75). After
+  P10, Today and Feed keep default prefetch; Research, Save and Settings set `prefetch={false}`.
+  Ask has since been removed from the product by A1 on current `main`. Reader-card links remain
+  unchanged, as required by the plan.
+- **Feed feedback.** A filter change still makes exactly one scroll-preserving
+  `router.replace` and the server remains responsible for the paginated, ranked result. The
+  selected filters and active count now update optimistically before the RSC navigation commits;
+  the old list remains visible with a subtle opacity change and `aria-busy=true` until the URL
+  matches. Rapid filter clicks compose into the same pending URL rather than losing an earlier
+  selection. No client-side facet filtering was added (the existing search-draft narrowing from
+  PR #75 is unchanged).
+- **Request behavior.** Initial desktop navigation no longer schedules the three remaining rare
+  sidebar route prefetches, so those three proxy/auth passes disappear from that load; Ask's pass
+  disappeared with the route itself. Today and Feed stay warm through default prefetch. A Feed
+  filter still issues one RSC request; P10 changes perceived responsiveness, not its server request
+  count.
+- **Local verification.** `npm ci` ran before edits. Focused sidebar and Feed component suites
+  passed (23 tests), `npm run check:quick` passed (4 related suites / 33 tests), and the pre-merge
+  `npm run check` passed: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites /
+  1,738 tests. After merging current `origin/main`, `npm run check` passed again: lint 0 errors /
+  5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. After the final
+  merge of `origin/main` `4f1ee3e` and removal of all measurement code, `npm run check` passed:
+  lint 0 errors / 5 unchanged warnings, formatting and TypeScript clean, 233 suites / 1,828 tests.
+  After merging the released P8 state from `origin/main` `1d2831a`, the focused sidebar and Feed
+  suites passed 22 tests and the final `npm run check` passed: lint 0 errors / 5 unchanged warnings,
+  formatting and TypeScript clean, 236 suites / 1,856 tests.
+  After merging the F7 cleanup from `origin/main` `6901bc9`, those focused suites again passed
+  22 tests and `npm run check` passed: lint 0 errors / 5 unchanged warnings, formatting and
+  TypeScript clean, 233 suites / 1,836 tests.
+  (A stale `.next/dev` route cache still referenced Ask on the first typecheck; moving that generated
+  cache aside produced the clean result.) The local in-app browser at
+  `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately selects it, increments the
+  active count and commits `/feed?area=work`; closing the sheet shows the Work chip. The local
+  worktree has no `.env.local`, so feed API calls returned the expected unconfigured-local error
+  and real list rows were not available. The pending/dimmed list and settled-server-page states are
+  covered deterministically by the new component test.
+- **Preview evidence.** Deployment `dpl_4SLSqmwG8Kq4o5zYmZbH36HUR6sa`, temporarily reached
+  through the stable-host alias, was measured with a strictly temporary legacy-auth harness.
+  The initial `/feed?p10=1` logs included `/`, `/feed`, `/collections`, `/archive` and the Feed
+  and Collections client APIs, but no request for `/research`, `/save`, `/settings` or `/ask`.
+  In the live UI, clicking Work checked Work, changed the Filters active count to 1 and showed
+  the Work chip while the URL was still `?p10=1`; the URL then committed to
+  `?p10=1&area=work`. Preview's old database/schema and absent legacy UUID kept Feed data
+  unavailable, so the pending-list dimming could not be observed against real rows there and
+  remains deterministic component-test evidence. The temporary query/header harness was removed
+  in `3f429cc`; no probe or internal-header references remain in the final tree.
+- **Warm Preview timings.** Deployment `dpl_aAXD354vALu7YgbUHCgUmENTg3K8`, reached through the
+  stable-host alias with a strictly temporary query-gated measurement/legacy-compatibility
+  harness, produced four warm `GET /api/v1/feed` samples of **263.6 / 233.5 / 219.5 / 258.1 ms**
+  end to end, with route totals **35.9 / 11.9 / 10.2 / 14.5 ms**. Four warm Feed filter RSC
+  navigations were **254.7 / 291.2 / 231.6 / 227.1 ms** end to end, with proxy timings
+  **1.3 / 1.4 / 1.3 / 1.2 ms**. The same session reconfirmed immediate optimistic filter feedback
+  and the absence of rare-route prefetches. All temporary measurement and compatibility code was
+  then removed in `5e79f32`; the final tree contains no harness query, header or logger reference.
+- **Idle Preview timing.** After at least six minutes idle on the preserved measurement deployment,
+  the first `/feed` RSC completed in **6,668.3 ms** end to end with proxy only **9.8 ms**; the
+  subsequent follow-up `/feed` resource was **289.6 ms** with proxy **1.5 ms**. The UI selected
+  Work optimistically while the committed URL still showed Updates, then committed `area=work`
+  after the cold response. This completes the Preview timing set and places nearly all of the cold
+  delay outside proxy authentication.
+- **Remaining gates / restart.** External CI, PR merge and Production deployment have not
+  happened. Integration owner: fetch `codex/perf-p10-client-requests`, run `npm run check`, then
+  create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
+  repeat the timing set and confirm Research, Save and Settings remain absent from initial
+  prefetches and one Feed filter navigation still produces one RSC request.
+
+### Inline search F7: legacy search path retired — 2026-09-30
+
+Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`, then merged with
+`origin/main` at `9c93a95`, at `4f1ee3e` after A1 removed Ask Distil, and at `35c3009` after
+F6). Completes F7 after the UI part landed in #75. Implementation complete and locally verified;
+not deployed.
+
+- **Callers checked first.** No caller of `GET /api/items?q=` or `GET /api/v1/search` remains:
+  the browser extension posts only to `/api/v1/captures`, the iPhone Shortcut
+  (`docs/iphone-shortcut.md`) posts only to `/api/v1/captures`, the UI has no `/search` links and
+  no `/api/items` list fetch. The only references were the routes' own tests, the Phase 2 e2e
+  mock, the authorization matrix and the route-surface fixture.
+- **`GET /api/items`.** The `q` branch is gone. A request carrying `q` (even empty) now gets
+  **400** with CORS headers and a message pointing to `GET /api/v1/feed?q=`, rather than a
+  silently unfiltered list; the other filters are unchanged. The route otherwise ignores unknown
+  parameters, so `q` is the one explicit rejection. The SQLite compatibility and Wave 2 security
+  tests were rewritten for this.
+- **`GET /api/v1/search` deleted** with its contract test. Its authorization-matrix entry is
+  removed and the `/search` page entry now records "redirects to /feed" with no feature gate.
+  Counts recomputed from the tree after merging F6 (`35c3009`, which adds
+  `/api/v1/areas/backfill`): 91 API route files, 19 pages, 123 route surfaces in the fixture; the
+  harness assertions match.
+- **`FEATURE_SEARCH` removed from code**: `readPhase2FeatureFlags` no longer has `search`; the
+  Phase 3 activation preflight no longer lists it; tests, `.env.local.example`, the web-vitals
+  script, the Phase 2 e2e flag list and AGENTS.md updated. **Amit:** delete any leftover
+  `FEATURE_SEARCH` variable in Vercel yourself; nothing reads it now, so leaving it is harmless.
+- **Retrieval code deleted (no production caller once Ask and the two routes were gone).** Checked
+  first that `src/lib/ai/research.ts`, `grounding.ts`, chunking at capture, the knowledge jobs,
+  the backfill and every script use none of it.
+  - `src/lib/ai/search.ts` (`hybridSearch`, semantic item search) and its unit test.
+  - `src/lib/knowledge/retrieval.ts` (`searchPassages`, `PostgresPassageSearchStore` with
+    `searchKeyword` / `listRecent`, the `searchSemantic` store type, `validateEmbeddingSpace`,
+    the passage types) with its unit test and its PostgreSQL integration test (the tenant canary
+    for a store nothing calls any more); the `export *` in `src/lib/knowledge/index.ts`.
+  - `repositories.passages` (`RepositorySet` in `src/lib/repositories/ports.ts` and
+    `src/lib/postgres/repositories.ts`), `EmbeddingRepository.count()`, and the `query` filter
+    of `ItemFilters` with its full-text clause in the PostgreSQL items list (only `hybridSearch`
+    passed it). Repository unit and integration tests adjusted.
+  - `docs/authorization-matrix.json`: the `retrieval.ts` direct-query entry and the
+    `legacy-hybrid-search` and `passage-retrieval` search paths.
+- **What stays, and why.** `content_chunks`, `chunkContent` and the chunk writes at capture, the
+  knowledge jobs and backfill, `grounding.ts`, all schema (including `items.search_vector` and
+  `item_embeddings`; no migration), `embeddings.find` / `upsert` / `listRecent` (used by
+  `src/lib/database.ts`), and the legacy SQLite `src/lib/db.ts` `ItemFilters.query` (compatibility
+  code only). `src/lib/ai/embeddings.ts` (`generateEmbedding`, `embedItem`, `findSimilarItems`)
+  stays: it was already without a production importer before this branch, and embedding writes
+  are out of scope; candidate for a separate cleanup. The `/search` → `/feed?…` redirect stays.
+- **Docs.** AGENTS.md §3 has a Search bullet: one search surface, the Feed/Today header search on
+  `GET /api/v1/feed`, and a record of what F7 retired; `FEATURE_SEARCH` is out of the flag list.
+  `docs/ARCHITECTURE.md` says the same ("Why there is one search surface").
+- **Verification.** `npm run check` passes (232 suites, 1,830 tests after the F6 merge; the 5 lint warnings
+  predate this branch), `tests/harness` passes, `npm run audit:phase3-security` passes, and the
+  PostgreSQL `repositories.integration` suite passes (9 tests) against a Testcontainers database.
+  Grep finds no `FEATURE_SEARCH`, `/api/v1/search`, `DISTIL_PHASE2_SEARCH`, `hybridSearch`,
+  `searchPassages`, `PassageSearchStore` or `knowledge/retrieval` outside this file and the
+  historical notes. The `/search` redirect unit test passes. In `tests/e2e/phase2.spec.ts` (run
+  before the A1 merge, all Phase 2 flags on, desktop and mobile Chromium, port 3107, local Docker
+  database with the auth variables blank as in CI) the `/search?q=padel` → `/feed?q=padel` step
+  passes; the test then fails at the later `/feed/phase2-fixture` reader step with 500
+  `AccessDeniedError: unauthenticated`. That failure predates this change: the same reader step
+  on `origin/main` (`9c93a95`) returns the same 500. No migration, env var or cloud change.
 
 ### Performance P8: Neon HTTP proxy identity lookup — 2026-09-30
 

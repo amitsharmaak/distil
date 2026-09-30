@@ -331,8 +331,33 @@ describe("ResearchPage", () => {
       stream.emit("status", JSON.stringify({ status: "synthesizing" }));
     });
 
+    // A run started before the outline/write stages reports `synthesizing`: shown as outlining.
     expect(screen.getByText("synthesizing")).toBeInTheDocument();
-    expect(screen.getByText("Synthesizing findings...")).toBeInTheDocument();
+    expect(screen.getByText("Outlining the report...")).toBeInTheDocument();
+
+    act(() => {
+      stream.emit("progress", JSON.stringify({ stage: "outlining" }));
+    });
+    expect(screen.getByText("Outlining the report...")).toBeInTheDocument();
+    expect(screen.getByText("Writing the report...")).toBeInTheDocument();
+
+    act(() => {
+      stream.emit(
+        "progress",
+        JSON.stringify({
+          stage: "writing",
+          current: 2,
+          total: 5,
+          heading: "How the options compare",
+        })
+      );
+    });
+    expect(screen.getByText("Writing (2/5): How the options compare")).toBeInTheDocument();
+    // Earlier stages are shown as done, the writing stage as current.
+    expect(screen.getByText("Outlining the report...").className).toContain("text-green-600");
+    expect(screen.getByText("Writing (2/5): How the options compare").className).toContain(
+      "font-medium"
+    );
   });
 
   it("ignores malformed initial progress and malformed stream messages", async () => {
@@ -351,6 +376,58 @@ describe("ResearchPage", () => {
 
     expect(screen.getByText("pending")).toBeInTheDocument();
     expect(screen.getByText("Planning research questions...")).toBeInTheDocument();
+  });
+
+  it("shows the stage from string-encoded API progress as current", async () => {
+    // The API sends `progress` as a JSON string (Production run 8bb4d982).
+    fetchMock.mockResolvedValue(
+      responseFor(
+        makeReport({
+          status: "running",
+          progress: JSON.stringify({
+            stage: "deepening",
+            current: 2,
+            total: 2,
+            question: "What about battery?",
+          }),
+        })
+      )
+    );
+
+    render(<ResearchPage />);
+
+    const current = await screen.findByText("Deepening (2/2): What about battery?");
+    expect(current.className).toContain("font-medium");
+    expect(screen.getByText("Planning research questions...").className).toContain(
+      "text-green-600"
+    );
+    expect(screen.getByText("Researched sub-questions").className).toContain("text-green-600");
+    expect(screen.queryByText("Researching (0/1)")).not.toBeInTheDocument();
+    expect(screen.getByText("Outlining the report...").className).toContain(
+      "text-muted-foreground"
+    );
+  });
+
+  it("reads double-encoded progress and stream events", async () => {
+    fetchMock.mockResolvedValue(
+      responseFor(
+        makeReport({
+          status: "running",
+          progress: JSON.stringify(JSON.stringify({ stage: "outlining" })),
+        })
+      )
+    );
+
+    render(<ResearchPage />);
+
+    expect((await screen.findByText("Outlining the report...")).className).toContain("font-medium");
+    act(() => {
+      MockEventSource.instances[0].emit(
+        "progress",
+        JSON.stringify(JSON.stringify({ stage: "writing", current: 1, total: 3, heading: "A" }))
+      );
+    });
+    expect(screen.getByText("Writing (1/3): A").className).toContain("font-medium");
   });
 
   it("accepts object progress and displays zero defaults for an incomplete research event", async () => {

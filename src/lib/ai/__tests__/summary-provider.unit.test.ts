@@ -12,6 +12,7 @@ import {
   AnthropicProviderImpl,
   GeminiProviderImpl,
   geminiText,
+  geminiThinkingConfig,
   parseGroundingSources,
 } from "../providers";
 import { AIProviderError, classifyProviderFailure } from "../errors";
@@ -250,4 +251,66 @@ it("returns no sources when the grounded answer carries no grounding metadata", 
   expect(
     parseGroundingSources({ candidates: [{ groundingMetadata: { groundingChunks: "x" } }] })
   ).toEqual([]);
+});
+it("maps the thinking option to Gemini's thinkingConfig for the model generation", () => {
+  expect(geminiThinkingConfig("gemini-3.5-flash", "low")).toEqual({
+    thinkingConfig: { thinkingLevel: "low" },
+  });
+  expect(geminiThinkingConfig("gemini-3-flash-preview", "high")).toEqual({
+    thinkingConfig: { thinkingLevel: "high" },
+  });
+  expect(geminiThinkingConfig("gemini-2.5-flash", "low")).toEqual({
+    thinkingConfig: { thinkingBudget: 1024 },
+  });
+  // Models without a thinking control, and no option, send nothing.
+  expect(geminiThinkingConfig("gemini-2.0-flash", "low")).toEqual({});
+  expect(geminiThinkingConfig("gemini-3.5-flash", undefined)).toEqual({});
+});
+it("sends thinkingConfig with text and JSON calls only when asked", async () => {
+  mockGenerateContent.mockResolvedValue({ response: { text: () => '{"ok":true}' } });
+  const provider = new GeminiProviderImpl("key");
+  await provider.generateText("synthetic", "gemini-3.5-flash", { thinking: "low" });
+  await provider.generateJSON("synthetic", "gemini-3.5-flash", { thinking: "low" });
+  await provider.generateText("synthetic", "gemini-3.5-flash");
+  const configs = mockGetModel.mock.calls.map(
+    (call) =>
+      (call as unknown as [{ generationConfig: Record<string, unknown> }])[0].generationConfig
+  );
+  expect(configs[0]).toMatchObject({ thinkingConfig: { thinkingLevel: "low" } });
+  expect(configs[1]).toMatchObject({
+    responseMimeType: "application/json",
+    thinkingConfig: { thinkingLevel: "low" },
+  });
+  expect(configs[2]).not.toHaveProperty("thinkingConfig");
+});
+it("limits Anthropic SDK retries when the caller bounds the attempts", async () => {
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "answer" }],
+    stop_reason: "end_turn",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+  await new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6", {
+    timeoutMs: 40_000,
+    maxAttempts: 1,
+    thinking: "low",
+  });
+  expect(mockAnthropicCreate).toHaveBeenLastCalledWith(
+    expect.not.objectContaining({ thinking: expect.anything() }),
+    { timeout: 40_000, maxRetries: 0 }
+  );
+});
+it("applies a Gemini thinking level and budget given through providerOverrides", async () => {
+  mockGenerateContent.mockResolvedValue({ response: { text: () => "answer" } });
+  await new GeminiProviderImpl("key").generateText("synthetic", "gemini-3.5-flash", {
+    maxTokens: 2_000,
+    providerOverrides: { gemini: { maxTokens: 5_000, thinking: "low" } },
+  });
+  expect(mockGetModel).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      generationConfig: expect.objectContaining({
+        maxOutputTokens: 5_000,
+        thinkingConfig: { thinkingLevel: "low" },
+      }),
+    })
+  );
 });

@@ -74,7 +74,20 @@ export function createTenantJobEnvelopeV1(
   return parseTenantJobEnvelopeV1({ ...input, version: 1 });
 }
 
-export const RESEARCH_RUN_STEPS = ["plan", "search", "gaps", "deepen", "synthesize"] as const;
+/**
+ * Stage kinds. `outline` and `write` (one per report section, `index` = section) replaced the
+ * single `synthesize` stage in R3; `synthesize` stays accepted so a message published before the
+ * upgrade is still consumed (the consumer runs the first unfinished stage, which is `outline`).
+ */
+export const RESEARCH_RUN_STEPS = [
+  "plan",
+  "search",
+  "gaps",
+  "deepen",
+  "synthesize",
+  "outline",
+  "write",
+] as const;
 export type ResearchRunStepKind = (typeof RESEARCH_RUN_STEPS)[number];
 
 export const researchReportIdSchema = z.string().uuid().brand<"ResearchReportId">();
@@ -97,6 +110,10 @@ export const researchRunMessageV1Schema = z
     index: z.number().int().min(0).max(1000).optional(),
   })
   .strict()
+  .refine((message) => message.step !== "write" || message.index !== undefined, {
+    message: "A write stage names its section index",
+    path: ["index"],
+  })
   .readonly();
 
 export type ResearchRunMessageV1 = z.infer<typeof researchRunMessageV1Schema>;

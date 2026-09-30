@@ -21,8 +21,6 @@ import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenan
 import { composeCaptureRoutes } from "@/lib/capture/composition";
 import { createCaptureCollectionHandlers } from "@/lib/capture/http";
 import { createCaptureSchema } from "@/lib/capture/schema";
-import { hybridSearch } from "@/lib/ai/search";
-import type { ContentItem } from "@/lib/types";
 import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 /**
@@ -73,6 +71,10 @@ function withCorsHeaders(response: Response): Response {
  *   sort     — "recent" (default) | "priority"
  *   includeProcessing — "true" to include items still processing (default: only ready)
  *
+ * Search is not served here. The legacy `q` parameter was retired with the
+ * Search page (inline search F7); a request carrying `q` gets 400 rather than a
+ * silently unfiltered list. Search lives on `GET /api/v1/feed?q=`.
+ *
  * Response shape:
  *   { items: ContentItem[], total: number }
  */
@@ -80,6 +82,13 @@ export const GET = withRequestMetrics(async (request: NextRequest) => {
   try {
     const { repositories } = await requireTenantRoute(request);
     const { searchParams } = request.nextUrl;
+
+    if (searchParams.has("q")) {
+      return NextResponse.json(
+        { error: "The q parameter is no longer supported; search with GET /api/v1/feed?q=" },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
 
     // Extract and pass through query filters to the DB helper.
     const filters = {
@@ -90,17 +99,10 @@ export const GET = withRequestMetrics(async (request: NextRequest) => {
       isRead: searchParams.get("unread") === "true" ? false : undefined,
       limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : 100,
       sort: (searchParams.get("sort") as "recent" | "priority") ?? undefined,
-      query: searchParams.get("q") ?? undefined,
       includeProcessing: searchParams.get("includeProcessing") === "true",
     };
 
-    let items: ContentItem[];
-    if (filters.query) {
-      const { query, ...otherFilters } = filters;
-      items = await hybridSearch(repositories, query!, otherFilters);
-    } else {
-      items = await repositories.items.list(filters);
-    }
+    const items = await repositories.items.list(filters);
 
     return NextResponse.json({ items, total: items.length }, { headers: CORS_HEADERS });
   } catch (error) {
