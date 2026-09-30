@@ -36,6 +36,18 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
+- **Admin invitations from Settings: plan I1–I3 recorded, nothing implemented (branch
+  `claude/distil-onboarding-docs-a2addc`, docs only; checkpoint "Admin invitations from Settings:
+  phased plan (I1–I3) — 2026-09-30"):** onboarding a colleague on 2026-09-30 needed a Neon SQL
+  lookup for the operator UUID, an inline `DATABASE_URL` for `npm run auth:invite`, and a
+  hand-pasted link. Plan: **I1** admin allowlist + `/api/v1/admin/invitations` (issue, list,
+  revoke) reusing `executeInvitationCommand`; **I2** Settings → Invitations tab (admin only,
+  link shown once with Copy, list with revoke); **I3** capture diagnostics moved out of the
+  Capture tab into an admin-only Troubleshooting tab (Amit finds it noisy; an environment gate
+  would hide it where the failures live). The same branch adds `docs/onboarding.md`, the guide
+  sent to new users. Decisions 1–4 answered on 2026-09-30, all recommended options (env allowlist, any
+  email, audit when configured, admin-only Troubleshooting tab). Next: Amit starts I1–I3 as one
+  task with the code prompt in the checkpoint.
 - **Keyboard navigation: audited, plan K1–K4 recorded, nothing implemented (branch
   `claude/distil-keyboard-shortcuts-5b189c`, docs only; checkpoint "Keyboard navigation: audit and
   phased plan (K1–K4) — 2026-09-30"):** Amit finds the app hard to use from the keyboard. Audit:
@@ -540,6 +552,138 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Admin invitations from Settings: phased plan (I1–I3) — 2026-09-30
+
+**Why.** Amit onboarded a colleague on 2026-09-30 and asked for an admin to be able to send
+invitations from the Settings section instead of the CLI. What the manual run needed today: the
+operator UUID had to be looked up in the Neon SQL editor (`users.primary_email`, not `email`);
+`npm run auth:invite` does not read `.env.local`, so `DATABASE_URL` had to be passed inline, and
+without it the script fails with the misleading "Authentication repositories are unavailable"
+(the real cause, a missing URL, is swallowed in `src/lib/auth/repository-runtime.ts:15-25`);
+the printed `invitationUrl` was then pasted by hand. This checkpoint is the plan only. Branch
+`claude/distil-onboarding-docs-a2addc` from `main` `eaec1d2`; docs only, no code changed,
+nothing touched in Vercel or Neon. The same branch adds `docs/onboarding.md`, the guide shared
+with new users (sign-in, capture token, extension load-unpacked, Shortcut, Home Screen install).
+
+**How invitations work today (verified at `eaec1d2`).**
+
+- **Issue.** Only `scripts/auth-invitations.ts` (`npm run auth:invite -- issue <email>
+<operator-uuid> <reason> <origin>`). It calls `executeInvitationCommand`
+  (`src/lib/auth/invitations.ts`), which stores a row in `invitations` (normalized + hashed
+  email, salted token hash, `issued_by_actor_id`, `issuance_reason`, 7-day `expires_at`,
+  `INVITATION_TTL_MS`) and returns `<origin>/invite#token=<id>.<secret>` once. The secret is
+  never stored, so a link cannot be re-shown; a lost link means revoke and issue again.
+  `issued_by_actor_id` is any UUID with no foreign key; nothing checks that it is an admin.
+- **Accept.** The invitee opens `/invite` (`src/app/invite/page.tsx`), enters the email, and
+  `POST /api/auth/invitations/request-link` validates token and email match, claims a dispatch
+  slot and sends a Neon Auth magic link; `/api/auth/invitations/complete` consumes the row and
+  links the identity (`consumeInvitationAndLinkIdentity`). Returning users sign in at
+  `/sign-in`. No email is sent at issue time; the link itself is delivered by hand.
+- **Revoke.** CLI only (`revoke <invitation-uuid> <operator-uuid> <reason>`), used by the
+  tenant-isolation runbook.
+- **No admin concept.** `users` has `status` only (`0005_phase3_tenant_expand.sql:20-30`).
+  `docs/authorization-matrix.json` defines a `platform_admin` principal ("explicit audited
+  maintenance only; normal sessions never imply this principal") and scopes `invitations` to
+  `operator-control-plane` with "operator reason and audit required". `operator_audit_events`
+  exists (`0008_phase3_lifecycle.sql:102`) but is revoked from the runtime role and written only
+  through the control-plane client (`DATABASE_CONTROL_PLANE_URL`, `getControlPlaneRepositories`).
+- **Repository port.** `InvitationRepositoryPort` (`src/lib/auth/ports.ts:39`) has create, find
+  by id, revoke and the dispatch claim methods; there is no list.
+- **Settings.** `src/app/settings/page.tsx` has two tabs, Capture (`TokenSettings`, the
+  generate/copy-once/regenerate pattern to reuse) and Account.
+
+#### Plan
+
+**I1 — Admin identity and API (recommended first, with I2).**
+
+- Admin designation: `DISTIL_ADMIN_USER_IDS` (comma-separated user UUIDs) read through
+  `src/lib/auth/environment.ts`; helper `isPlatformAdmin(userId)`. No schema change. Amit's
+  Production UUID goes into Vercel by Amit (env change, his authorization). Alternative: a
+  `users.role` column (decision 1).
+- Routes under `src/app/api/v1/admin/invitations/`: `POST` (body `{ email, note? }`) issues via
+  `executeInvitationCommand` with `issuedByActorId` = the session user, `reason` =
+  `settings:<note or "invited from Settings">`, `appOrigin` from `readApplicationOrigin`;
+  returns `{ invitationId, invitationUrl, expiresAt }` once. `GET` lists invitations (id,
+  masked email, status, issued by, expires, accepted at); needs a new
+  `listInvitations` port method and Postgres implementation. `DELETE /:id` revokes with a
+  reason. All three: `resolveRequestAuthContext` + `requireAllowedOrigin` + admin check, 403 for
+  everyone else, 404-shaped when `FEATURE_NEON_AUTH` is off. Cap: 20 issues per admin per day.
+- Audit: the `invitations` row already records actor and reason. When
+  `DATABASE_CONTROL_PLANE_URL` is configured, also write an `operator_audit_events` row
+  (`invitation.issue` / `invitation.revoke`); skip silently when it is not (decision 3).
+- Tests: unit for the admin helper and command mapping; route tests for 403/200/429; a
+  repository test for `listInvitations`. Update `docs/authorization-matrix.json` (invitations
+  gain `self-admin-session` as an allowed issuer path) and `AGENTS.md` §Auth.
+- Small fix in passing: `scripts/auth-invitations.ts` should surface the underlying error and
+  say "set DATABASE_URL" when it is empty.
+
+**I2 — Settings → Invitations tab.**
+
+- Third tab, rendered only when the account payload says `isAdmin` (server-derived; the API is
+  the real gate). Form: email, optional note, **Send invitation** button. Result card copies
+  `TokenSettings`: "Copy this link now, it will not be shown again", Copy button, expiry date.
+- List below: masked email, status chip (pending / accepted / revoked / expired), issued date,
+  expiry, **Revoke…** with a reason prompt. Empty state explains that invitees open the link
+  and request a magic link with the invited address.
+- Component tests mirror `token-settings.component.test.tsx`; one Playwright smoke run behind
+  the admin allowlist in the local Docker loop.
+
+**I3 — Capture diagnostics out of the main Capture tab.**
+
+- Today `CaptureDiagnostics` (`src/components/capture/capture-diagnostics.tsx`) is mounted
+  under the token panel in Settings → Capture (`src/app/settings/page.tsx`) and shows every
+  rejected or failed capture with Retry / Save again. It was added on 2026-09-24 as an
+  "internal diagnostics" surface after Amit declined a notification bell (checkpoint "Capture
+  diagnostics in Settings — 2026-09-24"). Amit now finds it noisy on the main Settings view and
+  is unsure it belongs in the app at all.
+- Why a plain "only outside production" gate is wrong: the failures it lists live in the
+  Production database. `NODE_ENV` is `production` on distilai.app and `development` only in
+  the local Docker loop, so an environment gate would hide the panel exactly where the data is.
+  The app has no runtime debug mode today (`src/lib/config.ts` exposes `FEATURE_CONNECTORS`
+  and `NODE_ENV` only; no client-visible debug flag).
+- Options (decision 4): (A) **Troubleshooting tab, admin-only** — a third Settings tab rendered
+  only when the account payload says `isAdmin` (the I1 allowlist), with the diagnostics panel
+  unchanged inside it; the tab shows a count badge only when failures exist. No new mechanism,
+  and it matches the original "internal diagnostics" framing. Non-admins see nothing.
+  (B) **Troubleshooting tab for everyone** — same move, no gate; failures stay visible to all
+  users but out of the way. (C) **Remove the panel and its `?status=` filter** — failures go
+  silent again; the retry route stays for the capture receipt page. Recommended: A.
+- Work (small): move the component into the new tab, add the tab trigger, gate on `isAdmin`,
+  update `settings/__tests__` and the diagnostics component tests; no API change.
+
+#### Decisions (answered by Amit in chat, 2026-09-30)
+
+All four recommended options were chosen: (1A) env allowlist `DISTIL_ADMIN_USER_IDS`, no
+migration; (2A) any email may be invited; (3A) the `invitations` row is the record, and
+`operator_audit_events` is written only when `DATABASE_CONTROL_PLANE_URL` is configured;
+(4A) capture diagnostics move into an admin-only Troubleshooting tab. Implementation of I1–I3
+is not yet authorized; Amit starts it as its own task with the code prompt below.
+
+#### Decisions as asked
+
+1. **Admin designation:** (A) `DISTIL_ADMIN_USER_IDS` env allowlist, no migration
+   (recommended); (B) `users.role` column with a tenant migration.
+2. **Who may be invited:** (A) any email (recommended); (B) restrict to listed domains.
+3. **Audit:** (A) rely on the `invitations` row and write `operator_audit_events` only when the
+   control-plane URL is configured (recommended); (B) require the control-plane URL in
+   Production first.
+4. **Capture diagnostics:** (A) admin-only Troubleshooting tab (recommended); (B) Troubleshooting
+   tab for everyone; (C) remove the panel.
+
+#### Single-session code prompt (I1 + I2 + I3)
+
+> Implement I1, I2 and I3 from the checkpoint "Admin invitations from Settings: phased plan
+> (I1–I3) — 2026-09-30" in `docs/project-state.md`, on a fresh `claude/admin-invitations` branch
+> from `origin/main`. Read `src/lib/auth/invitations.ts`, `src/lib/auth/ports.ts`,
+> `src/lib/postgres/auth-repository.ts`, `src/app/api/v1/account/route.ts` (auth pattern),
+> `src/components/capture/token-settings.tsx` (copy-once UI) and `src/app/settings/page.tsx`
+> first. Add the admin allowlist helper, the three admin routes, the `listInvitations` port
+> method, the Invitations tab, the admin-only Troubleshooting tab holding `CaptureDiagnostics`,
+> tests, the matrix and `AGENTS.md` updates, and the CLI error fix.
+> Verify with `npm run check` and `npm run test:integration` against local Docker Postgres with
+> your local user in `DISTIL_ADMIN_USER_IDS`. Do not touch Vercel or Neon. Record a checkpoint
+> and handoff bullet before opening the PR.
 
 ### Unused embeddings module removed — 2026-09-30
 
