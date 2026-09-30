@@ -1,6 +1,6 @@
 import { createNeonAuth, type NeonAuth } from "@neondatabase/auth/next/server";
 import { readNeonAuthFoundation } from "@/lib/auth/neon-auth-foundation";
-import { decodeJsonBase64Url } from "@/lib/auth/hmac";
+import { decodeBase64Url, decodeJsonBase64Url, hmacSha256, signaturesEqual } from "@/lib/auth/hmac";
 import type { NeonProxyProvider, VerifiedProviderSession } from "@/lib/auth/neon-proxy";
 import type { ProviderSessionResult } from "@/lib/auth/request-context";
 
@@ -11,6 +11,7 @@ const NEON_SESSION_TOKEN_COOKIE = "__Secure-neon-auth.session_token";
 const NEON_SESSION_DATA_COOKIE = "__Secure-neon-auth.local.session_data";
 const BODY_HEADERS = ["content-type", "content-length", "transfer-encoding"] as const;
 export const NEON_SESSION_DATA_TTL_SECONDS = 60;
+const encoder = new TextEncoder();
 
 export class NeonAuthConfigurationError extends Error {
   constructor(readonly missing: readonly string[]) {
@@ -75,30 +76,62 @@ function cookieValue(cookieHeader: string, name: string): string | undefined {
 }
 
 /**
- * The SDK remains responsible for verifying the signed cache. Reading only
- * the expiry here avoids its reactive-mint path on a known miss, so a missing
- * or expired cache goes straight to exactly one uncached provider check.
+ * Validate the same HS256 signature and expiry the SDK will enforce before
+ * selecting its cache path. Known misses go straight to one uncached provider
+ * check instead of the SDK's two-fetch reactive-mint path.
  */
-function hasUnexpiredSessionData(cookieHeader: string, now: Date): boolean {
+async function hasValidSessionData(
+  cookieHeader: string,
+  cookieSecret: string,
+  now: Date
+): Promise<boolean> {
   const token = cookieValue(cookieHeader, NEON_SESSION_DATA_COOKIE);
   if (!token) return false;
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   try {
-    const payload = decodeJsonBase64Url(parts[1]) as { exp?: unknown };
-    return typeof payload.exp === "number" && payload.exp > Math.floor(now.getTime() / 1000);
+    const [protectedHeader, encodedPayload, encodedSignature] = parts;
+    const header = decodeJsonBase64Url(protectedHeader) as { alg?: unknown; typ?: unknown };
+    const payload = decodeJsonBase64Url(encodedPayload) as {
+      exp?: unknown;
+      session?: unknown;
+      user?: unknown;
+    };
+    if (
+      header.alg !== "HS256" ||
+      header.typ !== "JWT" ||
+      typeof payload !== "object" ||
+      payload === null ||
+      typeof payload.exp !== "number" ||
+      payload.exp <= Math.floor(now.getTime() / 1000) ||
+      typeof payload.session !== "object" ||
+      payload.session === null ||
+      typeof payload.user !== "object" ||
+      payload.user === null
+    ) {
+      return false;
+    }
+    const expected = await hmacSha256(
+      `${protectedHeader}.${encodedPayload}`,
+      encoder.encode(cookieSecret)
+    );
+    return signaturesEqual(decodeBase64Url(encodedSignature), expected);
   } catch {
     return false;
   }
 }
 
 /** Only ordinary read-only page/RSC requests may use Neon's signed cookie cache. */
-export function shouldUseNeonSessionCookieCache(request: Request, now = new Date()): boolean {
+export async function shouldUseNeonSessionCookieCache(
+  request: Request,
+  cookieSecret: string,
+  now = new Date()
+): Promise<boolean> {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
   const pathname = new URL(request.url).pathname;
   if (pathname === "/api" || pathname.startsWith("/api/")) return false;
   if (pathname === "/account" || pathname.startsWith("/account/")) return false;
-  return hasUnexpiredSessionData(request.headers.get("cookie") ?? "", now);
+  return hasValidSessionData(request.headers.get("cookie") ?? "", cookieSecret, now);
 }
 
 /**
@@ -117,7 +150,8 @@ export function shouldUseNeonSessionCookieCache(request: Request, now = new Date
  */
 export async function verifyNeonSession(
   auth: NeonSessionHandlerSource,
-  request: Request
+  request: Request,
+  cookieSecret: string
 ): Promise<VerifiedProviderSession> {
   const cookieHeader = request.headers.get("cookie") ?? "";
   if (!cookieHeader.includes(NEON_SESSION_TOKEN_COOKIE)) {
@@ -127,7 +161,7 @@ export async function verifyNeonSession(
   const headers = new Headers(request.headers);
   for (const name of BODY_HEADERS) headers.delete(name);
   const verificationUrl = new URL("/api/auth/get-session", request.url);
-  if (!shouldUseNeonSessionCookieCache(request)) {
+  if (!(await shouldUseNeonSessionCookieCache(request, cookieSecret))) {
     verificationUrl.searchParams.set("disableCookieCache", "true");
   }
   const response = await auth
@@ -151,8 +185,25 @@ export async function verifyNeonSession(
 }
 
 /** The proxy's view of the provider: one verification per request, nothing else. */
+export function getNeonProxyProvider(): NeonProxyProvider;
 export function getNeonProxyProvider(
-  auth: NeonSessionHandlerSource = getNeonAuthServer()
+  auth: NeonSessionHandlerSource,
+  cookieSecret: string
+): NeonProxyProvider;
+export function getNeonProxyProvider(
+  auth?: NeonSessionHandlerSource,
+  cookieSecret?: string
 ): NeonProxyProvider {
-  return { verifySession: (request) => verifyNeonSession(auth, request) };
+  if (!auth && !cookieSecret) {
+    const environment = process.env;
+    const runtimeAuth = getNeonAuthServer(environment);
+    const runtimeCookieSecret = environment.NEON_AUTH_COOKIE_SECRET!;
+    return {
+      verifySession: (request) => verifyNeonSession(runtimeAuth, request, runtimeCookieSecret),
+    };
+  }
+  if (!auth || !cookieSecret) {
+    throw new NeonAuthConfigurationError(["NEON_AUTH_COOKIE_SECRET"]);
+  }
+  return { verifySession: (request) => verifyNeonSession(auth, request, cookieSecret) };
 }
