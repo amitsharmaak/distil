@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-30T08:22:41.320Z",
+  "generatedAt": "2026-09-30T08:26:28.274Z",
   "note": "npm run build && npm run perf:bundle -- --write",
   "routes": {
     "/": {
-      "rawBytes": 576537,
-      "gzipBytes": 175932,
+      "rawBytes": 576530,
+      "gzipBytes": 175916,
       "chunks": 10
     },
     "/_not-found": {
@@ -33,8 +33,8 @@
       "chunks": 8
     },
     "/feed": {
-      "rawBytes": 639033,
-      "gzipBytes": 197937,
+      "rawBytes": 639026,
+      "gzipBytes": 197918,
       "chunks": 12
     },
     "/feed/[id]": {
