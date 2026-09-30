@@ -42,6 +42,12 @@ with severity 3 problems now" (the follow-ups and small bugs). This entry supers
   already describe "Get URLs from Shortcut Input → First Item → If empty, `No web link found`".
   Only Amit's own Shortcut instance can be updated, and D1–D3 (`iphone-shortcut-token`) rebuilds it.
 - Embeddings costing follow-up: `src/lib/ai/embeddings.ts` was deleted on 2026-09-30, so it is moot.
+- `BUG-IOS-002` and `BUG-READER-001`: closed as won't-fix by Amit on 2026-09-30 ("both are
+  minor"). For the record, the causes found: the highlight panel in
+  `src/components/phase2/reader-annotations.tsx` listens only for mouse-up and key-up, which iOS
+  long-press selection does not fire (a `selectionchange` listener would fix it); reading-position
+  restore was never built, since nothing writes `readingProgress` from scrolling or scrolls to it
+  on open. Do not re-propose either unless Amit asks.
 - Google AI billing decision for grounded research: grounding works on the free-tier key (R3
   Production run `4d1cbcb5`, 23 grounded sources) and Amit confirmed research works on Production
   (chat, 2026-09-30).
@@ -59,8 +65,6 @@ with severity 3 problems now" (the follow-ups and small bugs). This entry supers
   `npm run audit:ai-models`, switch `classify-area` in `src/lib/ai/ai-config.ts`, compare a local
   sample against flash-lite.
 - Adaptive summaries S3 (depth on demand): planned, starts from `main` on Amit's decision.
-- Device-only bugs, not attempted blind: `BUG-IOS-002` (touch highlighting opens the anchored
-  highlight panel) and `BUG-READER-001` (reading position did not restore on a physical iPhone).
 - `ai_summaries.content_hash` exists in Production but is not wired into the summary cache key.
 - Performance candidates outside any plan: the P7 RLS/ordering index question, the
   `distil_resolve_auth_identity` lookup cost, the Vercel + Neon cold start.
