@@ -80,11 +80,22 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   only is acceptable (no billing-enabled Google AI project; live sources remain unverified model
   memory, labelled on the page). Phase branches: `claude/research-r1-page`,
   `claude/research-r2-citations`, `claude/research-r3-adaptive`.
-  **R1 (readable page, UI only)** done: checked locally on `5a9cf55a` at desktop, 375 px and
-  dark mode (checkpoint "Deep research R1: readable report page — 2026-09-30"); squash merged
-  to `main` (auto-deploys to Production). **R2** engine half done on its branch (not merged; it
-  must not ship without its UI half, since object sources would break the old page); UI half
-  next, on top of R1. Then R3.
+  **R1 (readable page, UI only)** done and deployed: PR
+  [#81](https://github.com/amitsharmaak/distil/pull/81), squash merged as `8280fdc`; Production
+  deployment succeeded (05:28Z) and `/api/health` returned 200; checked locally on `5a9cf55a` at
+  desktop, 375 px and dark mode (checkpoint "Deep research R1: readable report page —
+  2026-09-30"). **R2 (numbered citations, engine + UI)** done: squash merged to `main`
+  (checkpoint "Deep research R2: grounded numbered citations — 2026-09-30"). Live local run
+  `79e2f8cc` (same question as the baseline) found that **search grounding works on the
+  free-tier key** for `research-search` (7 grounded sources, redirects resolved to publisher
+  URLs) and exposed a synthesis regression on the Gemini fallback (thinking exhausted the
+  4,096-token budget; the stored report was a reasoning fragment). Fixed on the branch (12,000
+  tokens, truncation rejected and retried, prompt starts at the first heading) and confirmed by
+  a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
+  keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
+  Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
+  Claude, and R3 splits the call. Next: R3 on `claude/research-r3-adaptive`, then ask Amit about
+  R4.
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
