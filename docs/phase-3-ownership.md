@@ -73,13 +73,12 @@ within a user, not globally.
 3. Global uniqueness on user content becomes tenant-relative. In particular, normalized URLs,
    digest dates, settings keys, OAuth provider/team pairs, token names, event keys, idempotency keys,
    and current-artifact constraints include `user_id` where appropriate.
-4. Every object-ID route verifies all IDs in one tenant-scoped operation. Collection membership,
-   annotation updates, citations, research source IDs, and approval resolution must reject mixed-
-   owner graphs.
+4. Every object-ID route verifies all IDs in one tenant-scoped operation. Annotation updates,
+   citations, research source IDs, and approval resolution must reject mixed-owner graphs.
 5. Lists, counts, aggregates, suggestions, recent-item fallbacks, status panels and admin-looking
    routes are tenant-scoped too. No empty filter means “all users.”
-6. Search filters by `user_id` inside the candidate CTE before full-text/vector ranking, collection
-   filtering, recent fallback, or answer-context assembly. AI providers receive the minimum excerpts
+6. Search filters by `user_id` inside the candidate CTE before full-text/vector ranking, recent
+   fallback, or answer-context assembly. AI providers receive the minimum excerpts
    needed, never another user's text, metadata, preferences, or conversation history.
 7. Capture tokens belong to one user, have only capture-create permission, and cannot list receipts
    or inspect items. A capture row records its user and originating token/device. Token revocation is
@@ -101,11 +100,11 @@ within a user, not globally.
 
 | Threat                        | Representative path                                                                     | Required control                                                                                                     |
 | ----------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Horizontal IDOR               | item, annotation, collection, capture, report, notification or approval ID              | Tenant predicate in the repository statement; foreign and missing both `404`; adversarial A/B tests                  |
+| Horizontal IDOR               | item, annotation, capture, report, notification or approval ID                          | Tenant predicate in the repository statement; foreign and missing both `404`; adversarial A/B tests                  |
 | Cross-tenant list/search leak | feeds, full-text/vector search, recency fallback, counts, topics, agent RAG             | Filter candidates by user before joins/ranking/aggregation; assert every returned row has the principal's owner      |
 | Asynchronous confused deputy  | capture queue, digest, summary, backfill, triage, research or connector job             | Signed service ingress, user-scoped envelope, ownership revalidation, tenant-relative idempotency                    |
 | Credential substitution       | capture token, OAuth callback, publisher browser session                                | Token row contains user; OAuth state+PKCE binds user; per-user encrypted connector/session storage                   |
-| Mixed-owner graph             | adding another user's item to a collection, claim evidence pointing to a foreign chunk  | Composite ownership foreign keys and atomic joins; reject mismatched owners                                          |
+| Mixed-owner graph             | legacy collection rows or claim evidence pointing to a foreign item/chunk               | Composite ownership foreign keys and atomic joins; reject mismatched owners                                          |
 | AI context or memory bleed    | answer, summarize, prioritization, research, agent chat/tools                           | Tenant-scoped retrieval and conversation history; no process-global user caches; minimize provider payload           |
 | Cache/rate-limit collision    | in-memory middleware buckets, tool limits, publisher status/locks                       | Keys include environment + user/actor + operation; shared backing store where correctness or quotas matter           |
 | Log/telemetry exfiltration    | errors currently include URLs, item IDs, query snippets and arbitrary tool input/output | Central redaction/allowlist, tenant tag, retention/access policy; never persist raw tool parameters/results          |

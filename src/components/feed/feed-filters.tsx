@@ -214,7 +214,6 @@ interface FeedFilterSheetProps {
   /** Number of filters in effect, shown on the trigger. */
   activeCount: number;
   topicOptions: string[];
-  collectionOptions: { id: string; name: string }[];
   /** The card/compact layout toggle; hidden when the page has no layouts. */
   viewMode?: "card" | "compact";
   onViewModeChange?: (mode: "card" | "compact") => void;
@@ -232,7 +231,6 @@ export function FeedFilterSheet({
   onChange,
   activeCount,
   topicOptions,
-  collectionOptions,
   viewMode,
   onViewModeChange,
   unreadQueue = false,
@@ -400,16 +398,6 @@ export function FeedFilterSheet({
                 options={topicOptions.map((topic) => ({ value: topic, label: topic }))}
                 selected={filters.topics}
                 onToggle={(value) => onChange({ topic: toggled(filters.topics, value) })}
-              />
-            </Section>
-          )}
-
-          {collectionOptions.length > 0 && (
-            <Section title="Collection">
-              <ChipGroup
-                options={collectionOptions.map(({ id, name }) => ({ value: id, label: name }))}
-                selected={filters.collections}
-                onToggle={(value) => onChange({ collection: toggled(filters.collections, value) })}
               />
             </Section>
           )}

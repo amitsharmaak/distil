@@ -103,31 +103,11 @@ describe("PostgresFeedQuery", () => {
       item("archived", { priority: "high", archivedAt: "2026-09-06T01:00:00Z" })
     );
     await repos.items.insert(item("read", { priority: "high", isRead: true }));
-    await repos.collections.create({
-      id: "favourites",
-      name: "Favourites",
-      createdAt: "2026-09-06T00:00:00Z",
-      updatedAt: "2026-09-06T00:00:00Z",
-    });
-    await repos.collections.addItem({
-      collectionId: "favourites",
-      itemId: "match-a",
-      position: 0,
-      addedAt: "2026-09-06T00:00:00Z",
-    });
-    await repos.collections.addItem({
-      collectionId: "favourites",
-      itemId: "match-b",
-      position: 1,
-      addedAt: "2026-09-06T00:00:00Z",
-    });
-
     const feed = repos.feed;
     const first = await feed.list({
       sources: ["manual", "publisher"],
       topics: ["ai", "product"],
       priorities: ["high"],
-      collectionIds: ["favourites"],
       read: false,
       sort: "priority",
       limit: 1,
@@ -142,7 +122,6 @@ describe("PostgresFeedQuery", () => {
       sources: ["manual", "publisher"],
       topics: ["ai", "product"],
       priorities: ["high"],
-      collectionIds: ["favourites"],
       read: false,
       sort: "priority",
       limit: 1,

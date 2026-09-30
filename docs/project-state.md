@@ -36,6 +36,15 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   (4A) Codex may squash-merge each P8–P10 phase into `main` without asking again once its gates are
   green and its Preview reading meets the phase goal; each merge auto-deploys because the release
   pin is `unpinned`. This authorization is limited to this P8–P11 task.
+- **Collections feature removed in code (branch `codex/remove-collections`, PR
+  [#98](https://github.com/amitsharmaak/distil/pull/98); checkpoint "Collections feature removed
+  (code only) — 2026-09-30"):** the pages, API routes, UI controls,
+  feed filter/query plumbing, repository port/implementation, personalization events and
+  read-item resurfacing exceptions are removed. The `collections` and `collection_items` tables,
+  existing data, schema/migrations, and lifecycle export/deletion support are intentionally
+  unchanged. Local deterministic gate and production build pass; this branch is not merged or
+  deployed and made no database or cloud change. Next: review the PR. A future table drop requires
+  Amit's explicit approval and a Production-data check first.
 - **Feed header, Filters sheet redesign and Search page retired (PR
   [#75](https://github.com/amitsharmaak/distil/pull/75), squash merged on 2026-09-29; checkpoint "Feed header: compact
   search, filters moved into the sheet — 2026-09-29"):** Amit found the full-width search too
@@ -5832,6 +5841,37 @@ Locally verified: TypeScript, ESLint and Prettier on all changed files; focused 
 27 tests; the content agent's full deterministic run passed 170 suites / 1,199 tests; changed-file
 coverage is above the 80% gate. Not run: E2E, PostgreSQL integration, build; CI supplies those.
 Not deployed. Both bugs move from the deferred backlog to fixed once the PR merges.
+
+### Collections feature removed (code only) — 2026-09-30
+
+Branch `codex/remove-collections`, implementation commit `77c45ee`, merged with current
+`origin/main` in `816bbe4` and `a552c36`; PR
+[#98](https://github.com/amitsharmaak/distil/pull/98).
+
+- **Removed:** the two `/collections` pages; seven reviewed collection API methods across three
+  route files; collection list/detail/editor UI; reader membership controls; Feed/Today collection
+  queries, props, facet, URL state and quick-filter chips; the collection repository port and
+  PostgreSQL implementation; reader-service collection mutations and event emission; the
+  `collection_added` personalization signal; and the read-item exception in Feed and digest stale
+  resurfacing. Old `/search` links now forward only supported Feed parameters, while the Feed API
+  silently ignores retired parameters. Authorization inventories, reviewed counts, ownership docs,
+  route fixtures and tests were updated to match the smaller surface.
+- **Intentionally kept:** the `collections` and `collection_items` tables and existing rows;
+  `src/lib/postgres/schema.ts`; migration `0002`, tenant migrations `0005`–`0007`, and the tenant
+  manifest; lifecycle export and account-deletion handling for existing rows; and the unrelated
+  `createCaptureCollectionHandlers` REST-list helper. No migration, data deletion, database call,
+  environment change or deployment occurred.
+- **Locally verified after merging current `origin/main`:** `npm run check` passed with 235 suites
+  and 1,894 tests (zero failures; five pre-existing lint warnings, zero errors); `npm run build`
+  passed with Next.js 16.3.4 and emitted neither removed page; `npm run perf:bundle -- --write`
+  deterministically regenerated `docs/perf/route-bundle-stats.baseline.json` without the two
+  removed routes, and a second `npm run perf:bundle` reported zero delta. The requested final
+  `grep -rni collection src` returns only the intentionally kept schema/migrations/tenant manifest,
+  lifecycle export, capture-handler name and tests that freeze those kept contracts.
+- **External state:** PR #98 opened; not merged, not deployed, no Preview or Production
+  verification, no database or cloud mutation. External CI is pending at this checkpoint.
+- **Follow-up:** Drop collections/collection_items tables — requires Amit's explicit approval;
+  confirm Production has no collection data worth keeping first.
 
 ## Current cross-phase status
 

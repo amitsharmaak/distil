@@ -12,7 +12,7 @@ describe("ReaderKnowledgePrototype", () => {
     expect(screen.getByRole("button", { name: "Archive item" })).toBeInTheDocument();
   });
 
-  it("supports keyboard-friendly note saving, collection assignment, and archive restore", async () => {
+  it("supports keyboard-friendly note saving and archive restore", async () => {
     const user = userEvent.setup();
     render(<ReaderKnowledgePrototype fixture={readerKnowledgeFixture} />);
     const note = screen.getByRole("textbox", { name: "Item note" });
@@ -20,8 +20,6 @@ describe("ReaderKnowledgePrototype", () => {
     await user.type(note, "Decision note");
     await user.click(screen.getByRole("button", { name: /Save note/ }));
     expect(screen.getByText(/Saved locally/)).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Leadership" }));
-    expect(screen.getByRole("checkbox", { name: "Leadership" })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Archive item" }));
     expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
   });

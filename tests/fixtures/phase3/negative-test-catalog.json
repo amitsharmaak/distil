@@ -22,16 +22,6 @@
       "delivery": "wave-1-gate"
     },
     {
-      "id": "P3-ROUTE-002",
-      "layer": "route",
-      "surface": "nested collection item routes",
-      "threat": "mixed-tenant parent and child identifiers",
-      "setup": "Create a collection for alpha and an item for beta.",
-      "attack": "Attach beta's item to alpha's collection, and try the inverse combination.",
-      "expected": "Reject both combinations without revealing which identifier belongs to another tenant.",
-      "delivery": "wave-1-gate"
-    },
-    {
       "id": "P3-REPO-001",
       "layer": "repository",
       "surface": "all tenant repository reads and mutations",

@@ -21,7 +21,6 @@ const SAFE_FIELDS = new Set([
   "sessionId",
   "captureId",
   "itemId",
-  "collectionId",
   "jobId",
   "exportId",
   "deletionId",

@@ -38,11 +38,6 @@ function repositories(list: jest.Mock) {
   return {
     feed: { list },
     digestExperience: { getPreferences: jest.fn() },
-    collections: {
-      list: jest
-        .fn()
-        .mockResolvedValue([{ id: "c1", name: "Reading list", createdAt: "", updatedAt: "" }]),
-    },
   };
 }
 
@@ -78,7 +73,6 @@ describe("server-rendered Today page", () => {
       key: "sections",
       mode: "sections",
       topics: [],
-      collections: [{ id: "c1", name: "Reading list" }],
       sections: {
         priority: [
           expect.objectContaining({
@@ -150,7 +144,6 @@ describe("server-rendered Today page", () => {
       results: [expect.objectContaining({ id: "hit", href: "/feed/hit" })],
       hasMore: true,
       topics: ["infra"],
-      collections: [{ id: "c1", name: "Reading list" }],
     });
   });
 

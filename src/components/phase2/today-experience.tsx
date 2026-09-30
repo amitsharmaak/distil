@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState, useTransition } from "react";
+import { startTransition, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
@@ -28,10 +28,8 @@ type FeedResponse = {
   error?: { message?: string };
 };
 
-type Collection = { id: string; name: string };
-
-/** What the server page hands over: the view for its URL and the collection names. */
-export type TodayInitial = TodayView & { collections: Collection[] };
+/** What the server page hands over for its URL. */
+export type TodayInitial = TodayView;
 
 async function getFeed(query: URLSearchParams): Promise<FeedResponse> {
   const response = await fetch(`/api/v1/feed?${query.toString()}`);
@@ -74,7 +72,6 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
   const serverView = initial && initial.key === viewKey ? initial : null;
 
   const [view, setView] = useState<TodayView | null>(serverView);
-  const [collections, setCollections] = useState<Collection[]>(initial?.collections ?? []);
   const [error, setError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
   const [isPending, startNavigation] = useTransition();
@@ -84,7 +81,6 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
     if (!serverView) return;
     startTransition(() => {
       setView(serverView);
-      setCollections(serverView.collections);
       setError(null);
     });
   }, [serverView]);
@@ -114,28 +110,6 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsFetch, viewKey]);
 
-  const hasInitial = Boolean(initial);
-  useEffect(() => {
-    if (hasInitial) return;
-    let cancelled = false;
-    fetch("/api/v1/collections")
-      .then((res) => res.json())
-      .then((data: { collections?: Collection[] }) => {
-        if (!cancelled) setCollections(data.collections ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setCollections([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasInitial]);
-
-  const collectionNames = useMemo(
-    () => Object.fromEntries(collections.map(({ id, name }) => [id, name])),
-    [collections]
-  );
-
   const replaceFilters = (updates: FilterUpdates) => {
     startNavigation(() => {
       router.replace(filtersUrl("/", searchParams, updates), { scroll: false });
@@ -147,16 +121,14 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
       filters={filters}
       onChange={replaceFilters}
       onSearchDraftChange={setSearchDraft}
-      collectionNames={collectionNames}
       placeholder="Search unread"
       leading={<TodayHeading />}
       sheet={
         <FeedFilterSheet
           filters={filters}
           onChange={replaceFilters}
-          activeCount={activeFilterChips(filters, collectionNames).length}
+          activeCount={activeFilterChips(filters).length}
           topicOptions={view?.topics ?? []}
-          collectionOptions={collections}
           unreadQueue
           showSort={filtered}
         />

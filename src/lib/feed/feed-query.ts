@@ -19,7 +19,6 @@ export interface FeedFilters {
   sources?: string[];
   contentTypes?: string[];
   priorities?: Priority[];
-  collectionIds?: string[];
   dateFrom?: string;
   dateTo?: string;
   /** Free text matched against title, author, publication, summary and topics. */
@@ -67,8 +66,6 @@ export interface ResurfacingCandidate extends Pick<
   ContentItem,
   "isRead" | "archivedAt" | "lastOpenedAt" | "processingStatus"
 > {
-  /** A manually saved collection is an intentional signal to revisit. */
-  isInCollection: boolean;
   lastResurfacedAt?: string;
   lastDismissedAt?: string;
 }
@@ -81,7 +78,7 @@ export type ResurfacingEligibility =
         | "archived"
         | "not_ready"
         | "not_stale"
-        | "not_unread_or_saved"
+        | "already_read"
         | "resurfacing_cooldown"
         | "dismissal_cooldown";
     };
@@ -104,8 +101,8 @@ export function resurfacingEligibility(
   ) {
     return { eligible: false, reason: "not_stale" };
   }
-  if (candidate.isRead && !candidate.isInCollection) {
-    return { eligible: false, reason: "not_unread_or_saved" };
+  if (candidate.isRead) {
+    return { eligible: false, reason: "already_read" };
   }
   if (
     candidate.lastDismissedAt &&
@@ -379,12 +376,6 @@ export class PostgresFeedQuery {
       conditions.push(
         this.sql`COALESCE(i.manual_priority, i.priority) = ANY(${this.sql.array(query.priorities)})`
       );
-    if (query.collectionIds?.length)
-      conditions.push(this.sql`EXISTS (
-        SELECT 1 FROM collection_items ci
-        WHERE ci.user_id=${this.context.userId}::uuid
-          AND ci.item_id=i.id AND ci.collection_id = ANY(${this.sql.array(query.collectionIds)})
-      )`);
     if (query.dateFrom) conditions.push(this.sql`i.created_at >= ${query.dateFrom}`);
     if (query.dateTo) conditions.push(this.sql`i.created_at <= ${query.dateTo}`);
     // feed_search_vector and site come from the feed-search tenant stage; they are
@@ -441,7 +432,6 @@ export class PostgresFeedQuery {
                     THEN CASE WHEN (e.metadata->>'rating')::integer > 0 THEN 3 ELSE -3 END
                   ELSE 1
                 END
-                WHEN 'collection_added' THEN 2
                 WHEN 'completed' THEN 3
                 WHEN 'archived' THEN -2
                 ELSE 0
@@ -451,7 +441,7 @@ export class PostgresFeedQuery {
             JOIN items signal ON signal.user_id=e.user_id AND signal.id=e.item_id
             WHERE e.user_id=${this.context.userId}::uuid
               AND signal.user_id=${this.context.userId}::uuid
-              AND e.event_type IN ('feedback_recorded','collection_added','completed','archived')
+              AND e.event_type IN ('feedback_recorded','completed','archived')
               AND (
                 signal.source_type=i.source_type
                 OR (i.author IS NOT NULL AND signal.author=i.author)

@@ -27,19 +27,13 @@ function fakeRepositories(items: Array<{ id: string; title: string }>) {
     digestExperience: {
       getPreferences: jest.fn().mockResolvedValue({ personalizationEnabled: true }),
     },
-    collections: {
-      list: jest.fn().mockResolvedValue([
-        { id: "c1", name: "Reading list", createdAt: "", updatedAt: "" },
-        { id: "c2", name: "Later", createdAt: "", updatedAt: "" },
-      ]),
-    },
   };
 }
 
 describe("server-rendered /feed page", () => {
   afterEach(() => jest.clearAllMocks());
 
-  it("runs the feed and collection reads on one tenant repository set and hands them to the island", async () => {
+  it("runs the feed read on one tenant repository set and hands it to the island", async () => {
     const repositories = fakeRepositories([{ id: "item-1", title: "First" }]);
     loadPageData.mockImplementation(async (_route: string, operation: (r: unknown) => unknown) =>
       operation(repositories)
@@ -65,10 +59,6 @@ describe("server-rendered /feed page", () => {
       key: "archive=exclude&sort=for_you&limit=100&read=false&source=gmail&priority=high&priority=low",
       items: [{ id: "item-1", title: "First" }],
       nextCursor: "cursor-2",
-      collections: [
-        { id: "c1", name: "Reading list" },
-        { id: "c2", name: "Later" },
-      ],
     });
   });
 

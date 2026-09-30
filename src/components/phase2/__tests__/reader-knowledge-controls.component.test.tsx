@@ -22,15 +22,11 @@ describe("ReaderKnowledgeControls", () => {
         );
       if (path.endsWith("/note") && !init?.method)
         return Promise.resolve(ok({ note: { body: "Keep this" } }));
-      if (path.endsWith("/collections"))
-        return Promise.resolve(ok({ collections: [{ id: "product", name: "Product" }] }));
-      if (path.endsWith("/collections/product"))
-        return Promise.resolve(ok({ collection: { id: "product", name: "Product" }, items: [] }));
       return Promise.resolve(ok({ item: { archivedAt: undefined } }));
     });
   });
 
-  it("loads note, state, and memberships then saves an edited note", async () => {
+  it("loads note and state then saves an edited note", async () => {
     render(<ReaderKnowledgeControls itemId="item-1" />);
     const note = await screen.findByLabelText("Item note");
     expect(note).toHaveValue("Keep this");
@@ -59,7 +55,6 @@ describe("ReaderKnowledgeControls", () => {
           })
         );
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
-      if (path.endsWith("/collections")) return Promise.resolve(ok({ collections: [] }));
       return Promise.resolve(ok({}));
     });
     render(<ReaderKnowledgeControls itemId="item-1" />);
@@ -79,10 +74,6 @@ describe("ReaderKnowledgeControls", () => {
           })
         );
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
-      if (path.endsWith("/collections/product"))
-        return Promise.resolve(ok({ collection: { id: "product", name: "Product" }, items: [] }));
-      if (path.endsWith("/collections"))
-        return Promise.resolve(ok({ collections: [{ id: "product", name: "Product" }] }));
       if (init?.method === "PATCH") return Promise.resolve(ok({ item: { archivedAt: undefined } }));
       return Promise.resolve(ok({}));
     });
@@ -112,7 +103,6 @@ describe("ReaderKnowledgeControls", () => {
         );
       if (path.endsWith("/note") && !init?.method)
         return Promise.resolve(ok({ note: { body: "Keep this" } }));
-      if (path.endsWith("/collections")) return Promise.resolve(ok({ collections: [] }));
       if (init?.method === "DELETE" && !deleteAttempt) {
         deleteAttempt = true;
         return Promise.resolve({
@@ -132,41 +122,6 @@ describe("ReaderKnowledgeControls", () => {
     expect(await screen.findByText("Note saved")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("Note deleted")).toBeInTheDocument();
-  });
-
-  it("updates collection membership and rolls back a failed toggle", async () => {
-    let putAttempt = true;
-    jest.mocked(global.fetch).mockImplementation((url, init) => {
-      const path = String(url);
-      if (path.endsWith("/state") && !init?.method)
-        return Promise.resolve(
-          ok({
-            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          })
-        );
-      if (path.endsWith("/note") && !init?.method) return Promise.resolve(ok({ note: null }));
-      if (path.endsWith("/collections/product"))
-        return Promise.resolve(ok({ collection: { id: "product", name: "Product" }, items: [] }));
-      if (path.endsWith("/collections") && !init?.method)
-        return Promise.resolve(ok({ collections: [{ id: "product", name: "Product" }] }));
-      if (init?.method === "PUT" && putAttempt) {
-        putAttempt = false;
-        return Promise.resolve(ok({}));
-      }
-      if (init?.method === "DELETE")
-        return Promise.resolve({
-          ok: false,
-          json: jest.fn().mockResolvedValue({ error: { message: "Membership failed" } }),
-        } as unknown as Response);
-      return Promise.resolve(ok({}));
-    });
-    render(<ReaderKnowledgeControls itemId="item-1" />);
-    const checkbox = await screen.findByRole("checkbox", { name: "Product" });
-    fireEvent.click(checkbox);
-    await screen.findByText("Added to collection");
-    fireEvent.click(checkbox);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Membership failed");
-    expect(checkbox).toBeChecked();
   });
 
   it("surfaces control load errors", async () => {

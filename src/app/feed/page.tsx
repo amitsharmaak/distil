@@ -2,9 +2,9 @@
  * Feed page — server-rendered with its first page of data.
  *
  * The first HTML already contains the items: the page parses the URL through
- * the same schema as `GET /api/v1/feed`, runs one tenant transaction for the
- * feed page and the collection names, and hands both to the `FeedList` client
- * island. Filter changes are `router.replace` navigations (the server renders
+ * the same schema as `GET /api/v1/feed`, loads that page in one tenant
+ * transaction, and hands it to the `FeedList` client island. Filter changes
+ * are `router.replace` navigations (the server renders
  * the new page); load-more and the processing-status poll stay in the island
  * against the API. Search (`?q=`) renders on the server like any other filter;
  * an environment without a server-side user renders the island without data,
@@ -31,19 +31,14 @@ async function loadInitialPage(params: SearchParams): Promise<FeedInitialPage | 
   const parsed = parseFeedQuery(feedRequestSearch(state, state.cursor));
   if (!parsed.ok) return null;
   const flags = readPhase2FeatureFlags();
-  const loaded = await loadPageData("/feed", async (repositories) => {
-    const [page, collections] = await Promise.all([
-      loadFeedPage(repositories, parsed.data, { personalization: flags.personalization }),
-      repositories.collections.list(),
-    ]);
-    return { page, collections };
-  });
+  const loaded = await loadPageData("/feed", (repositories) =>
+    loadFeedPage(repositories, parsed.data, { personalization: flags.personalization })
+  );
   if (!loaded) return null;
   return {
     key: feedFilterKey(state),
-    items: loaded.page.items,
-    nextCursor: loaded.page.nextCursor,
-    collections: loaded.collections.map(({ id, name }) => ({ id, name })),
+    items: loaded.items,
+    nextCursor: loaded.nextCursor,
   };
 }
 

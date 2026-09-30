@@ -55,7 +55,6 @@ export interface FeedFilterState {
   contentTypes: ContentType[];
   priorities: Priority[];
   topics: string[];
-  collections: string[];
   /** URL hosts (`site`), e.g. `x.com`. */
   sites: string[];
   /** Effective life areas (`area`); empty means every area. */
@@ -85,7 +84,6 @@ export function feedFilterState(input: FeedSearchInput): FeedFilterState {
     contentTypes: multiValue(params, "contentType") as ContentType[],
     priorities: multiValue(params, "priority") as Priority[],
     topics: multiValue(params, "topic"),
-    collections: multiValue(params, "collection"),
     sites: multiValue(params, "site").map((site) => site.toLowerCase()),
     areas: multiValue(params, "area").filter((area): area is LifeArea =>
       (LIFE_AREAS as readonly string[]).includes(area)
@@ -111,7 +109,6 @@ export function feedRequestSearch(state: FeedFilterState, cursor?: string): URLS
   state.sources.forEach((source) => query.append("source", source));
   state.contentTypes.forEach((type) => query.append("contentType", type));
   state.priorities.forEach((priority) => query.append("priority", priority));
-  state.collections.forEach((collection) => query.append("collection", collection));
   state.sites.forEach((site) => query.append("site", site));
   state.areas.forEach((area) => query.append("area", area));
   if (state.dateFrom) query.set("dateFrom", dateQueryValue(state.dateFrom));

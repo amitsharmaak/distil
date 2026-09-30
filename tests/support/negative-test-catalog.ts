@@ -41,7 +41,6 @@ export const REQUIRED_NEGATIVE_TEST_IDS = [
   "P3-SESSION-001",
   "P3-OAUTH-001",
   "P3-ROUTE-001",
-  "P3-ROUTE-002",
   "P3-REPO-001",
   "P3-DB-001",
   "P3-DB-002",

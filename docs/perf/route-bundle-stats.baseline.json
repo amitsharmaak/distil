@@ -1,116 +1,96 @@
 {
-  "generatedAt": "2026-09-17T05:13:24.213Z",
+  "generatedAt": "2026-09-30T08:26:28.274Z",
   "note": "npm run build && npm run perf:bundle -- --write",
   "routes": {
     "/": {
-      "rawBytes": 574359,
-      "gzipBytes": 176615,
+      "rawBytes": 576530,
+      "gzipBytes": 175916,
       "chunks": 10
     },
     "/_not-found": {
-      "rawBytes": 566780,
-      "gzipBytes": 173358,
-      "chunks": 9
+      "rawBytes": 460755,
+      "gzipBytes": 136004,
+      "chunks": 6
     },
     "/access-denied": {
-      "rawBytes": 566780,
-      "gzipBytes": 173358,
-      "chunks": 9
+      "rawBytes": 469650,
+      "gzipBytes": 139627,
+      "chunks": 7
     },
     "/account": {
-      "rawBytes": 591039,
-      "gzipBytes": 179732,
-      "chunks": 10
+      "rawBytes": 518111,
+      "gzipBytes": 153269,
+      "chunks": 8
     },
     "/archive": {
-      "rawBytes": 580902,
-      "gzipBytes": 177550,
-      "chunks": 10
-    },
-    "/collections": {
-      "rawBytes": 580902,
-      "gzipBytes": 177550,
-      "chunks": 10
-    },
-    "/collections/[id]": {
-      "rawBytes": 580902,
-      "gzipBytes": 177550,
-      "chunks": 10
+      "rawBytes": 505598,
+      "gzipBytes": 151727,
+      "chunks": 8
     },
     "/digests": {
-      "rawBytes": 582889,
-      "gzipBytes": 178242,
-      "chunks": 10
+      "rawBytes": 519147,
+      "gzipBytes": 155508,
+      "chunks": 8
     },
     "/feed": {
-      "rawBytes": 616946,
-      "gzipBytes": 190573,
-      "chunks": 11
+      "rawBytes": 639026,
+      "gzipBytes": 197918,
+      "chunks": 12
     },
     "/feed/[id]": {
-      "rawBytes": 969110,
-      "gzipBytes": 308240,
+      "rawBytes": 614491,
+      "gzipBytes": 188665,
       "chunks": 13
     },
     "/invite": {
-      "rawBytes": 568775,
-      "gzipBytes": 174420,
-      "chunks": 10
+      "rawBytes": 463359,
+      "gzipBytes": 137335,
+      "chunks": 7
     },
     "/login": {
-      "rawBytes": 570030,
-      "gzipBytes": 174972,
-      "chunks": 10
+      "rawBytes": 513101,
+      "gzipBytes": 153854,
+      "chunks": 8
     },
     "/onboarding": {
-      "rawBytes": 591039,
-      "gzipBytes": 179732,
-      "chunks": 10
+      "rawBytes": 518111,
+      "gzipBytes": 153269,
+      "chunks": 8
     },
     "/research": {
-      "rawBytes": 605208,
-      "gzipBytes": 186301,
-      "chunks": 11
+      "rawBytes": 554000,
+      "gzipBytes": 167464,
+      "chunks": 10
     },
     "/research/[id]": {
-      "rawBytes": 747571,
-      "gzipBytes": 229118,
-      "chunks": 12
+      "rawBytes": 584018,
+      "gzipBytes": 179218,
+      "chunks": 11
     },
     "/reset-password": {
-      "rawBytes": 571368,
-      "gzipBytes": 175100,
-      "chunks": 10
+      "rawBytes": 497359,
+      "gzipBytes": 148172,
+      "chunks": 8
     },
     "/save": {
-      "rawBytes": 578409,
-      "gzipBytes": 177137,
-      "chunks": 10
+      "rawBytes": 515632,
+      "gzipBytes": 154044,
+      "chunks": 8
     },
     "/search": {
-      "rawBytes": 582527,
-      "gzipBytes": 178524,
-      "chunks": 10
+      "rawBytes": 460755,
+      "gzipBytes": 136004,
+      "chunks": 6
     },
     "/settings": {
-      "rawBytes": 586144,
-      "gzipBytes": 179812,
-      "chunks": 10
+      "rawBytes": 536275,
+      "gzipBytes": 161531,
+      "chunks": 9
     },
     "/sign-in": {
-      "rawBytes": 570292,
-      "gzipBytes": 174884,
-      "chunks": 10
-    },
-    "/sources": {
-      "rawBytes": 618954,
-      "gzipBytes": 189282,
-      "chunks": 11
-    },
-    "/topics": {
-      "rawBytes": 610225,
-      "gzipBytes": 188635,
-      "chunks": 11
+      "rawBytes": 495982,
+      "gzipBytes": 147831,
+      "chunks": 8
     }
   }
 }

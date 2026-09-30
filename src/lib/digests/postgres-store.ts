@@ -235,8 +235,7 @@ export class PostgresDigestStore implements DigestStore {
       SELECT id,title,summary,priority,manual_priority,created_at FROM items i
       WHERE i.user_id=${this.context.userId}::uuid
         AND i.processing_status='ready' AND i.archived_at IS NULL
-        AND (NOT i.is_read OR EXISTS (SELECT 1 FROM collection_items ci
-          WHERE ci.user_id=${this.context.userId}::uuid AND ci.item_id=i.id))
+        AND NOT i.is_read
         AND i.last_opened_at <= now() - interval '14 days'
         AND NOT EXISTS (SELECT 1 FROM digest_items di
           WHERE di.user_id=${this.context.userId}::uuid AND di.item_id=i.id)

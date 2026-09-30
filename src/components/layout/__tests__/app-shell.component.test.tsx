@@ -97,6 +97,5 @@ describe("AppShell", () => {
     expect(isReaderPath("/feed")).toBe(false);
     expect(isReaderPath("/feed/")).toBe(false);
     expect(isReaderPath("/feed/abc/extra")).toBe(false);
-    expect(isReaderPath("/collections/abc")).toBe(false);
   });
 });

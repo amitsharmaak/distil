@@ -106,7 +106,7 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `repositories.passages`). `content_chunks` and chunking at capture remain.
 - **Product surfaces (`src/app/`):** `/` Today's brief, `/feed` (search field and Filters sheet
   in its header) and `/feed/[id]` reader, `/search` (redirects to `/feed` with the same query),
-  `/collections`, `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
+  `/archive`, `/digests`, `/save`, `/settings`, `/account`, `/onboarding`,
   `/invite`, `/login`, and `/research` + `/research/[id]` (deep research: desktop sidebar link,
   Settings → Library link on mobile, and the flask button in the reader action bar; routes under
   `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were deleted in
