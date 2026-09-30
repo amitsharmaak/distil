@@ -475,6 +475,58 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Performance P9: 60-second read-only provider session cache — 2026-09-30
+
+P9 is implemented on `codex/perf-p9-session-cache` in worktree
+`.codex-worktrees/perf-p9-session-cache`. It started from `origin/main` `1d2831a` (the released P8
+commit), produced implementation commit `0e713bf`, then merged the concurrent F7 release at
+`6901bc9` without rebasing. Correctness-review commit `5eb4697` added local HS256 verification
+before the fast path, then current `origin/main` `02759a9` (P10) was merged without rebasing;
+branch HEAD before this checkpoint update was `0ad5e00`.
+
+Neon Auth's signed `session_data` cookie now has Amit's chosen 60-second TTL. Only ordinary
+`GET`/`HEAD` page and RSC requests with a valid signed cookie whose `iat`/`exp` lifetime is at most
+60 seconds let the SDK validate and use that cache. Pre-release 300-second cookies go directly
+through one uncached check and are refreshed under the new TTL. Whenever proxy session
+verification applies, every non-GET request, every
+`/api/*` path (including auth, captures, capture-token and lifecycle APIs), and `/account` stays
+on `disableCookieCache=true`; the existing public and specialized-auth bypasses are unchanged. A
+missing, expired or malformed cache goes straight to the same single uncached SDK handler call
+instead of entering its reactive-mint path. The provider result still feeds the existing one-shot
+proxy adapter, refreshed `Set-Cookie` headers still reach both allowed and denied responses, and
+the origin/CSRF check remains before provider and account resolution. Identity-token, internal
+account-status, deletion-pending recovery and fail-closed behavior are unchanged.
+
+**Security trade-off:** after sign-out on another device or provider-side revocation, an ordinary
+read-only page/RSC request can continue for at most 60 seconds. Mutations, API reads and writes,
+the Account shell and all lifecycle-sensitive operations continue to observe provider revocation
+on their next request. P9 validates the cookie's HS256 signature, JWT header, payload shape and
+issuance time, expiry and at-most-60-second lifetime before selecting cached mode; the SDK validates
+it again before returning the session. A well-shaped token with a fresh expiry but the wrong
+signature, or a correctly signed legacy 300-second token, is routed directly to one
+`disableCookieCache=true` handler call, avoiding the SDK's two-fetch reactive-mint path.
+
+**Locally verified:** focused auth and frozen-boundary coverage passed (5 suites, 84 tests), the
+final security suite passed (42 suites, 419 tests), and `npm run check` after merging R3 and adding
+the legacy-cookie lifetime guard passed (lint with the five existing warnings and zero errors,
+typecheck, 234 suites / 1,898 tests).
+The first full run correctly failed only because the reviewed `src/lib/auth/neon-proxy.ts` digest
+changed with the policy comments; the 15 centrally protected mutation surfaces and their ordering
+were re-reviewed, the frozen digest was updated, and no route inventory, surface count or
+authorization-matrix entry changed.
+
+**Gaps and remaining gates:** no Preview or Production request was made here. The deterministic
+handler fixture plus WebCrypto-signed tokens prove cache/uncached selection rather than contacting
+Neon Auth. Codex, as integration owner, must review the diff, push/open the auth-boundary PR with
+`full-ci`, read a
+Preview deployment (four warm `/feed` RSC samples, four warm `GET /api/v1/feed` controls, plus one
+sample after at least six idle minutes), and confirm that ordinary page/RSC requests lose the
+80–250 ms `proxy-auth-provider` phase while API controls still perform exactly one uncached
+provider check. After green Quick/Full/Vercel gates, Codex may use Amit's recorded authorization
+to squash-merge, verify the Production deployment and `/api/health`, repeat the live readings,
+then record merge/deployment evidence separately. No Vercel/Neon setting, environment variable,
+migration, merge or deployment was changed by this implementation task.
+
 ### Deep research R3: adaptive, deeper report — 2026-09-30
 
 **Scope: engine (plus the stepper).** Branch `claude/research-r3-adaptive` from `origin/main`
