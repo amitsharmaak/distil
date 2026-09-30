@@ -8,7 +8,12 @@ jest.mock("@anthropic-ai/sdk", () => ({
   __esModule: true,
   default: jest.fn(() => ({ messages: { create: mockAnthropicCreate } })),
 }));
-import { AnthropicProviderImpl, GeminiProviderImpl, parseGroundingSources } from "../providers";
+import {
+  AnthropicProviderImpl,
+  GeminiProviderImpl,
+  geminiText,
+  parseGroundingSources,
+} from "../providers";
 import { AIProviderError, classifyProviderFailure } from "../errors";
 import { sanitizeLogError } from "@/lib/logger";
 beforeEach(() => {
@@ -134,6 +139,55 @@ it("returns grounding chunks with the grounded answer, de-duplicated and validat
     ],
   });
   expect(mockGenerateContent).toHaveBeenCalledWith("synthetic", { timeout: 45_000 });
+});
+it("rejects a Gemini answer cut off at the token limit when asked to", async () => {
+  const truncated = {
+    response: {
+      text: () => " tail of reasoning [1].",
+      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: " tail" }] } }],
+    },
+  };
+  mockGenerateContent.mockResolvedValue(truncated);
+  await expect(
+    new GeminiProviderImpl("key").generateText("synthetic", "model", {
+      maxTokens: 12_000,
+      rejectTruncated: true,
+    })
+  ).rejects.toMatchObject({ category: "invalid_output" });
+  expect(mockGetModel).toHaveBeenCalledWith(
+    expect.objectContaining({
+      generationConfig: expect.objectContaining({ maxOutputTokens: 12_000 }),
+    })
+  );
+  // Without the flag the text is returned as before.
+  await expect(
+    new GeminiProviderImpl("key").generateText("synthetic", "model")
+  ).resolves.toMatchObject({ value: " tail of reasoning [1]." });
+});
+it("rejects an Anthropic answer stopped at max_tokens when asked to", async () => {
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "partial" }],
+    stop_reason: "max_tokens",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+  await expect(
+    new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6", {
+      rejectTruncated: true,
+    })
+  ).rejects.toMatchObject({ category: "invalid_output" });
+  await expect(
+    new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6")
+  ).resolves.toMatchObject({ value: "partial" });
+});
+it("excludes thought parts from Gemini answer text", () => {
+  const parts = [{ text: "planning…", thought: true }, { text: "## Report" }, { text: "\nBody" }];
+  expect(
+    geminiText({
+      text: () => parts.map((part) => part.text).join(""),
+      candidates: [{ content: { parts } }],
+    })
+  ).toBe("## Report\nBody");
+  expect(geminiText({ text: () => "plain" })).toBe("plain");
 });
 it("returns no sources when the grounded answer carries no grounding metadata", async () => {
   mockGenerateContent.mockResolvedValue({ response: { text: () => "memory notes" } });

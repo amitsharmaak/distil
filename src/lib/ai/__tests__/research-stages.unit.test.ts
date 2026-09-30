@@ -5,6 +5,8 @@ jest.mock("../router", () => ({
 }));
 
 import {
+  assertCompleteReport,
+  IncompleteReportError,
   failStaleReport,
   MAX_STAGE_ATTEMPTS,
   nextResearchStage,
@@ -90,7 +92,7 @@ function createAI(overrides: Partial<ResearchAI> = {}): jest.Mocked<ResearchAI> 
   return {
     generateText: jest.fn(async (_prompt: string, task: string) => {
       if (task === "research-plan") return JSON.stringify(["Q1", "Q2"]);
-      if (task === "research-synthesize") return "# Report";
+      if (task === "research-synthesize") return "## Report";
       return "text";
     }),
     generateJSON: jest.fn(async () => ({ gaps: ["Gap A"] })),
@@ -230,24 +232,31 @@ describe("runResearchStage", () => {
 
     // Synthesis cites [2] first, then [1]; [9] is not in the source list.
     ai.generateText.mockResolvedValueOnce(
-      "# Report\n\nOn Q2 [2]. Both [1, 2]. Unknown [9]. Gap [3]."
+      "## Report\n\nOn Q2 [2]. Both [1, 2]. Unknown [9]. Gap [3]."
     );
     await expect(run()).resolves.toEqual({
       outcome: "ran",
       stage: { kind: "synthesize" },
       next: null,
     });
-    const synthesizePrompt = ai.generateText.mock.calls.at(-1)?.[0] ?? "";
-    expect(synthesizePrompt).toContain("## Q1");
+    const synthesizeCall = ai.generateText.mock.calls.at(-1)!;
+    const synthesizePrompt = synthesizeCall[0];
+    expect(synthesizeCall[2]).toEqual({
+      timeoutMs: 50_000,
+      maxTokens: 12_000,
+      rejectTruncated: true,
+    });
+    expect(synthesizePrompt).toContain("## Q1\n\nSources: [1] About Q1 — example.com\n\n- Fact");
+    expect(synthesizePrompt).toContain("## Q2\n\nSources: [2] About Q2 — example.com");
     expect(synthesizePrompt).toContain("## Additional Deepening");
-    expect(synthesizePrompt).toContain("[1] About Q1 — example.com");
-    expect(synthesizePrompt).toContain("[3] About Gap A — example.com");
-    expect(synthesizePrompt).toContain("Sources for this section: [2]");
+    expect(synthesizePrompt).toContain("Sources: [3] About Gap A — example.com");
+    expect(synthesizePrompt).not.toContain("## Numbered Sources");
+    expect(synthesizePrompt).toContain('Begin directly with the line "## Executive Summary"');
     expect(synthesizePrompt).not.toContain("```sources");
     expect(synthesizePrompt).not.toContain("inline source links");
     const final = reports.get(id)!;
     expect(final.status).toBe("completed");
-    expect(final.report).toBe("# Report\n\nOn Q2 [1]. Both [2][1]. Unknown. Gap [3].");
+    expect(final.report).toBe("## Report\n\nOn Q2 [1]. Both [2][1]. Unknown. Gap [3].");
     expect(final.progress).toBeNull();
     expect(JSON.parse(final.sources)).toEqual<ResearchSource[]>([
       {
@@ -366,11 +375,11 @@ describe("runResearchStage", () => {
       status: "running",
       progress: JSON.stringify(legacy),
     });
-    const ai = createAI({ generateText: jest.fn().mockResolvedValue("Claim [2].") });
+    const ai = createAI({ generateText: jest.fn().mockResolvedValue("## R\nClaim [2].") });
     await runResearchStage({ context, repositories, reportId: id, ai });
     const report = reports.get(id)!;
     expect(report.status).toBe("completed");
-    expect(report.report).toBe("Claim [1].");
+    expect(report.report).toBe("## R\nClaim [1].");
     expect(JSON.parse(report.sources)).toEqual([
       {
         id: 1,
@@ -388,7 +397,7 @@ describe("runResearchStage", () => {
     const redirect = `https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC123`;
     const ai = createAI({
       generateText: jest.fn(async (_prompt: string, task: string) =>
-        task === "research-plan" ? JSON.stringify(["Q1"]) : "Grounded claim [1]."
+        task === "research-plan" ? JSON.stringify(["Q1"]) : "## R\nGrounded claim [1]."
       ),
       generateJSON: jest.fn().mockResolvedValue({ gaps: [] }),
       generateTextWithSearch: jest.fn(async () => ({
@@ -516,6 +525,77 @@ describe("runResearchStage", () => {
       stage: { kind: "gaps" },
       next: { kind: "synthesize" },
     });
+  });
+
+  it("retries instead of storing a synthesis answer without a heading", async () => {
+    const { repositories, reports } = createRepositories();
+    const { id } = await seedReport(repositories);
+    const synthesizing: ResearchRunState = {
+      version: 2,
+      updatedAt: "2026-09-30T10:01:00.000Z",
+      view: { stage: "synthesizing" },
+      subQuestions: ["Q1"],
+      findings: [finding("Q1", "done", [{ url: "https://a.example/x", title: "A" }])],
+      gaps: [],
+      deepening: [],
+      attempts: {},
+    };
+    await repositories.research.updateReport(id, {
+      status: "running",
+      progress: JSON.stringify(synthesizing),
+    });
+    // Shaped like live run 79e2f8cc: the cut-off tail of the model's reasoning.
+    const reasoningTail =
+      " Core...\" [1].\n    *   (Wait, where did [2] come from? Let's match the numbered sources";
+    const ai = createAI({
+      generateText: jest
+        .fn()
+        .mockResolvedValueOnce(reasoningTail)
+        .mockResolvedValueOnce("## Executive Summary\n\nDone [1]."),
+    });
+
+    await expect(
+      runResearchStage({ context, repositories, reportId: id, ai })
+    ).rejects.toBeInstanceOf(ResearchStageRetryError);
+    expect(reports.get(id)!.status).toBe("running");
+    expect(reports.get(id)!.report).toBe("");
+    expect(parseResearchRunState(reports.get(id)?.progress, "").attempts).toEqual({
+      synthesize: 1,
+    });
+
+    await runResearchStage({ context, repositories, reportId: id, ai });
+    expect(reports.get(id)!.status).toBe("completed");
+    expect(reports.get(id)!.report).toBe("## Executive Summary\n\nDone [1].");
+  });
+
+  it("fails the report rather than storing garbage once headless answers exhaust the attempts", async () => {
+    const { repositories, reports } = createRepositories();
+    const { id } = await seedReport(repositories);
+    await repositories.research.updateReport(id, {
+      status: "running",
+      progress: JSON.stringify({
+        version: 2,
+        updatedAt: "2026-09-30T10:01:00.000Z",
+        view: { stage: "synthesizing" },
+        subQuestions: ["Q1"],
+        findings: [finding("Q1")],
+        gaps: [],
+        deepening: [],
+        attempts: { synthesize: MAX_STAGE_ATTEMPTS - 1 },
+      } satisfies ResearchRunState),
+    });
+    const ai = createAI({ generateText: jest.fn().mockResolvedValue("# Title only\nno sections") });
+    await runResearchStage({ context, repositories, reportId: id, ai });
+    expect(reports.get(id)!.status).toBe("failed");
+    expect(reports.get(id)!.report).toContain("incomplete report");
+  });
+
+  it("recognises a finished report by its level-2 heading", () => {
+    expect(() => assertCompleteReport("## Executive Summary\ntext")).not.toThrow();
+    expect(() => assertCompleteReport("Intro\n\n  ## Key Findings\n- x")).not.toThrow();
+    expect(() => assertCompleteReport(" tail of reasoning [1].")).toThrow(IncompleteReportError);
+    expect(() => assertCompleteReport("### Only a subheading")).toThrow(IncompleteReportError);
+    expect(() => assertCompleteReport("##NoSpace")).toThrow(IncompleteReportError);
   });
 
   it("marks the report failed when synthesis exhausts its attempts", async () => {

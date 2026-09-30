@@ -65,9 +65,19 @@ Do not put URLs or links anywhere in the notes; sources are tracked separately.
 ${ungrounded}`;
 }
 
-export function researchSynthesizePrompt(query: string, findings: string, sourceList = ""): string {
-  const citations = sourceList
-    ? `Cite sources only with their bracketed numbers from the numbered source list, placed right after the claim they support, for example "... in 2025 [2]" or "... [1][3]". Only use numbers from the list. Never write URLs or links, and do not add a Sources or References section; the source list is shown separately.`
+/**
+ * Synthesis prompt. `findings` carries each section's numbered sources on a "Sources:" line
+ * right under its heading, so the model cites the number next to the notes it uses instead of
+ * mapping findings onto a separate list (which a thinking model turned into a long reasoning
+ * exercise). The report must start with its first heading; a reply without one is rejected.
+ */
+export function researchSynthesizePrompt(
+  query: string,
+  findings: string,
+  hasSources = false
+): string {
+  const citations = hasSources
+    ? `Cite with the bracketed numbers from the "Sources:" line of the findings section a claim comes from, right after the claim, for example "... in 2025 [2]" or "... [1][3]". Use only numbers that appear in those lines. Never write URLs or links, and do not add a Sources or References section; the source list is shown separately.`
     : `No sources are available for these findings. Do not add citation numbers, URLs or a Sources section.`;
   return `You are a research assistant synthesizing findings into a comprehensive report.
 
@@ -76,18 +86,18 @@ ${query}
 
 ## Research Findings
 ${findings}
-${sourceList ? `\n## Numbered Sources\n${sourceList}\n` : ""}
-## Instructions
-Write a well-structured research report in markdown with:
 
-1. **Executive Summary** — 3-5 sentence overview of key findings
-2. **Key Findings** — organized by theme, keeping the specific facts, figures, dates and named examples from the findings
-3. **Analysis** — connections between findings, implications, and your assessment
-4. **Conclusion** — summary and suggested next steps for the reader
+## Instructions
+Write a well-structured research report in markdown with these four sections, each a level-2 (##) heading:
+
+1. ## Executive Summary — 3-5 sentence overview of key findings
+2. ## Key Findings — organized by theme under ### subheadings, keeping the specific facts, figures, dates and named examples from the findings
+3. ## Analysis — connections between findings, implications, and your assessment
+4. ## Conclusion — summary and suggested next steps for the reader
 
 ${citations}
 
-Use clean, professional markdown formatting. Write for a knowledgeable reader who wants depth but also clarity.`;
+Respond with the finished report only. Begin directly with the line "## Executive Summary". Do not include a title, preamble, notes, planning or reasoning. Write for a knowledgeable reader who wants depth but also clarity.`;
 }
 
 export function researchGapsPrompt(query: string, findings: string): string {

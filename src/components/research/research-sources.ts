@@ -47,7 +47,8 @@ export function domainOf(url: string): string {
  */
 export function shortPath(url: string, maxLength = 40): string {
   const parsed = parseUrl(url);
-  if (!parsed) return "";
+  // An unresolved grounding redirect's path is an opaque token, not the page's path.
+  if (!parsed || isGroundingRedirect(url)) return "";
   const segments = parsed.pathname.split("/").filter(Boolean);
   if (segments.length === 0) return "";
   let decoded: string[];
@@ -78,12 +79,111 @@ function sourceFromObject(value: Record<string, unknown>, index: number): Resear
     typeof value.id === "number" && Number.isFinite(value.id) && value.id > 0
       ? Math.floor(value.id)
       : index + 1;
-  const title = typeof value.title === "string" && value.title.trim() ? value.title.trim() : null;
-  const domain =
+  const storedTitle =
+    typeof value.title === "string" && value.title.trim() ? value.title.trim() : null;
+  let domain =
     typeof value.domain === "string" && value.domain.trim()
       ? value.domain.trim().replace(/^www\./i, "")
       : domainOf(url);
-  return { id, url, title, domain, grounded: value.grounded === true };
+  // An unresolved redirect is only identified by its grounding title (the publisher's domain).
+  if (domain === GROUNDING_REDIRECT_HOST && storedTitle && DOMAIN_LIKE_RE.test(storedTitle)) {
+    domain = storedTitle.toLowerCase().replace(/^www\./, "");
+  }
+  return {
+    id,
+    url,
+    title: displayTitle(storedTitle, url),
+    domain,
+    grounded: value.grounded === true,
+  };
+}
+
+/** Host of Google's grounding redirect links (kept when a redirect could not be resolved). */
+const GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com";
+
+/** True for an unresolved `vertexaisearch.cloud.google.com/grounding-api-redirect/…` link. */
+export function isGroundingRedirect(url: string): boolean {
+  const parsed = parseUrl(url);
+  return (
+    parsed !== null &&
+    parsed.hostname === GROUNDING_REDIRECT_HOST &&
+    parsed.pathname.startsWith("/grounding-api-redirect/")
+  );
+}
+
+const DOMAIN_LIKE_RE = /^(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
+const GENERIC_SEGMENTS = new Set([
+  "abs",
+  "amp",
+  "article",
+  "articles",
+  "blog",
+  "blogs",
+  "default",
+  "doc",
+  "docs",
+  "en",
+  "en-us",
+  "home",
+  "html",
+  "index",
+  "item",
+  "news",
+  "page",
+  "pages",
+  "pdf",
+  "post",
+  "posts",
+  "research",
+  "stories",
+  "story",
+  "www",
+]);
+const MAX_TITLE_LENGTH = 80;
+
+/**
+ * A readable title from the last meaningful path segment of a URL, e.g.
+ * `/research/introducing-third-generation-models` → "Introducing third generation models".
+ * Skips generic segments ("news", "index"), ids without letters and opaque tokens; null when
+ * nothing readable is left or the URL is an unresolved grounding redirect.
+ */
+export function titleFromUrl(url: string): string | null {
+  const parsed = parseUrl(url);
+  if (!parsed || isGroundingRedirect(url)) return null;
+  const segments = parsed.pathname.split("/").filter(Boolean).reverse();
+  for (const raw of segments) {
+    let segment: string;
+    try {
+      segment = decodeURIComponent(raw);
+    } catch {
+      segment = raw;
+    }
+    segment = segment.replace(/\.(?:html?|php|aspx?|jsp)$/i, "").trim();
+    if (GENERIC_SEGMENTS.has(segment.toLowerCase())) continue;
+    if (!/\p{L}/u.test(segment)) continue;
+    const words = segment.split(/[-_+\s]+/).filter(Boolean);
+    const opaque = words.length === 1 && (segment.length > 30 || /\d/.test(segment));
+    if (opaque || segment.length < 4) continue;
+    let title = words.join(" ");
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+    if (title.length > MAX_TITLE_LENGTH) {
+      const cut = title.slice(0, MAX_TITLE_LENGTH - 1);
+      title = `${cut.slice(0, Math.max(cut.lastIndexOf(" "), MAX_TITLE_LENGTH / 2)).trimEnd()}…`;
+    }
+    return title;
+  }
+  return null;
+}
+
+/**
+ * The title to show for a numbered source. Search grounding usually titles a page with its bare
+ * domain ("apple.com"), which says nothing the domain line does not; such titles (and missing
+ * ones) are replaced by a title derived from the URL path, or dropped (null) so the row shows
+ * the domain alone.
+ */
+export function displayTitle(title: string | null, url: string): string | null {
+  if (title && !DOMAIN_LIKE_RE.test(title)) return title;
+  return titleFromUrl(url);
 }
 
 /**

@@ -531,7 +531,7 @@ describe("stored R2 report fixture", () => {
         3,1
       </Link>
     );
-    expect(screen.getByRole("link", { name: "Source 3: c.example" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Source 3: Hybrid — c.example" })).toHaveAttribute(
       "href",
       "#source-3"
     );

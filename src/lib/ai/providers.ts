@@ -18,6 +18,12 @@ export interface GenerateOptions {
   timeoutMs?: number;
   responseSchema?: ResponseSchema;
   maxAttempts?: number;
+  /**
+   * Throw `invalid_output` instead of returning text when the model stopped at the output-token
+   * limit (Gemini `MAX_TOKENS`, OpenAI `length`, Anthropic `max_tokens`). For callers that must
+   * not store a cut-off answer, e.g. a thinking model spending the budget on reasoning.
+   */
+  rejectTruncated?: boolean;
 }
 
 export interface ProviderUsage {
@@ -88,6 +94,24 @@ export function geminiUsage(response: {
   };
 }
 
+/**
+ * Answer text of a Gemini response without thought parts. `response.text()` joins every text
+ * part, including `thought: true` parts a thinking model may return; those are reasoning, not
+ * answer. Falls back to `response.text()` (which also raises on blocked responses).
+ */
+export function geminiText(response: {
+  text(): string;
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+}): string {
+  const all = response.text();
+  const parts = response.candidates?.[0]?.content?.parts;
+  if (!parts?.some((part) => part.thought === true)) return all;
+  return parts
+    .filter((part) => part.thought !== true && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+}
+
 interface GroundingChunkShape {
   web?: { uri?: unknown; title?: unknown };
 }
@@ -143,7 +167,13 @@ export class GeminiProviderImpl implements GeminiProvider {
     const result = await m.generateContent(prompt, {
       timeout: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     });
-    return { value: result.response.text(), usage: geminiUsage(result.response) };
+    if (
+      options?.rejectTruncated &&
+      result.response.candidates?.[0]?.finishReason === "MAX_TOKENS"
+    ) {
+      throw new AIProviderError("invalid_output", this.name, model);
+    }
+    return { value: geminiText(result.response), usage: geminiUsage(result.response) };
   }
 
   async generateJSON<T>(
@@ -244,6 +274,9 @@ export class OpenAIProviderImpl implements AIProvider {
     if (!content) {
       throw new Error("OpenAI returned empty response");
     }
+    if (options?.rejectTruncated && completion.choices[0]?.finish_reason === "length") {
+      throw new AIProviderError("invalid_output", this.name, model);
+    }
     return {
       value: content,
       usage: {
@@ -299,6 +332,9 @@ export class AnthropicProviderImpl implements AIProvider {
     const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {
       throw new Error("Anthropic returned empty response");
+    }
+    if (options?.rejectTruncated && message.stop_reason === "max_tokens") {
+      throw new AIProviderError("invalid_output", this.name, model);
     }
     return {
       value: textBlock.text,

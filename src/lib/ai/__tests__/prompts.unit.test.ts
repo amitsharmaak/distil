@@ -323,11 +323,17 @@ describe("researchSynthesizePrompt", () => {
   });
 
   it("cites by number from the source list and never asks for links", () => {
-    const prompt = researchSynthesizePrompt("query", "findings", "[1] WHO report — who.int");
-    expect(prompt).toContain("## Numbered Sources\n[1] WHO report — who.int");
-    expect(prompt).toContain("bracketed numbers");
+    const prompt = researchSynthesizePrompt("query", "findings", true);
+    expect(prompt).toContain('bracketed numbers from the "Sources:" line');
     expect(prompt).toContain("Never write URLs");
     expect(prompt).not.toMatch(/inline source links|Include source links/);
+  });
+
+  it("asks for the finished report only, starting with its first ## heading", () => {
+    const prompt = researchSynthesizePrompt("query", "findings");
+    expect(prompt).toContain('Begin directly with the line "## Executive Summary"');
+    expect(prompt).toMatch(/Do not include a title, preamble, notes, planning or reasoning/);
+    expect(prompt).toContain("## Key Findings");
   });
 
   it("asks for no citations when there are no sources", () => {

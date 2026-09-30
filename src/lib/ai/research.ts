@@ -29,9 +29,12 @@ import {
   extractRecalledSources,
   finalizeCitations,
   formatSourceList,
+  isGroundingRedirect,
+  MAX_GROUNDING_RESOLUTIONS,
   resolveGroundingRedirects,
   scrapeUrlSources,
   type FindingSource,
+  type SourceCatalog,
 } from "./research-sources";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import {
@@ -64,6 +67,14 @@ export const RESEARCH_TIMEOUTS_MS = {
  * local loop; findings for one sub-question fit comfortably in half that.
  */
 export const RESEARCH_SEARCH_MAX_TOKENS = 2048;
+
+/**
+ * Output budget for synthesis. Thinking models count reasoning against the same budget: on the
+ * provider default (4096) gemini-3.5-flash spent ~3,900 tokens thinking and returned only the
+ * cut-off tail of its reasoning (local run `79e2f8cc`, 2026-09-30). The budget leaves room for
+ * the thinking plus a full report; the 50 s timeout still bounds the call.
+ */
+export const RESEARCH_SYNTHESIZE_MAX_TOKENS = 12_000;
 
 /** Bound on the sub-questions a plan may produce; the prompt asks for 3–5. */
 export const MAX_SUB_QUESTIONS = 5;
@@ -565,14 +576,17 @@ function completedFindings(state: ResearchRunState): {
  * Findings as markdown sections. With `sourceIds` (synthesis), each section
  * names the numbered sources behind it; the gaps stage gets the notes only.
  */
-function combinedFindings(state: ResearchRunState, sourceIds?: number[][]): string {
+function combinedFindings(state: ResearchRunState, catalog?: SourceCatalog): string {
   const { findings, deepening } = completedFindings(state);
+  const byId = new Map(catalog?.sources.map((source) => [source.id, source]));
   let position = 0;
   const section = (finding: ResearchFinding) => {
-    const ids = sourceIds?.[position++] ?? [];
-    const sources =
-      ids.length > 0 ? `\n\nSources for this section: ${ids.map((id) => `[${id}]`).join(" ")}` : "";
-    return `## ${finding.question}\n\n${finding.notes}${sources}`;
+    const sources = (catalog?.idsByFinding[position++] ?? [])
+      .map((id) => byId.get(id))
+      .filter((source) => source !== undefined);
+    const line =
+      sources.length > 0 ? `Sources: ${formatSourceList(sources).split("\n").join("; ")}\n\n` : "";
+    return `## ${finding.question}\n${line ? `\n${line}` : "\n"}${finding.notes}`;
   };
   const first = findings.map(section).join("\n\n---\n\n");
   if (deepening.length === 0) return first;
@@ -588,13 +602,26 @@ function combinedFindings(state: ResearchRunState, sourceIds?: number[][]): stri
 async function toFinding(
   question: string,
   result: SearchTextResult,
+  jobId: string,
   fetchImpl?: typeof fetch
 ): Promise<ResearchFinding> {
   const { notes, sources: recalled } = extractRecalledSources(result.text);
-  const sources: FindingSource[] = result.grounded
-    ? await resolveGroundingRedirects(result.sources, { fetchImpl })
-    : recalled;
-  return { question, notes, sources, grounded: result.grounded };
+  if (!result.grounded) return { question, notes, sources: recalled, grounded: false };
+  const sources = await resolveGroundingRedirects(result.sources, { fetchImpl });
+  // Counts only (no URLs), so an unresolved redirect can be told apart: over the cap vs failed.
+  const redirects = result.sources.filter((source) => isGroundingRedirect(source.url)).length;
+  aiLogger.info(
+    {
+      event: "research_grounding_sources",
+      jobId,
+      sources: result.sources.length,
+      redirects,
+      overCap: Math.max(0, redirects - MAX_GROUNDING_RESOLUTIONS),
+      unresolved: sources.filter((source) => isGroundingRedirect(source.url)).length,
+    },
+    "Research grounding sources resolved"
+  );
+  return { question, notes, sources, grounded: true };
 }
 
 function notesPrompts(question: string, kind: "question" | "gap") {
@@ -636,7 +663,7 @@ async function executeStage(
         timeoutMs: RESEARCH_TIMEOUTS_MS.search,
         maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
       });
-      state.findings[index] = await toFinding(question, result, fetchImpl);
+      state.findings[index] = await toFinding(question, result, report.id, fetchImpl);
       state.view = researchingView(state, index);
       return;
     }
@@ -668,23 +695,21 @@ async function executeStage(
         timeoutMs: RESEARCH_TIMEOUTS_MS.search,
         maxTokens: RESEARCH_SEARCH_MAX_TOKENS,
       });
-      state.deepening[index] = await toFinding(question, result, fetchImpl);
+      state.deepening[index] = await toFinding(question, result, report.id, fetchImpl);
       state.view = deepeningView(state, index);
       return;
     }
     case "synthesize": {
       state.view = { stage: "synthesizing" };
-      const { findings, deepening } = completedFindings(state);
-      const catalog = buildSourceCatalog([...findings, ...deepening]);
-      const reportText = await ai.generateText(
-        researchSynthesizePrompt(
-          report.query,
-          combinedFindings(state, catalog.idsByFinding),
-          formatSourceList(catalog.sources)
-        ),
-        "research-synthesize",
-        { timeoutMs: RESEARCH_TIMEOUTS_MS.synthesize }
-      );
+      const { prompt, catalog } = buildSynthesisPrompt(report.query, state);
+      const reportText = await ai.generateText(prompt, "research-synthesize", {
+        timeoutMs: RESEARCH_TIMEOUTS_MS.synthesize,
+        maxTokens: RESEARCH_SYNTHESIZE_MAX_TOKENS,
+        rejectTruncated: true,
+      });
+      // A cut-off or reasoning-only answer fails the attempt so the stage is retried
+      // instead of storing it as the report.
+      assertCompleteReport(reportText);
       // Only the sources the report cites are kept, renumbered 1..k.
       const cited = finalizeCitations(reportText, catalog.sources);
       await repositories.research.updateReport(report.id, {
@@ -697,6 +722,34 @@ async function executeStage(
       return;
     }
   }
+}
+
+/** Thrown when synthesis returned something that is not a finished report. */
+export class IncompleteReportError extends Error {
+  constructor(readonly reason: "no_heading") {
+    super(`research synthesis returned an incomplete report (${reason})`);
+    this.name = "IncompleteReportError";
+  }
+}
+
+/**
+ * A finished report has at least one `##` heading (the prompt asks it to start with one). A
+ * thinking model that exhausts its budget returns a headless tail of its reasoning instead.
+ */
+export function assertCompleteReport(text: string): void {
+  if (!/^\s{0,3}##\s+\S/m.test(text)) throw new IncompleteReportError("no_heading");
+}
+
+/** The synthesis prompt for a run's findings, and the numbered source catalog it cites. */
+export function buildSynthesisPrompt(query: string, state: ResearchRunState) {
+  const { findings, deepening } = completedFindings(state);
+  const catalog = buildSourceCatalog([...findings, ...deepening]);
+  const prompt = researchSynthesizePrompt(
+    query,
+    combinedFindings(state, catalog),
+    catalog.sources.length > 0
+  );
+  return { prompt, catalog };
 }
 
 function parseSubQuestions(planText: string, query: string): string[] {
