@@ -106,8 +106,11 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   AI cost cap (`AIQuotaExceededError` `AI_BUDGET` from `assertTenantAIBudget`; day's recorded
   spend ~$1.08), so the stored report is 474 words of TL;DR, takeaways and six placeholders.
   **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
-  report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
-  Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
+  report on Production. **Daily AI budget raised to $2 (Amit, 2026-09-30):** Claude replaced
+  the Production `DISTIL_DAILY_AI_BUDGET` value with `2` through the Vercel CLI (previous value
+  not read; the env pull that would have exposed all secrets was refused) and it took effect with
+  the `448fd36` deployment (08:26Z, success, `/api/health` 200). **Next:** run one report on
+  Production to see a full-length R3 report and measure Claude's outline/write timings.
   **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
   marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
   2026-09-30").
