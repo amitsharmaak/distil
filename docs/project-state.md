@@ -430,6 +430,87 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
 
+### Deep research R2: grounded numbered citations — 2026-09-30
+
+**Scope so far: engine half only.** Branch `claude/research-r2-citations` from `main` `10f367f`
+(spec: checkpoint "Deep research readability: diagnosis and phased plan — 2026-09-29", **R2**).
+Implementation complete and verified by deterministic tests; no live model calls, not merged, not
+deployed. **UI half pending** (`[n]` superscripts, numbered sources list, "recalled by the model"
+note on `/research/[id]`); it waits for R1's page rewrite to merge. Today's page renders each
+source as a string (`{url}` as a React child), so a report stored with the new object sources
+would fail to render there: this branch must not ship without the UI half.
+
+**References re-verified on `10f367f`.** URL scrape at `research.ts:552-553`, "with source URLs"
+prompts at `:505` and `:537`, unbounded item context at `:490` (R3's concern, untouched),
+`GeminiProviderImpl.generateTextWithSearch` returning only `response.text()` (now
+`providers.ts` ~175; the spec's `:161` pointed at the `tools` comment), the synthesis template's
+"inline source links", `RESEARCH_TIMEOUTS_MS` unchanged.
+
+**What changed and why.**
+
+- **Provider.** `GeminiProviderImpl.generateTextWithSearch` returns `sources` from
+  `groundingMetadata.groundingChunks` (`web.uri`, `web.title`; http(s) only, de-duplicated) via
+  `parseGroundingSources`. OpenAI and Anthropic have no search method; the test fake returns
+  `sources: []`. The unused non-tenant `generateTextWithSearch` still returns a string.
+- **Tenant facade** (`createTenantAIRouter(...).generateTextWithSearch`) returns
+  `{ text, sources, grounded }`; `grounded: false` with no sources on both plain fallbacks (no
+  Gemini provider; grounding refused for quota). It accepts a prompt pair
+  `{ grounded, ungrounded }` so the fallback can ask for recalled sources without an extra call.
+  Tenant admission, accounting and audit unchanged.
+- **Redirect resolution** (`src/lib/ai/research-sources.ts`, search and deepen stages). Only
+  `https://vertexaisearch.cloud.google.com/grounding-api-redirect/…` links are requested, `GET`
+  with `redirect: "manual"`, at most 8 per stage in parallel under one 3 s budget; the
+  `Location` is accepted only when it is an absolute http(s) URL on another host without
+  credentials. Any failure keeps the redirect; the grounding title (usually the domain) is kept,
+  falling back to the final domain. No other host is ever fetched; nothing is logged.
+- **Prompts.** Search and deepening (`researchNotesPrompt`) ask for specific facts, figures,
+  dates, named examples and disagreements, and no URLs. The ungrounded variant also asks for a
+  trailing ` ```sources ` JSON block of at most three sources the model is confident exist;
+  `extractRecalledSources` parses it (also a `json` fence or a bare trailing array), caps at
+  three, and strips it and a dangling "Sources:" label from the notes; malformed or truncated
+  blocks give no sources and keep the text. Synthesis gets the findings (each section lists
+  "Sources for this section: [n]…") plus a numbered, de-duplicated list `[n] title — domain`
+  (at most 40), and must cite with `[n]` only, no URLs and no Sources section. The four-heading
+  template otherwise stays (R3 replaces it); "inline source links" is gone.
+- **Citations.** After synthesis `finalizeCitations` keeps only cited sources, renumbers them
+  1..k in order of first citation, rewrites markers (`[3]`, `[1, 4]`, `[2-4]` → adjacent `[n]`),
+  drops ids not in the list (a marker left empty is removed) and leaves `[x](url)` links and
+  `[n]:` definitions alone.
+- **Model calls unchanged** (plan, one per sub-question, gaps, one per gap, synthesis).
+
+**Stored shapes.**
+
+- `research_reports.sources` (existing text column, no migration): JSON array of
+  `{ id, url, title, domain, grounded }`, cited-only, `id` matching the `[n]` markers.
+  Legacy reports keep `string[]`; both routes pass either through `JSON.parse` unchanged.
+- Run state (`research_reports.progress`) **version 2**: `findings` and `deepening` hold
+  `{ question, notes, sources: [{ url, title }], grounded } | null`. Version 1 still parses and is
+  upgraded in memory (the next write stores v2): each string finding becomes notes with its
+  question from `subQuestions`/`gaps`, and its inline URLs (at most 8) become ungrounded sources
+  titled by domain, so in-flight runs finish and only what synthesis cites survives.
+
+**Verification.** `npm run check` green (lint 0 errors; typecheck; 233 suites, 1,766 tests). New
+or changed tests: grounding-chunk parsing (`summary-provider.unit`), facade shape and fallback
+prompt selection (`router-search.unit`), redirect resolution with a mocked fetch — success,
+timeout, errors/unsafe locations, cap, non-Google hosts untouched, de-duplication
+(`research-sources.unit`), recalled-block parsing, catalog and renumbering, v1 resume and v1
+synthesis, grounded stage walk, malformed block (`research-stages.unit`), prompts
+(`prompts.unit`), object and legacy sources through both routes
+(`src/app/api/ai/research/__tests__/report-sources.unit`).
+
+**Grounded path is fixture-only.** The local and Production Gemini keys are free-tier and
+grounding is refused (quota), so live runs take the ungrounded path; the grounding-chunk shape
+and the redirect `Location` behaviour are implemented from the API documentation and tested with
+fixtures only (accepted by Amit, decision 6). Live sources remain model memory, marked
+`grounded: false`.
+
+**Expected before/after vs `5a9cf55a`** (not yet measured; needs one local run after the UI
+half): before, 41 scraped URLs listed and 8 cited, links inline in the text; after, at most
+three recalled sources per question (≤ ~21 candidates), only cited ones stored as numbered
+objects with title and domain, and `[n]` markers instead of URLs in the text.
+
+**Not deployed. Nothing changed in Vercel or Neon.**
+
 ### Feed header: compact search, filters moved into the sheet — 2026-09-29
 
 Amit's feedback on the F3 filter bar: the search spanned the page, and the area switch and quick

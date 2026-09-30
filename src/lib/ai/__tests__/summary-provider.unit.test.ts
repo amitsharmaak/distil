@@ -8,7 +8,7 @@ jest.mock("@anthropic-ai/sdk", () => ({
   __esModule: true,
   default: jest.fn(() => ({ messages: { create: mockAnthropicCreate } })),
 }));
-import { AnthropicProviderImpl, GeminiProviderImpl } from "../providers";
+import { AnthropicProviderImpl, GeminiProviderImpl, parseGroundingSources } from "../providers";
 import { AIProviderError, classifyProviderFailure } from "../errors";
 import { sanitizeLogError } from "@/lib/logger";
 beforeEach(() => {
@@ -99,4 +99,48 @@ it.each([
   [new AIProviderError("invalid_output"), "invalid_output"],
 ])("classifies SDK errors without retaining payloads", (error, category) => {
   expect(classifyProviderFailure(error)).toBe(category);
+});
+it("returns grounding chunks with the grounded answer, de-duplicated and validated", async () => {
+  const redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc";
+  mockGenerateContent.mockResolvedValue({
+    response: {
+      text: () => "grounded notes",
+      usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 7 },
+      candidates: [
+        {
+          groundingMetadata: {
+            webSearchQueries: ["q1", "q2"],
+            groundingChunks: [
+              { web: { uri: redirect, title: " who.int " } },
+              { web: { uri: redirect, title: "duplicate" } },
+              { web: { uri: "ftp://not-web.example", title: "x" } },
+              { web: { title: "no uri" } },
+              { retrievedContext: { uri: "https://other.example" } },
+              { web: { uri: "https://direct.example/page" } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  await expect(
+    new GeminiProviderImpl("key").generateTextWithSearch("synthetic", { timeoutMs: 45_000 })
+  ).resolves.toEqual({
+    value: "grounded notes",
+    usage: { inputTokens: 12, outputTokens: 7, searchQueries: 2 },
+    sources: [
+      { url: redirect, title: "who.int" },
+      { url: "https://direct.example/page", title: "" },
+    ],
+  });
+  expect(mockGenerateContent).toHaveBeenCalledWith("synthetic", { timeout: 45_000 });
+});
+it("returns no sources when the grounded answer carries no grounding metadata", async () => {
+  mockGenerateContent.mockResolvedValue({ response: { text: () => "memory notes" } });
+  await expect(
+    new GeminiProviderImpl("key").generateTextWithSearch("synthetic")
+  ).resolves.toMatchObject({ value: "memory notes", sources: [] });
+  expect(
+    parseGroundingSources({ candidates: [{ groundingMetadata: { groundingChunks: "x" } }] })
+  ).toEqual([]);
 });

@@ -7,7 +7,11 @@
 
 import { briefSummaryPrompt, chunkNotesPrompt, detailedDeltaPrompt } from "@/lib/prompts/summarize";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
-import { researchPlanPrompt, researchSynthesizePrompt } from "@/lib/prompts/research";
+import {
+  researchNotesPrompt,
+  researchPlanPrompt,
+  researchSynthesizePrompt,
+} from "@/lib/prompts/research";
 import type { ContentItem } from "@/lib/types";
 import type { BriefSummaryOutput, UserPreferenceProfile } from "../types";
 
@@ -316,5 +320,38 @@ describe("researchSynthesizePrompt", () => {
     expect(prompt).toContain("Key Findings");
     expect(prompt).toContain("Analysis");
     expect(prompt).toContain("Conclusion");
+  });
+
+  it("cites by number from the source list and never asks for links", () => {
+    const prompt = researchSynthesizePrompt("query", "findings", "[1] WHO report — who.int");
+    expect(prompt).toContain("## Numbered Sources\n[1] WHO report — who.int");
+    expect(prompt).toContain("bracketed numbers");
+    expect(prompt).toContain("Never write URLs");
+    expect(prompt).not.toMatch(/inline source links|Include source links/);
+  });
+
+  it("asks for no citations when there are no sources", () => {
+    const prompt = researchSynthesizePrompt("query", "findings");
+    expect(prompt).not.toContain("## Numbered Sources");
+    expect(prompt).toContain("Do not add citation numbers");
+  });
+});
+
+describe("researchNotesPrompt", () => {
+  it("asks for specifics and no URLs on the grounded path, without a sources block", () => {
+    const prompt = researchNotesPrompt("How fast is X?", { grounded: true, kind: "question" });
+    expect(prompt).toContain("## Question\nHow fast is X?");
+    expect(prompt).toMatch(/facts, figures and dates/);
+    expect(prompt).toMatch(/Named examples/);
+    expect(prompt).toMatch(/disagree/);
+    expect(prompt).toContain("Do not put URLs");
+    expect(prompt).not.toContain("```sources");
+  });
+
+  it("asks for at most three recalled sources as a trailing block on the ungrounded path", () => {
+    const prompt = researchNotesPrompt("Gap?", { grounded: false, kind: "gap" });
+    expect(prompt).toContain("specific gap");
+    expect(prompt).toContain("at most three sources you are confident exist");
+    expect(prompt).toContain("```sources");
   });
 });

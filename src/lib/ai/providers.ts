@@ -46,12 +46,22 @@ export interface AIProvider {
   ): Promise<ProviderResult<T>>;
 }
 
+/** One web source Google Search grounding attached to a Gemini answer. */
+export interface GroundingSource {
+  /** Usually a `vertexaisearch.cloud.google.com/grounding-api-redirect/…` link. */
+  url: string;
+  /** Usually the publisher's domain rather than the page title; may be empty. */
+  title: string;
+}
+
+/** A grounded answer: the text plus the web sources the model searched. */
+export interface SearchProviderResult extends ProviderResult<string> {
+  sources: GroundingSource[];
+}
+
 /** Gemini provider — supports generateTextWithSearch for web grounding. */
 export interface GeminiProvider extends AIProvider {
-  generateTextWithSearch(
-    prompt: string,
-    options?: GenerateOptions
-  ): Promise<ProviderResult<string>>;
+  generateTextWithSearch(prompt: string, options?: GenerateOptions): Promise<SearchProviderResult>;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -76,6 +86,31 @@ export function geminiUsage(response: {
     outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
     ...(searchQueries ? { searchQueries } : {}),
   };
+}
+
+interface GroundingChunkShape {
+  web?: { uri?: unknown; title?: unknown };
+}
+
+/**
+ * Web sources from `groundingMetadata.groundingChunks` of the first candidate,
+ * de-duplicated by URL. Chunks without an http(s) `web.uri` are skipped.
+ */
+export function parseGroundingSources(response: {
+  candidates?: { groundingMetadata?: { groundingChunks?: unknown } }[];
+}): GroundingSource[] {
+  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+  const seen = new Set<string>();
+  const sources: GroundingSource[] = [];
+  for (const chunk of chunks as GroundingChunkShape[]) {
+    const uri = chunk?.web?.uri;
+    if (typeof uri !== "string" || !/^https?:\/\//i.test(uri) || seen.has(uri)) continue;
+    seen.add(uri);
+    const title = typeof chunk.web?.title === "string" ? chunk.web.title.trim() : "";
+    sources.push({ url: uri, title });
+  }
+  return sources;
 }
 
 function parseJSON<T>(text: string): T {
@@ -151,7 +186,7 @@ export class GeminiProviderImpl implements GeminiProvider {
   async generateTextWithSearch(
     prompt: string,
     options?: GenerateOptions
-  ): Promise<ProviderResult<string>> {
+  ): Promise<SearchProviderResult> {
     const m = this.genai.getGenerativeModel({
       model: GEMINI_SEARCH_MODEL,
       generationConfig: {
@@ -172,7 +207,11 @@ export class GeminiProviderImpl implements GeminiProvider {
           shouldRetry: isRetryableProviderFailure,
         }
       );
-      return { value: result.response.text(), usage: geminiUsage(result.response) };
+      return {
+        value: result.response.text(),
+        usage: geminiUsage(result.response),
+        sources: parseGroundingSources(result.response),
+      };
     } catch (error) {
       throw toAIProviderError(error, this.name, GEMINI_SEARCH_MODEL);
     }
