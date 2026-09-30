@@ -55,6 +55,11 @@ export function nextFeedUrl(current: URLSearchParams, updates: FilterUpdates): s
   return filtersUrl("/feed", current, updates);
 }
 
+function searchParamsForFeedUrl(url: string): URLSearchParams {
+  const queryStart = url.indexOf("?");
+  return new URLSearchParams(queryStart === -1 ? "" : url.slice(queryStart + 1));
+}
+
 /** Case-insensitive match on what a card shows, for the instant local narrowing. */
 function matchesDraft(item: ContentItemSummary, needle: string): boolean {
   return [item.title, item.publication, item.author].some((value) =>
@@ -80,6 +85,17 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
   const [isPending, startNavigation] = useTransition();
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const optimisticFilters = pendingUrl
+    ? feedFilterState(searchParamsForFeedUrl(pendingUrl))
+    : filters;
+
+  // Keep optimistic controls selected until the server commits the matching URL.
+  useEffect(() => {
+    if (!pendingUrl) return;
+    const pendingKey = feedFilterKey(feedFilterState(searchParamsForFeedUrl(pendingUrl)));
+    if (pendingKey === filterKey) setPendingUrl(null);
+  }, [filterKey, pendingUrl]);
 
   // A new server page (after router.replace) replaces the list in one step.
   useEffect(() => {
@@ -206,8 +222,13 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
   );
 
   const replaceFilters = (updates: FilterUpdates) => {
+    const currentParams = pendingUrl
+      ? searchParamsForFeedUrl(pendingUrl)
+      : new URLSearchParams(searchParams.toString());
+    const nextUrl = nextFeedUrl(currentParams, updates);
+    setPendingUrl(nextUrl);
     startNavigation(() => {
-      router.replace(nextFeedUrl(searchParams, updates), { scroll: false });
+      router.replace(nextUrl, { scroll: false });
     });
   };
 
@@ -228,7 +249,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     <div className="space-y-5">
       {/* Page header: title and links, with the search and Filters on the right. */}
       <FilterBar
-        filters={filters}
+        filters={optimisticFilters}
         onChange={replaceFilters}
         onSearchDraftChange={setSearchDraft}
         collectionNames={collectionNames}
@@ -247,9 +268,9 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
         }
         sheet={
           <FeedFilterSheet
-            filters={filters}
+            filters={optimisticFilters}
             onChange={replaceFilters}
-            activeCount={activeFilterChips(filters, collectionNames).length}
+            activeCount={activeFilterChips(optimisticFilters, collectionNames).length}
             topicOptions={topicOptions}
             collectionOptions={collections}
             viewMode={viewMode}
@@ -260,8 +281,8 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
 
       {/* Item list; a pending navigation keeps the current page visible, dimmed. */}
       <div
-        className={`${viewMode === "card" ? "space-y-3" : "space-y-1"}${isPending ? " opacity-60 transition-opacity" : ""}`}
-        aria-busy={isPending || loading}
+        className={`${viewMode === "card" ? "space-y-3" : "space-y-1"}${pendingUrl || isPending ? " opacity-60 transition-opacity" : ""}`}
+        aria-busy={Boolean(pendingUrl) || isPending || loading}
       >
         {loading ? (
           // Loading state shown while the first API fetch is in flight.

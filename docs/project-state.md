@@ -687,6 +687,83 @@ sources).
    citations (not in scope).
 3. R4 (research notes drill-down) remains a separate decision.
 
+### Performance P10: fewer client requests and immediate Feed filters — 2026-09-30
+
+P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
+`.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
+`origin/main` `6901bc9` merged after Preview verification (no rebase). Implementation commit
+`2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
+SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
+own hash. No database, environment variable, Production deployment or open PR was changed.
+
+- **Sidebar prefetches.** Before P10, every visible desktop-sidebar link used Next's default
+  prefetch. The 2026-09-29 Production trace saw nine first-load prefetches: Feed, Research, Ask,
+  Search, Settings, Save and three reader cards (Search has since been removed by PR #75). After
+  P10, Today and Feed keep default prefetch; Research, Save and Settings set `prefetch={false}`.
+  Ask has since been removed from the product by A1 on current `main`. Reader-card links remain
+  unchanged, as required by the plan.
+- **Feed feedback.** A filter change still makes exactly one scroll-preserving
+  `router.replace` and the server remains responsible for the paginated, ranked result. The
+  selected filters and active count now update optimistically before the RSC navigation commits;
+  the old list remains visible with a subtle opacity change and `aria-busy=true` until the URL
+  matches. Rapid filter clicks compose into the same pending URL rather than losing an earlier
+  selection. No client-side facet filtering was added (the existing search-draft narrowing from
+  PR #75 is unchanged).
+- **Request behavior.** Initial desktop navigation no longer schedules the three remaining rare
+  sidebar route prefetches, so those three proxy/auth passes disappear from that load; Ask's pass
+  disappeared with the route itself. Today and Feed stay warm through default prefetch. A Feed
+  filter still issues one RSC request; P10 changes perceived responsiveness, not its server request
+  count.
+- **Local verification.** `npm ci` ran before edits. Focused sidebar and Feed component suites
+  passed (23 tests), `npm run check:quick` passed (4 related suites / 33 tests), and the pre-merge
+  `npm run check` passed: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites /
+  1,738 tests. After merging current `origin/main`, `npm run check` passed again: lint 0 errors /
+  5 unchanged warnings, formatting and TypeScript clean, 237 suites / 1,878 tests. After the final
+  merge of `origin/main` `4f1ee3e` and removal of all measurement code, `npm run check` passed:
+  lint 0 errors / 5 unchanged warnings, formatting and TypeScript clean, 233 suites / 1,828 tests.
+  After merging the released P8 state from `origin/main` `1d2831a`, the focused sidebar and Feed
+  suites passed 22 tests and the final `npm run check` passed: lint 0 errors / 5 unchanged warnings,
+  formatting and TypeScript clean, 236 suites / 1,856 tests.
+  After merging the F7 cleanup from `origin/main` `6901bc9`, those focused suites again passed
+  22 tests and `npm run check` passed: lint 0 errors / 5 unchanged warnings, formatting and
+  TypeScript clean, 233 suites / 1,836 tests.
+  (A stale `.next/dev` route cache still referenced Ask on the first typecheck; moving that generated
+  cache aside produced the clean result.) The local in-app browser at
+  `http://127.0.0.1:3110/feed` confirmed that choosing Work immediately selects it, increments the
+  active count and commits `/feed?area=work`; closing the sheet shows the Work chip. The local
+  worktree has no `.env.local`, so feed API calls returned the expected unconfigured-local error
+  and real list rows were not available. The pending/dimmed list and settled-server-page states are
+  covered deterministically by the new component test.
+- **Preview evidence.** Deployment `dpl_4SLSqmwG8Kq4o5zYmZbH36HUR6sa`, temporarily reached
+  through the stable-host alias, was measured with a strictly temporary legacy-auth harness.
+  The initial `/feed?p10=1` logs included `/`, `/feed`, `/collections`, `/archive` and the Feed
+  and Collections client APIs, but no request for `/research`, `/save`, `/settings` or `/ask`.
+  In the live UI, clicking Work checked Work, changed the Filters active count to 1 and showed
+  the Work chip while the URL was still `?p10=1`; the URL then committed to
+  `?p10=1&area=work`. Preview's old database/schema and absent legacy UUID kept Feed data
+  unavailable, so the pending-list dimming could not be observed against real rows there and
+  remains deterministic component-test evidence. The temporary query/header harness was removed
+  in `3f429cc`; no probe or internal-header references remain in the final tree.
+- **Warm Preview timings.** Deployment `dpl_aAXD354vALu7YgbUHCgUmENTg3K8`, reached through the
+  stable-host alias with a strictly temporary query-gated measurement/legacy-compatibility
+  harness, produced four warm `GET /api/v1/feed` samples of **263.6 / 233.5 / 219.5 / 258.1 ms**
+  end to end, with route totals **35.9 / 11.9 / 10.2 / 14.5 ms**. Four warm Feed filter RSC
+  navigations were **254.7 / 291.2 / 231.6 / 227.1 ms** end to end, with proxy timings
+  **1.3 / 1.4 / 1.3 / 1.2 ms**. The same session reconfirmed immediate optimistic filter feedback
+  and the absence of rare-route prefetches. All temporary measurement and compatibility code was
+  then removed in `5e79f32`; the final tree contains no harness query, header or logger reference.
+- **Idle Preview timing.** After at least six minutes idle on the preserved measurement deployment,
+  the first `/feed` RSC completed in **6,668.3 ms** end to end with proxy only **9.8 ms**; the
+  subsequent follow-up `/feed` resource was **289.6 ms** with proxy **1.5 ms**. The UI selected
+  Work optimistically while the committed URL still showed Updates, then committed `area=work`
+  after the cold response. This completes the Preview timing set and places nearly all of the cold
+  delay outside proxy authentication.
+- **Remaining gates / restart.** External CI, PR merge and Production deployment have not
+  happened. Integration owner: fetch `codex/perf-p10-client-requests`, run `npm run check`, then
+  create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
+  repeat the timing set and confirm Research, Save and Settings remain absent from initial
+  prefetches and one Feed filter navigation still produces one RSC request.
+
 ### Inline search F7: legacy search path retired — 2026-09-30
 
 Branch `claude/search-f7-legacy-cleanup` (from `origin/main` at `10f367f`, then merged with
