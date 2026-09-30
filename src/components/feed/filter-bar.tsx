@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The filter bar at the top of the feed (and Today, from F5): a compact search
+ * The filter bar at the top of the Feed and Today: a compact search
  * beside the page title, the Filters sheet trigger, and a row of removable
  * chips for whatever filters are active. Every filter itself lives in the
  * sheet (`FeedFilterSheet`). The URL is the only state it changes; the parent

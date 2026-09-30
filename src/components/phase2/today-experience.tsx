@@ -1,73 +1,228 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { FeedFilterSheet } from "@/components/feed/feed-filters";
+import { FilterBar } from "@/components/feed/filter-bar";
 import type { FeedItem } from "@/lib/feed/feed-query";
-import { TODAY_FEED_QUERY, todaySections, type TodaySections } from "@/lib/feed/today-selection";
-import { TodayPrototype } from "./today-prototype";
+import { normalizeSearchQuery } from "@/lib/feed/feed-url";
+import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
+import {
+  TODAY_FEED_QUERY,
+  isTodayFiltered,
+  todayFilterState,
+  todayResultsSearch,
+  todaySearchEverythingHref,
+  todayView,
+  todayViewKey,
+  type TodayView,
+} from "@/lib/feed/today-selection";
+import type { KnowledgeItem } from "./types";
+import { TodayHeading, TodayPrototype, type TodayResultsProps } from "./today-prototype";
 
 type FeedResponse = {
   items?: FeedItem[];
   resurfacedItems?: FeedItem[];
+  nextCursor?: string;
   error?: { message?: string };
 };
 
-async function getFeed(): Promise<FeedResponse> {
-  const query = new URLSearchParams(TODAY_FEED_QUERY);
+type Collection = { id: string; name: string };
+
+/** What the server page hands over: the view for its URL and the collection names. */
+export type TodayInitial = TodayView & { collections: Collection[] };
+
+async function getFeed(query: URLSearchParams): Promise<FeedResponse> {
   const response = await fetch(`/api/v1/feed?${query.toString()}`);
   const payload = (await response.json().catch(() => ({}))) as FeedResponse;
   if (!response.ok) throw new Error(payload.error?.message || "Unable to load your reading queue.");
   return payload;
 }
 
-/**
- * Today's sections. With `initial` (the server page has already run the
- * read) this is purely presentational. Without it (no server-side user, the
- * legacy SQLite path, or `FEATURE_SERVER_RENDER=false`) it fetches the same
- * selection from the API, as the pre-P5 page did. Selection stays
- * deliberately conservative until the durable digest/resurfacing worker
- * lands: it shows unread items that have been left unopened for at least
- * two weeks.
- */
-export function TodayExperience({ initial }: { initial?: TodaySections | null } = {}) {
-  const [sections, setSections] = useState<TodaySections | null>(initial ?? null);
-  const [error, setError] = useState<string | null>(null);
+/** Case-insensitive match on what a card shows, for the instant local narrowing. */
+function matchesDraft(item: KnowledgeItem, needle: string): boolean {
+  return [item.title, item.source].some((value) => value?.toLowerCase().includes(needle));
+}
 
+function viewItems(view: TodayView): KnowledgeItem[] {
+  if (view.mode === "results") return view.results;
+  const seen = new Set<string>();
+  return [...view.sections.priority, ...view.sections.revisiting].filter((item) =>
+    seen.has(item.id) ? false : (seen.add(item.id), true)
+  );
+}
+
+/**
+ * Today. With no search and no filter in the URL it shows the fixed
+ * selection (priority reading and the resurfacing strip). A search, an area
+ * or any other filter replaces both sections with one list of unread matches
+ * and a "Search everything →" link to the Feed. The URL is the only state:
+ * the filter bar and sheet navigate with `router.replace`, and the server
+ * page renders the view for the new URL.
+ *
+ * With `initial` for the current URL this is purely presentational. Without
+ * it (no server-side user, the legacy SQLite path, or
+ * `FEATURE_SERVER_RENDER=false`) it fetches the same read from the API.
+ */
+export function TodayExperience({ initial }: { initial?: TodayInitial | null } = {}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const filters = todayFilterState(searchParams);
+  const filtered = isTodayFiltered(filters);
+  const viewKey = todayViewKey(filters);
+  const serverView = initial && initial.key === viewKey ? initial : null;
+
+  const [view, setView] = useState<TodayView | null>(serverView);
+  const [collections, setCollections] = useState<Collection[]>(initial?.collections ?? []);
+  const [error, setError] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
+  const [isPending, startNavigation] = useTransition();
+
+  // A new server view (after router.replace) replaces what is shown in one step.
   useEffect(() => {
-    if (initial) return;
-    let cancelled = false;
-    async function load() {
+    if (!serverView) return;
+    startTransition(() => {
+      setView(serverView);
+      setCollections(serverView.collections);
       setError(null);
-      try {
-        const payload = await getFeed();
-        if (!cancelled) setSections(todaySections(payload));
-      } catch (cause) {
+    });
+  }, [serverView]);
+
+  // Client fetch only when the server did not render this exact view.
+  const needsFetch = !serverView && view?.key !== viewKey;
+  useEffect(() => {
+    if (!needsFetch) return;
+    let cancelled = false;
+    const state = todayFilterState(searchParams);
+    const query = isTodayFiltered(state)
+      ? todayResultsSearch(state)
+      : new URLSearchParams(TODAY_FEED_QUERY);
+    getFeed(query)
+      .then((payload) => {
+        if (cancelled) return;
+        setView(todayView(state, payload));
+        setError(null);
+      })
+      .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Unable to load Today.");
-      }
-    }
-    void load();
+      });
     return () => {
       cancelled = true;
     };
-  }, [initial]);
+    // `searchParams` is read through `viewKey`, its stable identity for Today.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsFetch, viewKey]);
+
+  const hasInitial = Boolean(initial);
+  useEffect(() => {
+    if (hasInitial) return;
+    let cancelled = false;
+    fetch("/api/v1/collections")
+      .then((res) => res.json())
+      .then((data: { collections?: Collection[] }) => {
+        if (!cancelled) setCollections(data.collections ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCollections([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasInitial]);
+
+  const collectionNames = useMemo(
+    () => Object.fromEntries(collections.map(({ id, name }) => [id, name])),
+    [collections]
+  );
+
+  const replaceFilters = (updates: FilterUpdates) => {
+    startNavigation(() => {
+      router.replace(filtersUrl("/", searchParams, updates), { scroll: false });
+    });
+  };
+
+  const filterBar = (
+    <FilterBar
+      filters={filters}
+      onChange={replaceFilters}
+      onSearchDraftChange={setSearchDraft}
+      collectionNames={collectionNames}
+      placeholder="Search unread"
+      leading={<TodayHeading />}
+      sheet={
+        <FeedFilterSheet
+          filters={filters}
+          onChange={replaceFilters}
+          activeCount={activeFilterChips(filters, collectionNames).length}
+          topicOptions={view?.topics ?? []}
+          collectionOptions={collections}
+          unreadQueue
+          showSort={filtered}
+        />
+      }
+    />
+  );
 
   if (error) {
     return (
-      <div
-        className="mx-auto max-w-3xl rounded-xl border border-destructive/40 p-5 text-sm"
-        role="alert"
-      >
-        <p className="font-medium">Today is unavailable</p>
-        <p className="mt-1 text-muted-foreground">{error}</p>
-      </div>
+      <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
+        <div className="rounded-xl border border-destructive/40 p-5 text-sm" role="alert">
+          <p className="font-medium">Today is unavailable</p>
+          <p className="mt-1 text-muted-foreground">{error}</p>
+        </div>
+      </TodayPrototype>
     );
   }
-  if (!sections) {
+  if (!view) {
     return (
-      <div className="py-12 text-center text-muted-foreground" role="status">
-        Loading Today…
-      </div>
+      <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
+        <div className="py-12 text-center text-muted-foreground" role="status">
+          Loading Today…
+        </div>
+      </TodayPrototype>
     );
   }
-  return <TodayPrototype priority={sections.priority} revisiting={sections.revisiting} />;
+
+  // Until the typed text reaches the URL, narrow what is already on screen.
+  const draftNeedle = searchDraft.trim().toLowerCase();
+  const narrowing =
+    Boolean(draftNeedle) && normalizeSearchQuery(searchDraft) !== filters.searchQuery;
+  const stale = view.key !== viewKey;
+
+  let results: TodayResultsProps | undefined;
+  if (narrowing) {
+    results = {
+      items: viewItems(view).filter((item) => matchesDraft(item, draftNeedle)),
+      hasMore: false,
+      emptyMessage: `Nothing on screen matches “${searchDraft.trim()}”.`,
+      searchEverythingHref: todaySearchEverythingHref(withQuery(searchParams, searchDraft.trim())),
+    };
+  } else if (view.mode === "results") {
+    const withFilters = activeFilterChips(filters).length > 0 ? " with these filters" : "";
+    results = {
+      items: view.results,
+      hasMore: view.hasMore,
+      emptyMessage: filters.searchQuery
+        ? `Nothing unread matches “${filters.searchQuery}”${withFilters}.`
+        : "No unread items match these filters.",
+      searchEverythingHref: todaySearchEverythingHref(searchParams),
+    };
+  }
+
+  return (
+    <TodayPrototype
+      priority={view.mode === "sections" ? view.sections.priority : []}
+      revisiting={view.mode === "sections" ? view.sections.revisiting : []}
+      header={filterBar}
+      results={results}
+      busy={isPending || stale}
+    />
+  );
+}
+
+function withQuery(current: URLSearchParams, q: string): URLSearchParams {
+  const params = new URLSearchParams(current);
+  params.set("q", q);
+  return params;
 }

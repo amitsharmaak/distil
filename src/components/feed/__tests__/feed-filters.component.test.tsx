@@ -109,4 +109,38 @@ describe("FeedFilterSheet", () => {
     renderSheet();
     expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
   });
+
+  it("hides unread, archive, layout and (optionally) sort for an unread-queue page", () => {
+    const { rerender } = render(
+      <FeedFilterSheet
+        filters={feedFilterState(new URLSearchParams(""))}
+        onChange={jest.fn()}
+        activeCount={0}
+        topicOptions={[]}
+        collectionOptions={[]}
+        unreadQueue
+        showSort={false}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    expect(screen.queryByRole("switch", { name: "Unread only" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Archive" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Sort" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Layout" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Area" })).toBeInTheDocument();
+
+    rerender(
+      <FeedFilterSheet
+        filters={feedFilterState(new URLSearchParams("q=queues"))}
+        onChange={jest.fn()}
+        activeCount={0}
+        topicOptions={[]}
+        collectionOptions={[]}
+        unreadQueue
+      />
+    );
+    const sort = within(screen.getByRole("radiogroup", { name: "Sort" }));
+    expect(sort.getByRole("radio", { name: "Best match" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("group", { name: "Layout" })).not.toBeInTheDocument();
+  });
 });
