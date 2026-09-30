@@ -10,7 +10,6 @@ export interface Phase2FeatureFlags {
   serverRender: boolean;
   knowledgeUi: boolean;
   search: boolean;
-  answers: boolean;
   personalization: boolean;
   digests: boolean;
 }
@@ -26,7 +25,6 @@ export function readPhase2FeatureFlags(
     serverRender: environment.FEATURE_SERVER_RENDER?.trim().toLowerCase() !== "false",
     knowledgeUi: enabled(environment.FEATURE_KNOWLEDGE_UI),
     search: enabled(environment.FEATURE_SEARCH),
-    answers: enabled(environment.FEATURE_ANSWERS),
     personalization: enabled(environment.FEATURE_PERSONALIZATION),
     digests: enabled(environment.FEATURE_DIGESTS),
   });

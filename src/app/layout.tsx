@@ -3,7 +3,6 @@ import { Newsreader, Outfit } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { AppShell } from "@/components/layout/lazy-app-shell";
-import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -44,8 +43,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const flags = readPhase2FeatureFlags();
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -58,7 +55,7 @@ export default function RootLayout({
       </head>
       <body className={`${newsreader.variable} ${outfit.variable} font-sans antialiased`}>
         <ThemeProvider>
-          <AppShell showAnswers={flags.answers}>{children}</AppShell>
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>

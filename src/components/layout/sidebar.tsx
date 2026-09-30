@@ -10,7 +10,6 @@ import {
   BookmarkPlus,
   ChevronLeft,
   ChevronRight,
-  Bot,
   FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,7 +19,6 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/ask", label: "Ask", icon: Bot, prefetch: false },
   { href: "/research", label: "Research", icon: FlaskConical, prefetch: false },
   { href: "/save", label: "Save", icon: BookmarkPlus, prefetch: false },
   { href: "/settings", label: "Settings", icon: Settings, prefetch: false },
@@ -29,11 +27,9 @@ const navItems = [
 export function Sidebar({
   collapsed: controlledCollapsed,
   onCollapsedChange,
-  showAnswers = true,
 }: {
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
-  showAnswers?: boolean;
 }) {
   const pathname = usePathname();
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -70,30 +66,25 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 px-3 py-4">
-        {navItems
-          .filter((item) => {
-            if (item.href === "/ask") return showAnswers;
-            return true;
-          })
-          .map((item) => {
-            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={item.prefetch}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-foreground"
-                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80"
-                )}
-              >
-                <item.icon className="h-[18px] w-[18px] shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
+        {navItems.map((item) => {
+          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={item.prefetch}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-foreground"
+                  : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80"
+              )}
+            >
+              <item.icon className="h-[18px] w-[18px] shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Theme toggle */}

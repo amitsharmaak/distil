@@ -179,6 +179,59 @@ it("rejects an Anthropic answer stopped at max_tokens when asked to", async () =
     new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6")
   ).resolves.toMatchObject({ value: "partial" });
 });
+it("makes one Anthropic attempt with the caller's abort signal when maxAttempts is 1", async () => {
+  // The SDK's default 2 retries each rerun the full timeout; research synthesis (45 s) must not.
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "## Report" }],
+    stop_reason: "end_turn",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+  const controller = new AbortController();
+  await new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6", {
+    timeoutMs: 45_000,
+    maxAttempts: 1,
+    signal: controller.signal,
+  });
+  expect(mockAnthropicCreate).toHaveBeenCalledWith(expect.anything(), {
+    timeout: 45_000,
+    maxRetries: 0,
+    signal: controller.signal,
+  });
+});
+it("applies the serving provider's output-budget override", async () => {
+  const options = {
+    maxTokens: 2_400,
+    rejectTruncated: false,
+    providerOverrides: { gemini: { maxTokens: 8_192, rejectTruncated: true } },
+  };
+  mockAnthropicCreate.mockResolvedValue({
+    content: [{ type: "text", text: "## Report cut" }],
+    stop_reason: "max_tokens",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+  // Claude keeps a report that reached its cap (it is not a thinking fragment).
+  await expect(
+    new AnthropicProviderImpl("key").generateText("q", "claude-sonnet-4-6", options)
+  ).resolves.toMatchObject({ value: "## Report cut" });
+  expect(mockAnthropicCreate).toHaveBeenCalledWith(
+    expect.objectContaining({ max_tokens: 2_400 }),
+    expect.anything()
+  );
+  mockGenerateContent.mockResolvedValue({
+    response: {
+      text: () => "tail",
+      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "tail" }] } }],
+    },
+  });
+  await expect(
+    new GeminiProviderImpl("key").generateText("q", "model", options)
+  ).rejects.toMatchObject({ category: "invalid_output" });
+  expect(mockGetModel).toHaveBeenCalledWith(
+    expect.objectContaining({
+      generationConfig: expect.objectContaining({ maxOutputTokens: 8_192 }),
+    })
+  );
+});
 it("excludes thought parts from Gemini answer text", () => {
   const parts = [{ text: "planning…", thought: true }, { text: "## Report" }, { text: "\nBody" }];
   expect(

@@ -94,8 +94,24 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   a live synthesis replay (1,939 words, all 7 sources cited); a second full run was skipped to
   keep the free-tier quota for R3. Rows written by `79e2f8cc` stay as they are (local only).
   Risk: Gemini-fallback synthesis uses ~43 s of its 50 s timeout; Production synthesis runs on
-  Claude, and R3 splits the call. Next: R3 on `claude/research-r3-adaptive`, then ask Amit about
-  R4.
+  Claude, and R3 splits the call. **R2 Production regression and hotfix:** a
+  Production run started at Amit's request (`8bb4d982`, same question) stalled at synthesis:
+  the queue consumer hit Vercel's 60 s limit twice because the Anthropic SDK retried the timed-out
+  50 s call internally and R2's 12,000-token budget let Claude write past it. Hotfix (checkpoint
+  "Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30"): one attempt per
+  model call, a hard 50 s stage deadline that aborts, per-provider budgets (Claude 2,400 tokens,
+  Gemini 8,192), attempts recorded before each stage so killed deliveries count. `8bb4d982` is
+  failed by the stale guard on its next read. Next: R3 on `claude/research-r3-adaptive`, then
+  ask Amit about R4.
+- **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
+  checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
+  Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
+  read, move on) and asked for the code to be deleted with no redirect. `/ask` and
+  `POST /api/v1/answers` are gone, along with the grounded-answer pipeline, the `knowledge-answer`
+  AI task, the `FEATURE_ANSWERS` flag, the answers eval, and the orphaned `chat-panel.tsx` and
+  `src/lib/agent/rag.ts`. No schema change. `npm run check` and `audit:phase3-security` pass and
+  `next build` succeeds without either route. Merged and deployed on Amit's authorization
+  (2026-09-30). Next: Amit may delete `FEATURE_ANSWERS` from Vercel (nothing reads it).
 - **Inline search, quick filters and AI life areas: F1–F4 merged, both stages applied to
   Production (plan PR
   [#61](https://github.com/amitsharmaak/distil/pull/61), `bdf877f`; F1 PR
@@ -466,7 +482,7 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
 
 P10 is implemented on branch `codex/perf-p10-client-requests` in worktree
 `.codex-worktrees/perf-p10-client-requests`, from `origin/main` `9c93a95`, with current
-`origin/main` `0d7d34b4` merged after Preview verification (no rebase). Implementation commit
+`origin/main` `4f1ee3e` merged after Preview verification (no rebase). Implementation commit
 `2df6b4b` changes only the sidebar, Feed client island and their component tests. The final branch
 SHA is this checkpoint's commit and is reported in the handoff because a commit cannot embed its
 own hash. No database, environment variable, Production deployment or open PR was changed.
@@ -474,8 +490,9 @@ own hash. No database, environment variable, Production deployment or open PR wa
 - **Sidebar prefetches.** Before P10, every visible desktop-sidebar link used Next's default
   prefetch. The 2026-09-29 Production trace saw nine first-load prefetches: Feed, Research, Ask,
   Search, Settings, Save and three reader cards (Search has since been removed by PR #75). After
-  P10, Today and Feed keep default prefetch; Ask (when enabled), Research, Save and Settings set
-  `prefetch={false}`. Reader-card links remain unchanged, as required by the plan.
+  P10, Today and Feed keep default prefetch; Research, Save and Settings set `prefetch={false}`.
+  Ask has since been removed from the product by A1 on current `main`. Reader-card links remain
+  unchanged, as required by the plan.
 - **Feed feedback.** A filter change still makes exactly one scroll-preserving
   `router.replace` and the server remains responsible for the paginated, ranked result. The
   selected filters and active count now update optimistically before the RSC navigation commits;
@@ -483,10 +500,11 @@ own hash. No database, environment variable, Production deployment or open PR wa
   matches. Rapid filter clicks compose into the same pending URL rather than losing an earlier
   selection. No client-side facet filtering was added (the existing search-draft narrowing from
   PR #75 is unchanged).
-- **Request behavior.** Initial desktop navigation no longer schedules the four rare sidebar
-  route prefetches, so those four proxy/auth passes disappear from that load. Today and Feed stay
-  warm through default prefetch. A Feed filter still issues one RSC request; P10 changes perceived
-  responsiveness, not its server request count.
+- **Request behavior.** Initial desktop navigation no longer schedules the three remaining rare
+  sidebar route prefetches, so those three proxy/auth passes disappear from that load; Ask's pass
+  disappeared with the route itself. Today and Feed stay warm through default prefetch. A Feed
+  filter still issues one RSC request; P10 changes perceived responsiveness, not its server request
+  count.
 - **Local verification.** `npm ci` ran before edits. Focused sidebar and Feed component suites
   passed (23 tests), `npm run check:quick` passed (4 related suites / 33 tests), and the pre-merge
   `npm run check` passed: lint 0 errors / 5 unchanged warnings, TypeScript clean, 231 suites /
@@ -507,13 +525,218 @@ own hash. No database, environment variable, Production deployment or open PR wa
   unavailable, so the pending-list dimming could not be observed against real rows there and
   remains deterministic component-test evidence. The temporary query/header harness was removed
   in `3f429cc`; no probe or internal-header references remain in the final tree.
-- **Remaining gates / restart.** External CI, PR merge and Production deployment have not
-  happened. Integration owner: fetch `codex/perf-p10-client-requests`, run `npm run check`, then
-  create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
-  repeat the plan's timing set: four warm samples each of `GET /api/v1/feed` and the `/feed` RSC,
-  plus one reading after at least six minutes idle; also confirm the four rare sidebar prefetches
-  remain absent and one Feed filter navigation still produces one RSC request.
+- **Warm Preview timings.** Deployment `dpl_aAXD354vALu7YgbUHCgUmENTg3K8`, reached through the
+  stable-host alias with a strictly temporary query-gated measurement/legacy-compatibility
+  harness, produced four warm `GET /api/v1/feed` samples of **263.6 / 233.5 / 219.5 / 258.1 ms**
+  end to end, with route totals **35.9 / 11.9 / 10.2 / 14.5 ms**. Four warm Feed filter RSC
+  navigations were **254.7 / 291.2 / 231.6 / 227.1 ms** end to end, with proxy timings
+  **1.3 / 1.4 / 1.3 / 1.2 ms**. The same session reconfirmed immediate optimistic filter feedback
+  and the absence of rare-route prefetches. All temporary measurement and compatibility code was
+  then removed in `5e79f32`; the final tree contains no harness query, header or logger reference.
+- **Remaining gates / restart.** The integration owner still needs to append the true reading
+  after at least six minutes idle from the preserved measurement deployment. External CI, PR
+  merge and Production deployment have not happened. Integration owner: fetch
+  `codex/perf-p10-client-requests`, run `npm run check`, add the idle result to this checkpoint,
+  then create/merge the P10 PR under Amit's recorded authorization. After Production deployment,
+  repeat the timing set and confirm Research, Save and Settings remain absent from initial
+  prefetches and one Feed filter navigation still produces one RSC request.
 
+### Ask Distil removed (A1) — 2026-09-30
+
+Amit answered the plan's two decisions in chat: delete the code ("no point keeping it") and get
+rid of the `/ask` endpoint outright, with no redirect. A1 is implemented on the plan's branch,
+`worktree-remove-ask-distil-plan`, after merging `origin/main` at `10f367f` (F7 had merged by
+then).
+
+- **Deleted:** `src/app/ask/page.tsx`, `src/components/phase2/ask-experience.tsx`,
+  `src/app/api/v1/answers/route.ts`, `src/lib/knowledge/answer-generator.ts`,
+  `src/components/agent/chat-panel.tsx`, `src/lib/agent/rag.ts`,
+  `evals/phase2-answer-acceptance.ts` (and the `eval:phase2-answers` script), plus their tests.
+- **Trimmed:** `src/lib/knowledge/service.ts` keeps only `KnowledgeServiceError`,
+  `regenerateSummarySchema`, `getItemIntelligence` and `enqueueSummaryRegeneration`. The answer
+  schema, types, in-memory answer cache, citation validation and `assertDateRange` went with
+  Ask. `knowledge-answer` is removed from `src/lib/ai/ai-config.ts`. `answers` /
+  `FEATURE_ANSWERS` is removed from `src/lib/phase2/feature-flags.ts`, the Phase 3 activation
+  preflight, `.env.local.example` and the web-vitals script. The sidebar loses the Ask entry, and
+  `AppShell` and `Sidebar` lose the `showAnswers` prop.
+- **Records:** `docs/authorization-matrix.json` drops the `/api/v1/answers`, `/ask` and
+  `agent-rag` entries. `grounded-answers` keeps `getItemIntelligence` and
+  `enqueueSummaryRegeneration`. The reviewed counts are now 91 API route files and 19 pages. The
+  route-surface fixture, harness counts (122 inventory, 52 owner mutations) and the bundle
+  baseline are updated. `AGENTS.md` and `docs/agent-architecture.md` note the removal.
+- **Tests changed:** the retrieval tenant-canary test now calls `searchKeyword` directly instead
+  of going through `answerFromKnowledge`, so tenant-invariant coverage is kept. The router
+  accounting test uses the `summarize` task. The sidebar test asserts five links and no Ask. The
+  Playwright nav test expects no Ask link on any viewport.
+- **Kept:** `searchPassages`, `GET /api/v1/search`, `content_chunks`, `grounding.ts`,
+  `hybridSearch` (still used by `src/app/api/items/route.ts`) and `/research`. No schema or data
+  change. AI usage rows recorded under `knowledge-answer` stay as history.
+- **Verification:** `npm run check` passes (227 suites, 1,678 tests; the 5 lint warnings
+  predate this branch). `npm run audit:phase3-security` passes. `next build` succeeds, and its
+  route list has neither `/ask` nor `/api/v1/answers`. The page was not opened in a browser; the
+  preview config lives in the main checkout, which this session could not edit.
+- **Production:** not deployed; nothing changed in Vercel or Neon. After release, `/ask` 404s
+  even where `FEATURE_ANSWERS=true`. Amit may then delete that variable (a cloud mutation).
+
+### Removing Ask Distil — 2026-09-29
+
+Amit's intent, condensed: Distil should stay very simple, and every feature must add a lot of
+value. Its purpose is to take information in from many sources, use AI to distil what he needs
+at that moment, and let him read and move on instead of visiting several places. Search earns its
+place because it finds things he has read. He asked whether Ask Distil (a chat that answers
+questions across the whole library) does too, or whether it is feature bloat.
+
+This checkpoint is the plan. It was implemented the next day; see "Ask Distil removed (A1) —
+2026-09-30".
+
+#### Critique (Claude, accepted by Amit in chat)
+
+- **Different product.** Ask serves a "second brain" you query later; Distil is a flow product.
+  A chat surface pulls the app toward "chat with my stuff", which is the sprawl Amit wants to
+  avoid.
+- **Little lift over search.** Ask retrieves through the same PostgreSQL full-text path
+  (embeddings optional, no pgvector) and then writes a paragraph over the hits. On a personal
+  library of a few hundred items, searching and reading the top briefs gives about the same
+  result and shows the real items, not a synthesis that might blend them wrong.
+- **Three question-answering features.** Library-wide Ask, the planned S3 "Go deeper" / "Ask
+  about this" in the reader, and `/research`. S3 fits the purpose best: it answers while he is
+  reading, from one item, and he keeps moving.
+- **Ongoing cost.** A nav slot, a feature flag, an API route, a grounded-answer prompt and
+  cache, an AI task (`knowledge-answer`), tenant-security tests, authorization-matrix entries
+  and AI budget, all kept working through every AI routing or schema change.
+- **Where it would earn its place:** questions across items ("what did the three pieces on X
+  disagree about?"). If Amit misses that after removal, the answer belongs on Feed's search
+  (see "Parked" below), not in a separate tab.
+
+#### What Ask is today (verified against `main` at `aba860b`)
+
+- **Surface.** `src/app/ask/page.tsx` renders `AskExperience`
+  (`src/components/phase2/ask-experience.tsx`) and returns 404 unless `FEATURE_ANSWERS=true`.
+  The sidebar shows an "Ask" link (`src/components/layout/sidebar.tsx:25`, filtered at `:80` by
+  `showAnswers`), which `src/app/layout.tsx:61` passes as `flags.answers` through `AppShell`.
+- **API.** `POST /api/v1/answers` (`src/app/api/v1/answers/route.ts`) calls
+  `answerFromKnowledge` (`src/lib/knowledge/service.ts:235`, with the in-memory answer cache and
+  the `GroundedAnswerResponse` types) and `createRouterGroundedAnswerGenerator`
+  (`src/lib/knowledge/answer-generator.ts`, AI task `knowledge-answer` in
+  `src/lib/ai/ai-config.ts`). Nothing else calls either function.
+- **Orphans found on the way.** `src/components/agent/chat-panel.tsx` (`ChatPanel`) is imported
+  by nothing; it belonged to the `/api/agent/**` routes deleted in P4. `src/lib/agent/rag.ts` is
+  imported only by its own test. It is the second caller of `hybridSearch`, which is why F7 keeps
+  `hybridSearch` alive.
+- **Stays.** `searchPassages` (`src/lib/knowledge/retrieval.ts`) and `GET /api/v1/search` (F7
+  owns their future), `content_chunks` and chunking, `grounding.ts`, and the
+  `research-synthesize` task (used by `src/lib/ai/research.ts`).
+
+#### Phase A1 — Remove Ask Distil
+
+- **Goal:** no `/ask` page, no answers API, no dead chat code; nothing else changes.
+- **Files:**
+  - Delete: `src/app/ask/page.tsx`, `src/components/phase2/ask-experience.tsx` and its component
+    test, `src/app/api/v1/answers/route.ts` and its security test,
+    `src/lib/knowledge/answer-generator.ts` and its unit test,
+    `src/components/agent/chat-panel.tsx`, `src/lib/agent/rag.ts` and its unit test.
+  - Edit: `src/lib/knowledge/service.ts` (remove `answerFromKnowledge`, `answerRequestSchema` if
+    unused elsewhere, the answer cache and answer-only types); `src/lib/ai/ai-config.ts` (remove
+    the `knowledge-answer` task from the union and all provider tables, as `dedup-check` was
+    removed, unless S3 has already started reusing it); `src/components/layout/sidebar.tsx`,
+    `src/components/layout/app-shell.tsx` and `src/app/layout.tsx` (drop the Ask entry and the `showAnswers` prop);
+    `src/lib/phase2/feature-flags.ts` and its test (drop `answers` / `FEATURE_ANSWERS`); the
+    sidebar and topbar component tests.
+  - Records: `docs/authorization-matrix.json` (the `/api/v1/answers`, `/ask`,
+    `grounded-answers` and `agent-rag` entries; `scripts/check-phase3-security.ts` checks this
+    file against the routes), `docs/perf/route-bundle-stats.baseline.json` (`/ask`), `AGENTS.md`
+    (the product line "search, ask, revisit", the `/ask` surface and the `FEATURE_ANSWERS` flag),
+    `docs/agent-architecture.md` (RAG section). Leave `docs/ai-first-architecture.md` as
+    historical, or add a one-line note that Ask was removed.
+  - Optional redirect: `/ask` → `/feed` so an old bookmark lands somewhere (see decision 2).
+- **Out of scope:** `/research`, `/api/v1/search`, `searchPassages`, `hybridSearch` (it keeps
+  its `/api/items` caller until F7), and any schema or data change. AI usage rows recorded under
+  `knowledge-answer` stay as history.
+- **Tests:** remove the deleted code's tests. Update the feature-flag, sidebar and topbar tests.
+  Keep `check-phase3-security` passing, and add a test that `/ask` returns 404 or redirects.
+- **Verification:** `npm run check`; local loop: the sidebar has no Ask entry, `/ask` behaves as
+  decided, and Today, Feed, the reader and research still work. Quick gate.
+- **Production:** no migration. After the release, Amit may delete `FEATURE_ANSWERS` from Vercel
+  (a cloud mutation; nothing reads it any more, so leaving it is harmless).
+- **Record:** a dated checkpoint and the handoff bullet updated.
+
+#### Decisions (Amit, in chat, 2026-09-30)
+
+1. **Remove the code, not just hide it.** Setting `FEATURE_ANSWERS=false` would have hidden the
+   tab but left the route, prompt, task and tests to maintain.
+2. **No redirect.** `/ask` returns 404 like any unknown path. (Claude had recommended a redirect
+   to `/feed`; Amit chose to get rid of the endpoint entirely.)
+
+#### Parked, not planned
+
+- **A short cited answer on Feed search.** When a Feed query reads like a question, show two or
+  three lines answered from the matching items, above the results. Only if Amit misses Ask
+  after A1. It would reuse `searchPassages` and a small prompt, not a chat.
+- **`/research` deserves the same question.** Deep web research is a different job from
+  distilling what Amit captured, and it has three entry points. Not assessed here.
+
+#### Order, ownership and recording
+
+A1 is one `claude/<task>` or `worktree-<task>` branch from `main` with its own state update. It
+is independent of F5, F6 and S3.
+
+### Deep research R2 hotfix: synthesis fits the 60 s function — 2026-09-30
+
+**Scope: engine only.** Branch `claude/research-r2-synth-timeout` from `origin/main` `0d7d34b`
+(R2 is `0592c27`). Implementation complete and verified by deterministic tests (`npm run check`:
+237 suites, 1,884 tests). No live model calls. Not merged, not deployed.
+
+**Evidence (Production).** Run `8bb4d982…` reached synthesis (`research-synthesize` on Anthropic
+`claude-sonnet-4-6`), then the queue consumer `POST /api/queue/research-runs` failed on every
+delivery with "Vercel Runtime Timeout Error: Task timed out after 60 seconds".
+
+**Cause.** Three things together:
+
+1. `RESEARCH_TIMEOUTS_MS.synthesize` (50 s) was passed to the Anthropic SDK as a per-request
+   `timeout`. The Anthropic and OpenAI SDKs retry a timed-out request twice by default
+   (`maxRetries` 2), each retry with the full timeout, so the "50 s" call could run ~150 s. The
+   timeout did abort each HTTP attempt, but not the stage. (Gemini's grounded search had the same
+   shape through `withRetry`, 2 × 45 s.)
+2. R2 raised the synthesis budget to 12,000 tokens with `rejectTruncated`, so Claude wrote a
+   longer report than the ~50 s it has (Sonnet streams ~60–80 tokens/s); before R2 the 4,096
+   default capped it.
+3. The stage's attempt counter was incremented only in the `catch`. A delivery Vercel kills at
+   60 s never reaches it, so the stage was redelivered without bound (until the 15-minute stale
+   guard on the read routes failed the report).
+
+**Fix.**
+
+- `GenerateOptions` gains `signal` (passed to all three SDKs) and `providerOverrides` (per-provider
+  `maxTokens` / `rejectTruncated`, applied by the provider that serves the call); Anthropic and
+  OpenAI now honour `maxAttempts` as `maxRetries = maxAttempts - 1` (default unchanged when not
+  given). This also makes the existing `maxAttempts: 1` of `summarize-complex` (40 s on Claude)
+  and `classify-area` really single-attempt.
+- Every research model call makes one attempt (`maxAttempts: 1`); the queue redelivers a failed
+  stage.
+- Synthesis: 45 s timeout; 2,400 output tokens on Claude/GPT (~40 s at 60 tokens/s) with a report
+  that reaches the cap kept, not failed (it already has its headings); Gemini 8,192 tokens with
+  truncation rejected (the pinned `@google/generative-ai` 0.24.1 has no thinking-budget option).
+  Prompt unchanged; Claude reports may be shorter until R3 splits the call.
+- New hard stage deadline `RESEARCH_STAGE_DEADLINE_MS` (50 s, `withStageDeadline`): aborts the
+  stage's requests through the signal and rejects even if a provider ignores it, so the attempt is
+  recorded and the queue retry directive returns well inside 60 s. A late answer is not written
+  (`signal.throwIfAborted()` before the report and finding writes).
+- The attempt is written before the stage runs (restored on success, so attempts still count
+  failures only). A stage whose `MAX_STAGE_ATTEMPTS` (2) deliveries were all killed takes its
+  degraded outcome without calling the model; synthesis fails the report with "Research failed:
+  the report took too long to write. Please try again." Costs one progress write per stage.
+
+**Tests.** `research-stages.unit.test.ts`: a never-resolving provider under fake timers settles at
+exactly the deadline with the signal aborted and the attempt recorded; a late answer is not
+stored; the last attempt fails the report with the clear message; a killed delivery has already
+recorded its attempt; exhausted killed deliveries fail synthesis / degrade search without a model
+call; call options updated. `summary-provider.unit.test.ts`: Anthropic gets `maxRetries: 0` and
+the signal; `providerOverrides` gives Claude 2,400 (cut-off kept) and Gemini 8,192 (cut-off
+rejected).
+
+**Next.** Release decision for Amit; after deploy, rerun a research question on Production and
+check the synthesis latency in the audit log. Runs stuck like `8bb4d982` fail through the stale
+guard when read.
 ### Inline search F5: filter bar on Today — 2026-09-30
 
 Phase F5 of "Inline search, quick filters and life areas — 2026-09-29", built on the redesigned
