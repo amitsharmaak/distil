@@ -53,7 +53,9 @@ export function useRowNavigation(
 
   const rows = useCallback(
     (): HTMLElement[] =>
-      Array.from(containerRef.current?.querySelectorAll<HTMLElement>("[data-row]") ?? []),
+      Array.from(containerRef.current?.querySelectorAll<HTMLElement>("[data-row]") ?? []).filter(
+        (row) => rowLink(row) !== null
+      ),
     [containerRef]
   );
 

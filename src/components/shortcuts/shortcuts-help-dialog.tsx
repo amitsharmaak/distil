@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useId } from "react";
 import { isMacPlatform } from "@/lib/shortcuts/match";
 import type { ShortcutDef, ShortcutKey } from "@/lib/shortcuts/types";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +51,7 @@ function groupShortcuts(defs: ShortcutDef[], scope: string): [string, ShortcutDe
 }
 
 export function ShortcutsHelpDialog() {
+  const switchId = useId();
   const { open, setOpen } = useShortcutsHelp();
   const defs = useRegisteredShortcuts();
   const scope = useShortcutScope();
@@ -64,18 +65,14 @@ export function ShortcutsHelpDialog() {
         <DialogTitle>Keyboard shortcuts</DialogTitle>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <label htmlFor="single-key-shortcuts" className="text-sm font-medium">
+            <label htmlFor={switchId} className="text-sm font-medium">
               Single-key shortcuts
             </label>
             <DialogDescription>
               Turn off if single letters conflict with your browser or assistive tech.
             </DialogDescription>
           </div>
-          <Switch
-            id="single-key-shortcuts"
-            checked={singleKey}
-            onCheckedChange={setSingleKeyShortcuts}
-          />
+          <Switch id={switchId} checked={singleKey} onCheckedChange={setSingleKeyShortcuts} />
         </div>
         {groups.map(([group, list]) => (
           <section key={group} aria-label={group} className="space-y-2">

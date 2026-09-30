@@ -8,6 +8,7 @@ import {
   fireEvent,
   render as rtlRender,
   screen,
+  waitFor,
   type RenderOptions,
 } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -536,6 +537,40 @@ describe("FeedList keyboard shortcuts", () => {
     press("r");
     expect(screen.getByTestId("item-b")).toHaveAttribute("data-read", "true");
     expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false");
+  });
+
+  it("r persists the read state with a PATCH", () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("r");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/items/a",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: true }) })
+    );
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "true");
+  });
+
+  it("r reverts the row when the PATCH fails", async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) } as Response);
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    press("r");
+    await waitFor(() => expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false"));
+  });
+
+  it("does not act on r while a row's area menu is open", () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockClear();
+    render(<FeedList initialPage={page()} />);
+    press("j");
+    fireEvent.click(screen.getByRole("button", { name: "Area Alpha" }));
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-area-open", "true");
+    press("r");
+    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false");
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/items/a", expect.anything());
   });
 
   it("a opens the area popover of the focused row only", () => {

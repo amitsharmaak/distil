@@ -23,7 +23,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
-import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { useShortcut, useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import {
   feedFilterKey,
@@ -238,8 +238,30 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     );
   }
 
+  /** Keyboard `r`: optimistic local update, then persist like MarkReadButton. */
+  async function persistRead(id: string) {
+    handleMarkRead(id, true);
+    try {
+      const res = await fetch(`/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: true }),
+      });
+      if (!res.ok) {
+        handleMarkRead(id, false);
+        router.refresh();
+      }
+    } catch {
+      handleMarkRead(id, false);
+      router.refresh();
+    }
+  }
+
+  // The row area menu is role="menu", not a dialog: silence shortcuts while it is open.
+  useShortcutsSuspended(areaOpenId !== null);
+
   useRowNavigation(listRef, {
-    onMarkRead: (id) => handleMarkRead(id, true),
+    onMarkRead: (id) => void persistRead(id),
     onOpenArea: (id) => setAreaOpenId(id),
   });
   useShortcut(FILTERS_SHORTCUT, () => setFiltersOpen(true));

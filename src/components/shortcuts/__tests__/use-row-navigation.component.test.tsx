@@ -40,6 +40,28 @@ function List({
   );
 }
 
+function ListWithProcessing() {
+  const ref = useRef<HTMLDivElement>(null);
+  useRowNavigation(ref);
+  return (
+    <div ref={ref}>
+      <article data-row data-item-id="a">
+        <a href="#a" data-testid="link-a">
+          a
+        </a>
+      </article>
+      <article data-row data-item-id="p">
+        <span>processing</span>
+      </article>
+      <article data-row data-item-id="c">
+        <a href="#c" data-testid="link-c">
+          c
+        </a>
+      </article>
+    </div>
+  );
+}
+
 function setup(options?: RowNavigationOptions, loadMore = false) {
   return render(
     <ShortcutsProvider>
@@ -63,6 +85,20 @@ describe("useRowNavigation", () => {
     expect(screen.getByTestId("link-a")).toHaveFocus();
     press("j");
     expect(screen.getByTestId("link-b")).toHaveFocus();
+    press("k");
+    expect(screen.getByTestId("link-a")).toHaveFocus();
+  });
+
+  it("skips rows without a link (processing rows)", () => {
+    render(
+      <ShortcutsProvider>
+        <ListWithProcessing />
+      </ShortcutsProvider>
+    );
+    press("j");
+    expect(screen.getByTestId("link-a")).toHaveFocus();
+    press("j");
+    expect(screen.getByTestId("link-c")).toHaveFocus();
     press("k");
     expect(screen.getByTestId("link-a")).toHaveFocus();
   });
