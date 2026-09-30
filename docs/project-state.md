@@ -117,8 +117,9 @@ reinterpret it as a task list. Shared working rules for both agents live in `AGE
   **Not yet verified:** Claude (Production) timings for outline/write, and a full-length R3
   report on Production. **Next (Amit):** decide whether to raise `DISTIL_DAILY_AI_BUDGET` in
   Vercel (a Production env change; an R3 run is ~13 calls), then run one report on a fresh day.
-  Optional follow-up: fail a report instead of completing it when every section is a
-  placeholder.
+  **Follow-up done (Amit, 2026-09-30):** a report whose every section is a placeholder is now
+  marked failed instead of completed (checkpoint "Deep research: fail an unwritten report —
+  2026-09-30").
 - **Ask Distil removed (A1; PR [#76](https://github.com/amitsharmaak/distil/pull/76), squash merged on 2026-09-30;
   checkpoints "Ask Distil removed (A1) — 2026-09-30" and "Removing Ask Distil — 2026-09-29"):**
   Amit decided the library-wide `/ask` chat was feature bloat for a flow product (capture, distil,
@@ -509,6 +510,26 @@ distil-pv-1850.vercel.app`) whenever it should match `distilai.app`; it still po
      now deleted in phase P4 of the performance plan; small mobile-web fixes `BUG-PWA-001/002` and
      the Shortcut URL extraction `BUG-IOS-001` remain. Phase 4 mobile work starts only on an
      explicit decision.
+
+### Deep research: fail an unwritten report — 2026-09-30
+
+**Why.** Production run `8b17dcaf` (R3) hit the app's daily AI cost cap during the section
+writes; every write degraded to a placeholder and the report was stored as `completed` with 474
+words of TL;DR, takeaways and six placeholders. Amit asked for such a report to fail instead, so
+it can simply be retried.
+
+**What changed.** `completeReport` in `src/lib/ai/research.ts` now marks the report `failed`
+(progress cleared) when every outline section is a placeholder. The message says "the daily AI
+budget ran out before the report could be written. Please try again later." when a section write
+was refused with the router's `AI_BUDGET` error (recorded as an optional `budgetExhausted` flag
+in the run state; no version bump, older states simply lack it), otherwise "none of the report's
+sections could be written. Please try again." A counts-only `research_report_unwritten` warning
+is logged. A report with at least one written section still completes with placeholders for the
+rest (unchanged).
+
+**Verification.** `src/lib/ai/__tests__/research-stages.unit.test.ts`: the two single-section
+degrade tests now expect `failed`; new test for the budget message; the mixed written/placeholder
+test still completes. `npm run check` passes. Not verified live (needs the budget to run out).
 
 ### Filters sheet: segment labels fit on phones — 2026-09-30
 
