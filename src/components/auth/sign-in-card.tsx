@@ -6,7 +6,17 @@ import { Button } from "@/components/ui/button";
 import { navigateFullPage } from "@/lib/browser-navigation";
 import { Input } from "@/components/ui/input";
 
-export function SignInCard() {
+/** A same-origin page path, never a protocol-relative or backslash form. */
+function isSafeNext(value: string | undefined): value is string {
+  return Boolean(value?.startsWith("/") && !value.startsWith("//") && !value.includes("\\"));
+}
+
+/**
+ * `next` is where to land after signing in, for pages that embed this card (for example
+ * `/extension/connect?state=...`). It is ignored unless it is a same-origin path.
+ */
+export function SignInCard({ next }: { next?: string } = {}) {
+  const destination = isSafeNext(next) ? next : undefined;
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -43,7 +53,7 @@ export function SignInCard() {
       }
       // Full navigation: see navigateFullPage for why a client-side replace()
       // would resolve from the stale prefetch cache and stay on this page.
-      navigateFullPage("/", window.location);
+      navigateFullPage(destination ?? "/", window.location);
     } finally {
       setSubmitting(false);
     }
@@ -57,7 +67,7 @@ export function SignInCard() {
     const response = await fetch("/api/auth/sign-in/request-link", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(destination ? { email, next: destination } : { email }),
     });
     setNotice(
       response.ok

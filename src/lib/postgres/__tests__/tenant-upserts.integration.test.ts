@@ -93,6 +93,8 @@ beforeAll(async () => {
     "summary-structure",
     "feed-search",
     "life-areas",
+    "drop-collections",
+    "browser-connections",
   ] as const) {
     await applyTenantMigrationStage({
       sql: harness.sql,

@@ -17,6 +17,7 @@ export async function POST(request: Request): Promise<Response> {
       provider: neonMagicLinkProvider(auth),
       repositories: await getAuthRepositoryPort(),
       appOrigin: readApplicationOrigin(),
+      stateSecret: process.env.NEON_AUTH_COOKIE_SECRET,
       beforeDispatch: async (account, currentRequest) => {
         const parsedRequestId = requestIdSchema.safeParse(currentRequest.headers.get("x-trace-id"));
         const context = createAuthContext({

@@ -90,6 +90,7 @@ async function main(): Promise<void> {
         | "feed-search"
         | "life-areas"
         | "drop-collections"
+        | "browser-connections"
     ) => {
       await applyTenantMigrationStage({ sql, stage: name, ownerId, migrationsDirectory });
       process.stdout.write(`Applied tenant stage ${name}\n`);
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
     await stage("feed-search");
     await stage("life-areas");
     await stage("drop-collections");
+    await stage("browser-connections");
 
     await sql.unsafe(`
       DO $$

@@ -81,6 +81,8 @@ describeWithTenantMigration(
         "summary-structure",
         "feed-search",
         "life-areas",
+        "drop-collections",
+        "browser-connections",
       ] as const) {
         await applyTenantMigrationStage({
           sql: owner.sql,
@@ -341,6 +343,7 @@ describeWithTenantMigration(
           name: "Capture token",
           tokenHash: "hash-alpha-new",
           tokenPrefix: "dst_cap_alphanew",
+          kind: "manual",
           createdAt: "2026-09-30T00:00:00.000Z",
         })
       );
@@ -354,6 +357,69 @@ describeWithTenantMigration(
         { id: "alpha-old-1", active: false },
         { id: "alpha-old-2", active: false },
         { id: "beta-old", active: true },
+      ]);
+    });
+
+    it("keeps browser connections tenant-scoped, kind-scoped and independent of the manual token", async () => {
+      const repositoriesFor =
+        (session: typeof fixture.alpha.auth.session) =>
+        <T>(run: (repositories: ReturnType<typeof createPostgresRepositories>) => Promise<T>) =>
+          pool.asTenant(session, (transaction) =>
+            run(createPostgresRepositories(transaction as unknown as Sql))
+          );
+      const alpha = repositoriesFor(fixture.alpha.auth.session);
+      const beta = repositoriesFor(fixture.beta.auth.session);
+      const record = (user: typeof fixture.alpha, id: string, kind: "manual" | "browser") => ({
+        userId: userIdSchema.parse(user.user.id),
+        id,
+        name: kind === "browser" ? "Browser connection" : "Capture token",
+        tokenHash: `hash-${id}`,
+        tokenPrefix: "dst_cap_browser",
+        kind,
+        ...(kind === "browser" ? { label: "Chrome on macOS" } : {}),
+        createdAt: "2026-09-30T00:00:00.000Z",
+      });
+
+      await alpha((r) => r.captureTokens.create(record(fixture.alpha, "conn-alpha-1", "browser")));
+      await alpha((r) => r.captureTokens.create(record(fixture.alpha, "conn-alpha-2", "browser")));
+      await beta((r) => r.captureTokens.create(record(fixture.beta, "conn-beta", "browser")));
+      await alpha((r) =>
+        r.captureTokens.replaceActive(record(fixture.alpha, "manual-alpha", "manual"))
+      );
+
+      // Regenerating the manual token leaves every browser connection active.
+      await alpha((r) =>
+        r.captureTokens.replaceActive(record(fixture.alpha, "manual-alpha-2", "manual"))
+      );
+      const browserList = await alpha((r) => r.captureTokens.list("browser"));
+      expect(browserList.map(({ id }) => id).sort()).toEqual(["conn-alpha-1", "conn-alpha-2"]);
+      expect(browserList.every(({ revokedAt, label }) => !revokedAt && label)).toBe(true);
+      expect(JSON.stringify(browserList)).not.toContain("hash-");
+      const manualList = await alpha((r) => r.captureTokens.list("manual"));
+      expect(manualList.filter(({ revokedAt }) => !revokedAt).map(({ id }) => id)).toEqual([
+        "manual-alpha-2",
+      ]);
+
+      // A foreign connection id and a manual id both look absent through the browser route.
+      await expect(
+        alpha((r) => r.captureTokens.revoke("conn-beta", "2026-09-30T01:00:00Z", "browser"))
+      ).resolves.toBe(false);
+      await expect(
+        alpha((r) => r.captureTokens.revoke("manual-alpha-2", "2026-09-30T01:00:00Z", "browser"))
+      ).resolves.toBe(false);
+      await expect(
+        alpha((r) => r.captureTokens.revoke("conn-alpha-1", "2026-09-30T01:00:00Z", "browser"))
+      ).resolves.toBe(true);
+
+      const rows = await owner.sql<{ id: string; active: boolean }[]>`
+        SELECT id, revoked_at IS NULL AS active FROM capture_tokens
+        WHERE id IN ('conn-alpha-1','conn-alpha-2','conn-beta','manual-alpha-2') ORDER BY id
+      `;
+      expect(rows).toEqual([
+        { id: "conn-alpha-1", active: false },
+        { id: "conn-alpha-2", active: true },
+        { id: "conn-beta", active: true },
+        { id: "manual-alpha-2", active: true },
       ]);
     });
 

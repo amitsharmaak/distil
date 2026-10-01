@@ -1,19 +1,16 @@
-const form = document.getElementById("configuration");
+const summaryEl = document.getElementById("connection-summary");
+const signInButton = document.getElementById("sign-in");
+const disconnectButton = document.getElementById("disconnect");
+const disconnectHint = document.getElementById("disconnect-hint");
+const pausedSection = document.getElementById("paused");
+const pausedText = document.getElementById("paused-text");
+const discardButton = document.getElementById("discard-paused");
 const originInput = document.getElementById("origin");
-const tokenInput = document.getElementById("token");
-const tokenHint = document.getElementById("token-hint");
+const advanced = document.getElementById("advanced");
 const statusEl = document.getElementById("status");
-const discardPrevious = document.getElementById("discard-previous");
-const discardLabel = document.getElementById("discard-label");
-const accountWarning = document.getElementById("account-warning");
 
 const DEFAULT_ORIGIN = "https://distilai.app";
-
-async function accountKey(origin, token) {
-  const input = new TextEncoder().encode(`${origin}\n${token}`);
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
+const BUNDLED_ORIGINS = ["https://distilai.app", "http://localhost:3000"];
 
 function normalizeOrigin(value) {
   const parsed = new URL(value);
@@ -38,78 +35,81 @@ function normalizeOrigin(value) {
   return parsed.origin;
 }
 
-async function loadConfiguration() {
-  const { distilConfig, distilCaptureQueues } = await chrome.storage.local.get({
-    distilConfig: null,
-    distilCaptureQueues: {},
-  });
-  originInput.value = distilConfig?.origin || DEFAULT_ORIGIN;
-  if (distilConfig?.token) {
-    tokenInput.required = false;
-    tokenInput.placeholder = "Saved — leave blank to keep it";
-    tokenHint.textContent = "A token is saved. Enter a new one only to replace it.";
-  }
-  const activeQueue = distilConfig?.accountKey
-    ? distilCaptureQueues[distilConfig.accountKey] || []
-    : [];
-  if (activeQueue.length > 0) {
-    accountWarning.hidden = false;
-    accountWarning.textContent = `${activeQueue.length} pending capture${activeQueue.length === 1 ? "" : "s"} belong to this account. Changing the token pauses them until this account is restored or you explicitly discard them.`;
-  }
+function say(message, isError = false) {
+  statusEl.className = isError ? "status error" : "status";
+  statusEl.textContent = message;
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  statusEl.className = "status";
-  statusEl.textContent = "";
+async function refresh() {
+  const state = await chrome.runtime.sendMessage({ type: "distil-get-state" });
+  originInput.value = state.origin || originInput.value || DEFAULT_ORIGIN;
+  if (state.origin && state.origin !== DEFAULT_ORIGIN) advanced.open = true;
+
+  if (state.configured && !state.legacyToken) {
+    summaryEl.textContent = `Signed in${state.accountEmail ? ` as ${state.accountEmail}` : ""}${
+      state.label ? ` (${state.label})` : ""
+    }.`;
+    signInButton.hidden = true;
+    disconnectButton.hidden = false;
+    disconnectHint.hidden = false;
+  } else if (state.configured) {
+    summaryEl.textContent =
+      "Connected with a pasted capture token (older setup). Sign in to replace it.";
+    signInButton.textContent = "Sign in to Distil";
+    signInButton.hidden = false;
+    disconnectButton.hidden = false;
+    disconnectHint.hidden = true;
+  } else if (state.signedOut) {
+    summaryEl.textContent = "Distil signed this browser out. Sign in again to keep saving.";
+    signInButton.textContent = "Sign in again";
+    signInButton.hidden = false;
+    disconnectButton.hidden = true;
+    disconnectHint.hidden = true;
+  } else {
+    summaryEl.textContent = "Not connected.";
+    signInButton.textContent = "Sign in to Distil";
+    signInButton.hidden = false;
+    disconnectButton.hidden = true;
+    disconnectHint.hidden = true;
+  }
+
+  pausedSection.hidden = !(state.pausedQueues > 0);
+  pausedText.textContent = `${state.pausedQueues} pending capture list${
+    state.pausedQueues === 1 ? " belongs" : "s belong"
+  } to a different account and stays paused until you sign in to that account again.`;
+}
+
+signInButton.addEventListener("click", async () => {
+  say("");
   try {
-    const origin = normalizeOrigin(originInput.value.trim());
-    const { distilConfig, distilCaptureQueues } = await chrome.storage.local.get({
-      distilConfig: null,
-      distilCaptureQueues: {},
-    });
-    const suppliedToken = tokenInput.value.trim();
-    const token = suppliedToken || distilConfig?.token;
-    if (!token) throw new Error("Enter a capture token.");
-    const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
-    if (!granted) throw new Error("Origin access was not granted.");
-
-    if (distilConfig?.origin && distilConfig.origin !== origin && chrome.permissions.remove) {
-      await chrome.permissions.remove({ origins: [`${normalizeOrigin(distilConfig.origin)}/*`] });
+    const origin = normalizeOrigin(originInput.value.trim() || DEFAULT_ORIGIN);
+    // Bundled origins already have host access; custom ones need an explicit grant, which must
+    // be requested here, inside the click.
+    if (!BUNDLED_ORIGINS.includes(origin)) {
+      const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+      if (!granted) throw new Error("Origin access was not granted.");
     }
-
-    const nextAccountKey = await accountKey(origin, token);
-    const previousAccountKey = distilConfig?.accountKey;
-    const switchingAccount = Boolean(previousAccountKey && previousAccountKey !== nextAccountKey);
-    const previousQueue = previousAccountKey ? distilCaptureQueues[previousAccountKey] || [] : [];
-    if (switchingAccount && previousQueue.length > 0) {
-      discardLabel.hidden = false;
-      accountWarning.hidden = false;
-      accountWarning.textContent =
-        "This token belongs to a different account. Pending captures remain paused for the original account. Check the box only to discard them.";
-    }
-
-    await chrome.storage.local.set({
-      distilConfig: { origin, token, accountKey: nextAccountKey, authPaused: false },
-    });
-    tokenInput.value = "";
-    tokenInput.required = false;
-    tokenInput.placeholder = "Saved — leave blank to keep it";
-    tokenHint.textContent = "A token is saved. Enter a new one only to replace it.";
-    statusEl.textContent = switchingAccount
-      ? "Connection saved. Captures for the original account remain paused."
-      : "Connection saved. Pending captures will retry now.";
-    await chrome.runtime.sendMessage({
-      type: "distil-config-updated",
-      ...(switchingAccount && discardPrevious.checked
-        ? { discardAccountKey: previousAccountKey }
-        : {}),
-    });
+    const result = await chrome.runtime.sendMessage({ type: "distil-start-connect", origin });
+    if (!result?.ok) throw new Error(result?.message || "Could not open the sign-in page.");
+    say("Finish signing in on the Distil tab that just opened.");
   } catch (error) {
-    statusEl.className = "status error";
-    statusEl.textContent =
-      error instanceof Error ? error.message : "Could not save the connection.";
+    say(error instanceof Error ? error.message : "Could not start sign-in.", true);
   }
 });
 
-void loadConfiguration();
+disconnectButton.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "distil-disconnect" });
+  say("Disconnected.");
+  await refresh();
+});
+
+discardButton.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "distil-discard-paused" });
+  await refresh();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.distilConfig) void refresh();
+});
+
+void refresh();

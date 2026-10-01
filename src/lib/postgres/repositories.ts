@@ -8,6 +8,7 @@ import type {
   ItemAreaState,
   AgentRepository,
   CaptureRepository,
+  CaptureTokenKind,
   CaptureTokenRepository,
   CaptureTransition,
   ClaimRepository,
@@ -66,7 +67,13 @@ import type {
 } from "@/lib/types";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
 import { normalizeUrl } from "@/lib/utils";
-import { mapCapture, mapCaptureToken, mapItem, mapItemSummary } from "./mappers";
+import {
+  mapCapture,
+  mapCaptureToken,
+  mapCaptureTokenSummary,
+  mapItem,
+  mapItemSummary,
+} from "./mappers";
 import { itemColumnsSql, itemSummaryColumnsSql } from "./item-columns";
 import { PostgresAuthRepository } from "./auth-repository";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
@@ -553,11 +560,11 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
   constructor(private readonly sql: Sql) {}
   async create(v: Parameters<CaptureTokenRepository["create"]>[0]) {
     await this
-      .sql`INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
+      .sql`INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,kind,label,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.kind},${v.label ?? null},${v.createdAt},${v.lastUsedAt ?? null},${v.revokedAt ?? null})`;
   }
   async replaceActive(v: Parameters<CaptureTokenRepository["replaceActive"]>[0]) {
     await this
-      .sql`WITH revoked AS (UPDATE capture_tokens SET revoked_at=${v.createdAt} WHERE revoked_at IS NULL RETURNING id) INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.createdAt},NULL,NULL)`;
+      .sql`WITH revoked AS (UPDATE capture_tokens SET revoked_at=${v.createdAt} WHERE revoked_at IS NULL AND kind=${v.kind} RETURNING id) INSERT INTO capture_tokens (user_id,id,name,token_hash,token_prefix,kind,label,created_at,last_used_at,revoked_at) VALUES (${v.userId},${v.id},${v.name},${v.tokenHash},${v.tokenPrefix},${v.kind},${v.label ?? null},${v.createdAt},NULL,NULL)`;
   }
   async findActiveByHash(hash: string) {
     const r = await this.sql<
@@ -565,26 +572,21 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
     >`SELECT * FROM capture_tokens WHERE token_hash=${hash} AND revoked_at IS NULL`;
     return r[0] ? mapCaptureToken(r[0]) : undefined;
   }
-  async list() {
-    return (await this.sql<Row[]>`SELECT * FROM capture_tokens ORDER BY created_at DESC`).map(
-      (row) => ({
-        userId: userIdSchema.parse(row.user_id),
-        id: String(row.id),
-        name: String(row.name),
-        tokenPrefix: String(row.token_prefix),
-        createdAt: iso(row.created_at),
-        lastUsedAt: row.last_used_at == null ? undefined : iso(row.last_used_at),
-        revokedAt: row.revoked_at == null ? undefined : iso(row.revoked_at),
-      })
-    );
+  async list(kind?: CaptureTokenKind) {
+    const rows = kind
+      ? await this.sql<
+          Row[]
+        >`SELECT * FROM capture_tokens WHERE kind=${kind} ORDER BY created_at DESC`
+      : await this.sql<Row[]>`SELECT * FROM capture_tokens ORDER BY created_at DESC`;
+    return rows.map(mapCaptureTokenSummary);
   }
-  async revoke(id: string, at: string) {
-    return (
-      (
-        await this
-          .sql`UPDATE capture_tokens SET revoked_at=${at} WHERE id=${id} AND revoked_at IS NULL RETURNING id`
-      ).length > 0
-    );
+  async revoke(id: string, at: string, kind?: CaptureTokenKind) {
+    const rows = kind
+      ? await this
+          .sql`UPDATE capture_tokens SET revoked_at=${at} WHERE id=${id} AND kind=${kind} AND revoked_at IS NULL RETURNING id`
+      : await this
+          .sql`UPDATE capture_tokens SET revoked_at=${at} WHERE id=${id} AND revoked_at IS NULL RETURNING id`;
+    return rows.length > 0;
   }
   async touchLastUsed(id: string, at: string) {
     await this

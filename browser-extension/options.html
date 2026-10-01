@@ -10,26 +10,34 @@
     <main>
       <h1>Distil extension</h1>
       <p class="intro">Connect this browser to your Distil account.</p>
-      <form id="configuration">
-        <label for="origin">Distil origin</label>
-        <input id="origin" name="origin" type="url" required placeholder="https://distilai.app" />
-        <p class="hint">
-          Leave as <code>https://distilai.app</code> unless you run your own Distil. Origin only,
-          without a path.
+
+      <section id="connection" aria-live="polite">
+        <p id="connection-summary"></p>
+        <div class="actions">
+          <button id="sign-in" type="button">Sign in to Distil</button>
+          <button id="disconnect" type="button" hidden>Disconnect</button>
+        </div>
+        <p id="disconnect-hint" class="hint" hidden>
+          Disconnect removes access from this browser. To revoke it on Distil as well, remove the
+          browser under Settings → Capture → Connected browsers.
         </p>
+      </section>
 
-        <label for="token">Capture token</label>
-        <input id="token" name="token" type="password" autocomplete="off" required />
-        <p id="token-hint" class="hint">Paste the capture token from Distil Settings → Capture.</p>
+      <section id="paused" hidden>
+        <p id="paused-text" class="hint"></p>
+        <button id="discard-paused" type="button">Discard paused captures</button>
+      </section>
 
-        <label id="discard-label" for="discard-previous" hidden>
-          <input id="discard-previous" type="checkbox" />
-          Discard pending captures for the previous account
-        </label>
-        <p id="account-warning" class="hint" hidden></p>
+      <details id="advanced">
+        <summary>Advanced</summary>
+        <label for="origin">Distil origin</label>
+        <input id="origin" name="origin" type="url" placeholder="https://distilai.app" />
+        <p class="hint">
+          Leave as <code>https://distilai.app</code>. Use <code>http://localhost:3000</code> for a
+          local Distil. Origin only, without a path.
+        </p>
+      </details>
 
-        <button type="submit">Save connection</button>
-      </form>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </main>
     <script src="options.js"></script>

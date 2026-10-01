@@ -1303,6 +1303,28 @@
       "testProfile": "owner"
     },
     {
+      "path": "/api/v1/extension/connections/:id",
+      "source": "src/app/api/v1/extension/connections/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_tokens"],
+      "testProfile": "owner",
+      "notes": "Revokes one browser connection (kind browser) owned by the caller; a foreign id, an already-revoked id and the manual token's id all return 404."
+    },
+    {
+      "path": "/api/v1/extension/connections",
+      "source": "src/app/api/v1/extension/connections/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["capture_tokens", "rate_limit_windows"],
+      "testProfile": "owner",
+      "notes": "POST checks Origin, is rate limited per account, mints one token for one browser and returns the plaintext once; it revokes nothing. GET lists the caller's active browser connections without hashes."
+    },
+    {
       "path": "/api/v1/captures/:id/retry",
       "source": "src/app/api/v1/captures/[id]/retry/route.ts",
       "methods": ["POST"],
@@ -1681,6 +1703,15 @@
       "requiredPrincipal": "anonymous",
       "dataPath": "/api/auth/sign-in/password or /api/auth/sign-in/request-link",
       "testProfile": "public"
+    },
+    {
+      "path": "/extension/connect",
+      "source": "src/app/extension/connect/page.tsx",
+      "currentAuth": "public-sign-in-host",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "/api/v1/account to detect a session, the sign-in card when signed out, then POST /api/v1/extension/connections on an explicit Connect click; the token goes to the pinned extension id and is never rendered",
+      "testProfile": "public",
+      "notes": "Public so it can host the sign-in card; it mints nothing without a session, an allowed Origin and a state nonce supplied by the extension."
     },
     {
       "path": "/login",
@@ -2414,8 +2445,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 47,
-    "expectedApiRouteFileCount": 89,
-    "expectedPageFileCount": 17,
+    "expectedApiRouteFileCount": 91,
+    "expectedPageFileCount": 18,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

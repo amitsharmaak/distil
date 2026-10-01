@@ -4,7 +4,12 @@ const STORAGE = Object.freeze({
   config: "distilConfig",
   queues: "distilCaptureQueues",
   state: "distilExtensionState",
+  pending: "distilPendingConnect",
 });
+const CONNECT_PATH = "/extension/connect";
+const CONNECT_MESSAGE = "distil-connect";
+const CONNECT_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_ORIGIN = "https://distilai.app";
 const ALARM_NAME = "distil-replay-captures";
 const ALARM_PERIOD_MINUTES = 5;
 const CAPTURE_PATH = "/api/v1/captures";
@@ -23,6 +28,12 @@ const TRACKING_PARAMS = new Set([
   "mc_cid",
   "mc_eid",
 ]);
+
+class NotConnectedError extends Error {
+  constructor() {
+    super("Sign in to Distil before saving.");
+  }
+}
 
 let queueOperation = Promise.resolve();
 let replayPromise = null;
@@ -94,8 +105,9 @@ function serializedQueueOperation(operation) {
 
 async function enqueueCapture(payload) {
   return serializedQueueOperation(async () => {
-    const config = await getConfiguration();
-    if (!config) throw new Error("Configure a Distil origin and capture token before saving.");
+    // Persist first, even while signed out, so nothing is lost before the user signs in again.
+    const config = await getStoredConfig();
+    if (!config) throw new NotConnectedError();
     const normalizedUrl = normalizeCaptureUrl(payload.url);
     const queues = await getQueues();
     const queue = queues[config.accountKey] || [];
@@ -153,24 +165,36 @@ async function getQueues() {
   return stored[STORAGE.queues] || {};
 }
 
-async function getConfiguration() {
+/** Stored identity, with or without a usable token (the token is cleared when Distil rejects it). */
+async function getStoredConfig() {
   const stored = await storageGet({ [STORAGE.config]: null });
   const config = stored[STORAGE.config];
-  if (!config?.origin || !config?.token || !config?.accountKey) return null;
+  if (!config?.origin || !config?.accountKey) return null;
   return {
     origin: normalizeOrigin(config.origin),
-    token: config.token,
+    token: typeof config.token === "string" && config.token ? config.token : null,
     accountKey: config.accountKey,
+    accountId: config.accountId || null,
+    accountEmail: config.accountEmail || null,
+    connectionId: config.connectionId || null,
+    label: config.label || null,
     authPaused: Boolean(config.authPaused),
   };
+}
+
+async function accountKeyFor(origin, accountId) {
+  const input = new TextEncoder().encode(`${origin}\n${accountId}`);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function hasOriginPermission(origin) {
   return chrome.permissions.contains({ origins: [permissionPattern(origin)] });
 }
 
+/** Distil rejected the token: forget it, keep the queue, and ask the user to sign in again. */
 async function pauseForAuthentication(config) {
-  await storageSet({ [STORAGE.config]: { ...config, authPaused: true } });
+  await storageSet({ [STORAGE.config]: { ...config, token: null, authPaused: true } });
 }
 
 async function deliverCapture(entry, config) {
@@ -206,22 +230,21 @@ async function replayQueue() {
   if (replayPromise) return replayPromise;
 
   replayPromise = (async () => {
-    const config = await getConfiguration();
-    if (!config) {
-      return setState("unconfigured", "Configure your Distil origin and capture token.", {
-        queued: 0,
-      });
+    const stored = await getStoredConfig();
+    if (!stored) {
+      return setState("unconfigured", "Sign in to Distil to start saving.", { queued: 0 });
     }
     const queues = await getQueues();
-    const queued = queues[config.accountKey] || [];
-    if (queued.length === 0) return setState("idle", "Ready to save.", { queued: 0 });
-    if (!(await hasOriginPermission(config.origin))) {
-      return setState("permission-required", "Allow access to your Distil origin in Settings.", {
+    const queued = queues[stored.accountKey] || [];
+    if (!stored.token || stored.authPaused) {
+      return setState("auth-required", "Distil signed this browser out. Sign in again.", {
         queued: queued.length,
       });
     }
-    if (config.authPaused) {
-      return setState("auth-required", "Your capture token was rejected. Update it in Settings.", {
+    const config = stored;
+    if (queued.length === 0) return setState("idle", "Ready to save.", { queued: 0 });
+    if (!(await hasOriginPermission(config.origin))) {
+      return setState("permission-required", "Allow access to your Distil origin in Settings.", {
         queued: queued.length,
       });
     }
@@ -248,14 +271,10 @@ async function replayQueue() {
       }
       if (outcome.kind === "auth") {
         await pauseForAuthentication(config);
-        return setState(
-          "auth-required",
-          "Your capture token was rejected. Update it in Settings.",
-          {
-            queued: queued.length - saved - rejected,
-            status: outcome.status,
-          }
-        );
+        return setState("auth-required", "Distil signed this browser out. Sign in again.", {
+          queued: queued.length - saved - rejected,
+          status: outcome.status,
+        });
       }
       retrying += 1;
       retryStatus = outcome.status;
@@ -287,6 +306,9 @@ async function saveCapture(payload) {
     await enqueueCapture(payload);
     return await replayQueue();
   } catch (error) {
+    if (error instanceof NotConnectedError) {
+      return setState("unconfigured", "Sign in to Distil to start saving.");
+    }
     return setState(
       "unsupported",
       error instanceof Error ? error.message : "This page cannot be saved."
@@ -305,9 +327,15 @@ async function getState() {
   const pausedQueues = Object.entries(stored[STORAGE.queues]).filter(
     ([key, entries]) => key !== accountKey && Array.isArray(entries) && entries.length > 0
   ).length;
+  const config = stored[STORAGE.config];
   return {
     ...stored[STORAGE.state],
-    configured: Boolean(stored[STORAGE.config]?.origin && stored[STORAGE.config]?.token),
+    configured: Boolean(config?.origin && config?.token),
+    origin: config?.origin || null,
+    accountEmail: config?.accountEmail || null,
+    label: config?.label || null,
+    legacyToken: Boolean(config?.token && !config?.accountId),
+    signedOut: Boolean(config?.origin && !config?.token),
     queued: queue.length,
     pausedQueues,
   };
@@ -321,6 +349,12 @@ function handleMessage(message) {
       return replayQueue();
     case "distil-get-state":
       return getState();
+    case "distil-start-connect":
+      return startConnect(message.origin);
+    case "distil-disconnect":
+      return disconnect();
+    case "distil-discard-paused":
+      return discardPausedQueues();
     case "distil-config-updated":
       if (message.discardAccountKey) {
         return serializedQueueOperation(async () => {
@@ -342,6 +376,95 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   response.then(sendResponse, () =>
     sendResponse(publicState("error", "The extension could not finish that action."))
   );
+  return true;
+});
+
+function randomState() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Opens the Distil connect page with a fresh single-use state nonce. */
+async function startConnect(requestedOrigin) {
+  try {
+    const origin = normalizeOrigin(requestedOrigin || DEFAULT_ORIGIN);
+    const state = randomState();
+    await storageSet({ [STORAGE.pending]: { state, origin, startedAt: Date.now() } });
+    const url = `${origin}${CONNECT_PATH}?state=${state}`;
+    await chrome.tabs.create({ url });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not start." };
+  }
+}
+
+async function disconnect() {
+  await storageSet({ [STORAGE.config]: null, [STORAGE.pending]: null });
+  return setState("unconfigured", "Sign in to Distil to start saving.", { queued: 0 });
+}
+
+async function discardPausedQueues() {
+  return serializedQueueOperation(async () => {
+    const config = await getStoredConfig();
+    const queues = await getQueues();
+    const kept =
+      config && queues[config.accountKey] ? { [config.accountKey]: queues[config.accountKey] } : {};
+    await storageSet({ [STORAGE.queues]: kept });
+    return { ok: true };
+  });
+}
+
+/**
+ * Receives the token minted by the Distil connect page. The message is accepted only from the page
+ * origin the extension itself opened, with the exact state nonce, within ten minutes, once.
+ */
+async function handleExternalMessage(message, sender) {
+  const reject = { ok: false };
+  try {
+    if (message?.type !== CONNECT_MESSAGE) return reject;
+    const stored = await storageGet({ [STORAGE.pending]: null });
+    const pending = stored[STORAGE.pending];
+    if (!pending?.state || !pending.origin) return reject;
+    if (Date.now() - pending.startedAt > CONNECT_TTL_MS) {
+      await storageSet({ [STORAGE.pending]: null });
+      return reject;
+    }
+    const senderOrigin = sender?.url ? new URL(sender.url).origin : "";
+    if (senderOrigin !== pending.origin || message.origin !== pending.origin) return reject;
+    if (typeof message.state !== "string" || message.state !== pending.state) return reject;
+    const token = message.token;
+    const connection = message.connection;
+    if (typeof token !== "string" || !token.startsWith("dst_cap_")) return reject;
+    if (
+      !connection ||
+      typeof connection.id !== "string" ||
+      typeof connection.accountId !== "string"
+    )
+      return reject;
+
+    const accountKey = await accountKeyFor(pending.origin, connection.accountId);
+    await storageSet({
+      [STORAGE.config]: {
+        origin: pending.origin,
+        token,
+        accountKey,
+        accountId: connection.accountId,
+        accountEmail: typeof message.accountEmail === "string" ? message.accountEmail : null,
+        connectionId: connection.id,
+        label: typeof connection.label === "string" ? connection.label : null,
+        authPaused: false,
+      },
+      [STORAGE.pending]: null,
+    });
+    void replayQueue();
+    return { ok: true };
+  } catch {
+    return reject;
+  }
+}
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  void handleExternalMessage(message, sender).then(sendResponse);
   return true;
 });
 

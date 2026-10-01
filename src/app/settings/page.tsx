@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConnectedBrowsers } from "@/components/capture/connected-browsers";
 import { TokenSettings } from "@/components/capture/token-settings";
 import { CaptureDiagnostics } from "@/components/capture/capture-diagnostics";
 import { InvitationsSettings } from "@/components/settings/invitations-settings";
@@ -130,6 +131,7 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="capture" className="mt-4 space-y-4">
+          <ConnectedBrowsers />
           <TokenSettings />
         </TabsContent>
 
