@@ -19,6 +19,13 @@ if ! git cat-file -e "${previous}^{commit}" 2>/dev/null; then
   exit 1
 fi
 
+# A redeploy of the same commit (for example to pick up a changed environment
+# variable) has an empty diff, which would otherwise read as "only docs changed".
+if [ "$(git rev-parse "${previous}^{commit}")" = "$(git rev-parse HEAD)" ]; then
+  echo "Redeploying ${previous} itself; building."
+  exit 1
+fi
+
 # Pathspecs: without the glob magic, "*" also matches "/", so ":(exclude)*.md"
 # covers Markdown files in every directory.
 if git diff --quiet "$previous" HEAD -- . ':(exclude)docs' ':(exclude)*.md' ':(exclude).github'; then

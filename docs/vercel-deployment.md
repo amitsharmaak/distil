@@ -172,5 +172,6 @@ Amit's authorization at release time. Locally, put your user id in `DISTIL_ADMIN
 It compares `HEAD` with `VERCEL_GIT_PREVIOUS_SHA` (the last successful deployment of the branch)
 and skips the build when every changed file is under `docs/`, is a Markdown file, or is under
 `.github/`. Any other change, a missing previous SHA, or a previous SHA outside the shallow clone
-builds as before. Vercel's exit-code convention is inverted: exit 0 skips, exit 1 builds. This
+builds as before. A redeploy of the same commit (to pick up a changed environment variable) always
+builds. Vercel's exit-code convention is inverted: exit 0 skips, exit 1 builds. This
 overrides the dashboard's Ignored Build Step setting, so change it here, not in the dashboard.
