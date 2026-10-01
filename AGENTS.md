@@ -106,7 +106,10 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
-  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
+  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Generic article captures are triaged once
+  before the summary (`src/lib/ai/triage-capture.ts`, task `triage-capture`): a priority score
+  and a junk-page verdict that rejects only confident, short, unannotated pages and fails open.
+  Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
   item embeddings are optional JSONB (no pgvector) and no search path reads them.
 - **Search:** there is one search surface, the Feed/Today header search, served by
   `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Inline search F7 retired
@@ -131,7 +134,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
   `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and
   `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`
-  restores the client-fetch pages).
+  restores the client-fetch pages). `FEATURE_CAPTURE_TRIAGE` is tri-state and defaults on:
+  `"shadow"` records the triage verdict and score but never rejects, `"false"` turns triage off
+  (`docs/runbooks/capture-triage.md`).
 - **Deployment:** `docs/vercel-deployment.md` (topology and variable mapping) and
   `docs/runbooks/` (auth activation, backup/restore, account export/deletion, tenant-isolation
   incidents). `npm run build` runs the Phase 3 activation preflight, which requires
