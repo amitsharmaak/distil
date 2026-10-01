@@ -193,9 +193,12 @@ export function verifyDiscoveredSchema(
   const failures: VerificationFailure[] = [];
   const discoveredTables = new Set(columns.map(({ schema, table }) => `${schema}.${table}`));
   const classified = new Set(
-    [...manifest.tables, ...manifest.supplementalTables, ...manifest.controlTables].map(
-      ({ schema, table }) => `${schema}.${table}`
-    )
+    [
+      ...manifest.tables,
+      ...manifest.supplementalTables,
+      ...manifest.controlTables,
+      ...(manifest.retiredTables ?? []),
+    ].map(({ schema, table }) => `${schema}.${table}`)
   );
   for (const table of [...discoveredTables].sort()) {
     if (!classified.has(table)) {

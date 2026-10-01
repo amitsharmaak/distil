@@ -123,21 +123,6 @@
       "ownerVia": "items(user_id,item_id)"
     },
     {
-      "name": "collections",
-      "source": "src/lib/postgres/schema.ts",
-      "currentScope": "global-single-user",
-      "requiredScope": "direct-user",
-      "ownerVia": "user_id",
-      "workspaceEligibleLater": true
-    },
-    {
-      "name": "collection_items",
-      "source": "src/lib/postgres/schema.ts",
-      "currentScope": "global-single-user",
-      "requiredScope": "derived-user",
-      "ownerVia": "same-owner composite references to collections and items"
-    },
-    {
       "name": "item_events",
       "source": "src/lib/postgres/schema.ts",
       "currentScope": "global-single-user",
@@ -2428,7 +2413,7 @@
     }
   ],
   "inventoryCoverage": {
-    "expectedDrizzleTableCount": 49,
+    "expectedDrizzleTableCount": 47,
     "expectedApiRouteFileCount": 89,
     "expectedPageFileCount": 17,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",

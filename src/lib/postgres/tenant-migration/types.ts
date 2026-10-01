@@ -89,6 +89,12 @@ export interface TenantMigrationManifest {
   /** Phase 3 tables created by expand and therefore excluded from frozen Phase 2 row hashes. */
   readonly supplementalTables: readonly SupplementalTableClassification[];
   readonly controlTables: readonly ControlTableClassification[];
+  /**
+   * Tables dropped by a later tenant stage. Historical stages (expand through contract) still
+   * create or keep them, so the verifier tolerates them whether they exist or not; they are not
+   * tenant-bearing for snapshots or RLS expectations.
+   */
+  readonly retiredTables?: readonly { readonly schema: string; readonly table: string }[];
 }
 
 export interface QueryRow {
