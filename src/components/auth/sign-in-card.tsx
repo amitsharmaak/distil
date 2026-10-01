@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { navigateFullPage } from "@/lib/browser-navigation";
 import { Input } from "@/components/ui/input";
+import { DistilLogo } from "@/components/brand/distil-logo";
 
 /** A same-origin page path, never a protocol-relative or backslash form. */
 function isSafeNext(value: string | undefined): value is string {
@@ -78,6 +79,7 @@ export function SignInCard({ next }: { next?: string } = {}) {
 
   return (
     <>
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <div>
         <h1 className="text-2xl font-semibold">Sign in to Distil</h1>
         <p className="mt-2 text-sm text-muted-foreground">

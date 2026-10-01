@@ -5,10 +5,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const replace = jest.fn();
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh }) }));
-jest.mock("next/image", () => ({
-  __esModule: true,
-  default: () => <span data-testid="logo" />,
-}));
 
 import LoginPage from "../page";
 

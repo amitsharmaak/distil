@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { usePathname } from "next/navigation";
 import {
   Newspaper,
@@ -53,19 +53,7 @@ export function Sidebar({
     >
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-        <Image
-          src="/logo.svg"
-          alt="Distil logo"
-          width={28}
-          height={28}
-          sizes="(max-width: 768px) 32px, 64px"
-          className="h-7 w-7 rounded-md object-cover"
-        />
-        {!collapsed && (
-          <span className="font-serif text-lg font-semibold tracking-tight text-sidebar-foreground">
-            distil
-          </span>
-        )}
+        <DistilLogo compact={collapsed} className="h-7 w-auto shrink-0 text-sidebar-foreground" />
       </div>
 
       {/* Navigation */}
