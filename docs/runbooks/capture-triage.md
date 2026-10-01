@@ -9,8 +9,8 @@ wall, error page, bot check, empty JavaScript shell). Code: `src/lib/ai/triage-c
 ## What it does
 
 - Runs only for **generic article captures**, inside the tenant capture job, after extraction and
-  **before the summary call**. Specialised extractors (video, podcast and similar) are not
-  triaged.
+  **before the summary call**. Granola notes, Wispr Flow notes, YouTube videos, X posts and
+  re-saves of a URL already in the library take their own paths and are not triaged.
 - The prompt sees only the capture's own extracted text (an excerpt of at most 2,000 characters
   plus its total length), its URL and metadata, and the owner's preference summary. Calls go
   through the tenant AI router, so they count against the owner's AI budget and audit.
