@@ -118,10 +118,14 @@ export function ReaderKnowledgeControls({
   async function saveNote() {
     setSaving("Saving note…");
     setError(null);
-    const previous = cache.get<ReaderNoteResponse>(noteKey);
     const release = cache.beginWrite();
-    cache.set<ReaderNoteResponse>(noteKey, { note: { body: note } });
+    let previous: ReaderNoteResponse | undefined;
+    let optimisticUpdateApplied = false;
     try {
+      await cache.cancel(noteKey);
+      previous = cache.get<ReaderNoteResponse>(noteKey);
+      cache.set<ReaderNoteResponse>(noteKey, { note: { body: note } });
+      optimisticUpdateApplied = true;
       const payload = await requestJson<ReaderNoteResponse>(`/api/v1/items/${itemId}/note`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -131,7 +135,7 @@ export function ReaderKnowledgeControls({
       setDraft(null);
       setNotice("Note saved");
     } catch (cause) {
-      cache.set(noteKey, previous);
+      if (optimisticUpdateApplied) cache.set(noteKey, previous);
       setError(cause instanceof Error ? cause.message : "Note could not be saved.");
     } finally {
       release();
@@ -140,19 +144,25 @@ export function ReaderKnowledgeControls({
   }
 
   async function deleteNote() {
-    const previous = cache.get<ReaderNoteResponse>(noteKey);
     const previousDraft = currentDraft;
     setSaving("Deleting note…");
     setError(null);
     const release = cache.beginWrite();
-    cache.set<ReaderNoteResponse>(noteKey, { note: null });
-    setDraft(null);
+    let previous: ReaderNoteResponse | undefined;
+    let optimisticUpdateApplied = false;
     try {
+      await cache.cancel(noteKey);
+      previous = cache.get<ReaderNoteResponse>(noteKey);
+      cache.set<ReaderNoteResponse>(noteKey, { note: null });
+      optimisticUpdateApplied = true;
+      setDraft(null);
       await requestJson(`/api/v1/items/${itemId}/note`, { method: "DELETE" });
       setNotice("Note deleted");
     } catch (cause) {
-      cache.set(noteKey, previous);
-      setDraft(previousDraft);
+      if (optimisticUpdateApplied) {
+        cache.set(noteKey, previous);
+        setDraft(previousDraft);
+      }
       setError(cause instanceof Error ? cause.message : "Note could not be deleted.");
     } finally {
       release();

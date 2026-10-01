@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { ReaderKnowledgeControls } from "../reader-knowledge-controls";
 import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
@@ -11,8 +11,17 @@ function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((fulfill) => {
+    resolve = fulfill;
+  });
+  return { promise, resolve };
+}
+
 describe("ReaderKnowledgeControls", () => {
   beforeEach(() => {
+    jest.mocked(global.fetch).mockReset();
     jest.mocked(global.fetch).mockImplementation((url, init) => {
       const path = String(url);
       if (path.endsWith("/state") && !init?.method)
@@ -202,5 +211,107 @@ describe("ReaderKnowledgeControls", () => {
 
     expect(await screen.findByLabelText("Item note")).toHaveValue("Updated locally");
     expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
+  });
+
+  it("waits for an in-flight stale note read before saving", async () => {
+    const staleNote = deferred<Response>();
+    jest.mocked(global.fetch).mockImplementation((url, init) => {
+      const path = String(url);
+      if (path.endsWith("/state") && !init?.method)
+        return Promise.resolve(
+          ok({
+            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
+          })
+        );
+      if (path.endsWith("/note") && !init?.method) return staleNote.promise;
+      if (path.endsWith("/note") && init?.method === "PUT")
+        return Promise.resolve(ok({ note: { body: "Saved after refresh" } }));
+      return Promise.resolve(ok({}));
+    });
+
+    render(
+      <ReaderKnowledgeControls
+        itemId="item-1"
+        initial={{
+          state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
+          note: { body: "Older note" },
+          updatedAt: 1,
+        }}
+      />
+    );
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/v1/items/item-1/note",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("Item note"), {
+      target: { value: "Saved after refresh" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      "/api/v1/items/item-1/note",
+      expect.objectContaining({ method: "PUT" })
+    );
+
+    await act(async () => {
+      staleNote.resolve(ok({ note: { body: "Stale background note" } }));
+      await staleNote.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("Note saved")).toBeInTheDocument();
+    expect(screen.getByLabelText("Item note")).toHaveValue("Saved after refresh");
+  });
+
+  it("does not let an in-flight stale note read resurrect a deletion", async () => {
+    const staleNote = deferred<Response>();
+    jest.mocked(global.fetch).mockImplementation((url, init) => {
+      const path = String(url);
+      if (path.endsWith("/state") && !init?.method)
+        return Promise.resolve(
+          ok({
+            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
+          })
+        );
+      if (path.endsWith("/note") && !init?.method) return staleNote.promise;
+      return Promise.resolve(ok({}));
+    });
+
+    render(
+      <ReaderKnowledgeControls
+        itemId="item-1"
+        initial={{
+          state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
+          note: { body: "Delete me" },
+          updatedAt: 1,
+        }}
+      />
+    );
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/v1/items/item-1/note",
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      "/api/v1/items/item-1/note",
+      expect.objectContaining({ method: "DELETE" })
+    );
+
+    await act(async () => {
+      staleNote.resolve(ok({ note: { body: "Stale background note" } }));
+      await staleNote.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("Note deleted")).toBeInTheDocument();
+    expect(screen.getByLabelText("Item note")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 });

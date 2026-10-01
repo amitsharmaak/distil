@@ -198,7 +198,9 @@ export function ReaderAnnotations({
     if (!selection || saving) return;
     setSaving(true);
     setError(null);
+    const release = cache.beginWrite();
     try {
+      await cache.cancel(annotationsKey);
       if (reanchorId) {
         const payload = await requestJson<{ annotation: ReaderAnnotation }>(
           `/api/v1/items/${itemId}/annotations/${reanchorId}`,
@@ -251,6 +253,7 @@ export function ReaderAnnotations({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The highlight could not be saved.");
     } finally {
+      release();
       setSaving(false);
     }
   }
@@ -259,7 +262,9 @@ export function ReaderAnnotations({
     if (saving) return;
     setSaving(true);
     setError(null);
+    const release = cache.beginWrite();
     try {
+      await cache.cancel(annotationsKey);
       const payload = await requestJson<{ annotation: ReaderAnnotation }>(
         `/api/v1/items/${itemId}/annotations/${annotation.id}`,
         {
@@ -278,6 +283,7 @@ export function ReaderAnnotations({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The highlight could not be updated.");
     } finally {
+      release();
       setSaving(false);
     }
   }
@@ -286,18 +292,22 @@ export function ReaderAnnotations({
     if (saving) return;
     setSaving(true);
     setError(null);
-    const previous = cache.get<ReaderAnnotationsResponse>(annotationsKey);
     const release = cache.beginWrite();
-    cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
-      annotations: (current?.annotations ?? []).filter((entry) => entry.id !== annotation.id),
-    }));
+    let previous: ReaderAnnotationsResponse | undefined;
+    let optimisticUpdateApplied = false;
     try {
+      await cache.cancel(annotationsKey);
+      previous = cache.get<ReaderAnnotationsResponse>(annotationsKey);
+      cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
+        annotations: (current?.annotations ?? []).filter((entry) => entry.id !== annotation.id),
+      }));
+      optimisticUpdateApplied = true;
       await requestJson(`/api/v1/items/${itemId}/annotations/${annotation.id}`, {
         method: "DELETE",
       });
       setNotice("Highlight deleted");
     } catch (cause) {
-      cache.set(annotationsKey, previous);
+      if (optimisticUpdateApplied) cache.set(annotationsKey, previous);
       setError(cause instanceof Error ? cause.message : "The highlight could not be deleted.");
     } finally {
       release();

@@ -69,12 +69,18 @@ jest.mock("@/lib/content-strategies", () => ({
 jest.mock("@/components/phase2/reader-annotations", () => ({
   ReaderAnnotations: ({
     initialAnnotations,
+    initialUpdatedAt,
     children,
   }: {
     initialAnnotations?: unknown[];
+    initialUpdatedAt?: number;
     children: React.ReactNode;
   }) => (
-    <div data-testid="reader-annotations" data-initial-count={initialAnnotations?.length ?? -1}>
+    <div
+      data-testid="reader-annotations"
+      data-initial-count={initialAnnotations?.length ?? -1}
+      data-initial-updated-at={initialUpdatedAt}
+    >
       {children}
     </div>
   ),
@@ -88,6 +94,7 @@ jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
     initial?: {
       state: { archived: boolean; readingProgress: number; manualPriority: string | null };
       note: { body: string } | null;
+      updatedAt?: number;
     };
   }) => (
     <div
@@ -96,6 +103,7 @@ jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
       data-progress={String(initial?.state.readingProgress)}
       data-priority={initial?.state.manualPriority ?? ""}
       data-note={initial?.note?.body ?? ""}
+      data-initial-updated-at={initial?.updatedAt}
     >
       controls:{itemId}
     </div>
@@ -247,12 +255,18 @@ describe("feed item detail page", () => {
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("A useful summary.");
     expect(screen.getByTestId("reader-annotations")).toHaveAttribute("data-initial-count", "1");
+    const annotations = screen.getByTestId("reader-annotations");
+    expect(Number(annotations.getAttribute("data-initial-updated-at"))).toBeGreaterThan(0);
     const controls = screen.getByTestId("knowledge-controls");
     expect(controls).toHaveTextContent("current");
     expect(controls).toHaveAttribute("data-archived", "true");
     expect(controls).toHaveAttribute("data-progress", "0.5");
     expect(controls).toHaveAttribute("data-priority", "medium");
     expect(controls).toHaveAttribute("data-note", "Server-loaded note");
+    expect(controls).toHaveAttribute(
+      "data-initial-updated-at",
+      annotations.getAttribute("data-initial-updated-at")
+    );
     expect(screen.getByTestId("actions")).toHaveTextContent("https://example.test/raw");
     // The whole read runs inside one tenant transaction; neighbours come from a
     // keyset lookup that ignores read state when the reader shows everything.

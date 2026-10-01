@@ -72,6 +72,10 @@ function getDisplayTitle(title: string, summary: string, maxLen = 100): string {
   return (lastSpace > maxLen * 0.6 ? truncated.slice(0, lastSpace) : truncated) + "\u2026";
 }
 
+function currentEpochMilliseconds(): number {
+  return Date.now();
+}
+
 /** Tokenise tweet text into clickable @mentions, #hashtags, and URLs. */
 function renderTweetText(text: string): React.ReactNode[] {
   const tokenPattern = /(https?:\/\/[^\s]+)|(@\w+)|(#\w+)/g;
@@ -134,15 +138,21 @@ function ReaderKnowledgeBoundary({
   enabled,
   itemId,
   initialAnnotations,
+  initialUpdatedAt,
   children,
 }: {
   enabled: boolean;
   itemId: string;
   initialAnnotations: React.ComponentProps<typeof ReaderAnnotations>["initialAnnotations"];
+  initialUpdatedAt: number;
   children: React.ReactNode;
 }) {
   return enabled ? (
-    <ReaderAnnotations itemId={itemId} initialAnnotations={initialAnnotations}>
+    <ReaderAnnotations
+      itemId={itemId}
+      initialAnnotations={initialAnnotations}
+      initialUpdatedAt={initialUpdatedAt}
+    >
       {children}
     </ReaderAnnotations>
   ) : (
@@ -193,6 +203,7 @@ export default async function ItemDetailPage({
   }
 
   const { item, aiSummaries, existingFeedback, neighbours, note, annotations } = loaded;
+  const readerDataUpdatedAt = currentEpochMilliseconds();
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
@@ -309,6 +320,7 @@ export default async function ItemDetailPage({
           enabled={knowledgeUiEnabled}
           itemId={item.id}
           initialAnnotations={annotations}
+          initialUpdatedAt={readerDataUpdatedAt}
         >
           {/* Video embed (when applicable) */}
           {strategy.detail.showEmbedPlayer && (
@@ -387,6 +399,7 @@ export default async function ItemDetailPage({
               manualPriority: item.manualPriority ?? null,
             },
             note: note ? { body: note.body } : null,
+            updatedAt: readerDataUpdatedAt,
           }}
         />
       )}
