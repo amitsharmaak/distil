@@ -28,6 +28,7 @@ interface CacheScope {
   account: string | null;
   active: boolean;
   expire: () => void;
+  writes: Set<Promise<void>>;
 }
 const ScopeContext = createContext<CacheScope | null>(null);
 
@@ -50,6 +51,10 @@ async function readContent<T>(
   signal: AbortSignal
 ): Promise<T> {
   if (!scope.active) throw new Error("Session changed");
+  // Reads begun during an optimistic write wait for it to settle. Reads which
+  // began before it are cancelled by the mutation helper.
+  while (scope.writes.size) await Promise.all(scope.writes);
+  if (signal.aborted || !scope.active) throw new Error("Request cancelled");
   const response = await fetch(options.url, { signal });
   if (response.status === 401) scope.expire();
   if (!response.ok) throw new Error(`Unable to refresh (${response.status})`);
@@ -97,6 +102,7 @@ function AccountCache({
       client,
       account: accountKey,
       active: true,
+      writes: new Set(),
       expire: () => {
         value.active = false;
         void client.cancelQueries();
@@ -201,6 +207,17 @@ export function useContentCache() {
         return scope.client
           .getQueriesData<T>({ queryKey: scopedKey(scope, prefix) })
           .map(([key, value]) => [key.slice(2), value]);
+      },
+      beginWrite(): () => void {
+        let finish!: () => void;
+        const pending = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        scope.writes.add(pending);
+        return () => {
+          scope.writes.delete(pending);
+          finish();
+        };
       },
     }),
     [scope]
