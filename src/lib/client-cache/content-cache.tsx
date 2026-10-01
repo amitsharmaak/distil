@@ -31,6 +31,7 @@ interface CacheScope {
   activate: () => void;
   dispose: () => void;
   writes: Set<Promise<void>>;
+  itemWrites: Map<string, Promise<unknown>>;
 }
 const ScopeContext = createContext<CacheScope | null>(null);
 
@@ -144,6 +145,7 @@ function AccountCache({
       account: accountKey,
       active: true,
       writes: new Set(),
+      itemWrites: new Map(),
       activate: () => {
         lifecycle += 1;
         value.active = true;
@@ -272,6 +274,22 @@ export function useContentCache() {
           scope.writes.delete(pending);
           finish();
         };
+      },
+      enqueueItemWrite<T>(id: string, write: () => Promise<T>): Promise<T> {
+        const previous = scope.itemWrites.get(id) ?? Promise.resolve();
+        const operation = previous
+          .catch(() => undefined)
+          .then(() => {
+            if (!scope.active) throw new Error("Session changed");
+            return write();
+          });
+        scope.itemWrites.set(id, operation);
+        void operation
+          .finally(() => {
+            if (scope.itemWrites.get(id) === operation) scope.itemWrites.delete(id);
+          })
+          .catch(() => undefined);
+        return operation;
       },
     }),
     [scope]

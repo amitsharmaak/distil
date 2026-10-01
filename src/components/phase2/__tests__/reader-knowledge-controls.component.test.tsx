@@ -101,16 +101,21 @@ describe("ReaderKnowledgeControls", () => {
   });
 
   it("supports restore, unread, priority, and progress controls", async () => {
+    let serverState = {
+      isRead: true,
+      archived: true,
+      readingProgress: 0.75,
+      manualPriority: "high" as string | null,
+    };
     jest.mocked(global.fetch).mockImplementation((url, init) => {
       const path = String(url);
       if (path.endsWith("/state") && !init?.method)
-        return Promise.resolve(
-          ok({
-            state: { isRead: true, archived: true, readingProgress: 0.75, manualPriority: "high" },
-          })
-        );
+        return Promise.resolve(ok({ state: serverState }));
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
-      if (init?.method === "PATCH") return Promise.resolve(ok({ item: { archivedAt: undefined } }));
+      if (path.endsWith("/state") && init?.method === "PATCH") {
+        serverState = { ...serverState, ...JSON.parse(String(init.body)) };
+        return Promise.resolve(ok({ item: { archivedAt: undefined } }));
+      }
       if (init?.method === "PUT")
         return Promise.resolve(
           ok({ note: { body: JSON.parse(String(init.body)).body as string } })

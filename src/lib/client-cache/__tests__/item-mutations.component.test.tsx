@@ -76,6 +76,60 @@ it("rolls back just the failed item while preserving another edit and appended i
   });
 });
 
+it("serializes same-item writes across independent mutation hook instances", async () => {
+  const { result } = renderHook(
+    () => ({
+      cache: useContentCache(),
+      first: useItemMutation(),
+      second: useItemMutation(),
+    }),
+    {
+      wrapper: ({ children }) => (
+        <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+      ),
+    }
+  );
+  const key = ["feed", "one"];
+  result.current.cache.set(key, {
+    items: [{ id: "a", manualPriority: null }],
+  });
+  let finishFirst!: (value: Response) => void;
+  jest
+    .mocked(fetch)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        })
+    )
+    .mockResolvedValueOnce({ ok: true } as Response);
+
+  let failed!: Promise<void>;
+  let succeeded!: Promise<void>;
+  act(() => {
+    failed = result.current.first
+      .updateItem("a", { manualPriority: "high" })
+      .catch(() => undefined);
+    succeeded = result.current.second.updateItem("a", { manualPriority: "low" });
+  });
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  expect(result.current.cache.get(key)).toMatchObject({
+    items: [{ id: "a", manualPriority: "high" }],
+  });
+
+  await act(async () => {
+    finishFirst({ ok: false, status: 500 } as Response);
+    await failed;
+    await succeeded;
+  });
+
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(result.current.cache.get(key)).toEqual({
+    items: [{ id: "a", manualPriority: "low" }],
+  });
+});
+
 it("waits for an optimistic write before starting a new read", async () => {
   const { result } = setup();
   const { cache } = result.current;
@@ -102,12 +156,10 @@ it("reconciles cleared fields and revisiting items from authoritative refreshes"
     manualPriority: "high",
     area: "work",
   });
-  jest
-    .mocked(fetch)
-    .mockResolvedValue({
-      ok: true,
-      json: async () => ({ items: [], resurfacedItems: [{ id: "a", isRead: false }] }),
-    } as Response);
+  jest.mocked(fetch).mockResolvedValue({
+    ok: true,
+    json: async () => ({ items: [], resurfacedItems: [{ id: "a", isRead: false }] }),
+  } as Response);
   await act(async () =>
     cache.fetch({ key: ["today", "sections"], url: "/api/v1/feed", staleTime: 1000 })
   );

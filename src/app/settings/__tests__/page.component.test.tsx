@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import SettingsPage from "../page";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/shortcuts-help-dialog";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/settings",
@@ -38,6 +39,14 @@ const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const json = (body: unknown, status = 200) =>
   ({ ok: status < 400, status, json: async () => body }) as Response;
 
+function TestProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <ContentCacheProvider accountKey="test-account">
+      <ShortcutsProvider>{children}</ShortcutsProvider>
+    </ContentCacheProvider>
+  );
+}
+
 function mockAccount(isAdmin: boolean, failures = 0) {
   fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -53,7 +62,7 @@ beforeEach(() => fetchMock.mockReset());
 
 describe("SettingsPage", () => {
   it("keeps Archive while omitting the retired library surface", () => {
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
 
     expect(
       screen.queryByRole("link", { name: ["Collec", "tions"].join("") })
@@ -62,7 +71,7 @@ describe("SettingsPage", () => {
   });
 
   it("1 and 2 switch the Capture and Account tabs", () => {
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "capture");
     fireEvent.keyDown(document.body, { key: "2" });
     expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "account");
@@ -71,7 +80,7 @@ describe("SettingsPage", () => {
   });
 
   it("fresh load: the first 2 press is handled (preventDefault) with no help-dialog cycle", () => {
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     // fireEvent returns false when a listener called preventDefault.
     expect(fireEvent.keyDown(document.body, { key: "2", code: "Digit2" })).toBe(false);
     expect(screen.getByTestId("tabs")).toHaveAttribute("data-value", "account");
@@ -81,10 +90,10 @@ describe("SettingsPage", () => {
 
   it("? lists the Settings group", () => {
     render(
-      <ShortcutsProvider>
+      <TestProvider>
         <SettingsPage />
         <ShortcutsHelpDialog />
-      </ShortcutsProvider>
+      </TestProvider>
     );
     fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
     expect(screen.getByText("Settings", { selector: "h3, h2, h4, div, span" })).toBeInTheDocument();
@@ -94,7 +103,7 @@ describe("SettingsPage", () => {
 
   it("shows no Invitations or Troubleshooting tab to a non-admin and keeps diagnostics out of Capture", async () => {
     mockAccount(false);
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/account", expect.anything())
     );
@@ -109,7 +118,7 @@ describe("SettingsPage", () => {
   });
 
   it("stays a member view when the account request fails", async () => {
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByText("Invitations settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Capture diagnostics")).not.toBeInTheDocument();
@@ -117,7 +126,7 @@ describe("SettingsPage", () => {
 
   it("gives an admin the Invitations tab and a Troubleshooting tab holding the diagnostics", async () => {
     mockAccount(true, 3);
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     expect(await screen.findByText("Invitations settings")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Invitations/ })).toBeInTheDocument();
     const troubleshooting = screen.getByRole("button", { name: /Troubleshooting/ });
@@ -128,7 +137,7 @@ describe("SettingsPage", () => {
 
   it("omits the failure badge when nothing failed", async () => {
     mockAccount(true, 0);
-    render(<SettingsPage />, { wrapper: ShortcutsProvider });
+    render(<SettingsPage />, { wrapper: TestProvider });
     const troubleshooting = await screen.findByRole("button", { name: /Troubleshooting/ });
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

@@ -165,7 +165,16 @@ test("Feed retains loaded pages and scroll while filters avoid RSC navigation", 
   await page.evaluate(() => window.scrollTo(0, 0));
   const onRequest = (request: import("@playwright/test").Request) => {
     const url = new URL(request.url());
-    if (url.pathname === "/feed" && url.searchParams.has("_rsc")) filterRsc++;
+    // WebKit can dispatch the preceding Feed link's metadata prefetch after
+    // cached content is already visible. Only navigation or filtered-route RSC
+    // reads belong to this assertion; that delayed intent prefetch does not.
+    const isIntentPrefetch = request.headers()["next-router-prefetch"] === "1";
+    if (
+      url.pathname === "/feed" &&
+      url.searchParams.has("_rsc") &&
+      (!isIntentPrefetch || url.searchParams.has("q"))
+    )
+      filterRsc++;
   };
   page.on("request", onRequest);
   await page.getByRole("searchbox").fill("Navigation article 7");

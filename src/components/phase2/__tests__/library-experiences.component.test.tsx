@@ -5,6 +5,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ArchiveExperience } from "../library-experiences";
 import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 import type { FeedItem } from "@/lib/feed/feed-query";
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ prefetch: jest.fn() }),
+}));
+
 function response(payload: unknown, ok = true): Response {
   return {
     ok,
@@ -43,6 +48,7 @@ describe("library experiences", () => {
   beforeEach(() => {
     fetchMock = jest.mocked(global.fetch);
     fetchMock.mockReset();
+    window.scrollTo = jest.fn();
   });
 
   afterEach(() => {
