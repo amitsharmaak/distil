@@ -280,3 +280,46 @@ describe("Collections removal migration", () => {
     expect(raw).toContain("Rollback");
   });
 });
+
+describe("Browser connections X1 migration", () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0015_browser_connections.sql"),
+    "utf8"
+  )
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  it("extends the ledger stage list by exactly one stage", () => {
+    expect(migration).toContain(
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure','feed-search','life-areas','drop-collections','browser-connections'))"
+    );
+  });
+
+  it("adds an additive, checked kind defaulting to manual and a short nullable label", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'manual'");
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS label text");
+    expect(migration).toContain("CHECK (kind IN ('manual','browser'))");
+    expect(migration).toContain("CHECK (label IS NULL OR char_length(label) <= 120)");
+  });
+
+  it("rebuilds only the capture_tokens view and leaves authentication and other tables alone", () => {
+    expect(migration).toMatch(
+      /CREATE OR REPLACE VIEW tenant_api\.capture_tokens WITH \(security_barrier=true\) AS\s+SELECT \* FROM public\.capture_tokens\s+WHERE user_id = nullif\(current_setting\('app\.user_id', true\), ''\)::uuid\s+WITH CASCADED CHECK OPTION;/
+    );
+    expect(migration.match(/CREATE OR REPLACE VIEW/g)).toHaveLength(1);
+    expect(migration.match(/ALTER TABLE capture_tokens\b/g)).toHaveLength(5);
+    for (const forbidden of [
+      "distil_resolve_capture_token",
+      "CONCURRENTLY",
+      "DROP TABLE",
+      "DROP COLUMN",
+      "DROP VIEW",
+      "DISABLE ROW LEVEL",
+      "UPDATE capture_tokens",
+      "DELETE FROM",
+    ]) {
+      expect(migration).not.toContain(forbidden);
+    }
+  });
+});

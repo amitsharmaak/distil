@@ -6,6 +6,7 @@ jest.mock("@/lib/browser-navigation", () => ({ navigateFullPage: jest.fn() }));
 
 import { navigateFullPage } from "@/lib/browser-navigation";
 
+import { SignInCard } from "@/components/auth/sign-in-card";
 import SignInPage from "../page";
 
 const fetchMock = jest.mocked(global.fetch);
@@ -95,4 +96,37 @@ it("shows the reset-password notice when redirected with ?reset=1", async () => 
   expect(
     await screen.findByText("Password updated. Sign in with your new password.")
   ).toBeInTheDocument();
+});
+
+it("returns to the requested page after a password sign-in when embedded with `next`", async () => {
+  fetchMock.mockResolvedValue(response(200, { authenticated: true }));
+  render(<SignInCard next="/extension/connect?state=abc" />);
+
+  submitSignIn("amit@example.com", "correct horse battery staple");
+
+  await waitFor(() =>
+    expect(navigateFullPage).toHaveBeenCalledWith("/extension/connect?state=abc", window.location)
+  );
+});
+
+it("sends `next` with the magic-link request and ignores unsafe values", async () => {
+  fetchMock.mockResolvedValue(response(202));
+  const { unmount } = render(<SignInCard next="/extension/connect?state=abc" />);
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "amit@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "Email me a magic link instead" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/sign-in/request-link",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "amit@example.com", next: "/extension/connect?state=abc" }),
+      })
+    )
+  );
+  unmount();
+
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(response(200, { authenticated: true }));
+  render(<SignInCard next="//evil.example/x" />);
+  submitSignIn("amit@example.com", "correct horse battery staple");
+  await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/", window.location));
 });

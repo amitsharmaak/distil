@@ -373,6 +373,7 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     }),
     tenant("capture_tokens", {
       identity: ["id"],
+      migrationColumns: ["kind", "label"],
       highValue: ["token_hash", "token_prefix"],
       uniqueness: [unique("token_hash", ["token_hash"])],
     }),

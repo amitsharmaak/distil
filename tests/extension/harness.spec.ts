@@ -1,5 +1,6 @@
 import { test, expect } from "../support/browser/extension-test";
 import { closeExtension, launchExtension } from "../support/browser/extension";
+import { DISTIL_EXTENSION_ID } from "../../src/lib/extension/constants";
 
 declare const chrome: {
   alarms: {
@@ -32,19 +33,100 @@ declare const chrome: {
 const DISTIL_ORIGIN = "http://localhost:3000";
 const CAPTURE_ENDPOINT = `${DISTIL_ORIGIN}/api/v1/captures`;
 
+/** Seeds a connected browser directly in storage; the handoff itself has its own tests. */
 async function configureExtension(
-  context: import("@playwright/test").BrowserContext,
-  extensionId: string,
-  token = "dst_cap_playwright_only"
+  _context: import("@playwright/test").BrowserContext,
+  _extensionId: string,
+  token = "dst_cap_playwright_only",
+  accountId = "account-alpha"
 ) {
-  const options = await context.newPage();
-  await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await options.getByLabel("Distil origin").fill(DISTIL_ORIGIN);
-  await options.getByLabel("Capture token").fill(token);
-  await options.getByRole("button", { name: "Save connection" }).click();
-  await expect(options.getByRole("status")).toContainText("Connection saved");
-  await expect(options.getByLabel("Capture token")).toHaveValue("");
-  await options.close();
+  const worker = _context.serviceWorkers()[0];
+  await worker.evaluate(
+    async ({ token, accountId }) => {
+      await chrome.storage.local.set({
+        distilConfig: {
+          origin: "http://localhost:3000",
+          token,
+          accountKey: `key-${accountId}`,
+          accountId,
+          accountEmail: "amit@example.com",
+          connectionId: "conn-1",
+          label: "Chrome on macOS",
+          authPaused: false,
+        },
+      });
+    },
+    { token, accountId }
+  );
+}
+
+function connectPage(account = "account-alpha", token = "dst_cap_from_handoff") {
+  return `<!doctype html><title>connect</title><p id="result">pending</p><script>
+const q = new URLSearchParams(location.search);
+chrome.runtime.sendMessage(
+  ${JSON.stringify(DISTIL_EXTENSION_ID)},
+  {
+    type: "distil-connect",
+    state: q.get("sendState") || q.get("state"),
+    origin: location.origin,
+    token: q.get("token") || ${JSON.stringify(token)},
+    connection: { id: "conn-2", label: "Chrome on macOS", createdAt: "2026-09-30T00:00:00Z", accountId: q.get("account") || ${JSON.stringify(account)} },
+    accountEmail: "amit@example.com",
+  },
+  (response) => { document.getElementById("result").textContent = JSON.stringify(response || { error: chrome.runtime.lastError?.message }); }
+);
+</script>`;
+}
+
+async function serveConnectPage(
+  context: import("@playwright/test").BrowserContext,
+  account?: string,
+  token?: string
+) {
+  for (const origin of ["http://localhost:3000", "https://distilai.app"]) {
+    await context.unroute(`${origin}/extension/connect*`);
+    await context.route(`${origin}/extension/connect*`, (route) =>
+      route.fulfill({ status: 200, contentType: "text/html", body: connectPage(account, token) })
+    );
+  }
+}
+
+async function startConnect(
+  serviceWorker: import("@playwright/test").Worker,
+  origin = DISTIL_ORIGIN
+) {
+  return serviceWorker.evaluate(async (value) => {
+    const scope = globalThis as typeof globalThis & {
+      handleMessage(message: unknown): Promise<Record<string, unknown>>;
+      __distilOpenedUrls?: string[];
+    };
+    // Tabs the extension opens itself can load before Playwright's routes attach, so record
+    // the URL instead and let the test open it in a page it controls.
+    scope.__distilOpenedUrls = [];
+    (
+      chrome as unknown as { tabs: { create(options: { url: string }): Promise<void> } }
+    ).tabs.create = async ({ url }) => {
+      scope.__distilOpenedUrls!.push(url);
+    };
+    return scope.handleMessage({ type: "distil-start-connect", origin: value });
+  }, origin);
+}
+
+/** Starts the connect flow and opens the connect URL the extension asked for. */
+async function openConnectPage(
+  context: import("@playwright/test").BrowserContext,
+  serviceWorker: import("@playwright/test").Worker,
+  origin = DISTIL_ORIGIN
+) {
+  const started = await startConnect(serviceWorker, origin);
+  expect(started.ok).toBe(true);
+  const [url] = await serviceWorker.evaluate(
+    () => (globalThis as typeof globalThis & { __distilOpenedUrls: string[] }).__distilOpenedUrls
+  );
+  expect(url).toMatch(/\/extension\/connect\?state=[0-9a-f]{64}$/);
+  const page = await context.newPage();
+  await page.goto(url);
+  return page;
 }
 
 async function sendWorkerMessage(
@@ -119,7 +201,7 @@ test("launches and inspects the unpacked MV3 extension", async ({
   expect(manifest.permissions).toEqual(
     expect.arrayContaining(["activeTab", "alarms", "contextMenus", "storage"])
   );
-  expect(manifest.host_permissions).toEqual(["http://localhost:3000/*"]);
+  expect(manifest.host_permissions).toEqual(["https://distilai.app/*", "http://localhost:3000/*"]);
   expect(manifest.optional_host_permissions).toEqual(["http://*/*", "https://*/*"]);
   expect(manifest.options_ui?.page).toBe("options.html");
 });
@@ -137,42 +219,92 @@ test("provides persistent extension storage", async ({ serviceWorker }) => {
   expect(storedValue).toBe("ready");
 });
 
-test("configures a runtime origin permission without rendering the saved token", async ({
+test("options page has no token field and validates the origin before sign-in", async ({
+  context,
+  extensionId,
+}) => {
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(options.getByLabel("Capture token")).toHaveCount(0);
+  await expect(options.getByText("Not connected.")).toBeVisible();
+  await options.getByText("Advanced").click();
+  await expect(options.getByLabel("Distil origin")).toHaveValue("https://distilai.app");
+
+  await options.getByLabel("Distil origin").fill("http://distil.example.com");
+  await options.getByRole("button", { name: "Sign in to Distil" }).click();
+  await expect(options.getByRole("status")).toContainText("Use HTTPS");
+});
+
+test("completes the connect handoff with the right state and stores the token privately", async ({
   context,
   extensionId,
   serviceWorker,
 }) => {
-  await configureExtension(context, extensionId);
+  await serveConnectPage(context);
+  const page = await openConnectPage(context, serviceWorker);
+  await expect(page.locator("#result")).toContainText('"ok":true');
 
-  const configured = await serviceWorker.evaluate(async () => {
-    const { distilConfig } = await chrome.storage.local.get("distilConfig");
-    return {
-      origin: (distilConfig as { origin: string }).origin,
-      hasToken: Boolean((distilConfig as { token: string }).token),
-      permission: await chrome.permissions.contains({ origins: ["http://localhost:3000/*"] }),
-    };
+  const stored = await serviceWorker.evaluate(async () => {
+    const values = await chrome.storage.local.get({
+      distilConfig: null,
+      distilPendingConnect: null,
+    });
+    return values as { distilConfig: Record<string, unknown>; distilPendingConnect: unknown };
   });
-  expect(configured).toEqual({ origin: DISTIL_ORIGIN, hasToken: true, permission: true });
+  expect(stored.distilPendingConnect).toBeNull();
+  expect(stored.distilConfig).toMatchObject({
+    origin: DISTIL_ORIGIN,
+    token: "dst_cap_from_handoff",
+    accountId: "account-alpha",
+    connectionId: "conn-2",
+  });
 
   const options = await context.newPage();
   await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(options.getByLabel("Capture token")).toHaveValue("");
-  await expect(options.getByText("dst_cap_playwright_only")).toHaveCount(0);
+  await expect(options.getByText("Signed in as amit@example.com")).toBeVisible();
+  await expect(options.getByText("dst_cap_from_handoff")).toHaveCount(0);
 });
 
-test("prefills the Production origin before configuration", async ({ context, extensionId }) => {
-  const options = await context.newPage();
-  await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(options.getByLabel("Distil origin")).toHaveValue("https://distilai.app");
+test("rejects a handoff with the wrong state, the wrong origin, or no pending request", async ({
+  context,
+  serviceWorker,
+}) => {
+  await serveConnectPage(context);
+  const noPending = await context.newPage();
+  await noPending.goto(`${DISTIL_ORIGIN}/extension/connect?state=${"a".repeat(64)}`);
+  await expect(noPending.locator("#result")).toContainText('"ok":false');
+
+  await startConnect(serviceWorker);
+  const wrongState = await context.newPage();
+  await wrongState.goto(`${DISTIL_ORIGIN}/extension/connect?sendState=${"b".repeat(64)}`);
+  await expect(wrongState.locator("#result")).toContainText('"ok":false');
+
+  const pending = await serviceWorker.evaluate(async () => {
+    const { distilPendingConnect } = await chrome.storage.local.get("distilPendingConnect");
+    return distilPendingConnect as { state: string };
+  });
+  const wrongOrigin = await context.newPage();
+  await wrongOrigin.goto(`https://distilai.app/extension/connect?state=${pending.state}`);
+  await expect(wrongOrigin.locator("#result")).toContainText('"ok":false');
+
+  const config = await serviceWorker.evaluate(() => chrome.storage.local.get("distilConfig"));
+  expect(config.distilConfig).toBeUndefined();
 });
 
-test("rejects plaintext remote Distil origins", async ({ context, extensionId }) => {
-  const options = await context.newPage();
-  await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await options.getByLabel("Distil origin").fill("http://distil.example.com");
-  await options.getByLabel("Capture token").fill("dst_cap_not_transmitted");
-  await options.getByRole("button", { name: "Save connection" }).click();
-  await expect(options.getByRole("status")).toContainText("Use HTTPS");
+test("rejects a handoff older than ten minutes", async ({ context, serviceWorker }) => {
+  await serveConnectPage(context);
+  await startConnect(serviceWorker);
+  const state = await serviceWorker.evaluate(async () => {
+    const { distilPendingConnect } = await chrome.storage.local.get("distilPendingConnect");
+    const pending = distilPendingConnect as { state: string; startedAt: number };
+    await chrome.storage.local.set({
+      distilPendingConnect: { ...pending, startedAt: Date.now() - 11 * 60 * 1000 },
+    });
+    return pending.state;
+  });
+  const late = await context.newPage();
+  await late.goto(`${DISTIL_ORIGIN}/extension/connect?state=${state}`);
+  await expect(late.locator("#result")).toContainText('"ok":false');
 });
 
 test("posts the v1 capture contract and removes successful captures", async ({
@@ -255,44 +387,34 @@ test("deduplicates normalized offline captures and replays them from persistent 
   expect(replay.queued).toBe(0);
 });
 
-test("namespaces offline work by capture token and never replays it after an account switch", async ({
+test("namespaces offline work by account and pauses it when another account connects", async ({
   context,
   extensionId,
   serviceWorker,
 }) => {
+  await serveConnectPage(context);
   await context.route(CAPTURE_ENDPOINT, (route) => route.abort("failed"));
-  await configureExtension(context, extensionId, "dst_cap_account_alpha");
+  await configureExtension(context, extensionId, "dst_cap_alpha", "account-alpha");
   await sendWorkerMessage(serviceWorker, {
     type: "distil-save",
     payload: { url: "https://example.com/alpha-only" },
   });
-  const before = await serviceWorker.evaluate(async () => {
-    const stored = await chrome.storage.local.get({ distilConfig: null, distilCaptureQueues: {} });
-    return stored as {
-      distilConfig: { accountKey: string };
-      distilCaptureQueues: Record<string, unknown[]>;
-    };
+  const alphaKey = await serviceWorker.evaluate(async () => {
+    const { distilConfig } = await chrome.storage.local.get("distilConfig");
+    return (distilConfig as { accountKey: string }).accountKey;
   });
-  const alphaKey = before.distilConfig.accountKey;
 
-  const options = await context.newPage();
-  await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await options.getByLabel("Capture token").fill("dst_cap_account_beta");
-  await options.getByRole("button", { name: "Save connection" }).click();
-  await expect(options.getByRole("status")).toContainText("original account remain paused");
+  await serveConnectPage(context, "account-beta", "dst_cap_beta");
+  const page = await openConnectPage(context, serviceWorker);
+  await expect(page.locator("#result")).toContainText('"ok":true');
 
-  const after = await serviceWorker.evaluate(async () => {
-    const stored = await chrome.storage.local.get({ distilConfig: null, distilCaptureQueues: {} });
-    return stored as {
-      distilConfig: { accountKey: string };
-      distilCaptureQueues: Record<string, unknown[]>;
-    };
-  });
-  expect(after.distilConfig.accountKey).not.toBe(alphaKey);
-  expect(after.distilCaptureQueues[alphaKey]).toHaveLength(1);
   const state = await sendWorkerMessage(serviceWorker, { type: "distil-get-state" });
   expect(state).toMatchObject({ queued: 0, pausedQueues: 1 });
-  await options.close();
+  const queues = await serviceWorker.evaluate(async () => {
+    const { distilCaptureQueues } = await chrome.storage.local.get("distilCaptureQueues");
+    return distilCaptureQueues as Record<string, unknown[]>;
+  });
+  expect(queues[alphaKey]).toHaveLength(1);
 });
 
 test("continues replaying later captures after a retryable failure", async ({
@@ -350,40 +472,51 @@ test("replays an offline capture after restarting the browser context", async ({
   }
 });
 
-test("preserves and pauses unauthorized captures until configuration is refreshed", async ({
+test("clears the token on 401, keeps the queue, and resumes after the same account signs in again", async ({
   context,
   extensionId,
   serviceWorker,
 }) => {
+  await serveConnectPage(context);
   let requests = 0;
   await context.route(CAPTURE_ENDPOINT, async (route) => {
     requests += 1;
     await route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
   });
-  await configureExtension(context, extensionId);
+  await configureExtension(context, extensionId, "dst_cap_revoked", "account-alpha");
   const unauthorized = await sendWorkerMessage(serviceWorker, {
     type: "distil-save",
     payload: { url: "https://example.com/private" },
   });
   expect(unauthorized.kind).toBe("auth-required");
   expect(unauthorized.queued).toBe(1);
+  const cleared = await serviceWorker.evaluate(async () => {
+    const { distilConfig } = await chrome.storage.local.get("distilConfig");
+    return distilConfig as { token: string | null };
+  });
+  expect(cleared.token).toBeNull();
 
   await sendWorkerMessage(serviceWorker, { type: "distil-replay" });
   expect(requests).toBe(1);
+
+  // While signed out, a new save is kept and reported as needing sign-in (the popup's
+  // "Sign in again" state), not as unconfigured.
+  const signedOut = await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/while-signed-out" },
+  });
+  expect(signedOut.kind).toBe("auth-required");
+  expect(signedOut.queued).toBe(2);
 
   await context.unroute(CAPTURE_ENDPOINT);
   await context.route(CAPTURE_ENDPOINT, (route) =>
     route.fulfill({ status: 202, contentType: "application/json", body: "{}" })
   );
-  await serviceWorker.evaluate(async () => {
-    const { distilConfig } = await chrome.storage.local.get("distilConfig");
-    await chrome.storage.local.set({
-      distilConfig: { ...(distilConfig as object), authPaused: false },
-    });
-  });
-  const replayed = await sendWorkerMessage(serviceWorker, { type: "distil-replay" });
-  expect(replayed.kind).toBe("saved");
-  expect(replayed.queued).toBe(0);
+  const page = await openConnectPage(context, serviceWorker);
+  await expect(page.locator("#result")).toContainText('"ok":true');
+  await expect
+    .poll(async () => (await activeQueue(serviceWorker)).length, { timeout: 10_000 })
+    .toBe(0);
 });
 
 test("drops terminal validation failures and retains rate-limited captures", async ({

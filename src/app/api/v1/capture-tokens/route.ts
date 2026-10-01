@@ -15,7 +15,8 @@ export async function GET(request: Request): Promise<Response> {
     const context = await resolveRequestAuthContext(request);
     const repositories = await getTenantRepositories(context);
     return Response.json(
-      { tokens: await repositories.captureTokens.list() },
+      // Manual tokens only: browser connections are listed by /api/v1/extension/connections.
+      { tokens: await repositories.captureTokens.list("manual") },
       { headers: { "cache-control": "private, no-store" } }
     );
   } catch (error) {

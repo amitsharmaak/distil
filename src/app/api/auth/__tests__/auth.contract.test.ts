@@ -246,6 +246,8 @@ describe("/api/v1/capture-tokens", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    // Browser connections have their own route; this list is the manual token only.
+    expect(captureTokens.list).toHaveBeenCalledWith("manual");
     const body = await response.json();
     expect(body.tokens).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain("tokenHash");

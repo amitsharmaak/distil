@@ -11,6 +11,12 @@ import {
   sealPendingInvitation,
 } from "@/lib/auth/invite-state";
 import { readCookie } from "@/lib/auth/request";
+import {
+  openSignInNext,
+  pendingSignInNextCookieOptions,
+  PENDING_SIGN_IN_NEXT_COOKIE,
+  sealSignInNext,
+} from "@/lib/auth/sign-in-next";
 import { readProviderIdentity, type ProviderIdentityPort } from "@/lib/auth/request-context";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { AuthError } from "@/lib/auth/errors";
@@ -184,6 +190,13 @@ export function createReturningMagicLinkRequestHandler(dependencies: {
   provider: MagicLinkProvider;
   repositories: AuthRepositoryPort;
   appOrigin: string;
+  /**
+   * When set, a `next` page path in the request body is sealed into a short-lived cookie that the
+   * completion handler follows after sign-in. The cookie is set on every accepted response so
+   * known and unknown addresses stay indistinguishable.
+   */
+  stateSecret?: string;
+  now?: () => Date;
   beforeDispatch?: (
     account: NonNullable<Awaited<ReturnType<AuthRepositoryPort["findAccountByEmail"]>>>,
     request: Request
@@ -192,10 +205,24 @@ export function createReturningMagicLinkRequestHandler(dependencies: {
   return async function POST(request: Request): Promise<Response> {
     try {
       requireAllowedOrigin(request, new Set([dependencies.appOrigin]));
-      const body = (await request.json()) as { email?: unknown };
+      const body = (await request.json()) as { email?: unknown; next?: unknown };
       const email = returningEmailSchema.parse(body.email);
       const account = await dependencies.repositories.findAccountByEmail(normalizeEmail(email));
-      const accepted = () => NextResponse.json({ accepted: true }, { status: 202 });
+      const accepted = () => {
+        const response = NextResponse.json({ accepted: true }, { status: 202 });
+        if (dependencies.stateSecret && typeof body.next === "string") {
+          try {
+            response.cookies.set(
+              PENDING_SIGN_IN_NEXT_COOKIE,
+              sealSignInNext(body.next, dependencies.stateSecret, dependencies.now?.()),
+              pendingSignInNextCookieOptions
+            );
+          } catch {
+            // A misconfigured secret only loses the return path; sign-in itself still works.
+          }
+        }
+        return response;
+      };
       if (!account?.primaryEmail) return accepted();
       try {
         await dependencies.beforeDispatch?.(account, request);
@@ -240,20 +267,38 @@ export function createReturningMagicLinkCompletionHandler(dependencies: {
   provider: ProviderIdentityPort;
   repositories: AuthRepositoryPort;
   appOrigin: string;
+  stateSecret?: string;
+  now?: () => Date;
 }) {
-  return async function GET(): Promise<Response> {
+  return async function GET(request?: Request): Promise<Response> {
     let destination = "/access-denied";
+    const pending =
+      request && dependencies.stateSecret
+        ? readCookie(request, PENDING_SIGN_IN_NEXT_COOKIE)
+        : undefined;
     try {
       const identity = await readProviderIdentity(dependencies.provider);
       const account = await dependencies.repositories.findAccountByIdentity({
         provider: identity.provider,
         providerSubject: identity.subject,
       });
-      if (account?.status === "active") destination = "/";
+      if (account?.status === "active") {
+        destination =
+          (dependencies.stateSecret
+            ? openSignInNext(pending, dependencies.stateSecret, dependencies.now?.())
+            : undefined) ?? "/";
+      }
     } catch {
       destination = "/access-denied";
     }
-    return NextResponse.redirect(new URL(destination, dependencies.appOrigin));
+    const response = NextResponse.redirect(new URL(destination, dependencies.appOrigin));
+    if (pending) {
+      response.cookies.set(PENDING_SIGN_IN_NEXT_COOKIE, "", {
+        ...pendingSignInNextCookieOptions,
+        maxAge: 0,
+      });
+    }
+    return response;
   };
 }
 

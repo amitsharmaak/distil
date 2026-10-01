@@ -70,3 +70,16 @@ button {
 .status.error {
   color: #b91c1c;
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+details {
+  margin-top: 24px;
+}
+details input {
+  width: 100%;
+  margin-top: 8px;
+}

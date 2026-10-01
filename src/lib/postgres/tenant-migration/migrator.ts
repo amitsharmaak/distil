@@ -22,6 +22,7 @@ export const TENANT_MIGRATION_STAGES = [
   "feed-search",
   "life-areas",
   "drop-collections",
+  "browser-connections",
 ] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
@@ -36,6 +37,7 @@ const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   "feed-search": "0012_feed_search.sql",
   "life-areas": "0013_life_areas.sql",
   "drop-collections": "0014_drop_collections.sql",
+  "browser-connections": "0015_browser_connections.sql",
 };
 
 interface AppliedMigrationRow {
