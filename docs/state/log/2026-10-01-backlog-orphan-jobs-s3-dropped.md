@@ -1,6 +1,6 @@
 ---
 topic: backlog
-title: S3 and content_hash dropped; orphan summary-regenerate and knowledge_backfill job types removed
+title: S3, content_hash and P7 index question dropped; orphan job types removed
 date: 2026-10-01
 time: 07:20
 status: ongoing
@@ -22,6 +22,15 @@ This entry supersedes the "Remaining backlog" list in `2026-09-30-backlog-severi
   `src/lib/phase2/video-transcript.ts`), already deletes the item's summaries so they regenerate.
   Checking the hash on read would add an item load and a re-hash to every cached summary read. The
   column stays; no migration. Do not re-propose this unless Amit asks.
+- **P7 RLS/ordering index question** closed with no code change. Forced RLS plans each tenant table
+  as a security-barrier subquery, so an ordered `items(user_id, created_at DESC, id DESC)` index
+  cannot serve the feed's `ORDER BY … LIMIT`. Non-leakproof operators (`?|`, `?`, `@@`) are
+  evaluated above the barrier, so topic GIN and FTS indexes are not used (checkpoint "Performance
+  P7: indexes — 2026-09-17" in `docs/project-state.md`). The cost is a top-N sort or filter over
+  one tenant's own rows, which is negligible at the current library size (a few dozen items).
+  Fixing it would need a `SECURITY DEFINER` feed function or a policy-free read path, which weakens
+  database-enforced isolation. Revisit only if feed or search queries show up as slow in timings,
+  or a tenant nears ~5,000 items. Do not re-propose it otherwise.
 
 **Orphan job types removed (this branch)**
 
@@ -50,7 +59,6 @@ This entry supersedes the "Remaining backlog" list in `2026-09-30-backlog-severi
 **Remaining backlog (each becomes its own topic when picked up)**
 
 - Classifier model (inline-search decision 12).
-- Performance: the P7 RLS/ordering index question.
 - Performance: the `distil_resolve_auth_identity` lookup cost.
 - Performance: the Vercel + Neon cold start.
 - Capture diagnostics in Settings (admin-invitations phase I3).
