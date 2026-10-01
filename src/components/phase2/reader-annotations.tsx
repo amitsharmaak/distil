@@ -5,7 +5,7 @@ import { Highlighter, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-type Annotation = {
+export type ReaderAnnotation = {
   id: string;
   selectedQuote: string;
   prefix: string;
@@ -99,7 +99,7 @@ async function makeAnchor(
   };
 }
 
-function anchorStillMatches(annotation: Annotation, content: string): boolean {
+function anchorStillMatches(annotation: ReaderAnnotation, content: string): boolean {
   if (annotation.startOffset === undefined || annotation.endOffset === undefined) {
     return content.includes(annotation.selectedQuote);
   }
@@ -108,19 +108,21 @@ function anchorStillMatches(annotation: Annotation, content: string): boolean {
 
 export function ReaderAnnotations({
   itemId,
+  initialAnnotations,
   children,
 }: {
   itemId: string;
+  initialAnnotations?: ReaderAnnotation[];
   children: React.ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(initialAnnotations ?? []);
   const [selection, setSelection] = useState<SelectionAnchor | null>(null);
   const [reanchorId, setReanchorId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingComment, setEditingComment] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialAnnotations === undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -128,20 +130,29 @@ export function ReaderAnnotations({
   const currentContent = useCallback(() => contentRef.current?.textContent ?? "", []);
 
   useEffect(() => {
+    const reconcileAnchors = (entries: ReaderAnnotation[]) => {
+      const content = currentContent();
+      return entries.map((annotation) => ({
+        ...annotation,
+        status:
+          annotation.status === "active" && !anchorStillMatches(annotation, content)
+            ? ("orphaned" as const)
+            : annotation.status,
+      }));
+    };
+
+    if (initialAnnotations !== undefined) {
+      setAnnotations(reconcileAnchors(initialAnnotations));
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
-    void requestJson<{ annotations: Annotation[] }>(`/api/v1/items/${itemId}/annotations`)
+    void requestJson<{ annotations: ReaderAnnotation[] }>(`/api/v1/items/${itemId}/annotations`)
       .then((payload) => {
         if (cancelled) return;
-        const content = currentContent();
-        setAnnotations(
-          payload.annotations.map((annotation) => ({
-            ...annotation,
-            status:
-              annotation.status === "active" && !anchorStillMatches(annotation, content)
-                ? "orphaned"
-                : annotation.status,
-          }))
-        );
+        setAnnotations(reconcileAnchors(payload.annotations));
       })
       .catch((cause) => {
         if (!cancelled)
@@ -153,7 +164,7 @@ export function ReaderAnnotations({
     return () => {
       cancelled = true;
     };
-  }, [currentContent, itemId]);
+  }, [currentContent, initialAnnotations, itemId]);
 
   const captureSelection = useCallback(async () => {
     const root = contentRef.current;
@@ -180,7 +191,7 @@ export function ReaderAnnotations({
     setError(null);
     try {
       if (reanchorId) {
-        const payload = await requestJson<{ annotation: Annotation }>(
+        const payload = await requestJson<{ annotation: ReaderAnnotation }>(
           `/api/v1/items/${itemId}/annotations/${reanchorId}`,
           {
             method: "PATCH",
@@ -203,7 +214,7 @@ export function ReaderAnnotations({
         );
         setNotice("Highlight re-anchored");
       } else {
-        const payload = await requestJson<{ annotation: Annotation }>(
+        const payload = await requestJson<{ annotation: ReaderAnnotation }>(
           `/api/v1/items/${itemId}/annotations`,
           {
             method: "POST",
@@ -231,12 +242,12 @@ export function ReaderAnnotations({
     }
   }
 
-  async function saveComment(annotation: Annotation) {
+  async function saveComment(annotation: ReaderAnnotation) {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const payload = await requestJson<{ annotation: Annotation }>(
+      const payload = await requestJson<{ annotation: ReaderAnnotation }>(
         `/api/v1/items/${itemId}/annotations/${annotation.id}`,
         {
           method: "PATCH",
@@ -256,7 +267,7 @@ export function ReaderAnnotations({
     }
   }
 
-  async function removeAnnotation(annotation: Annotation) {
+  async function removeAnnotation(annotation: ReaderAnnotation) {
     if (saving) return;
     setSaving(true);
     setError(null);

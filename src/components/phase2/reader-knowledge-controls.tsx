@@ -6,11 +6,16 @@ import { Archive, ArchiveRestore, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Priority } from "@/lib/types";
 
-type ReaderState = {
+export type ReaderState = {
   isRead: boolean;
   archived: boolean;
   readingProgress: number;
   manualPriority: Priority | null;
+};
+
+export type ReaderKnowledgeInitial = {
+  state: ReaderState;
+  note: { body: string } | null;
 };
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -21,16 +26,33 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
-  const [state, setState] = useState<ReaderState | null>(null);
-  const [note, setNote] = useState("");
-  const [savedNote, setSavedNote] = useState("");
-  const [loading, setLoading] = useState(true);
+export function ReaderKnowledgeControls({
+  itemId,
+  initial,
+}: {
+  itemId: string;
+  initial?: ReaderKnowledgeInitial;
+}) {
+  const initialNote = initial?.note?.body ?? "";
+  const [state, setState] = useState<ReaderState | null>(initial?.state ?? null);
+  const [note, setNote] = useState(initialNote);
+  const [savedNote, setSavedNote] = useState(initialNote);
+  const [loading, setLoading] = useState(initial === undefined);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initial) {
+      const body = initial.note?.body ?? "";
+      setState(initial.state);
+      setNote(body);
+      setSavedNote(body);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -56,7 +78,7 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [itemId]);
+  }, [initial, itemId]);
 
   const dirty = note !== savedNote;
 

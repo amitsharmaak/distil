@@ -37,6 +37,18 @@ describe("ReaderAnnotations", () => {
     });
   });
 
+  it("uses server-loaded annotations without a mount request", async () => {
+    render(
+      <ReaderAnnotations itemId="item-1" initialAnnotations={[baseAnnotation]}>
+        <p>An anchored sentence follows.</p>
+      </ReaderAnnotations>
+    );
+
+    expect(await screen.findByText("Remember this")).toBeInTheDocument();
+    expect(screen.getByText("1 active")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("creates an anchored highlight from selected text and supports edit/delete", async () => {
     render(
       <ReaderAnnotations itemId="item-1">

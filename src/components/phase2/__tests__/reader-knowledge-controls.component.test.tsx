@@ -26,6 +26,28 @@ describe("ReaderKnowledgeControls", () => {
     });
   });
 
+  it("uses server-loaded state and note without mount requests", async () => {
+    render(
+      <ReaderKnowledgeControls
+        itemId="item-1"
+        initial={{
+          state: {
+            isRead: true,
+            archived: true,
+            readingProgress: 0.75,
+            manualPriority: "high",
+          },
+          note: { body: "Loaded with the reader" },
+        }}
+      />
+    );
+
+    expect(await screen.findByLabelText("Item note")).toHaveValue("Loaded with the reader");
+    expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Manual priority")).toHaveValue("high");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("loads note and state then saves an edited note", async () => {
     render(<ReaderKnowledgeControls itemId="item-1" />);
     const note = await screen.findByLabelText("Item note");

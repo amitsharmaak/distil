@@ -133,13 +133,21 @@ function renderTweetText(text: string): React.ReactNode[] {
 function ReaderKnowledgeBoundary({
   enabled,
   itemId,
+  initialAnnotations,
   children,
 }: {
   enabled: boolean;
   itemId: string;
+  initialAnnotations: React.ComponentProps<typeof ReaderAnnotations>["initialAnnotations"];
   children: React.ReactNode;
 }) {
-  return enabled ? <ReaderAnnotations itemId={itemId}>{children}</ReaderAnnotations> : children;
+  return enabled ? (
+    <ReaderAnnotations itemId={itemId} initialAnnotations={initialAnnotations}>
+      {children}
+    </ReaderAnnotations>
+  ) : (
+    children
+  );
 }
 
 /* ── Page ── */
@@ -158,17 +166,19 @@ export default async function ItemDetailPage({
   const auth = await resolveRequestAuthContext(
     new Request("http://distil.local/feed/reader", { headers: requestHeaders })
   );
-  // One tenant transaction for the whole read: the item, its summaries and
-  // feedback, and the keyset neighbours the prev/next controls need.
+  // One tenant transaction for the whole read: the item, its summaries,
+  // feedback, reader knowledge, and the keyset neighbours the controls need.
   const loaded = await withTenantRepositories(auth, async (repositories) => {
     const item = await repositories.items.findById(id);
     if (!item) return null;
-    const [aiSummaries, existingFeedback, neighbours] = await Promise.all([
+    const [aiSummaries, existingFeedback, neighbours, note, annotations] = await Promise.all([
       repositories.summaries.findAll(item.id),
       repositories.feedback.findForItem(item.id),
       repositories.items.findNeighbours(item.id, { unreadOnly: filter !== "all" }),
+      knowledgeUiEnabled ? repositories.itemNotes.find(item.id) : Promise.resolve(undefined),
+      knowledgeUiEnabled ? repositories.annotations.listForItem(item.id) : Promise.resolve([]),
     ]);
-    return { item, aiSummaries, existingFeedback, neighbours };
+    return { item, aiSummaries, existingFeedback, neighbours, note, annotations };
   });
 
   if (!loaded) {
@@ -182,7 +192,7 @@ export default async function ItemDetailPage({
     );
   }
 
-  const { item, aiSummaries, existingFeedback, neighbours } = loaded;
+  const { item, aiSummaries, existingFeedback, neighbours, note, annotations } = loaded;
   const SourceIcon = sourceIcons[item.sourceType] ?? Globe;
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
@@ -295,7 +305,11 @@ export default async function ItemDetailPage({
 
       {/* ── Content body ── */}
       <section className="min-h-[30vh]">
-        <ReaderKnowledgeBoundary enabled={knowledgeUiEnabled} itemId={item.id}>
+        <ReaderKnowledgeBoundary
+          enabled={knowledgeUiEnabled}
+          itemId={item.id}
+          initialAnnotations={annotations}
+        >
           {/* Video embed (when applicable) */}
           {strategy.detail.showEmbedPlayer && (
             <div className="mb-6">
@@ -362,7 +376,20 @@ export default async function ItemDetailPage({
         </ReaderKnowledgeBoundary>
       </section>
 
-      {knowledgeUiEnabled && <ReaderKnowledgeControls itemId={item.id} />}
+      {knowledgeUiEnabled && (
+        <ReaderKnowledgeControls
+          itemId={item.id}
+          initial={{
+            state: {
+              isRead: item.isRead,
+              archived: Boolean(item.archivedAt),
+              readingProgress: item.readingProgress ?? 0,
+              manualPriority: item.manualPriority ?? null,
+            },
+            note: note ? { body: note.body } : null,
+          }}
+        />
+      )}
 
       {/* ── Sticky action bar ── */}
       <DetailActionBar
