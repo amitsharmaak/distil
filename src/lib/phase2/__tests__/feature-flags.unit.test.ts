@@ -33,4 +33,16 @@ describe("Phase 2 server feature flags", () => {
       digests: true,
     });
   });
+
+  it.each([
+    [undefined, "on"],
+    ["shadow", "shadow"],
+    ["SHADOW ", "shadow"],
+    ["false", "off"],
+    [" False ", "off"],
+    ["true", "on"],
+    ["anything", "on"],
+  ])("reads FEATURE_CAPTURE_TRIAGE=%p as %p", (value, mode) => {
+    expect(readPhase2FeatureFlags({ FEATURE_CAPTURE_TRIAGE: value }).captureTriage).toBe(mode);
+  });
 });
