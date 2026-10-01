@@ -31,13 +31,22 @@ The SQL and interfaces in the initial contract commit are shared before delegati
   Replacing a code marks the old pending row consumed (expired for authorization purposes).
 - Never log codes, tokens, connection strings, or raw secret-bearing errors. Export no secret hashes.
 
-## Wrong-guess decision
+## Wrong-guess interpretation and pre-context limit
 
 A wrong code has no exact hash match, hence no tenant/pairing can be identified. No fuzzy lookup
-or cross-tenant pending-code scan is allowed. Proposed interpretation awaiting Amit: unknown
-codes count against the IP limiter; the five-attempt guard applies to failed hash rechecks on
-an already resolved row. The alternative requires adding a separate pairing identifier to the
-protocol. Keep the exact-key boundary while the clarification is pending.
+or cross-tenant pending-code scan is allowed. The orchestrator raised this contradiction and
+proceeded with the code-only interpretation after giving Amit an opportunity to clarify:
+unknown codes count against the IP limiter; the five-attempt guard applies to failed hash
+rechecks on an already resolved row. Literal per-pairing wrong guesses would require a separate
+pairing identifier and a different protocol.
+
+The existing rate-limit table requires a tenant, so anonymous guesses use the operational table
+`shortcut_pairing_rate_limits`. It stores SHA-256 digests of the logical `pairing:${ip}` keys,
+never raw IP addresses. A fixed-policy SECURITY DEFINER function
+`distil_consume_shortcut_pairing_rate_limit(text)` allows ten attempts per fifteen-minute bucket
+using the database clock. Runtime has EXECUTE only; PUBLIC and runtime have no table access.
+Expired bucket cleanup is bounded. The migration, schema and inventory additions belong to A;
+the route adapter and rate-limit tests belong to C.
 
 ## File ownership and scheduling
 
@@ -53,7 +62,11 @@ Vercel, Neon, Production, another session's worktree, or an existing state entry
   `scripts/rehearse-preview-clone.ts`, `tests/harness/**`, `tests/support/phase3-*`,
   `tests/fixtures/phase3/**`, `docs/authorization-matrix.json`,
   `docs/runbooks/tenant-isolation-incidents.md`, and migration stage lists in existing PostgreSQL
-  integration suites. A owns no domain repository files.
+  integration suites. Additional A ownership approved during discovery:
+  `tests/support/migration-invariants.ts`, `tests/support/authorization-matrix.ts`,
+  `docs/runbooks/backup-restore.md`, and the stage list in
+  `src/lib/operations/preview-clone-rehearsal.ts` plus its expectation tests.
+  A owns no domain repository files.
 - B, domain: `src/lib/repositories/ports.ts`, `src/lib/postgres/repositories.ts`,
   `src/lib/postgres/mappers.ts`, `src/lib/database.ts`, `src/lib/auth/capture-tokens.ts`,
   `src/lib/auth/shortcut-pairing.ts`, `src/lib/auth/shortcut-pairing-identity.ts`,
