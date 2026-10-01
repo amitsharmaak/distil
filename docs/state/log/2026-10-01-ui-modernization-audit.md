@@ -4,6 +4,7 @@ title: UI audit and edition-style redesign plan (U1–U5); Codex prompt ready
 date: 2026-10-01
 status: planned
 branch: claude/distil-ui-modernization-7680e2
+pr: 128
 ---
 
 ## What changed
