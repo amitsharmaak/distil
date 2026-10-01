@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileQuestion, Scan, Search, Sparkles } from "lucide-react";
+import { FileQuestion, RefreshCw, Scan, Search, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,11 @@ import { config } from "@/lib/config";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import { Kbd } from "@/components/ui/kbd";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
 
 const NEW_RESEARCH: ShortcutDef = {
   id: "research.new",
@@ -47,12 +52,46 @@ interface ResearchSuggestion {
   createdAt: string;
 }
 
+interface ResearchReportsResponse {
+  reports: ResearchReportListItem[];
+}
+
+interface ResearchSuggestionsResponse {
+  suggestions: ResearchSuggestion[];
+}
+
+const REPORTS_KEY = ["research", "list"] as const;
+const SUGGESTIONS_KEY = ["research", "suggestions"] as const;
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function updatedLabel(updatedAt: number): string {
+  if (!updatedAt) return "Not updated yet";
+  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
 export default function ResearchListPage() {
   const router = useRouter();
-  const [reports, setReports] = useState<ResearchReportListItem[]>([]);
-  const [suggestions, setSuggestions] = useState<ResearchSuggestion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const cache = useContentCache();
+  const reportsQuery = useContentQuery<ResearchReportsResponse>({
+    key: REPORTS_KEY,
+    url: `${config.apiBaseUrl}/api/ai/research/list`,
+    staleTime: CACHE_FRESHNESS.library,
+  });
+  const suggestionsQuery = useContentQuery<ResearchSuggestionsResponse>({
+    key: SUGGESTIONS_KEY,
+    url: `${config.apiBaseUrl}/api/ai/research/suggestions`,
+    staleTime: CACHE_FRESHNESS.library,
+  });
+  const reports = reportsQuery.data?.reports ?? [];
+  const suggestions = suggestionsQuery.data?.suggestions ?? [];
+  const loading = reportsQuery.isPending && !reportsQuery.data;
+  const refreshError = reportsQuery.error ?? suggestionsQuery.error;
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
     clustersFound: number;
@@ -62,34 +101,9 @@ export default function ResearchListPage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const newResearchRef = useRef<HTMLButtonElement>(null);
 
-  const fetchReports = useCallback(async () => {
-    try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/list`);
-      if (!res.ok) throw new Error("Failed to load reports");
-      const data = await res.json();
-      setReports(data.reports ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load reports");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchSuggestions = useCallback(async () => {
-    try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/suggestions`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setSuggestions(data.suggestions ?? []);
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchReports();
-    fetchSuggestions();
-  }, [fetchReports, fetchSuggestions]);
+  async function refreshAll() {
+    await Promise.all([reportsQuery.refetch(), suggestionsQuery.refetch()]);
+  }
 
   async function handleScan() {
     setScanning(true);
@@ -103,7 +117,7 @@ export default function ResearchListPage() {
       }
       const data = await res.json();
       setScanResult(data);
-      await fetchSuggestions();
+      await cache.invalidate(SUGGESTIONS_KEY);
     } catch (err) {
       setScanError(err instanceof Error ? err.message : "Scan failed");
     } finally {
@@ -122,8 +136,13 @@ export default function ResearchListPage() {
         throw new Error(data.error || "Failed to start research");
       }
       const data = await res.json();
-      await fetchSuggestions();
       if (data.report?.id) {
+        cache.set(["research", "report", data.report.id], { report: data.report });
+        await Promise.all([
+          cache.invalidate(REPORTS_KEY),
+          cache.invalidate(SUGGESTIONS_KEY),
+          cache.invalidate(["research", "report", data.report.id]),
+        ]);
         router.push(`/research/${data.report.id}`);
       }
     } catch (err) {
@@ -140,7 +159,10 @@ export default function ResearchListPage() {
         method: "DELETE",
       });
       if (!res.ok) return;
-      await fetchSuggestions();
+      cache.set<ResearchSuggestionsResponse>(SUGGESTIONS_KEY, (current) => ({
+        suggestions: (current?.suggestions ?? []).filter((suggestion) => suggestion.id !== id),
+      }));
+      await cache.invalidate(SUGGESTIONS_KEY);
     } finally {
       setActionId(null);
     }
@@ -165,10 +187,15 @@ export default function ResearchListPage() {
     return "text-amber-600 border-amber-200";
   }
 
-  if (error) {
+  if (reportsQuery.error && !reportsQuery.data) {
     return (
       <div className="mx-auto max-w-3xl py-12 text-center">
-        <p className="text-sm text-destructive">{error}</p>
+        <p className="text-sm text-destructive">
+          {errorMessage(reportsQuery.error, "Failed to load reports")}
+        </p>
+        <Button className="mt-4" variant="outline" onClick={() => void reportsQuery.refetch()}>
+          Try again
+        </Button>
       </div>
     );
   }
@@ -182,20 +209,46 @@ export default function ResearchListPage() {
             Suggested topics, your reports, and ad-hoc deep research
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleScan}
-          disabled={scanning || loading}
-          className="gap-2 shrink-0"
-          aria-label="Scan for topics"
-          aria-keyshortcuts="Shift+S"
-          title="Scan for suggestions (Shift+S)"
-        >
-          <Scan className="h-4 w-4" />
-          {scanning ? "Scanning…" : "Scan for topics"}
-        </Button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshAll()}
+              disabled={reportsQuery.isFetching || suggestionsQuery.isFetching}
+              className="gap-2"
+              aria-label="Refresh research"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${reportsQuery.isFetching || suggestionsQuery.isFetching ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleScan}
+              disabled={scanning || loading}
+              className="gap-2"
+              aria-label="Scan for topics"
+              aria-keyshortcuts="Shift+S"
+              title="Scan for suggestions (Shift+S)"
+            >
+              <Scan className="h-4 w-4" />
+              {scanning ? "Scanning…" : "Scan for topics"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {updatedLabel(Math.max(reportsQuery.dataUpdatedAt, suggestionsQuery.dataUpdatedAt))}
+          </p>
+        </div>
       </div>
+
+      {refreshError && (reportsQuery.data || suggestionsQuery.data) && (
+        <p role="alert" className="text-sm text-destructive">
+          Refresh failed. Cached research is still shown.
+        </p>
+      )}
 
       <Card>
         <CardContent className="p-4 space-y-3">
@@ -305,7 +358,7 @@ export default function ResearchListPage() {
         ) : (
           <div className="space-y-3">
             {reports.map((report) => (
-              <Link key={report.id} href={`/research/${report.id}`}>
+              <Link key={report.id} href={`/research/${report.id}`} prefetch={false}>
                 <Card className="transition-colors hover:bg-accent/50">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">

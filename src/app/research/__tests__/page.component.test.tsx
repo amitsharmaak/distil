@@ -1,9 +1,10 @@
 /** @jest-environment jsdom */
 
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ResearchListPage from "../page";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/research",
@@ -21,8 +22,20 @@ jest.mock("@/components/feed/deep-research", () => ({
 }));
 
 const fetchMock = jest.fn();
+let accountNumber = 0;
+let accountKey = "test-account-0";
+
+function TestProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <ContentCacheProvider accountKey={accountKey}>
+      <ShortcutsProvider>{children}</ShortcutsProvider>
+    </ContentCacheProvider>
+  );
+}
 
 beforeEach(() => {
+  accountKey = `test-account-${++accountNumber}`;
+  fetchMock.mockReset();
   fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
     if (init?.method === "POST") {
       return Promise.resolve({
@@ -42,8 +55,12 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 async function renderPage() {
-  render(<ResearchListPage />, { wrapper: ShortcutsProvider });
+  render(<ResearchListPage />, { wrapper: TestProviders });
   await screen.findByText("No research reports yet");
 }
 
@@ -70,5 +87,95 @@ describe("Research list shortcuts", () => {
       "aria-keyshortcuts",
       "Shift+S"
     );
+  });
+
+  it("reuses fresh reports and suggestions when the page remounts", async () => {
+    const view = render(
+      <TestProviders>
+        <ResearchListPage />
+      </TestProviders>
+    );
+    await screen.findByText("No research reports yet");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    view.rerender(
+      <TestProviders>
+        <div>Elsewhere</div>
+      </TestProviders>
+    );
+    view.rerender(
+      <TestProviders>
+        <ResearchListPage />
+      </TestProviders>
+    );
+
+    await screen.findByText("No research reports yet");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows stale reports immediately and refreshes them once on remount", async () => {
+    let now = Date.parse("2026-10-01T00:00:00.000Z");
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    let reportRequests = 0;
+    let resolveRefresh!: (response: Response) => void;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("suggestions")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ suggestions: [] }),
+        });
+      }
+      reportRequests += 1;
+      if (reportRequests === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            reports: [
+              {
+                id: "old-report",
+                query: "Cached report",
+                status: "completed",
+                createdAt: "2026-09-30T00:00:00.000Z",
+              },
+            ],
+          }),
+        });
+      }
+      return new Promise<Response>((resolve) => {
+        resolveRefresh = resolve;
+      });
+    });
+
+    const view = render(
+      <TestProviders>
+        <ResearchListPage />
+      </TestProviders>
+    );
+    expect(await screen.findByText("Cached report")).toBeInTheDocument();
+    view.rerender(
+      <TestProviders>
+        <div>Elsewhere</div>
+      </TestProviders>
+    );
+    now += 300_001;
+    view.rerender(
+      <TestProviders>
+        <ResearchListPage />
+      </TestProviders>
+    );
+
+    expect(screen.getByText("Cached report")).toBeInTheDocument();
+    await waitFor(() => expect(reportRequests).toBe(2));
+
+    await act(async () => {
+      resolveRefresh({
+        ok: true,
+        json: async () => ({ reports: [] }),
+      } as Response);
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("No research reports yet")).toBeInTheDocument();
+    expect(reportRequests).toBe(2);
   });
 });

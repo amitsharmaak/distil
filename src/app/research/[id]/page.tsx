@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
@@ -12,6 +13,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
 import { ResearchReportView } from "@/components/research/research-report-view";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
 
 /** How often to re-fetch the report when the SSE stream is unavailable. */
 const POLL_INTERVAL_MS = 3000;
@@ -40,8 +46,20 @@ interface ResearchReport {
   progress?: string | null;
 }
 
+interface ResearchReportResponse {
+  report: ResearchReport;
+}
+
 function isTerminalStatus(status: string): boolean {
   return status === "completed" || status === "failed";
+}
+
+function updatedLabel(updatedAt: number): string {
+  if (!updatedAt) return "Not updated yet";
+  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
 }
 
 const STAGES: ResearchProgress["stage"][] = [
@@ -119,92 +137,153 @@ const BACK: ShortcutDef = {
 export default function ResearchPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params.id as string;
-  const [report, setReport] = useState<ResearchReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ResearchProgress | null>(null);
-
-  const fetchReport = useCallback(async () => {
-    const res = await fetch(`${config.apiBaseUrl}/api/ai/research/${id}`);
-    if (!res.ok) throw new Error("Report not found");
-    const data = await res.json();
-    setReport(data.report);
-    const parsed = parseResearchProgress(data.report.progress);
-    if (parsed) setProgress(parsed);
-    return data.report;
-  }, [id]);
+  const id = typeof params.id === "string" ? params.id : "";
+  const reportKey = useMemo(() => ["research", "report", id] as const, [id]);
+  const cache = useContentCache();
+  const reportQuery = useContentQuery<ResearchReportResponse>({
+    key: reportKey,
+    url: `${config.apiBaseUrl}/api/ai/research/${id}`,
+    staleTime: CACHE_FRESHNESS.detail,
+    enabled: Boolean(id),
+  });
+  const { refetch: refetchReport } = reportQuery;
+  const report = reportQuery.data?.report ?? null;
+  const shouldWatch = Boolean(report && !isTerminalStatus(report.status));
+  const [liveProgress, setLiveProgress] = useState<{
+    id: string;
+    value: ResearchProgress;
+  } | null>(null);
+  const progress =
+    liveProgress?.id === id ? liveProgress.value : parseResearchProgress(report?.progress);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !shouldWatch) return;
 
     let active = true;
     let es: EventSource | null = null;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollInFlight = false;
+    let pollAttempt = 0;
+    let streamFailed = false;
+    let completionRefreshStarted = false;
+
+    const available = () =>
+      document.visibilityState === "visible" &&
+      (typeof navigator === "undefined" || navigator.onLine !== false);
 
     const stopStream = () => {
       es?.close();
       es = null;
     };
 
-    // Fallback when the stream errors or hits the server deadline: keep
-    // re-fetching until the report reaches a terminal state.
-    const pollUntilDone = () => {
-      if (!active) return;
-      pollTimer = setTimeout(async () => {
-        try {
-          const r = await fetchReport();
-          if (!active) return;
-          if (isTerminalStatus(r.status)) return;
-        } catch {
-          // keep polling; a transient failure should not strand the page
-        }
-        pollUntilDone();
-      }, POLL_INTERVAL_MS);
+    const stopPoll = () => {
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = null;
     };
 
-    async function load() {
-      try {
-        const r = await fetchReport();
-        if (!active) return;
-        if (isTerminalStatus(r.status)) return;
-        // Connect SSE for progress
-        es = new EventSource(`${config.apiBaseUrl}/api/ai/research/${id}/stream`);
-        es.addEventListener("progress", (e) => {
-          const p = parseResearchProgress(e.data);
-          if (p) setProgress(p);
-        });
-        es.addEventListener("status", (e) => {
-          try {
-            const { status } = JSON.parse(e.data);
-            setReport((prev) => (prev ? { ...prev, status } : null));
-          } catch {
-            // ignore
-          }
-        });
-        es.addEventListener("complete", async () => {
-          stopStream();
-          await fetchReport();
-        });
-        es.addEventListener("timeout", () => {
-          stopStream();
-          pollUntilDone();
-        });
-        es.addEventListener("error", () => {
-          stopStream();
-          pollUntilDone();
-        });
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "Failed to load report");
-      }
-    }
+    const stopLiveUpdates = () => {
+      stopStream();
+      stopPoll();
+    };
 
-    void load();
+    const setCachedReport = (update: (current: ResearchReport) => ResearchReport) => {
+      cache.set<ResearchReportResponse>(reportKey, (current) =>
+        current ? { report: update(current.report) } : current
+      );
+    };
+
+    const refreshCompletionOnce = async () => {
+      if (completionRefreshStarted || !active) return;
+      completionRefreshStarted = true;
+      stopLiveUpdates();
+      await refetchReport();
+    };
+
+    // Fallback when the stream errors or reaches its deadline. Failed polls back off, and a
+    // single in-flight guard prevents overlapping requests when connectivity changes.
+    const schedulePoll = () => {
+      if (!active || !available() || pollTimer || pollInFlight) return;
+      const delay = Math.min(POLL_INTERVAL_MS * 2 ** pollAttempt, 30_000);
+      pollTimer = setTimeout(async () => {
+        pollTimer = null;
+        if (!active || !available() || pollInFlight) return;
+        pollInFlight = true;
+        try {
+          const result = await refetchReport();
+          if (!active) return;
+          const status = result.data?.report.status;
+          if (status && isTerminalStatus(status)) {
+            stopLiveUpdates();
+            return;
+          }
+          pollAttempt = result.error ? Math.min(pollAttempt + 1, 4) : 0;
+        } finally {
+          pollInFlight = false;
+        }
+        schedulePoll();
+      }, delay);
+    };
+
+    const connectStream = () => {
+      if (!active || !available() || es || streamFailed) return;
+      const stream = new EventSource(`${config.apiBaseUrl}/api/ai/research/${id}/stream`);
+      es = stream;
+      stream.addEventListener("progress", (event) => {
+        const nextProgress = parseResearchProgress(event.data);
+        if (!nextProgress) return;
+        setLiveProgress({ id, value: nextProgress });
+        setCachedReport((current) => ({ ...current, progress: event.data }));
+      });
+      stream.addEventListener("status", (event) => {
+        try {
+          const value = JSON.parse(event.data) as { status?: unknown };
+          if (typeof value.status !== "string") return;
+          if (value.status === "completed") {
+            void refreshCompletionOnce();
+            return;
+          }
+          setCachedReport((current) => ({ ...current, status: value.status as string }));
+          if (isTerminalStatus(value.status)) stopLiveUpdates();
+        } catch {
+          // Ignore malformed status events and keep the last valid cached state.
+        }
+      });
+      stream.addEventListener("complete", () => {
+        void refreshCompletionOnce();
+      });
+      const fallBackToPolling = () => {
+        if (!active || es !== stream) return;
+        streamFailed = true;
+        stopStream();
+        schedulePoll();
+      };
+      stream.addEventListener("timeout", fallBackToPolling);
+      stream.addEventListener("error", fallBackToPolling);
+    };
+
+    const syncAvailability = () => {
+      if (!available()) {
+        stopLiveUpdates();
+        void cache.cancel(reportKey);
+        return;
+      }
+      if (streamFailed) schedulePoll();
+      else connectStream();
+    };
+
+    document.addEventListener("visibilitychange", syncAvailability);
+    window.addEventListener("online", syncAvailability);
+    window.addEventListener("offline", syncAvailability);
+    syncAvailability();
     return () => {
       active = false;
-      stopStream();
-      if (pollTimer) clearTimeout(pollTimer);
+      stopLiveUpdates();
+      document.removeEventListener("visibilitychange", syncAvailability);
+      window.removeEventListener("online", syncAvailability);
+      window.removeEventListener("offline", syncAvailability);
+      void cache.cancel(reportKey);
     };
-  }, [id, fetchReport]);
+  }, [cache, id, refetchReport, reportKey, shouldWatch]);
 
   const backHref = report ? (report.itemId ? `/feed/${report.itemId}` : "/research") : "/research";
   useShortcut(
@@ -216,12 +295,17 @@ export default function ResearchPage() {
     report !== null
   );
 
-  if (error) {
+  if (reportQuery.error && !report) {
     return (
       <div className="mx-auto max-w-4xl py-12 text-center">
         <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-3" />
         <h2 className="text-lg font-semibold">Error</h2>
-        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="text-sm text-muted-foreground">
+          {reportQuery.error instanceof Error ? reportQuery.error.message : "Failed to load report"}
+        </p>
+        <Button className="mt-4" variant="outline" onClick={() => void refetchReport()}>
+          Try again
+        </Button>
         <Link href="/feed" className="text-sm hover:underline mt-2 inline-block">
           Back to feed
         </Link>
@@ -260,11 +344,42 @@ export default function ResearchPage() {
     </Link>
   );
 
+  const refreshControl = (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="gap-2"
+        disabled={reportQuery.isFetching}
+        onClick={() => void refetchReport()}
+        aria-label="Refresh report"
+      >
+        <RefreshCw className={`h-4 w-4 ${reportQuery.isFetching ? "animate-spin" : ""}`} />
+        Refresh
+      </Button>
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {updatedLabel(reportQuery.dataUpdatedAt)}
+      </p>
+    </div>
+  );
+
+  const refreshError =
+    reportQuery.error && report ? (
+      <p role="alert" className="text-sm text-destructive">
+        Refresh failed. The cached report is still shown.
+      </p>
+    ) : null;
+
   // Completed: the readable report page (reading column, TL;DR, contents, collapsed sources).
   if (report.status === "completed") {
     return (
       <div className="mx-auto max-w-5xl space-y-6 pb-16">
-        {backLink}
+        <div className="flex items-start justify-between gap-4">
+          {backLink}
+          {refreshControl}
+        </div>
+        {refreshError}
         <ResearchReportView report={report} />
       </div>
     );
@@ -273,7 +388,11 @@ export default function ResearchPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Back navigation */}
-      {backLink}
+      <div className="flex items-start justify-between gap-4">
+        {backLink}
+        {refreshControl}
+      </div>
+      {refreshError}
 
       {/* Header */}
       <div>
