@@ -97,13 +97,15 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `src/lib/queue/research-consumer.ts` → `runResearchStage` in `src/lib/ai/research.ts`, state in
   `research_reports.progress`). All three are registered in `vercel.json`;
   `DISTIL_CAPTURE_DISPATCH=inline` runs the capture and research consumers in-process locally.
-- **AI:** `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
-  assignment; `router.ts` adds cost accounting, daily/30-day budgets, retries and a circuit
-  breaker. Gemini is the default for every task and the only required key; Anthropic is an
+- **AI:** `docs/intelligence-layer.md` maps every intelligence stage (prompt, model, storage,
+  measurement) and holds the evaluation framework and model policy; update it with any change to
+  a stage. `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
+  assignment; `router.ts` adds cost accounting, daily/30-day budgets and the same-provider summary
+  fallback (Gemini calls retry in `providers.ts`; there is no circuit breaker). Gemini is the default for every task and the only required key; Anthropic is an
   optional upgrade for `summarize-complex` and `research-synthesize` (Gemini fallback when the
   key is absent); OpenAI is assigned to nothing. `npm run audit:ai-models` checks that every
   configured id is callable (Anthropic ids are undated aliases, resolved via GetModel). Summaries use Gemini with a budget-admitted same-provider fallback
-  model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
+  model and 15-second per-attempt timeouts (40 seconds for `summarize-complex`). The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
   (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
@@ -161,7 +163,7 @@ npm run test:extension       # Playwright extension
 npm run test:coverage        # coverage gate on changed code
 npm run build                # activation preflight + next build
 npm run db:migrate | db:tenant:migrate | db:tenant:verify
-npm run eval                 # offline AI quality evals (evals/)
+npm run eval                 # scores recorded fixtures only, not the product (docs/intelligence-layer.md §4)
 ```
 
 `npm run setup` and `scripts/setup.sh` are stale (they assume SQLite); do not rely on them. For
