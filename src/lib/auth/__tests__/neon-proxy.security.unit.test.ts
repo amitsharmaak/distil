@@ -275,11 +275,30 @@ describe("composed Neon proxy authorization", () => {
     expect(requiresNeonSessionOrigin("DELETE")).toBe(true);
     expect(hasSpecializedNeonAuth("/api/items", "POST")).toBe(true);
     expect(hasSpecializedNeonAuth("/api/items", "GET")).toBe(false);
+    expect(hasSpecializedNeonAuth("/api/v1/shortcut-pairings/exchange", "POST")).toBe(true);
     expect(isLifecycleRecoveryRequest("/account", "GET")).toBe(true);
     expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "GET")).toBe(true);
     expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "DELETE")).toBe(true);
     expect(isLifecycleRecoveryRequest("/api/v1/account/deletion", "POST")).toBe(false);
     expect(isLifecycleRecoveryRequest("/api/v1/account", "GET")).toBe(false);
+  });
+
+  it.each([
+    ["POST", "/api/v1/shortcut-pairings"],
+    ["GET", "/api/v1/shortcut-pairings/exchange"],
+    ["POST", "/api/v1/shortcut-pairings/exchange/extra"],
+  ])("keeps %s %s behind session authentication", async (method, path) => {
+    const authProvider = provider({ data: null, error: null });
+    const result = await authorizeNeonProxy(
+      new NextRequest(`https://distil.example${path}`, {
+        method,
+        headers: { origin: "https://distil.example" },
+      }),
+      requestId,
+      dependencies(authProvider, repositories())
+    );
+    expect(result.response?.status).toBe(401);
+    expect(authProvider.verifySession).toHaveBeenCalledTimes(1);
   });
 
   it("permits deletion-pending identities only on the Account recovery shell and status/cancel API", async () => {
@@ -357,6 +376,7 @@ describe("composed Neon proxy authorization", () => {
   it.each([
     ["GET", "/api/v1/feed", true],
     ["POST", "/api/v1/captures", false],
+    ["POST", "/api/v1/shortcut-pairings/exchange", false],
     ["POST", "/api/items", false],
     ["POST", "/api/queue/capture-requests", false],
     ["POST", "/api/queue/research-runs", false],

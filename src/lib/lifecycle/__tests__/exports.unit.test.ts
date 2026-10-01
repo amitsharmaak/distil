@@ -41,7 +41,7 @@ describe("deterministic account exports", () => {
 
   it("uses an explicit export allowlist that excludes secrets and operational internals", () => {
     expect(accountExportDatasetNames).toEqual(
-      expect.arrayContaining(["items", "raw-content", "usage"])
+      expect.arrayContaining(["items", "raw-content", "usage", "shortcut-pairings"])
     );
     expect(accountExportDatasetNames).not.toEqual(
       expect.arrayContaining([

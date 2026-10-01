@@ -83,7 +83,7 @@ export function buildAccountExportArchive(
     })),
     exclusions: [
       "authentication secrets and provider subjects",
-      "capture token and session hashes",
+      "capture token, shortcut pairing code and session hashes",
       "OAuth credentials and one-time invitation state",
       "embeddings, rate-limit windows, queues, leases, and lifecycle internals",
       "agent tool inputs, outputs, and private operational logs",

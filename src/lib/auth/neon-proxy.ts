@@ -71,7 +71,10 @@ export function isPublicNeonPath(pathname: string): boolean {
 
 /** Method-specific routes whose handler authenticates a session or bearer principal itself. */
 export function hasSpecializedNeonAuth(pathname: string, method: string): boolean {
-  return pathname === "/api/items" && (method === "POST" || method === "OPTIONS");
+  return (
+    (pathname === "/api/items" && (method === "POST" || method === "OPTIONS")) ||
+    (pathname === "/api/v1/shortcut-pairings/exchange" && method === "POST")
+  );
 }
 
 /** Central cookie-session CSRF classification after public/specialized routes have exited. */
