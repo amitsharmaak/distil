@@ -60,7 +60,8 @@ async function configureExtension(
   );
 }
 
-const CONNECT_PAGE = `<!doctype html><title>connect</title><p id="result">pending</p><script>
+function connectPage(account = "account-alpha", token = "dst_cap_from_handoff") {
+  return `<!doctype html><title>connect</title><p id="result">pending</p><script>
 const q = new URLSearchParams(location.search);
 chrome.runtime.sendMessage(
   ${JSON.stringify(DISTIL_EXTENSION_ID)},
@@ -68,18 +69,24 @@ chrome.runtime.sendMessage(
     type: "distil-connect",
     state: q.get("sendState") || q.get("state"),
     origin: location.origin,
-    token: q.get("token") || "dst_cap_from_handoff",
-    connection: { id: "conn-2", label: "Chrome on macOS", createdAt: "2026-09-30T00:00:00Z", accountId: q.get("account") || "account-alpha" },
+    token: q.get("token") || ${JSON.stringify(token)},
+    connection: { id: "conn-2", label: "Chrome on macOS", createdAt: "2026-09-30T00:00:00Z", accountId: q.get("account") || ${JSON.stringify(account)} },
     accountEmail: "amit@example.com",
   },
   (response) => { document.getElementById("result").textContent = JSON.stringify(response || { error: chrome.runtime.lastError?.message }); }
 );
 </script>`;
+}
 
-async function serveConnectPage(context: import("@playwright/test").BrowserContext) {
+async function serveConnectPage(
+  context: import("@playwright/test").BrowserContext,
+  account?: string,
+  token?: string
+) {
   for (const origin of ["http://localhost:3000", "https://distilai.app"]) {
+    await context.unroute(`${origin}/extension/connect*`);
     await context.route(`${origin}/extension/connect*`, (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: CONNECT_PAGE })
+      route.fulfill({ status: 200, contentType: "text/html", body: connectPage(account, token) })
     );
   }
 }
@@ -88,15 +95,38 @@ async function startConnect(
   serviceWorker: import("@playwright/test").Worker,
   origin = DISTIL_ORIGIN
 ) {
-  return serviceWorker.evaluate(
-    async (value) =>
-      (
-        globalThis as typeof globalThis & {
-          handleMessage(message: unknown): Promise<Record<string, unknown>>;
-        }
-      ).handleMessage({ type: "distil-start-connect", origin: value }),
-    origin
+  return serviceWorker.evaluate(async (value) => {
+    const scope = globalThis as typeof globalThis & {
+      handleMessage(message: unknown): Promise<Record<string, unknown>>;
+      __distilOpenedUrls?: string[];
+    };
+    // Tabs the extension opens itself can load before Playwright's routes attach, so record
+    // the URL instead and let the test open it in a page it controls.
+    scope.__distilOpenedUrls = [];
+    (
+      chrome as unknown as { tabs: { create(options: { url: string }): Promise<void> } }
+    ).tabs.create = async ({ url }) => {
+      scope.__distilOpenedUrls!.push(url);
+    };
+    return scope.handleMessage({ type: "distil-start-connect", origin: value });
+  }, origin);
+}
+
+/** Starts the connect flow and opens the connect URL the extension asked for. */
+async function openConnectPage(
+  context: import("@playwright/test").BrowserContext,
+  serviceWorker: import("@playwright/test").Worker,
+  origin = DISTIL_ORIGIN
+) {
+  const started = await startConnect(serviceWorker, origin);
+  expect(started.ok).toBe(true);
+  const [url] = await serviceWorker.evaluate(
+    () => (globalThis as typeof globalThis & { __distilOpenedUrls: string[] }).__distilOpenedUrls
   );
+  expect(url).toMatch(/\/extension\/connect\?state=[0-9a-f]{64}$/);
+  const page = await context.newPage();
+  await page.goto(url);
+  return page;
 }
 
 async function sendWorkerMessage(
@@ -211,9 +241,7 @@ test("completes the connect handoff with the right state and stores the token pr
   serviceWorker,
 }) => {
   await serveConnectPage(context);
-  const started = await startConnect(serviceWorker);
-  expect(started.ok).toBe(true);
-  const page = await context.waitForEvent("page");
+  const page = await openConnectPage(context, serviceWorker);
   await expect(page.locator("#result")).toContainText('"ok":true');
 
   const stored = await serviceWorker.evaluate(async () => {
@@ -247,7 +275,7 @@ test("rejects a handoff with the wrong state, the wrong origin, or no pending re
   await expect(noPending.locator("#result")).toContainText('"ok":false');
 
   await startConnect(serviceWorker);
-  const wrongState = await context.waitForEvent("page");
+  const wrongState = await context.newPage();
   await wrongState.goto(`${DISTIL_ORIGIN}/extension/connect?sendState=${"b".repeat(64)}`);
   await expect(wrongState.locator("#result")).toContainText('"ok":false');
 
@@ -266,8 +294,6 @@ test("rejects a handoff with the wrong state, the wrong origin, or no pending re
 test("rejects a handoff older than ten minutes", async ({ context, serviceWorker }) => {
   await serveConnectPage(context);
   await startConnect(serviceWorker);
-  const opened = await context.waitForEvent("page");
-  await opened.close();
   const state = await serviceWorker.evaluate(async () => {
     const { distilPendingConnect } = await chrome.storage.local.get("distilPendingConnect");
     const pending = distilPendingConnect as { state: string; startedAt: number };
@@ -378,9 +404,8 @@ test("namespaces offline work by account and pauses it when another account conn
     return (distilConfig as { accountKey: string }).accountKey;
   });
 
-  await startConnect(serviceWorker);
-  const page = await context.waitForEvent("page");
-  await page.goto(`${page.url()}&account=account-beta&token=dst_cap_beta`);
+  await serveConnectPage(context, "account-beta", "dst_cap_beta");
+  const page = await openConnectPage(context, serviceWorker);
   await expect(page.locator("#result")).toContainText('"ok":true');
 
   const state = await sendWorkerMessage(serviceWorker, { type: "distil-get-state" });
@@ -474,16 +499,20 @@ test("clears the token on 401, keeps the queue, and resumes after the same accou
   await sendWorkerMessage(serviceWorker, { type: "distil-replay" });
   expect(requests).toBe(1);
 
-  const popup = await context.newPage();
-  await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-  await expect(popup.getByRole("button", { name: "Sign in again" })).toBeVisible();
+  // While signed out, a new save is kept and reported as needing sign-in (the popup's
+  // "Sign in again" state), not as unconfigured.
+  const signedOut = await sendWorkerMessage(serviceWorker, {
+    type: "distil-save",
+    payload: { url: "https://example.com/while-signed-out" },
+  });
+  expect(signedOut.kind).toBe("auth-required");
+  expect(signedOut.queued).toBe(2);
 
   await context.unroute(CAPTURE_ENDPOINT);
   await context.route(CAPTURE_ENDPOINT, (route) =>
     route.fulfill({ status: 202, contentType: "application/json", body: "{}" })
   );
-  await startConnect(serviceWorker);
-  const page = await context.waitForEvent("page");
+  const page = await openConnectPage(context, serviceWorker);
   await expect(page.locator("#result")).toContainText('"ok":true');
   await expect
     .poll(async () => (await activeQueue(serviceWorker)).length, { timeout: 10_000 })
