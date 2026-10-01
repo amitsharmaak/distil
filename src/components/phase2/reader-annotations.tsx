@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Highlighter, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
 
 export type ReaderAnnotation = {
   id: string;
@@ -106,23 +111,39 @@ function anchorStillMatches(annotation: ReaderAnnotation, content: string): bool
   return content.slice(annotation.startOffset, annotation.endOffset) === annotation.selectedQuote;
 }
 
+type ReaderAnnotationsResponse = { annotations: ReaderAnnotation[] };
+
 export function ReaderAnnotations({
   itemId,
   initialAnnotations,
+  initialUpdatedAt,
   children,
 }: {
   itemId: string;
   initialAnnotations?: ReaderAnnotation[];
+  initialUpdatedAt?: number;
   children: React.ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(initialAnnotations ?? []);
+  const cache = useContentCache();
+  const annotationsKey = useMemo(() => ["item", itemId, "annotations"] as const, [itemId]);
+  const annotationsQuery = useContentQuery<ReaderAnnotationsResponse>({
+    key: annotationsKey,
+    url: `/api/v1/items/${itemId}/annotations`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initialAnnotations === undefined ? undefined : { annotations: initialAnnotations },
+    initialDataUpdatedAt: initialUpdatedAt,
+  });
+  const annotations = useMemo(
+    () => annotationsQuery.data?.annotations ?? [],
+    [annotationsQuery.data?.annotations]
+  );
   const [selection, setSelection] = useState<SelectionAnchor | null>(null);
   const [reanchorId, setReanchorId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingComment, setEditingComment] = useState("");
-  const [loading, setLoading] = useState(initialAnnotations === undefined);
+  const loading = annotationsQuery.isPending && !annotationsQuery.data;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,41 +151,29 @@ export function ReaderAnnotations({
   const currentContent = useCallback(() => contentRef.current?.textContent ?? "", []);
 
   useEffect(() => {
-    const reconcileAnchors = (entries: ReaderAnnotation[]) => {
-      const content = currentContent();
-      return entries.map((annotation) => ({
-        ...annotation,
-        status:
-          annotation.status === "active" && !anchorStillMatches(annotation, content)
-            ? ("orphaned" as const)
-            : annotation.status,
-      }));
-    };
-
-    if (initialAnnotations !== undefined) {
-      setAnnotations(reconcileAnchors(initialAnnotations));
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-    void requestJson<{ annotations: ReaderAnnotation[] }>(`/api/v1/items/${itemId}/annotations`)
-      .then((payload) => {
-        if (cancelled) return;
-        setAnnotations(reconcileAnchors(payload.annotations));
-      })
-      .catch((cause) => {
-        if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Unable to load highlights.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+    const content = currentContent();
+    cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => {
+      if (!current) return current;
+      let changed = false;
+      const reconciled = current.annotations.map((annotation) => {
+        if (annotation.status !== "active" || anchorStillMatches(annotation, content)) {
+          return annotation;
+        }
+        changed = true;
+        return { ...annotation, status: "orphaned" as const };
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentContent, initialAnnotations, itemId]);
+      return changed ? { annotations: reconciled } : current;
+    });
+  }, [annotationsKey, annotationsQuery.data, cache, currentContent]);
+
+  const queryError = annotationsQuery.error;
+  const visibleError =
+    error ||
+    (queryError instanceof Error
+      ? queryError.message
+      : queryError
+        ? "Unable to load highlights."
+        : null);
 
   const captureSelection = useCallback(async () => {
     const root = contentRef.current;
@@ -209,9 +218,11 @@ export function ReaderAnnotations({
             }),
           }
         );
-        setAnnotations((current) =>
-          current.map((entry) => (entry.id === reanchorId ? payload.annotation : entry))
-        );
+        cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
+          annotations: (current?.annotations ?? []).map((entry) =>
+            entry.id === reanchorId ? payload.annotation : entry
+          ),
+        }));
         setNotice("Highlight re-anchored");
       } else {
         const payload = await requestJson<{ annotation: ReaderAnnotation }>(
@@ -231,7 +242,9 @@ export function ReaderAnnotations({
             }),
           }
         );
-        setAnnotations((current) => [...current, payload.annotation]);
+        cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
+          annotations: [...(current?.annotations ?? []), payload.annotation],
+        }));
         setNotice("Highlight saved");
       }
       cancelSelection();
@@ -255,9 +268,11 @@ export function ReaderAnnotations({
           body: JSON.stringify({ comment: editingComment || null }),
         }
       );
-      setAnnotations((current) =>
-        current.map((entry) => (entry.id === annotation.id ? payload.annotation : entry))
-      );
+      cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
+        annotations: (current?.annotations ?? []).map((entry) =>
+          entry.id === annotation.id ? payload.annotation : entry
+        ),
+      }));
       setEditingId(null);
       setNotice("Highlight updated");
     } catch (cause) {
@@ -271,15 +286,21 @@ export function ReaderAnnotations({
     if (saving) return;
     setSaving(true);
     setError(null);
+    const previous = cache.get<ReaderAnnotationsResponse>(annotationsKey);
+    const release = cache.beginWrite();
+    cache.set<ReaderAnnotationsResponse>(annotationsKey, (current) => ({
+      annotations: (current?.annotations ?? []).filter((entry) => entry.id !== annotation.id),
+    }));
     try {
       await requestJson(`/api/v1/items/${itemId}/annotations/${annotation.id}`, {
         method: "DELETE",
       });
-      setAnnotations((current) => current.filter((entry) => entry.id !== annotation.id));
       setNotice("Highlight deleted");
     } catch (cause) {
+      cache.set(annotationsKey, previous);
       setError(cause instanceof Error ? cause.message : "The highlight could not be deleted.");
     } finally {
+      release();
       setSaving(false);
     }
   }
@@ -454,14 +475,14 @@ export function ReaderAnnotations({
             No highlights yet. Select text above to save one.
           </p>
         )}
-        {(error || notice) && (
+        {(visibleError || notice) && (
           <p
             className={
-              error ? "mt-3 text-sm text-destructive" : "mt-3 text-sm text-muted-foreground"
+              visibleError ? "mt-3 text-sm text-destructive" : "mt-3 text-sm text-muted-foreground"
             }
-            role={error ? "alert" : "status"}
+            role={visibleError ? "alert" : "status"}
           >
-            {error || notice}
+            {visibleError || notice}
           </p>
         )}
       </section>

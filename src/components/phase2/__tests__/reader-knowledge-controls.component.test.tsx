@@ -2,9 +2,10 @@
  * @jest-environment jsdom
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 
 import { ReaderKnowledgeControls } from "../reader-knowledge-controls";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
 
 function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
@@ -22,6 +23,10 @@ describe("ReaderKnowledgeControls", () => {
         );
       if (path.endsWith("/note") && !init?.method)
         return Promise.resolve(ok({ note: { body: "Keep this" } }));
+      if (path.endsWith("/note") && init?.method === "PUT")
+        return Promise.resolve(
+          ok({ note: { body: JSON.parse(String(init.body)).body as string } })
+        );
       return Promise.resolve(ok({ item: { archivedAt: undefined } }));
     });
   });
@@ -82,7 +87,7 @@ describe("ReaderKnowledgeControls", () => {
     render(<ReaderKnowledgeControls itemId="item-1" />);
     await screen.findByRole("button", { name: "Archive item" });
     fireEvent.click(screen.getByRole("button", { name: "Archive item" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Try again");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this change");
     expect(screen.getByRole("button", { name: "Archive item" })).toBeInTheDocument();
   });
 
@@ -97,6 +102,10 @@ describe("ReaderKnowledgeControls", () => {
         );
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
       if (init?.method === "PATCH") return Promise.resolve(ok({ item: { archivedAt: undefined } }));
+      if (init?.method === "PUT")
+        return Promise.resolve(
+          ok({ note: { body: JSON.parse(String(init.body)).body as string } })
+        );
       return Promise.resolve(ok({}));
     });
     render(<ReaderKnowledgeControls itemId="item-1" />);
@@ -132,6 +141,10 @@ describe("ReaderKnowledgeControls", () => {
           json: jest.fn().mockResolvedValue({ error: { message: "Cannot delete" } }),
         } as unknown as Response);
       }
+      if (init?.method === "PUT")
+        return Promise.resolve(
+          ok({ note: { body: JSON.parse(String(init.body)).body as string } })
+        );
       return Promise.resolve(ok({}));
     });
     render(<ReaderKnowledgeControls itemId="item-1" />);
@@ -150,5 +163,44 @@ describe("ReaderKnowledgeControls", () => {
     jest.mocked(global.fetch).mockRejectedValue(new Error("Controls unavailable"));
     render(<ReaderKnowledgeControls itemId="item-1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Controls unavailable");
+  });
+
+  it("keeps cached note and state mutations when old server props remount", async () => {
+    jest.mocked(global.fetch).mockImplementation((url, init) => {
+      const path = String(url);
+      if (path.endsWith("/note") && init?.method === "PUT")
+        return Promise.resolve(ok({ note: { body: "Updated locally" } }));
+      if (path.endsWith("/state") && init?.method === "PATCH") return Promise.resolve(ok({}));
+      if (path.endsWith("/state"))
+        return Promise.resolve(
+          ok({
+            state: { isRead: false, archived: true, readingProgress: 0, manualPriority: null },
+          })
+        );
+      return Promise.resolve(ok({ note: { body: "Old server note" } }));
+    });
+    const oldInitial = {
+      state: {
+        isRead: false,
+        archived: false,
+        readingProgress: 0,
+        manualPriority: null,
+      },
+      note: { body: "Old server note" },
+      updatedAt: Date.now(),
+    };
+    const view = render(<ReaderKnowledgeControls itemId="item-1" initial={oldInitial} />);
+    const note = await screen.findByLabelText("Item note");
+    fireEvent.change(note, { target: { value: "Updated locally" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    expect(await screen.findByText("Note saved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Archive item" }));
+    expect(await screen.findByRole("button", { name: "Restore item" })).toBeInTheDocument();
+
+    view.rerender(<div>Elsewhere</div>);
+    view.rerender(<ReaderKnowledgeControls itemId="item-1" initial={oldInitial} />);
+
+    expect(await screen.findByLabelText("Item note")).toHaveValue("Updated locally");
+    expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
   });
 });

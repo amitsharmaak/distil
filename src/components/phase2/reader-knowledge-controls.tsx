@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
+import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
 import type { Priority } from "@/lib/types";
 
 export type ReaderState = {
@@ -16,7 +22,11 @@ export type ReaderState = {
 export type ReaderKnowledgeInitial = {
   state: ReaderState;
   note: { body: string } | null;
+  updatedAt?: number;
 };
+type ReaderStateResponse = { state: ReaderState };
+type ReaderNoteResponse = { note: { body: string } | null };
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const payload = (await response.json().catch(() => ({}))) as T & {
@@ -33,78 +43,72 @@ export function ReaderKnowledgeControls({
   itemId: string;
   initial?: ReaderKnowledgeInitial;
 }) {
-  const initialNote = initial?.note?.body ?? "";
-  const [state, setState] = useState<ReaderState | null>(initial?.state ?? null);
-  const [note, setNote] = useState(initialNote);
-  const [savedNote, setSavedNote] = useState(initialNote);
-  const [loading, setLoading] = useState(initial === undefined);
+  const cache = useContentCache();
+  const { updateItem } = useItemMutation();
+  const overrides = useItemOverrides(itemId);
+  const stateKey = useMemo(() => ["item", itemId, "state"] as const, [itemId]);
+  const noteKey = useMemo(() => ["item", itemId, "note"] as const, [itemId]);
+  const stateQuery = useContentQuery<ReaderStateResponse>({
+    key: stateKey,
+    url: `/api/v1/items/${itemId}/state`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initial ? { state: initial.state } : undefined,
+    initialDataUpdatedAt: initial?.updatedAt,
+  });
+  const noteQuery = useContentQuery<ReaderNoteResponse>({
+    key: noteKey,
+    url: `/api/v1/items/${itemId}/note`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initial ? { note: initial.note } : undefined,
+    initialDataUpdatedAt: initial?.updatedAt,
+  });
+  const baseState = stateQuery.data?.state ?? null;
+  const state = baseState
+    ? {
+        ...baseState,
+        ...(overrides?.isRead !== undefined ? { isRead: overrides.isRead } : {}),
+        ...(overrides?.archived !== undefined ? { archived: overrides.archived } : {}),
+        ...(overrides?.readingProgress !== undefined
+          ? { readingProgress: overrides.readingProgress }
+          : {}),
+        ...(overrides?.manualPriority !== undefined
+          ? { manualPriority: overrides.manualPriority }
+          : {}),
+      }
+    : null;
+  const serverNote = noteQuery.data?.note?.body ?? "";
+  const [draft, setDraft] = useState<{
+    itemId: string;
+    body: string;
+    baseline: string;
+  } | null>(null);
+  const currentDraft = draft?.itemId === itemId ? draft : null;
+  const note = currentDraft?.body ?? serverNote;
+  const savedNote = currentDraft?.baseline ?? serverNote;
+  const loading =
+    (stateQuery.isPending && !stateQuery.data) || (noteQuery.isPending && !noteQuery.data);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (initial) {
-      const body = initial.note?.body ?? "";
-      setState(initial.state);
-      setNote(body);
-      setSavedNote(body);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [statePayload, notePayload] = await Promise.all([
-          requestJson<{ state: ReaderState }>(`/api/v1/items/${itemId}/state`),
-          requestJson<{ note: { body: string } | null }>(`/api/v1/items/${itemId}/note`),
-        ]);
-        if (cancelled) return;
-        setState(statePayload.state);
-        const body = notePayload.note?.body ?? "";
-        setNote(body);
-        setSavedNote(body);
-      } catch (cause) {
-        if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Unable to load reader controls.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [initial, itemId]);
+  const queryError = stateQuery.error ?? noteQuery.error;
+  const visibleError =
+    error ||
+    (queryError instanceof Error
+      ? queryError.message
+      : queryError
+        ? "Unable to load reader controls."
+        : null);
 
   const dirty = note !== savedNote;
 
   async function updateState(patch: Partial<ReaderState>, label: string) {
     if (!state || saving) return;
-    const previous = state;
-    setState({ ...state, ...patch });
     setSaving(label);
     setError(null);
     try {
-      const payload = await requestJson<{ item: ReaderState & { archivedAt?: string } }>(
-        `/api/v1/items/${itemId}/state`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
-        }
-      );
-      setState((current) =>
-        current
-          ? { ...current, ...payload.item, archived: Boolean(payload.item.archivedAt) }
-          : current
-      );
+      await updateItem(itemId, patch);
       setNotice(label);
     } catch (cause) {
-      setState(previous);
       setError(cause instanceof Error ? cause.message : "This change could not be saved.");
     } finally {
       setSaving(null);
@@ -114,35 +118,44 @@ export function ReaderKnowledgeControls({
   async function saveNote() {
     setSaving("Saving note…");
     setError(null);
+    const previous = cache.get<ReaderNoteResponse>(noteKey);
+    const release = cache.beginWrite();
+    cache.set<ReaderNoteResponse>(noteKey, { note: { body: note } });
     try {
-      await requestJson(`/api/v1/items/${itemId}/note`, {
+      const payload = await requestJson<ReaderNoteResponse>(`/api/v1/items/${itemId}/note`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: note }),
       });
-      setSavedNote(note);
+      cache.set(noteKey, payload);
+      setDraft(null);
       setNotice("Note saved");
     } catch (cause) {
+      cache.set(noteKey, previous);
       setError(cause instanceof Error ? cause.message : "Note could not be saved.");
     } finally {
+      release();
       setSaving(null);
     }
   }
 
   async function deleteNote() {
-    const previous = note;
-    setNote("");
-    setSavedNote("");
+    const previous = cache.get<ReaderNoteResponse>(noteKey);
+    const previousDraft = currentDraft;
     setSaving("Deleting note…");
     setError(null);
+    const release = cache.beginWrite();
+    cache.set<ReaderNoteResponse>(noteKey, { note: null });
+    setDraft(null);
     try {
       await requestJson(`/api/v1/items/${itemId}/note`, { method: "DELETE" });
       setNotice("Note deleted");
     } catch (cause) {
-      setNote(previous);
-      setSavedNote(previous);
+      cache.set(noteKey, previous);
+      setDraft(previousDraft);
       setError(cause instanceof Error ? cause.message : "Note could not be deleted.");
     } finally {
+      release();
       setSaving(null);
     }
   }
@@ -156,7 +169,7 @@ export function ReaderKnowledgeControls({
   if (!state)
     return (
       <aside className="mt-10 border-t pt-4 text-sm text-destructive" role="alert">
-        {error || "Reader controls are unavailable."}
+        {visibleError || "Reader controls are unavailable."}
       </aside>
     );
 
@@ -173,7 +186,7 @@ export function ReaderKnowledgeControls({
         <textarea
           aria-label="Item note"
           value={note}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => setDraft({ itemId, body: event.target.value, baseline: savedNote })}
           rows={dirty || savedNote ? 3 : 1}
           className="mt-2 w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 font-serif text-base leading-relaxed placeholder:text-muted-foreground/70 focus:border-border focus:bg-background focus:px-2 focus:outline-none"
           placeholder="Add a thought you want to remember…"
@@ -256,12 +269,12 @@ export function ReaderKnowledgeControls({
             <option value="low">Low</option>
           </select>
         </label>
-        {(error || notice || saving) && (
+        {(visibleError || notice || saving) && (
           <p
-            className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
-            role={error ? "alert" : "status"}
+            className={visibleError ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
+            role={visibleError ? "alert" : "status"}
           >
-            {error || saving || notice}
+            {visibleError || saving || notice}
           </p>
         )}
       </section>

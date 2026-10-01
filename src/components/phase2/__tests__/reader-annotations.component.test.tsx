@@ -1,8 +1,9 @@
 /** @jest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 
 import { ReaderAnnotations } from "../reader-annotations";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
 
 function response(payload: unknown, ok = true): Response {
   return { ok, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
@@ -26,6 +27,7 @@ describe("ReaderAnnotations", () => {
 
   beforeEach(() => {
     fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockReset();
     fetchMock.mockImplementation((input, init) => {
       const path = String(input);
       if (path.endsWith("/annotations") && !init?.method)
@@ -172,5 +174,27 @@ describe("ReaderAnnotations", () => {
     browserSelection?.removeAllRanges();
     fireEvent.mouseUp(paragraph);
     expect(screen.queryByRole("dialog", { name: "Save highlight" })).toBeInTheDocument();
+  });
+
+  it("does not resurrect a deleted cached annotation from old server props", async () => {
+    const view = render(
+      <ReaderAnnotations itemId="item-1" initialAnnotations={[baseAnnotation]}>
+        <p>An anchored sentence follows.</p>
+      </ReaderAnnotations>
+    );
+    expect(await screen.findByText("Remember this")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(/No highlights yet/)).toBeInTheDocument();
+
+    view.rerender(<div>Elsewhere</div>);
+    view.rerender(
+      <ReaderAnnotations itemId="item-1" initialAnnotations={[baseAnnotation]}>
+        <p>An anchored sentence follows.</p>
+      </ReaderAnnotations>
+    );
+
+    expect(await screen.findByText(/No highlights yet/)).toBeInTheDocument();
+    expect(screen.queryByText("Remember this")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
