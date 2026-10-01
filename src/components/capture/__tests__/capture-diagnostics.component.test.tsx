@@ -111,6 +111,38 @@ describe("CaptureDiagnostics", () => {
     );
   });
 
+  it("offers to save a junk-page rejection anyway, and saves it afresh", async () => {
+    const junk: CaptureReceipt = {
+      ...rejected,
+      id: "capture-3",
+      normalizedUrl: "https://example.com/members-only",
+      error: {
+        code: "CONTENT_JUNK",
+        message:
+          "This looked like a sign-in page, not an article. Save it again to keep it anyway.",
+      },
+    };
+    fetchMock.mockResolvedValueOnce(response({ receipts: [junk, rejected] }, 200));
+    render(<CaptureDiagnostics />);
+    await settle();
+
+    expect(screen.getByText(junk.error!.message)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Save anyway" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Save again" })).toHaveLength(1);
+
+    fetchMock.mockResolvedValueOnce(response({ receipt: junk }, 202));
+    fetchMock.mockResolvedValueOnce(response({ receipts: [rejected] }, 200));
+    fireEvent.click(screen.getByRole("button", { name: "Save anyway" }));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/captures",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ url: junk.normalizedUrl, source: "web" }),
+      })
+    );
+  });
+
   it("surfaces a load failure instead of an empty state", async () => {
     fetchMock.mockResolvedValueOnce(response({}, 500));
     render(<CaptureDiagnostics />);

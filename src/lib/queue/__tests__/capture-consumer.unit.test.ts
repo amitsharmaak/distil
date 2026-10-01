@@ -2,6 +2,7 @@ jest.mock("@/lib/database", () => ({ getTenantRepositories: jest.fn() }));
 jest.mock("@/lib/knowledge/capture-index", () => ({ indexCapturedItem: jest.fn() }));
 jest.mock("@/lib/ai/summarize", () => ({ generateSummary: jest.fn() }));
 jest.mock("@/lib/ai/classify-area", () => ({ classifyItemArea: jest.fn() }));
+jest.mock("@/lib/ai/triage-capture", () => ({ createTenantCaptureTriage: jest.fn() }));
 jest.mock("@/lib/queue/consumer", () => ({
   createCaptureQueueConsumer: jest.fn(() => jest.fn().mockResolvedValue(undefined)),
 }));
@@ -19,7 +20,9 @@ import { generateSummary } from "@/lib/ai/summarize";
 import { classifyItemArea } from "@/lib/ai/classify-area";
 import { getTenantRepositories } from "@/lib/database";
 import { indexCapturedItem } from "@/lib/knowledge/capture-index";
-import { consumeCaptureMessage } from "../capture-consumer";
+import { createTenantCaptureTriage } from "@/lib/ai/triage-capture";
+import { createDefaultCaptureProcessor } from "@/lib/capture/worker";
+import { consumeCaptureMessage, hasPriorJunkRejection } from "../capture-consumer";
 import type { CaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 
 const message = {
@@ -119,4 +122,77 @@ it("honours the default-on area kill switch when explicitly disabled", async () 
   await mockEnrichment?.("item-1");
   expect(generateSummary).toHaveBeenCalledTimes(1);
   expect(classifyItemArea).not.toHaveBeenCalled();
+});
+
+describe("capture triage wiring", () => {
+  const mockTriage = jest.fn();
+  const processorDependencies = () =>
+    jest.mocked(createDefaultCaptureProcessor).mock.calls.at(-1)?.[0] as Parameters<
+      typeof createDefaultCaptureProcessor
+    >[0];
+
+  beforeEach(() => {
+    delete process.env.FEATURE_CAPTURE_TRIAGE;
+    jest.mocked(createTenantCaptureTriage).mockReturnValue(mockTriage);
+  });
+
+  afterAll(() => {
+    delete process.env.FEATURE_CAPTURE_TRIAGE;
+  });
+
+  it("passes tenant triage in enforcing mode by default", async () => {
+    await consumeCaptureMessage(message);
+    expect(createTenantCaptureTriage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: message.userId, requestId: message.traceId }),
+      repositories
+    );
+    expect(processorDependencies().triage).toBe(mockTriage);
+    expect(processorDependencies().triageMode).toBe("on");
+  });
+
+  it("passes triage in shadow mode", async () => {
+    process.env.FEATURE_CAPTURE_TRIAGE = "shadow";
+    await consumeCaptureMessage(message);
+    expect(processorDependencies().triage).toBe(mockTriage);
+    expect(processorDependencies().triageMode).toBe("shadow");
+  });
+
+  it("passes no triage dependency when the kill switch is off", async () => {
+    process.env.FEATURE_CAPTURE_TRIAGE = "false";
+    await consumeCaptureMessage(message);
+    expect(createTenantCaptureTriage).not.toHaveBeenCalled();
+    expect(processorDependencies().triage).toBeUndefined();
+    expect(processorDependencies().triageMode).toBe("off");
+  });
+
+  it("finds a prior junk rejection only for another capture of the same URL", async () => {
+    const list = jest.fn().mockResolvedValue([
+      { id: "self", normalizedUrl: "https://a.test/x", lastErrorCode: "CONTENT_JUNK" },
+      { id: "other-url", normalizedUrl: "https://a.test/y", lastErrorCode: "CONTENT_JUNK" },
+      { id: "other-code", normalizedUrl: "https://a.test/x", lastErrorCode: "CONTENT_REJECTED" },
+    ]);
+    await expect(hasPriorJunkRejection({ list }, "https://a.test/x", "self")).resolves.toBe(false);
+    expect(list).toHaveBeenCalledWith(100, ["rejected"]);
+
+    list.mockResolvedValue([
+      { id: "earlier", normalizedUrl: "https://a.test/x", lastErrorCode: "CONTENT_JUNK" },
+    ]);
+    await expect(hasPriorJunkRejection({ list }, "https://a.test/x", "self")).resolves.toBe(true);
+  });
+
+  it("wires the prior-rejection lookup to the tenant capture repository", async () => {
+    const list = jest
+      .fn()
+      .mockResolvedValue([
+        { id: "earlier", normalizedUrl: "https://a.test/x", lastErrorCode: "CONTENT_JUNK" },
+      ]);
+    jest
+      .mocked(getTenantRepositories)
+      .mockResolvedValue({ ...(repositories as object), captures: { list } } as never);
+    await consumeCaptureMessage(message);
+    await expect(
+      processorDependencies().hasPriorJunkRejection?.("https://a.test/x", "self")
+    ).resolves.toBe(true);
+    expect(list).toHaveBeenCalledWith(100, ["rejected"]);
+  });
 });
