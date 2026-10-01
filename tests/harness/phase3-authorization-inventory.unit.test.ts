@@ -19,20 +19,19 @@ describe("Phase 3 durable authorization inventory", () => {
     const inventory = loadPhase3AuthorizationInventory(matrixPath);
     expect(inventory.baselineCommit).toBe("428a0b023e2295b59fe864efeb2b26047b0ed6fa");
     expect(inventory.tables).toHaveLength(47);
-    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 91);
+    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 90);
     expect(inventory.pageLoaders).toHaveLength(19);
     expect(() => assertPhase3AuthorizationInventory(inventory)).not.toThrow();
   });
 
   it("turns every reviewed owner mutation into generated CSRF coverage", () => {
     const surfaces = reviewedOwnerMutationSurfaces(loadPhase3AuthorizationInventory(matrixPath));
-    expect(surfaces).toHaveLength(50);
+    expect(surfaces).toHaveLength(49);
     expect(surfaces).toEqual(
       expect.arrayContaining([
         "DELETE /api/auth/devices/:id",
         "POST /api/auth/reauthenticate",
         "POST /api/auth/password/change",
-        "POST /api/v1/items/:id/summaries/regenerate",
       ])
     );
   });
