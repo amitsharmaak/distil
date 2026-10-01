@@ -63,10 +63,13 @@ export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: Capture
     if (request.current) return request.current.promise;
     const controller = new AbortController();
     const promise = (async () => {
-      const response = await fetch(`/api/v1/captures/${encodeURIComponent(receipt.id)}`, {
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
+      const response = await contentMutationRequest(
+        `/api/v1/captures/${encodeURIComponent(receipt.id)}`,
+        {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        }
+      );
       if (!response.ok) throw new Error("Could not refresh the capture status.");
       const next = receiptFromPayload(await response.json());
       if (!next) throw new Error("The capture status response was incomplete.");

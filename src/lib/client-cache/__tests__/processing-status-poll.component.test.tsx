@@ -8,6 +8,7 @@ import {
   type ProcessingItemStatus,
   useProcessingStatusPoll,
 } from "../processing-status-poll";
+import { CONTENT_AUTH_EVENT } from "../auth-events";
 
 function Harness({
   ids = ["item-1"],
@@ -181,5 +182,19 @@ describe("useProcessingStatusPoll", () => {
     expect(capturedSignal?.aborted).toBe(false);
     active.unmount();
     expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it("announces an account change when status polling is unauthorized", async () => {
+    const onAccountChange = jest.fn();
+    window.addEventListener(CONTENT_AUTH_EVENT, onAccountChange);
+    jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 401 } as Response);
+    const onStatuses = jest.fn();
+    render(<Harness onStatuses={onStatuses} />);
+
+    await advance(PROCESSING_POLL_INTERVAL_MS);
+
+    expect(onAccountChange).toHaveBeenCalledTimes(1);
+    expect(onStatuses).not.toHaveBeenCalled();
+    window.removeEventListener(CONTENT_AUTH_EVENT, onAccountChange);
   });
 });

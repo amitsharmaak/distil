@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 import type { ContentItemSummary } from "@/lib/types";
 
 export interface ProcessingItemStatus {
@@ -61,9 +62,10 @@ export function useProcessingStatusPoll(
       controller = activeController;
       let nextDelay: number | undefined;
       try {
-        const response = await fetch(`/api/v1/items/status?ids=${encodeURIComponent(idsKey)}`, {
-          signal: activeController.signal,
-        });
+        const response = await contentMutationRequest(
+          `/api/v1/items/status?ids=${encodeURIComponent(idsKey)}`,
+          { signal: activeController.signal }
+        );
         if (!response.ok) throw new Error("Unable to refresh item status");
         const payload = (await response.json()) as { items?: ProcessingItemStatus[] };
         if (cancelled || activeController.signal.aborted || !canPoll()) return;

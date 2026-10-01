@@ -126,6 +126,16 @@ describe("CaptureReceiptCard", () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it("clears account-scoped content when a status refresh is unauthorized", async () => {
+    fetchMock.mockResolvedValue(response({}, 401));
+    render(<CaptureReceiptCard initialReceipt={base} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+
+    expect(await screen.findByText("Your session changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
+  });
+
   it("offers retry only for failed retryable receipts", async () => {
     render(
       <CaptureReceiptCard initialReceipt={{ ...base, status: "rejected", retryable: false }} />
