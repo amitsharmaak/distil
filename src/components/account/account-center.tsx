@@ -1,5 +1,7 @@
 "use client";
 
+import { announceAccountChange } from "@/lib/client-cache/auth-events";
+
 import { FormEvent, useEffect, useState } from "react";
 import { Download, LogOut, Monitor, ShieldAlert, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -235,6 +237,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       setError(await messageFor(response, "Could not sign out. Please try again."));
       return;
     }
+    announceAccountChange();
     router.replace("/sign-in");
     router.refresh();
   }

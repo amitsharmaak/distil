@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { navigateFullPage } from "@/lib/browser-navigation";
+import { announceAccountChange } from "@/lib/client-cache/auth-events";
 import { Input } from "@/components/ui/input";
 
 /** A same-origin page path, never a protocol-relative or backslash form. */
@@ -53,6 +54,7 @@ export function SignInCard({ next }: { next?: string } = {}) {
       }
       // Full navigation: see navigateFullPage for why a client-side replace()
       // would resolve from the stale prefetch cache and stay on this page.
+      announceAccountChange();
       navigateFullPage(destination ?? "/", window.location);
     } finally {
       setSubmitting(false);
