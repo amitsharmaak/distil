@@ -10,6 +10,7 @@ import {
   useContentQuery,
 } from "@/lib/client-cache/content-cache";
 import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 import type { Priority } from "@/lib/types";
 
 export type ReaderState = {
@@ -28,7 +29,7 @@ type ReaderStateResponse = { state: ReaderState };
 type ReaderNoteResponse = { note: { body: string } | null };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await contentMutationRequest(path, init ?? {});
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string };
   };

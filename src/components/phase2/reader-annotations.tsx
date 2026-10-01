@@ -9,6 +9,7 @@ import {
   useContentCache,
   useContentQuery,
 } from "@/lib/client-cache/content-cache";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 
 export type ReaderAnnotation = {
   id: string;
@@ -34,7 +35,7 @@ type SelectionAnchor = {
 };
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await contentMutationRequest(path, init ?? {});
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: { message?: string };
   };
