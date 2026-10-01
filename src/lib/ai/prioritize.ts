@@ -29,7 +29,7 @@ async function loadAgentConfig(repositories: RepositorySet): Promise<AgentConfig
   return JSON.parse(raw) as AgentConfig;
 }
 
-function scoreToPriority(score: number): Priority {
+export function scoreToPriority(score: number): Priority {
   if (score >= 70) return "high";
   if (score >= 40) return "medium";
   return "low";

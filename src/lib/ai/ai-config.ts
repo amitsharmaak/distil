@@ -24,7 +24,8 @@ export type AITask =
   | "research-gaps"
   | "preference-analysis"
   | "auto-tag"
-  | "classify-area";
+  | "classify-area"
+  | "triage-capture";
 
 export type ProviderName = "gemini" | "openai" | "anthropic";
 
@@ -48,6 +49,8 @@ export const DEFAULT_MODEL_CONFIG: Record<AITask, ModelAssignment> = {
   "auto-tag": { provider: "gemini", model: "gemini-3.5-flash-lite" },
   // Life area for every captured item: one short structured call, so the cheapest model.
   "classify-area": { provider: "gemini", model: "gemini-3.5-flash-lite" },
+  // Capture triage: junk-page verdict and priority score before the summary call.
+  "triage-capture": { provider: "gemini", model: "gemini-3.5-flash-lite" },
 };
 
 /**
@@ -113,6 +116,7 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
     "preference-analysis": "gemini-3.5-flash-lite",
     "auto-tag": "gemini-3.5-flash-lite",
     "classify-area": "gemini-3.5-flash-lite",
+    "triage-capture": "gemini-3.5-flash-lite",
   },
   openai: {
     summarize: "gpt-4o-mini",
@@ -125,6 +129,7 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
     "preference-analysis": "gpt-4o-mini",
     "auto-tag": "gpt-4o-mini",
     "classify-area": "gpt-4o-mini",
+    "triage-capture": "gpt-4o-mini",
   },
   // Anthropic ids are the undated aliases the API accepts; ListModels shows the dated
   // snapshot (claude-haiku-4-5 -> claude-haiku-4-5-20251001), which the audit resolves.
@@ -139,6 +144,7 @@ export const PROVIDER_FALLBACK_MODELS: Record<ProviderName, Record<AITask, strin
     "preference-analysis": "claude-haiku-4-5",
     "auto-tag": "claude-haiku-4-5",
     "classify-area": "claude-haiku-4-5",
+    "triage-capture": "claude-haiku-4-5",
   },
 };
 

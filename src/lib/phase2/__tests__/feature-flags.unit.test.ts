@@ -5,6 +5,7 @@ describe("Phase 2 server feature flags", () => {
     expect(readPhase2FeatureFlags({})).toEqual({
       captureSummary: true,
       areaClassification: true,
+      captureTriage: "on",
       serverRender: true,
       knowledgeUi: false,
       personalization: false,
@@ -25,6 +26,7 @@ describe("Phase 2 server feature flags", () => {
     ).toEqual({
       captureSummary: false,
       areaClassification: false,
+      captureTriage: "on",
       serverRender: false,
       knowledgeUi: true,
       personalization: false,
