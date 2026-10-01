@@ -39,7 +39,10 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["radix-ui"],
     inlineCss: true,
-    staleTimes: { dynamic: 30, static: 300 },
+    // Content data has its own shorter account-scoped freshness windows. Keep
+    // visited/prefetched route shells reusable so those caches can render (and
+    // refresh in place) without waiting for another authenticated RSC request.
+    staleTimes: { dynamic: 1800, static: 1800 },
   },
   /**
    * Mark better-sqlite3 as a server-external package.

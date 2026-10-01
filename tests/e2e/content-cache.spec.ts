@@ -34,6 +34,173 @@ async function observeNavigation(page: Page, targetHeading: string) {
   }, targetHeading);
 }
 
+async function advanceBrowserClock(page: Page, milliseconds: number) {
+  await page.evaluate((offset) => {
+    const state = window as unknown as {
+      __contentCacheRealNow?: () => number;
+      __contentCacheClockOffset?: number;
+    };
+    state.__contentCacheRealNow ??= Date.now.bind(Date);
+    state.__contentCacheClockOffset = offset;
+    Date.now = () => state.__contentCacheRealNow!() + state.__contentCacheClockOffset!;
+  }, milliseconds);
+}
+
+test("route shells outlive data freshness without gating cached Research content", async ({
+  page,
+}) => {
+  test.skip(process.env.DISTIL_E2E_PRODUCTION !== "1", "Requires the production router cache.");
+  const requests = { list: 0, suggestions: 0, report: 0, rsc: 0 };
+  let holdResearchRefresh = false;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  let refreshObserved!: () => void;
+  const observedRefresh = new Promise<void>((resolve) => {
+    refreshObserved = resolve;
+  });
+
+  page.on("request", (request) => {
+    if (new URL(request.url()).searchParams.has("_rsc")) requests.rsc++;
+  });
+  await page.route("**/api/ai/research/list", async (route) => {
+    requests.list++;
+    if (holdResearchRefresh) {
+      refreshObserved();
+      await refreshGate;
+    }
+    await route.fulfill({ json: { reports: [report] } });
+  });
+  await page.route("**/api/ai/research/suggestions", async (route) => {
+    requests.suggestions++;
+    if (holdResearchRefresh) await refreshGate;
+    await route.fulfill({ json: { suggestions: [] } });
+  });
+  await page.route("**/api/ai/research/cache-report", async (route) => {
+    requests.report++;
+    await route.fulfill({ json: { report } });
+  });
+
+  try {
+    await page.goto("/research");
+    const listHeading = page.getByRole("heading", { name: "Research", exact: true });
+    const card = page.locator('a[href="/research/cache-report"]');
+    await expect(card).toBeVisible();
+    await card.evaluate((element: HTMLAnchorElement) => element.click());
+    const reportHeading = page.getByRole("heading", { name: report.query, exact: true });
+    await expect(reportHeading).toBeVisible();
+
+    const warm = { ...requests };
+    await advanceBrowserClock(page, 301_000);
+    holdResearchRefresh = true;
+    await page
+      .getByRole("link", { name: "Back", exact: true })
+      .first()
+      .evaluate((element: HTMLAnchorElement) => element.click());
+
+    await expect(listHeading).toBeVisible({ timeout: 500 });
+    await expect(card).toBeVisible({ timeout: 500 });
+    await observedRefresh;
+    expect(requests.rsc).toBe(warm.rsc);
+    expect(requests.list).toBe(warm.list + 1);
+
+    holdResearchRefresh = false;
+    releaseRefresh();
+    await expect.poll(() => requests.suggestions).toBe(warm.suggestions + 1);
+
+    await card.evaluate((element: HTMLAnchorElement) => element.click());
+    await expect(reportHeading).toBeVisible({ timeout: 500 });
+    expect(requests.rsc).toBe(warm.rsc);
+    expect(requests.report).toBe(warm.report);
+  } finally {
+    releaseRefresh();
+  }
+});
+
+test("stale Feed data remains visible while its refresh is held", async ({ page }) => {
+  test.skip(process.env.DISTIL_E2E_PRODUCTION !== "1", "Requires the production router cache.");
+  const item = {
+    id: "stale-feed-item",
+    title: "Stale cached Feed item",
+    summary: "Retained while Feed refreshes.",
+    sourceType: "manual",
+    contentType: "article",
+    topics: [],
+    url: "https://example.test/stale-feed",
+    priority: "medium",
+    isRead: false,
+    processingStatus: "ready",
+    createdAt: "2026-10-01T00:00:00Z",
+    rank: { reasons: ["Saved for reading"], score: 1 },
+  };
+  let dataRequests = 0;
+  let rscRequests = 0;
+  let holdNextFeedRead = false;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  let refreshObserved!: () => void;
+  const observedRefresh = new Promise<void>((resolve) => {
+    refreshObserved = resolve;
+  });
+
+  page.on("request", (request) => {
+    if (new URL(request.url()).searchParams.has("_rsc")) rscRequests++;
+  });
+  await page.route("**/api/v1/feed?*", async (route) => {
+    dataRequests++;
+    if (holdNextFeedRead) {
+      holdNextFeedRead = false;
+      refreshObserved();
+      await refreshGate;
+    }
+    await route.fulfill({ json: { items: [item] } });
+  });
+
+  try {
+    await page.goto("/feed");
+    const cachedItem = page.getByText(item.title, { exact: true });
+    await expect(cachedItem).toBeVisible();
+    await page.getByRole("link", { name: "Today", exact: true }).filter({ visible: true }).click();
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+    const warm = { dataRequests, rscRequests };
+
+    await advanceBrowserClock(page, 121_000);
+    holdNextFeedRead = true;
+    await page
+      .getByRole("link", { name: "Feed", exact: true })
+      .filter({ visible: true })
+      .evaluate((element: HTMLAnchorElement) => element.click());
+
+    await expect(cachedItem).toBeVisible({ timeout: 500 });
+    await observedRefresh;
+    expect(rscRequests).toBe(warm.rscRequests);
+    expect(dataRequests).toBe(warm.dataRequests + 1);
+  } finally {
+    releaseRefresh();
+  }
+});
+
+test("Settings re-reads account authorization on every cached route return", async ({ page }) => {
+  test.skip(process.env.DISTIL_E2E_PRODUCTION !== "1", "Requires the production router cache.");
+  let accountRequests = 0;
+  await page.route("**/api/v1/account", async (route) => {
+    accountRequests++;
+    await route.fulfill({ json: { account: { isAdmin: false } } });
+  });
+
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect.poll(() => accountRequests).toBe(1);
+  await page.getByRole("link", { name: "Feed", exact: true }).filter({ visible: true }).click();
+  await expect(page.getByRole("heading", { name: "Feed", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Settings", exact: true }).filter({ visible: true }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect.poll(() => accountRequests).toBe(2);
+});
+
 test("fresh research navigation reuses data and explicit refresh keeps cached content", async ({
   page,
 }, testInfo) => {

@@ -1,26 +1,54 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { AISummary as RawAISummary } from "../ai-summary";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+import {
+  CACHE_FRESHNESS,
+  ContentCacheProvider,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
+
+const mockRefresh = jest.fn();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/feed/one",
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), refresh: mockRefresh }),
 }));
 
 function AISummary(props: React.ComponentProps<typeof RawAISummary>) {
+  return <RawAISummary {...props} />;
+}
+
+function TestProvider({ children }: { children: React.ReactNode }) {
   return (
-    <ShortcutsProvider>
-      <RawAISummary {...props} />
-    </ShortcutsProvider>
+    <ContentCacheProvider accountKey="test-account">
+      <ShortcutsProvider>{children}</ShortcutsProvider>
+    </ContentCacheProvider>
   );
+}
+
+function render(ui: React.ReactElement) {
+  return rtlRender(ui, { wrapper: TestProvider });
+}
+
+function CacheProbe({ view }: { view: "feed" | "today" }) {
+  useContentQuery({
+    key: [view, "summary-probe"],
+    url: `/test/${view}`,
+    staleTime: CACHE_FRESHNESS.feed,
+    initialData: { summary: "Old summary" },
+  });
+  return null;
 }
 jest.mock("react-markdown", () => ({
   __esModule: true,
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 jest.mock("remark-gfm", () => ({ __esModule: true, default: () => {} }));
-beforeEach(() => jest.mocked(global.fetch).mockReset());
+beforeEach(() => {
+  jest.mocked(global.fetch).mockReset();
+  mockRefresh.mockReset();
+});
 
 it("escapes plain original content instead of interpreting it as HTML", async () => {
   const { container } = render(
@@ -184,6 +212,50 @@ it("drops the detailed summary when the brief is regenerated, and takes a new br
   });
   fireEvent.click(screen.getByText("Brief"));
   expect(await screen.findByText("Newest brief.")).toBeVisible();
+});
+
+it("keeps a regenerated summary visible while invalidating cached lists and refreshing the reader", async () => {
+  jest.mocked(global.fetch).mockImplementation((input) => {
+    const url = String(input);
+    if (url === "/api/ai/summarize")
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ summary: "## TL;DR\n\nFresh summary.", cached: false }),
+      } as Response);
+    if (url === "/test/feed" || url === "/test/today")
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ summary: "Fresh list summary" }),
+      } as Response);
+    throw new Error(`Unexpected request ${url}`);
+  });
+  const view = render(
+    <>
+      <AISummary itemId="one" ogSummary="original" initialBriefSummary="Old summary" />
+      <CacheProbe view="feed" />
+      <CacheProbe view="today" />
+    </>
+  );
+
+  fireEvent.click(screen.getByText("Regenerate"));
+  expect(await screen.findByText("Fresh summary.")).toBeVisible();
+  await waitFor(() => {
+    expect(global.fetch).toHaveBeenCalledWith("/test/feed", expect.anything());
+    expect(global.fetch).toHaveBeenCalledWith("/test/today", expect.anything());
+  });
+  expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+  view.rerender(
+    <>
+      <AISummary itemId="one" ogSummary="original" initialBriefSummary="Old summary" />
+      <CacheProbe view="feed" />
+      <CacheProbe view="today" />
+    </>
+  );
+  expect(screen.getByText("Fresh summary.")).toBeVisible();
+  expect(screen.queryByText("Old summary")).not.toBeInTheDocument();
 });
 
 it("s, d and Shift+S drive the summary controls and expose their keys", async () => {

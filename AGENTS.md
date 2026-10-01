@@ -127,7 +127,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   visible during refresh. Scope reset cancels/clears on sign-out, account change and authorization
   failures, including across tabs. Item mutations share optimistic updates and rollback through
   `useItemMutation`; keep reads abortable and use the shared invalidation paths. Server rendering
-  still supplies initial Feed/Today and reader metadata. `IntentLink` warms routes on hover, focus
+  still supplies initial Feed/Today and reader metadata. Next browser route output is retained for
+  thirty minutes, independently of the shorter data freshness windows. Summary/extraction/feedback
+  changes refresh reader RSC output. `IntentLink` warms routes on hover, focus
   or touch instead of prefetching every visible card. Account/session/token reads remain fresh.
 - **Capture clients:** `browser-extension/` (Chrome MV3, posts to `/api/v1/captures`, offline
   replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`. Gmail, Slack and the

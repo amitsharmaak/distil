@@ -5,6 +5,9 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { CaptureReceiptCard } from "@/components/capture/capture-receipt";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
 
+const mockRefresh = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
+
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status: number) =>
   ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
@@ -23,6 +26,7 @@ describe("CaptureReceiptCard", () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-03-01T00:00:00Z"));
     fetchMock.mockReset();
+    mockRefresh.mockReset();
     jest.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
@@ -52,6 +56,7 @@ describe("CaptureReceiptCard", () => {
       jest.advanceTimersByTime(4_000);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not poll while the document is hidden", async () => {

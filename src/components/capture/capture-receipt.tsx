@@ -4,6 +4,7 @@ import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Clock3, LoaderCircle, RefreshCw, XCircle } from "lucide-react";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ function receiptFromPayload(payload: unknown): CaptureReceipt | undefined {
 
 export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: CaptureReceipt }) {
   const cache = useContentCache();
+  const router = useRouter();
   const [receipt, setReceipt] = useState(initialReceipt);
   const [requestError, setRequestError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
@@ -51,8 +53,11 @@ export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: Capture
     notifiedReady.current = receipt.id;
     void cache.invalidate(["feed"]);
     void cache.invalidate(["today"]);
-    if (receipt.itemId) void cache.invalidate(["item", receipt.itemId]);
-  }, [cache, receipt.status, receipt.id, receipt.itemId]);
+    if (receipt.itemId) {
+      void cache.invalidate(["item", receipt.itemId]);
+      router.refresh();
+    }
+  }, [cache, router, receipt.status, receipt.id, receipt.itemId]);
 
   const refresh = useCallback((): Promise<void> => {
     if (request.current) return request.current.promise;

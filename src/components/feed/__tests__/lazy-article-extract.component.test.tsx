@@ -3,6 +3,11 @@
  */
 
 import { act, render, screen } from "@testing-library/react";
+import {
+  CACHE_FRESHNESS,
+  ContentCacheProvider,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
 import { LazyArticleExtract } from "../lazy-article-extract";
 
 const mockRefresh = jest.fn();
@@ -27,6 +32,26 @@ function deferred<T>() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function renderWithCache(children: React.ReactNode) {
+  return render(<ContentCacheProvider accountKey="test-account">{children}</ContentCacheProvider>);
+}
+
+function ActiveListQueries() {
+  useContentQuery({
+    key: ["feed", "test"],
+    url: "/test/feed-refresh",
+    staleTime: CACHE_FRESHNESS.feed,
+    initialData: { items: [] },
+  });
+  useContentQuery({
+    key: ["today", "test"],
+    url: "/test/today-refresh",
+    staleTime: CACHE_FRESHNESS.feed,
+    initialData: { items: [] },
+  });
+  return null;
 }
 
 describe("LazyArticleExtract", () => {
@@ -55,7 +80,7 @@ describe("LazyArticleExtract", () => {
     },
     { label: "no URL", hasFullContent: false, contentExtractedAt: undefined, url: "" },
   ])("renders children without fetching when it has $label", (props) => {
-    render(
+    renderWithCache(
       <LazyArticleExtract itemId="item-1" {...props}>
         <p>Article body</p>
       </LazyArticleExtract>
@@ -65,14 +90,21 @@ describe("LazyArticleExtract", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("shows progress and settles optimistically without a successful refresh", async () => {
+  it("refreshes the reader and invalidates cached lists after successful extraction", async () => {
     const request = deferred<Response>();
-    fetchMock.mockReturnValue(request.promise);
+    fetchMock.mockImplementation((url) =>
+      String(url).includes("/extract")
+        ? request.promise
+        : Promise.resolve({ ok: true, json: async () => ({ items: [] }) } as Response)
+    );
 
-    render(
-      <LazyArticleExtract itemId="item-1" url="https://article.test" hasFullContent={false}>
-        <p>Article body</p>
-      </LazyArticleExtract>
+    renderWithCache(
+      <>
+        <ActiveListQueries />
+        <LazyArticleExtract itemId="item-1" url="https://article.test" hasFullContent={false}>
+          <p>Article body</p>
+        </LazyArticleExtract>
+      </>
     );
 
     expect(screen.getByText("Loading article content…")).toBeInTheDocument();
@@ -85,20 +117,26 @@ describe("LazyArticleExtract", () => {
     });
 
     expect(await screen.findByText("Article body")).toBeInTheDocument();
-    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/test/feed-refresh", {
+      signal: expect.any(AbortSignal),
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/test/today-refresh", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
-  it("settles without refreshing when no content was extracted", async () => {
+  it("refreshes when the server reports that extraction was already attempted", async () => {
     fetchMock.mockResolvedValue(response({ extracted: false }));
 
-    render(
+    renderWithCache(
       <LazyArticleExtract itemId="item-2" url="https://article.test" hasFullContent={false}>
         <p>Fallback body</p>
       </LazyArticleExtract>
     );
 
     expect(await screen.findByText("Fallback body")).toBeInTheDocument();
-    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -108,7 +146,7 @@ describe("LazyArticleExtract", () => {
     if (result instanceof Error) fetchMock.mockRejectedValue(result);
     else fetchMock.mockResolvedValue(result);
 
-    render(
+    renderWithCache(
       <LazyArticleExtract itemId="item-3" url="https://article.test" hasFullContent={false}>
         <p>Fallback body</p>
       </LazyArticleExtract>
@@ -121,7 +159,7 @@ describe("LazyArticleExtract", () => {
   it("settles after a network failure", async () => {
     fetchMock.mockRejectedValue(new Error("offline"));
 
-    render(
+    renderWithCache(
       <LazyArticleExtract itemId="item-3" url="https://article.test" hasFullContent={false}>
         <p>Fallback body</p>
       </LazyArticleExtract>
@@ -134,7 +172,7 @@ describe("LazyArticleExtract", () => {
   it("ignores a successful response after unmount", async () => {
     const request = deferred<Response>();
     fetchMock.mockReturnValue(request.promise);
-    const { unmount } = render(
+    const { unmount } = renderWithCache(
       <LazyArticleExtract itemId="item-4" url="https://article.test" hasFullContent={false}>
         <p>Fallback body</p>
       </LazyArticleExtract>
@@ -152,7 +190,7 @@ describe("LazyArticleExtract", () => {
   it("ignores a failed response after unmount", async () => {
     const request = deferred<Response>();
     fetchMock.mockReturnValue(request.promise);
-    const { unmount } = render(
+    const { unmount } = renderWithCache(
       <LazyArticleExtract itemId="item-5" url="https://article.test" hasFullContent={false}>
         <p>Fallback body</p>
       </LazyArticleExtract>

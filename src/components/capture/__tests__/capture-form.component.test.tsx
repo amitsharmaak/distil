@@ -4,6 +4,8 @@ import { renderWithContentCache as render } from "../../../../tests/support/cont
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { CaptureForm } from "@/components/capture/capture-form";
 
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status: number) =>
   ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;

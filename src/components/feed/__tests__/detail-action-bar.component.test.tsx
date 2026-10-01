@@ -8,9 +8,10 @@ import { ReaderAreaBadge } from "../reader-area-badge";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 
 const mockPush = jest.fn();
+const mockRefresh = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => "/feed/one",
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh, prefetch: jest.fn() }),
 }));
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -49,6 +50,7 @@ const press = (init: KeyboardEventInit) => fireEvent.keyDown(window, init);
 
 beforeEach(() => {
   mockPush.mockReset();
+  mockRefresh.mockReset();
   fetchMock.mockReset().mockResolvedValue({ ok: true, json: async () => ({}) });
   global.fetch = fetchMock as unknown as typeof fetch;
 });
@@ -78,6 +80,7 @@ it("+ and - rate the item", async () => {
     )
   );
   await waitFor(() => expect(screen.getByRole("button", { name: "Liked" })).toBeEnabled());
+  expect(mockRefresh).toHaveBeenCalledTimes(1);
   press({ key: "-" });
   await waitFor(() =>
     expect(fetchMock).toHaveBeenLastCalledWith(

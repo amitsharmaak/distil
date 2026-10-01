@@ -108,6 +108,8 @@ export function DetailActionBar({
         setRating(value);
         void cache.invalidate(["feed"]);
         void cache.invalidate(["today"]);
+        // Feedback is part of the server-rendered reader props.
+        router.refresh();
       }
     } catch {
       /* retry later */

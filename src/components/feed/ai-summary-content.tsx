@@ -2,11 +2,14 @@
 
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Zap, RefreshCw, Sparkles, FileText, Minimize2, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { useContentCache } from "@/lib/client-cache/content-cache";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
 
 const TOGGLE_VIEW: ShortcutDef = {
@@ -250,6 +253,8 @@ export function AISummary({
   initialBriefSummary,
   initialDetailedSummary,
 }: AISummaryProps) {
+  const router = useRouter();
+  const cache = useContentCache();
   const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(
     initialDetailedSummary ?? null
@@ -273,7 +278,7 @@ export function AISummary({
     setRetryRequest({ length, force });
     setError(null);
     try {
-      const res = await fetch("/api/ai/summarize", {
+      const res = await contentMutationRequest("/api/ai/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, length, force }),
@@ -297,6 +302,8 @@ export function AISummary({
       }
       setSummaryLength(length);
       setViewMode("ai");
+      void Promise.allSettled([cache.invalidate(["feed"]), cache.invalidate(["today"])]);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
