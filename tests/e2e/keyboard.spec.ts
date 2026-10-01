@@ -169,7 +169,7 @@ test.describe("keyboard navigation with seeded items", () => {
     await expect(markRead).toBeEnabled();
     const patched = page.waitForResponse(
       (response) =>
-        response.url().includes(`/api/items/${secondId}`) && response.request().method() === "PATCH"
+        response.url().includes(`/api/v1/items/${secondId}/state`) && response.request().method() === "PATCH"
     );
     await page.keyboard.press("r");
     expect((await patched).ok()).toBe(true);

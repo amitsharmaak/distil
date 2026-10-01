@@ -1,19 +1,19 @@
 "use client";
 
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { useState } from "react";
 import { ArchiveRestore, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
 import { useItemMutation } from "@/lib/client-cache/item-mutations";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
 
 function ItemLink({ item }: { item: FeedItem }) {
   return (
     <Link
       href={`/feed/${item.id}`}
-      prefetch={false}
       className="block rounded-lg border bg-card p-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <p className="text-xs text-muted-foreground">{item.publication || item.sourceType}</p>
@@ -50,6 +50,7 @@ export function ArchiveExperience() {
     (item) => (item as FeedItem & { archived?: boolean }).archived !== false
   );
   const loading = archiveQuery.isPending && !archiveQuery.data;
+  useViewScroll("archive", Boolean(archiveQuery.data));
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   async function restore(itemId: string) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+
 import { useEffect, useState } from "react";
 import { BookmarkPlus } from "lucide-react";
 import type { CaptureReceipt, CreateCaptureResponse } from "@/lib/contracts/capture";
@@ -29,7 +31,7 @@ export function CaptureForm() {
     setSubmitting(true);
     setError(undefined);
     try {
-      const response = await fetch("/api/v1/captures", {
+      const response = await contentMutationRequest("/api/v1/captures", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({

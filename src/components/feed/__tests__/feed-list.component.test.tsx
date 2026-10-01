@@ -640,7 +640,8 @@ describe("FeedList with a server-rendered page", () => {
     expect(await screen.findByText("Second page")).toBeInTheDocument();
     expect(screen.getByText("First page")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2"
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2",
+      expect.objectContaining({ signal: expect.anything() })
     );
   });
 });
@@ -760,7 +761,10 @@ describe("FeedList keyboard shortcuts", () => {
     press("j");
     press("j");
     expect(await screen.findByText("Delta")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("cursor=cursor-2"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("cursor=cursor-2"),
+      expect.objectContaining({ signal: expect.anything() })
+    );
   });
 
   it("f opens the Filters sheet", () => {

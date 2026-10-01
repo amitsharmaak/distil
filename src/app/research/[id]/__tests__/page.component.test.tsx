@@ -397,6 +397,24 @@ describe("ResearchPage", () => {
     expect(await screen.findByText("Research failed. Please try again.")).toBeInTheDocument();
   });
 
+  it("fetches the stored failure message once when an active stream fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(responseFor(makeReport({ status: "pending", report: "" })))
+      .mockResolvedValueOnce(
+        responseFor(makeReport({ status: "failed", report: "The research budget was reached." }))
+      );
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByText("Research in progress");
+    const stream = MockEventSource.instances[0];
+    await act(async () => {
+      stream.emit("status", JSON.stringify({ status: "failed" }));
+      stream.emit("complete", "{}");
+    });
+    expect(await screen.findByText("The research budget was reached.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stream.close).toHaveBeenCalled();
+  });
+
   it("opens one stream for an active report and applies valid progress and status events", async () => {
     fetchMock.mockResolvedValue(
       responseFor(

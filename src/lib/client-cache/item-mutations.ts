@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { LifeArea, Priority } from "@/lib/types";
-import { announceAccountChange } from "./auth-events";
+import { contentMutationRequest } from "./mutation-request";
 import { CACHE_FRESHNESS, useContentCache, useContentQuery } from "./content-cache";
 
 export interface ItemPatch {
@@ -35,12 +35,22 @@ export function mapCachedItem(
 
 /** A small override survives RSC route reuse, so old reader props cannot undo a local edit. */
 export function useItemOverrides(id: string) {
-  return useContentQuery<ItemPatch>({
+  const query = useContentQuery<ItemPatch>({
     key: ["item", id, "changes"],
     url: "",
     staleTime: CACHE_FRESHNESS.detail,
     enabled: false,
-  }).data;
+  });
+  const [expiredVersion, setExpiredVersion] = useState(0);
+  useEffect(() => {
+    if (!query.dataUpdatedAt) return;
+    const timer = setTimeout(
+      () => setExpiredVersion(query.dataUpdatedAt),
+      Math.max(0, query.dataUpdatedAt + CACHE_FRESHNESS.detail - Date.now())
+    );
+    return () => clearTimeout(timer);
+  }, [query.dataUpdatedAt]);
+  return expiredVersion === query.dataUpdatedAt ? undefined : query.data;
 }
 
 export function useItemMutation() {
@@ -57,7 +67,10 @@ export function useItemMutation() {
         .catch(() => undefined)
         .then(async () => {
           const release = cache.beginWrite();
-          await Promise.all(families.map((family) => cache.cancel(family)));
+          await Promise.all([
+            ...families.map((family) => cache.cancel(family)),
+            cache.cancel(["item", id, "state"]),
+          ]);
           const snapshots = families.flatMap((family) => cache.entries(family));
           const overrideKey = ["item", id, "changes"];
           const oldOverride = cache.get<ItemPatch>(overrideKey);
@@ -73,12 +86,14 @@ export function useItemMutation() {
               mapCachedItem(value, id, (item) => ({ ...item, ...changed }))
             );
           try {
-            const response = await fetch(`/api/v1/items/${encodeURIComponent(id)}/state`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(patch),
-            });
-            if (response.status === 401) announceAccountChange();
+            const response = await contentMutationRequest(
+              `/api/v1/items/${encodeURIComponent(id)}/state`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(patch),
+              }
+            );
             if (!response.ok) throw new Error("Could not save this change.");
           } catch (error) {
             // Restore this item's changed fields only. Concurrent edits to other

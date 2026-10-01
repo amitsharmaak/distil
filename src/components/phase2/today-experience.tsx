@@ -8,6 +8,7 @@ import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
 import { Button } from "@/components/ui/button";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { normalizeSearchQuery } from "@/lib/feed/feed-url";
 import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
@@ -115,6 +116,7 @@ export function TodayExperience({
   const view = todayQuery.data ?? previousView ?? serverView;
   const error = todayQuery.error instanceof Error ? todayQuery.error.message : null;
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
+  useViewScroll(`today:${viewKey}`, Boolean(todayQuery.data));
 
   // A history update is pending only until Next reports its target key. Later
   // popstate/external URL changes must not be overwritten by an old target.

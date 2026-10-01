@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { ContentCacheProvider, useContentCache } from "../content-cache";
-import { useItemMutation } from "../item-mutations";
+import { useItemMutation, useItemOverrides } from "../item-mutations";
 
 beforeEach(() => jest.mocked(fetch).mockReset());
 
@@ -91,4 +91,54 @@ it("waits for an optimistic write before starting a new read", async () => {
     await pending;
   });
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("reconciles cleared fields and revisiting items from authoritative refreshes", async () => {
+  const { result } = setup();
+  const { cache } = result.current;
+  cache.set(["item", "a", "changes"], {
+    isRead: true,
+    archived: true,
+    manualPriority: "high",
+    area: "work",
+  });
+  jest
+    .mocked(fetch)
+    .mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], resurfacedItems: [{ id: "a", isRead: false }] }),
+    } as Response);
+  await act(async () =>
+    cache.fetch({ key: ["today", "sections"], url: "/api/v1/feed", staleTime: 1000 })
+  );
+  expect(cache.get(["item", "a", "changes"])).toEqual({
+    isRead: false,
+    archived: false,
+    manualPriority: null,
+    area: undefined,
+  });
+});
+
+it("expires a reader override even while its disabled query stays observed", async () => {
+  jest.useFakeTimers();
+  try {
+    const { result, unmount } = renderHook(
+      () => ({ cache: useContentCache(), overrides: useItemOverrides("a") }),
+      {
+        wrapper: ({ children }) => (
+          <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+        ),
+      }
+    );
+    await act(async () => {
+      result.current.cache.set(["item", "a", "changes"], { isRead: true });
+    });
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(result.current.overrides).toEqual({ isRead: true });
+    await act(async () => jest.advanceTimersByTime(30 * 60_000));
+    expect(result.current.overrides).toBeUndefined();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
 });

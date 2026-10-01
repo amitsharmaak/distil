@@ -1,7 +1,9 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -97,7 +99,7 @@ export function DetailActionBar({
     if (submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/ai/feedback", {
+      const res = await contentMutationRequest("/api/ai/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, rating: value }),

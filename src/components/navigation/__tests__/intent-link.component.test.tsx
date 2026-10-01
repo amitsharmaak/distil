@@ -143,19 +143,19 @@ it("warms Research list data and one report using the shared cache contracts", (
   fireEvent.focus(screen.getByRole("link", { name: "Research" }));
   expect(mockCachePrefetch).toHaveBeenNthCalledWith(1, {
     key: ["research", "list"],
-    url: "http://localhost:3000/api/ai/research/list",
+    url: "/api/ai/research/list",
     staleTime: 300_000,
   });
   expect(mockCachePrefetch).toHaveBeenNthCalledWith(2, {
     key: ["research", "suggestions"],
-    url: "http://localhost:3000/api/ai/research/suggestions",
+    url: "/api/ai/research/suggestions",
     staleTime: 300_000,
   });
 
   fireEvent.focus(screen.getByRole("link", { name: "Report" }));
   expect(mockCachePrefetch).toHaveBeenNthCalledWith(3, {
     key: ["research", "report", "report-1"],
-    url: "http://localhost:3000/api/ai/research/report-1",
+    url: "/api/ai/research/report-1",
     staleTime: 1_800_000,
   });
 });

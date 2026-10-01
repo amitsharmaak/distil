@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 
 import { CACHE_FRESHNESS, useContentCache } from "@/lib/client-cache/content-cache";
-import { config } from "@/lib/config";
+import { apiBaseUrl } from "@/lib/public-config";
 
 const HOVER_INTENT_DELAY_MS = 100;
 const INTENT_DEDUP_MS = 30_000;
@@ -114,12 +114,12 @@ export function ResearchListIntentLink(props: ResearchIntentLinkProps) {
     await Promise.all([
       cache.prefetch<unknown>({
         key: ["research", "list"],
-        url: `${config.apiBaseUrl}/api/ai/research/list`,
+        url: `${apiBaseUrl}/api/ai/research/list`,
         staleTime: CACHE_FRESHNESS.library,
       }),
       cache.prefetch<unknown>({
         key: ["research", "suggestions"],
-        url: `${config.apiBaseUrl}/api/ai/research/suggestions`,
+        url: `${apiBaseUrl}/api/ai/research/suggestions`,
         staleTime: CACHE_FRESHNESS.library,
       }),
     ]);
@@ -137,7 +137,7 @@ export function ResearchReportIntentLink({
     () =>
       cache.prefetch<unknown>({
         key: ["research", "report", reportId],
-        url: `${config.apiBaseUrl}/api/ai/research/${encodeURIComponent(reportId)}`,
+        url: `${apiBaseUrl}/api/ai/research/${encodeURIComponent(reportId)}`,
         staleTime: CACHE_FRESHNESS.detail,
       }),
     [cache, reportId]

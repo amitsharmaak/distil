@@ -63,6 +63,44 @@ async function readContent<T>(
   const raw: unknown = await response.json();
   // Even a transport which ignores cancellation cannot fill a previous account's cache.
   if (signal.aborted || !scope.active) throw new Error("Request cancelled");
+  // Mutation overrides bridge old RSC props across navigation. A later,
+  // authoritative read must also replace those overrides, not be masked by them.
+  const envelope = raw as {
+    items?: Array<Record<string, unknown>>;
+    resurfacedItems?: Array<Record<string, unknown>>;
+    state?: Record<string, unknown>;
+  } | null;
+  const reconcile = (id: string, state: Record<string, unknown>) => {
+    scope.client.setQueryData<Record<string, unknown>>(
+      scopedKey(scope, ["item", id, "changes"]),
+      (previous) => {
+        if (!previous) return undefined;
+        const next = { ...previous };
+        for (const field of ["isRead", "readingProgress", "manualPriority", "area"]) {
+          if (field in state) next[field] = state[field];
+        }
+        if ("archived" in state) next.archived = state.archived;
+        else if ("archivedAt" in state) next.archived = Boolean(state.archivedAt);
+        return next;
+      }
+    );
+  };
+  if (options.key[0] === "item" && options.key[2] === "state" && envelope?.state) {
+    reconcile(String(options.key[1]), envelope.state);
+  } else if (
+    (options.key[0] === "feed" || options.key[0] === "today" || options.key[0] === "library") &&
+    Array.isArray(envelope?.items)
+  ) {
+    for (const item of [...envelope.items, ...(envelope.resurfacedItems ?? [])]) {
+      if (typeof item.id === "string")
+        reconcile(item.id, {
+          ...item,
+          manualPriority: item.manualPriority ?? null,
+          archived: Boolean(item.archivedAt),
+          area: item.area,
+        });
+    }
+  }
   return options.transform ? options.transform(raw) : (raw as T);
 }
 
@@ -206,6 +244,14 @@ export function useContentCache() {
       async prefetch<T>(options: ContentQueryOptions<T>): Promise<void> {
         if (!scope.active) return;
         await scope.client.prefetchQuery({
+          queryKey: scopedKey(scope, options.key),
+          queryFn: ({ signal }) => readContent(scope, options, signal),
+          staleTime: options.staleTime,
+        });
+      },
+      async fetch<T>(options: ContentQueryOptions<T>): Promise<T> {
+        if (!scope.active) throw new Error("Session changed");
+        return scope.client.fetchQuery({
           queryKey: scopedKey(scope, options.key),
           queryFn: ({ signal }) => readContent(scope, options, signal),
           staleTime: options.staleTime,

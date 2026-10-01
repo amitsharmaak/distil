@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -247,7 +247,7 @@ export default function ResearchPage() {
         try {
           const value = JSON.parse(event.data) as { status?: unknown };
           if (typeof value.status !== "string") return;
-          if (value.status === "completed") {
+          if (isTerminalStatus(value.status)) {
             void refreshCompletionOnce();
             return;
           }

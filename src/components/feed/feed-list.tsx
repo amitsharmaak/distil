@@ -33,6 +33,7 @@ import {
   useContentQuery,
 } from "@/lib/client-cache/content-cache";
 import { useItemMutation } from "@/lib/client-cache/item-mutations";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import {
   type ProcessingItemStatus,
   useProcessingStatusPoll,
@@ -184,7 +185,14 @@ export function FeedList({
       const previous = cache.get<FeedCacheData>(cacheKey);
       if (!previous?.loadedMore) return incoming;
       const previousFirstPage = new Set(previous.firstPageIds);
-      const retainedPages = previous.items.filter((item) => !previousFirstPage.has(item.id));
+      const retainedPages = previous.items.filter(
+        (item) =>
+          !previousFirstPage.has(item.id) &&
+          (filters.showRead || !item.isRead) &&
+          (filters.archive === "include" ||
+            (filters.archive === "only" ? Boolean(item.archivedAt) : !item.archivedAt)) &&
+          (!filters.areas.length || (item.area && filters.areas.includes(item.area)))
+      );
       return {
         ...incoming,
         items: uniqueItems([...incoming.items, ...retainedPages]),
@@ -229,15 +237,18 @@ export function FeedList({
   }, [pendingNavigation, urlFilterKey]);
 
   const loading = !page && !loadError;
+  useViewScroll(`feed:${filterKey}`, Boolean(feedQuery.data));
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
-      const response = await fetch(requestPath(filters, nextCursor));
-      const raw = (await response.json().catch(() => ({}))) as FeedResponse;
-      if (!response.ok) throw new Error(raw.error?.message || "Unable to load more items.");
+      const raw = await cache.fetch<FeedResponse>({
+        key: [...cacheKey, "page", nextCursor],
+        url: requestPath(filters, nextCursor),
+        staleTime: CACHE_FRESHNESS.feed,
+      });
       const nextPage = feedCacheData(raw);
       cache.set<FeedCacheData>(cacheKey, (current) => {
         const base = current ?? feedCacheData({ items: [] });

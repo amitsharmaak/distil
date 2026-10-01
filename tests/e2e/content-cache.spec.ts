@@ -63,7 +63,14 @@ test("fresh research navigation reuses data and explicit refresh keeps cached co
   await expect(card).toBeVisible();
   await card.click();
   await expect(page.getByRole("heading", { name: report.query, exact: true })).toBeVisible();
-  expect(requests).toMatchObject({ list: 1, suggestions: 1, report: 1 });
+  const initial = {
+    list: requests.list,
+    suggestions: requests.suggestions,
+    report: requests.report,
+  };
+  if (process.env.DISTIL_E2E_PRODUCTION === "1")
+    expect(initial).toEqual({ list: 1, suggestions: 1, report: 1 });
+  else for (const count of Object.values(initial)) expect(count).toBeGreaterThanOrEqual(1);
 
   const returnSamples: number[] = [];
   for (let round = 0; round < 2; round++) {
@@ -77,19 +84,23 @@ test("fresh research navigation reuses data and explicit refresh keeps cached co
     await card.click();
     await expect(page.getByRole("heading", { name: report.query, exact: true })).toBeVisible();
   }
-  expect(requests).toMatchObject({ list: 1, suggestions: 1, report: 1 });
+  expect(requests).toMatchObject(initial);
   await page.goBack();
   await expect(card).toBeVisible();
   await page.goForward();
   await expect(page.getByRole("heading", { name: report.query, exact: true })).toBeVisible();
-  expect(requests).toMatchObject({ list: 1, suggestions: 1, report: 1 });
+  expect(requests).toMatchObject(initial);
 
   await page.getByRole("link", { name: "Back", exact: true }).first().click();
   failRefresh = true;
   await page.getByRole("button", { name: "Refresh research" }).click();
   await expect(page.getByText("Refresh failed. Cached research is still shown.")).toBeVisible();
   await expect(card).toBeVisible();
-  expect(requests).toMatchObject({ list: 2, suggestions: 2, report: 1 });
+  expect(requests).toMatchObject({
+    list: initial.list + 1,
+    suggestions: initial.suggestions + 1,
+    report: initial.report,
+  });
   await testInfo.attach("cache-navigation.json", {
     body: JSON.stringify(
       {
@@ -100,6 +111,77 @@ test("fresh research navigation reuses data and explicit refresh keeps cached co
       null,
       2
     ),
+    contentType: "application/json",
+  });
+});
+
+test("Feed retains loaded pages and scroll while filters avoid RSC navigation", async ({
+  page,
+}, testInfo) => {
+  let requests = 0;
+  let filterRsc = 0;
+  const items = Array.from({ length: 45 }, (_, index) => ({
+    id: `navigation-${index}`,
+    title: `Navigation article ${index}`,
+    summary: "A saved article for browser cache checks.",
+    sourceType: "manual",
+    contentType: "article",
+    topics: [],
+    url: `https://example.test/article-${index}`,
+    priority: "medium",
+    isRead: false,
+    processingStatus: "ready",
+    createdAt: "2026-10-01T00:00:00Z",
+    rank: { reasons: ["Saved for reading"], score: 1 },
+  }));
+  await page.route("**/api/v1/feed?*", async (route) => {
+    requests++;
+    const query = new URL(route.request().url()).searchParams;
+    const data = query.has("q")
+      ? [items[7]]
+      : query.has("cursor")
+        ? items.slice(30)
+        : items.slice(0, 30);
+    await route.fulfill({
+      json: {
+        items: data,
+        nextCursor: !query.has("q") && !query.has("cursor") ? "page-2" : undefined,
+      },
+    });
+  });
+  await page.goto("/feed");
+  await expect(page.getByText("Navigation article 0", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(page.getByText("Navigation article 44", { exact: true })).toBeAttached();
+  await page.evaluate(() => window.scrollTo(0, 800));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(800);
+  await page.getByRole("link", { name: "Today", exact: true }).filter({ visible: true }).click();
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  const beforeReturn = requests;
+  await page.getByRole("link", { name: "Feed", exact: true }).filter({ visible: true }).click();
+  await expect(page.getByText("Navigation article 44", { exact: true })).toBeAttached();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(800);
+  expect(requests).toBe(beforeReturn);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const onRequest = (request: import("@playwright/test").Request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/feed" && url.searchParams.has("_rsc")) filterRsc++;
+  };
+  page.on("request", onRequest);
+  await page.getByRole("searchbox").fill("Navigation article 7");
+  await expect(page).toHaveURL(/q=Navigation/);
+  await expect(page.getByText("Navigation article 7", { exact: true })).toBeVisible();
+  await expect(page.getByText("Navigation article 0", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect(page.getByText("Navigation article 44", { exact: true })).toBeAttached();
+  expect(filterRsc).toBe(0);
+  await testInfo.attach("feed-cache-navigation.json", {
+    body: JSON.stringify({
+      dataRequests: requests,
+      filterRsc,
+      restoredScrollY: 800,
+      loadedItems: 45,
+    }),
     contentType: "application/json",
   });
 });

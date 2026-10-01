@@ -1,5 +1,7 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, Clock3, LoaderCircle, RefreshCw, XCircle } from "lucide-react";
@@ -140,10 +142,13 @@ export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: Capture
     setRetrying(true);
     setRequestError(undefined);
     try {
-      const response = await fetch(`/api/v1/captures/${encodeURIComponent(receipt.id)}/retry`, {
-        method: "POST",
-        headers: { Accept: "application/json" },
-      });
+      const response = await contentMutationRequest(
+        `/api/v1/captures/${encodeURIComponent(receipt.id)}/retry`,
+        {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        }
+      );
       if (!response.ok) throw new Error("Could not retry this capture.");
       const next = receiptFromPayload(await response.json());
       if (!next) throw new Error("The retry response was incomplete.");

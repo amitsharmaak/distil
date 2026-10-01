@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { fireEvent, screen } from "@testing-library/react";
 
 import { ContentCard } from "../content-card";
 import type { ContentItem } from "@/lib/types";

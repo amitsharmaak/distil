@@ -1,5 +1,7 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
@@ -52,7 +54,7 @@ export function DeepResearch({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/ai/research`, {
+      const res = await contentMutationRequest(`${apiBaseUrl}/api/ai/research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: query.trim(), ...(itemId && { itemId }) }),

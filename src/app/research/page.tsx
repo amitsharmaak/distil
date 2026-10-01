@@ -1,7 +1,11 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+import { useActiveContentRefresh } from "@/lib/client-cache/active-refresh";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
+
 import { useState, useRef } from "react";
-import Link from "next/link";
+import { ResearchReportIntentLink as Link } from "@/components/navigation/intent-link";
 import { useRouter } from "next/navigation";
 import { FileQuestion, RefreshCw, Scan, Search, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -89,8 +93,15 @@ export default function ResearchListPage() {
     staleTime: CACHE_FRESHNESS.library,
   });
   const reports = reportsQuery.data?.reports ?? [];
+  useActiveContentRefresh(
+    "research",
+    "list",
+    reports.some((report) => report.status !== "completed" && report.status !== "failed"),
+    reportsQuery.refetch
+  );
   const suggestions = suggestionsQuery.data?.suggestions ?? [];
   const loading = reportsQuery.isPending && !reportsQuery.data;
+  useViewScroll("research", Boolean(reportsQuery.data));
   const refreshError = reportsQuery.error ?? suggestionsQuery.error;
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -110,7 +121,9 @@ export default function ResearchListPage() {
     setScanResult(null);
     setScanError(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/ai/research/proactive`, { method: "POST" });
+      const res = await contentMutationRequest(`${apiBaseUrl}/api/ai/research/proactive`, {
+        method: "POST",
+      });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Scan failed");
@@ -128,9 +141,12 @@ export default function ResearchListPage() {
   async function handleStartSuggestion(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/ai/research/suggestions/${id}/start`, {
-        method: "POST",
-      });
+      const res = await contentMutationRequest(
+        `${apiBaseUrl}/api/ai/research/suggestions/${id}/start`,
+        {
+          method: "POST",
+        }
+      );
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to start research");
@@ -138,11 +154,7 @@ export default function ResearchListPage() {
       const data = await res.json();
       if (data.report?.id) {
         cache.set(["research", "report", data.report.id], { report: data.report });
-        await Promise.all([
-          cache.invalidate(REPORTS_KEY),
-          cache.invalidate(SUGGESTIONS_KEY),
-          cache.invalidate(["research", "report", data.report.id]),
-        ]);
+        void Promise.all([cache.invalidate(REPORTS_KEY), cache.invalidate(SUGGESTIONS_KEY)]);
         router.push(`/research/${data.report.id}`);
       }
     } catch (err) {
@@ -155,7 +167,7 @@ export default function ResearchListPage() {
   async function handleDismiss(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/ai/research/suggestions/${id}`, {
+      const res = await contentMutationRequest(`${apiBaseUrl}/api/ai/research/suggestions/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) return;
@@ -358,7 +370,7 @@ export default function ResearchListPage() {
         ) : (
           <div className="space-y-3">
             {reports.map((report) => (
-              <Link key={report.id} href={`/research/${report.id}`} prefetch={false}>
+              <Link key={report.id} href={`/research/${report.id}`} reportId={report.id}>
                 <Card className="transition-colors hover:bg-accent/50">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">

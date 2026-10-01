@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { IntentLink as Link, ResearchListIntentLink } from "@/components/navigation/intent-link";
 import {
   Archive,
   FlaskConical,
@@ -179,9 +179,9 @@ export default function SettingsPage() {
                 </Link>
               </Button>
               <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
-                <Link href="/research">
+                <ResearchListIntentLink href="/research">
                   <FlaskConical className="h-3.5 w-3.5" /> Research
-                </Link>
+                </ResearchListIntentLink>
               </Button>
             </div>
           </div>
