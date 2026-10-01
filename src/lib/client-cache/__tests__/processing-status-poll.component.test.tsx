@@ -64,6 +64,7 @@ describe("useProcessingStatusPoll", () => {
     jest.mocked(global.fetch).mockResolvedValue(statusResponse("processing"));
     render(<Harness />);
 
+    expect(jest.getTimerCount()).toBe(0);
     await advance(PROCESSING_POLL_INTERVAL_MS * 2);
     expect(global.fetch).not.toHaveBeenCalled();
 
@@ -86,6 +87,48 @@ describe("useProcessingStatusPoll", () => {
     window.dispatchEvent(new Event("online"));
     await advance(0);
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts a deferred hidden request and resumes without overlapping it", async () => {
+    let resolveFirst!: (response: Response) => void;
+    let firstSignal: AbortSignal | undefined;
+    const deferred = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    jest
+      .mocked(global.fetch)
+      .mockImplementationOnce((_input, init) => {
+        firstSignal = init?.signal ?? undefined;
+        return deferred;
+      })
+      .mockResolvedValue(statusResponse("processing"));
+    render(<Harness />);
+
+    await advance(PROCESSING_POLL_INTERVAL_MS);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(firstSignal?.aborted).toBe(true);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await advance(30_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst(statusResponse("processing"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await advance(0);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("does not overlap requests and backs failures off before trying again", async () => {

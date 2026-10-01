@@ -16,7 +16,7 @@
  * server-side user) the island fetches the page itself.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
@@ -72,6 +72,8 @@ export interface FeedCacheData {
 type PendingFeedNavigation = {
   url: string;
   key: string;
+  originKey: string;
+  acknowledged: boolean;
   previousPage: FeedCacheData | null;
 };
 
@@ -151,7 +153,12 @@ export function FeedList({
   const urlFilterKey = feedFilterKey(urlFilters);
   const [pendingNavigation, setPendingNavigation] = useState<PendingFeedNavigation | null>(null);
   const pendingUrl =
-    pendingNavigation && pendingNavigation.key !== urlFilterKey ? pendingNavigation.url : null;
+    pendingNavigation &&
+    !pendingNavigation.acknowledged &&
+    urlFilterKey === pendingNavigation.originKey &&
+    pendingNavigation.key !== urlFilterKey
+      ? pendingNavigation.url
+      : null;
   const filters = pendingUrl ? feedFilterState(searchParamsForFeedUrl(pendingUrl)) : urlFilters;
   const filterKey = feedFilterKey(filters);
   const serverPage = initialPage && initialPage.key === filterKey ? initialPage : null;
@@ -198,6 +205,28 @@ export function FeedList({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [areaOpenId, setAreaOpenId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Once Next has observed our history update, later browser/external history
+  // changes own the URL. Keep only the previous page as a query placeholder.
+  useEffect(() => {
+    if (
+      !pendingNavigation ||
+      pendingNavigation.acknowledged ||
+      urlFilterKey !== pendingNavigation.key
+    ) {
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPendingNavigation((current) =>
+        current?.url === pendingNavigation.url ? { ...current, acknowledged: true } : current
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [pendingNavigation, urlFilterKey]);
 
   const loading = !page && !loadError;
 
@@ -272,7 +301,13 @@ export function FeedList({
       : new URLSearchParams(searchParams.toString());
     const nextUrl = nextFeedUrl(currentParams, updates);
     const nextKey = feedFilterKey(feedFilterState(searchParamsForFeedUrl(nextUrl)));
-    setPendingNavigation({ url: nextUrl, key: nextKey, previousPage: page });
+    setPendingNavigation({
+      url: nextUrl,
+      key: nextKey,
+      originKey: urlFilterKey,
+      acknowledged: nextKey === urlFilterKey,
+      previousPage: page,
+    });
     window.history.replaceState(null, "", nextUrl);
   };
 

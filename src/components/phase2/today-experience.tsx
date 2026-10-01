@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
@@ -33,7 +33,13 @@ type FeedResponse = {
 
 /** What the server page hands over for its URL. */
 export type TodayInitial = TodayView;
-type PendingTodayNavigation = { url: string; key: string; previousView: TodayView | null };
+type PendingTodayNavigation = {
+  url: string;
+  key: string;
+  originKey: string;
+  acknowledged: boolean;
+  previousView: TodayView | null;
+};
 
 function searchParamsForUrl(url: string): URLSearchParams {
   const queryStart = url.indexOf("?");
@@ -83,7 +89,12 @@ export function TodayExperience({
   const urlViewKey = todayViewKey(urlFilters);
   const [pendingNavigation, setPendingNavigation] = useState<PendingTodayNavigation | null>(null);
   const pendingUrl =
-    pendingNavigation && pendingNavigation.key !== urlViewKey ? pendingNavigation.url : null;
+    pendingNavigation &&
+    !pendingNavigation.acknowledged &&
+    urlViewKey === pendingNavigation.originKey &&
+    pendingNavigation.key !== urlViewKey
+      ? pendingNavigation.url
+      : null;
   const effectiveSearchParams = pendingUrl ? searchParamsForUrl(pendingUrl) : searchParams;
   const filters = pendingUrl ? todayFilterState(effectiveSearchParams) : urlFilters;
   const filtered = isTodayFiltered(filters);
@@ -105,13 +116,41 @@ export function TodayExperience({
   const error = todayQuery.error instanceof Error ? todayQuery.error.message : null;
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
 
+  // A history update is pending only until Next reports its target key. Later
+  // popstate/external URL changes must not be overwritten by an old target.
+  useEffect(() => {
+    if (
+      !pendingNavigation ||
+      pendingNavigation.acknowledged ||
+      urlViewKey !== pendingNavigation.key
+    ) {
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPendingNavigation((current) =>
+        current?.url === pendingNavigation.url ? { ...current, acknowledged: true } : current
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [pendingNavigation, urlViewKey]);
+
   const replaceFilters = (updates: FilterUpdates) => {
     const current = pendingUrl
       ? searchParamsForUrl(pendingUrl)
       : new URLSearchParams(searchParams.toString());
     const nextUrl = filtersUrl("/", current, updates);
     const nextKey = todayViewKey(todayFilterState(searchParamsForUrl(nextUrl)));
-    setPendingNavigation({ url: nextUrl, key: nextKey, previousView: view });
+    setPendingNavigation({
+      url: nextUrl,
+      key: nextKey,
+      originKey: urlViewKey,
+      acknowledged: nextKey === urlViewKey,
+      previousView: view,
+    });
     window.history.replaceState(null, "", nextUrl);
   };
 

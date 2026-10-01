@@ -303,4 +303,31 @@ describe("TodayExperience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/");
   });
+
+  it("honors browser history after the pending Today URL has been observed", async () => {
+    mockSearch = "q=alpha";
+    const initial = serverInitial({ items: [item({ id: "alpha", title: "Alpha result" })] });
+    jest
+      .mocked(global.fetch)
+      .mockResolvedValue(response([item({ id: "today", title: "Today default" })]));
+    const view = render(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(await screen.findByText("Today default")).toBeInTheDocument();
+
+    mockSearch = "";
+    view.rerender(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockSearch = "q=alpha";
+    view.rerender(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+
+    expect(screen.getByText("Alpha result")).toBeInTheDocument();
+    expect(screen.queryByText("Today default")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search your items" })).toHaveValue("alpha");
+    expect(feedCalls()).toHaveLength(1);
+  });
 });

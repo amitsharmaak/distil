@@ -39,12 +39,15 @@ export function useProcessingStatusPoll(
     if (!idsKey) return;
     const expected = new Set(idsKey.split(","));
     let cancelled = false;
+    let stopped = false;
+    let inFlight = false;
+    let resumeWhenIdle = false;
     let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
 
     const schedule = (delay: number) => {
-      if (cancelled || timer) return;
+      if (cancelled || stopped || timer || inFlight || !canPoll()) return;
       timer = setTimeout(() => {
         timer = undefined;
         void poll();
@@ -52,19 +55,18 @@ export function useProcessingStatusPoll(
     };
 
     const poll = async () => {
-      if (cancelled) return;
-      if (!canPoll()) {
-        schedule(PROCESSING_POLL_INTERVAL_MS);
-        return;
-      }
-      controller = new AbortController();
+      if (cancelled || stopped || inFlight || !canPoll()) return;
+      inFlight = true;
+      const activeController = new AbortController();
+      controller = activeController;
+      let nextDelay: number | undefined;
       try {
         const response = await fetch(`/api/v1/items/status?ids=${encodeURIComponent(idsKey)}`, {
-          signal: controller.signal,
+          signal: activeController.signal,
         });
         if (!response.ok) throw new Error("Unable to refresh item status");
         const payload = (await response.json()) as { items?: ProcessingItemStatus[] };
-        if (cancelled) return;
+        if (cancelled || activeController.signal.aborted || !canPoll()) return;
         const statuses = payload.items ?? [];
         onStatusesRef.current(statuses);
         failures = 0;
@@ -73,35 +75,63 @@ export function useProcessingStatusPoll(
           [...expected].every((id) => returned.has(id)) &&
           statuses.every((item) => item.processingStatus !== "processing");
         if (terminal) {
+          stopped = true;
           onTerminalRef.current();
           return;
         }
-        schedule(PROCESSING_POLL_INTERVAL_MS);
+        nextDelay = PROCESSING_POLL_INTERVAL_MS;
       } catch (error) {
-        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        if (
+          cancelled ||
+          activeController.signal.aborted ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
         failures += 1;
-        schedule(Math.min(PROCESSING_POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_BACKOFF_MS));
+        nextDelay = Math.min(PROCESSING_POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_BACKOFF_MS);
       } finally {
-        controller = undefined;
+        if (controller === activeController) controller = undefined;
+        inFlight = false;
+        const delay = resumeWhenIdle ? 0 : nextDelay;
+        resumeWhenIdle = false;
+        if (delay !== undefined && !stopped && canPoll()) schedule(delay);
       }
     };
 
+    const pause = () => {
+      resumeWhenIdle = false;
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      controller?.abort();
+    };
+
     const resume = () => {
-      if (!canPoll()) return;
+      if (cancelled || stopped || !canPoll()) return;
+      if (inFlight) {
+        resumeWhenIdle = true;
+        return;
+      }
       if (timer) clearTimeout(timer);
       timer = undefined;
       schedule(0);
     };
 
+    const handleVisibility = () => {
+      if (canPoll()) resume();
+      else pause();
+    };
+
     window.addEventListener("online", resume);
-    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("offline", pause);
+    document.addEventListener("visibilitychange", handleVisibility);
     schedule(PROCESSING_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
-      controller?.abort();
+      pause();
       window.removeEventListener("online", resume);
-      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("offline", pause);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [idsKey]);
 }

@@ -577,6 +577,35 @@ describe("FeedList with a server-rendered page", () => {
     );
   });
 
+  it("releases an acknowledged filter target when browser history returns to the prior URL", async () => {
+    const initialPage = {
+      key: "archive=exclude&sort=for_you&limit=100&read=false",
+      items: [makeItem({ id: "original", title: "Original page" })],
+    };
+    fetchMock.mockResolvedValue(
+      itemsResponse([makeItem({ id: "gmail", title: "Gmail page", sourceType: "gmail" })])
+    );
+    const view = render(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
+    expect(await screen.findByText("Gmail page")).toBeInTheDocument();
+
+    mockSearch = "source=gmail";
+    view.rerender(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockSearch = "";
+    view.rerender(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
+
+    expect(screen.getByText("Original page")).toBeInTheDocument();
+    expect(screen.queryByText("Gmail page")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("card||||0");
+    expect(feedRequestCalls(fetchMock)).toHaveLength(1);
+  });
+
   it("ignores a server page rendered for different filters and fetches instead", async () => {
     mockSearch = "sort=recent";
     fetchMock.mockResolvedValue(itemsResponse([makeItem({ id: "fresh", title: "Fresh item" })]));
