@@ -29,7 +29,7 @@ interface CacheScope {
   active: boolean;
   expire: () => void;
   activate: () => void;
-  deactivate: () => void;
+  dispose: () => void;
   writes: Set<Promise<void>>;
 }
 const ScopeContext = createContext<CacheScope | null>(null);
@@ -58,7 +58,7 @@ async function readContent<T>(
   while (scope.writes.size) await Promise.all(scope.writes);
   if (signal.aborted || !scope.active) throw new Error("Request cancelled");
   const response = await fetch(options.url, { signal });
-  if (response.status === 401) scope.expire();
+  if (response.status === 401 || response.status === 403) scope.expire();
   if (!response.ok) throw new Error(`Unable to refresh (${response.status})`);
   const raw: unknown = await response.json();
   // Even a transport which ignores cancellation cannot fill a previous account's cache.
@@ -89,6 +89,7 @@ function AccountCache({
 }) {
   const [expired, setExpired] = useState(false);
   const [scope] = useState<CacheScope>(() => {
+    let lifecycle = 0;
     const client = new QueryClient({
       defaultOptions: {
         queries: {
@@ -106,10 +107,17 @@ function AccountCache({
       active: true,
       writes: new Set(),
       activate: () => {
+        lifecycle += 1;
         value.active = true;
       },
-      deactivate: () => {
-        value.active = false;
+      dispose: () => {
+        const disposing = ++lifecycle;
+        queueMicrotask(() => {
+          if (disposing !== lifecycle) return;
+          value.active = false;
+          void client.cancelQueries();
+          client.clear();
+        });
       },
       expire: () => {
         value.active = false;
@@ -137,18 +145,10 @@ function AccountCache({
       }
     });
     return () => {
-      scope.deactivate();
+      scope.dispose();
       window.removeEventListener(CONTENT_AUTH_EVENT, clear);
       window.removeEventListener("storage", storage);
       unsubscribe();
-      // React Strict Mode replays effects. Clear on a real unmount, after the
-      // replay has had a chance to reactivate this same account scope.
-      queueMicrotask(() => {
-        if (!scope.active) {
-          void scope.client.cancelQueries();
-          scope.client.clear();
-        }
-      });
     };
   }, [scope]);
   return (

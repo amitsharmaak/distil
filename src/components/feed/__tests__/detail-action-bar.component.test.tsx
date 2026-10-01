@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { DetailActionBar } from "../detail-action-bar-content";
 import { ArticleNavigation } from "../article-navigation";
 import { Topbar } from "@/components/layout/topbar";
@@ -92,7 +93,7 @@ it("Shift+U marks unread with { isRead: false } and flips state; only when read"
   press({ key: "U", shiftKey: true });
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/items/one",
+      "/api/v1/items/one/state",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: false }) })
     )
   );

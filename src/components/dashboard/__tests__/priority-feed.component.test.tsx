@@ -5,7 +5,8 @@
  * Verifies filtering, sorting, and rendering of priority items.
  */
 
-import { render, screen } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { screen } from "@testing-library/react";
 import { PriorityFeed } from "../priority-feed";
 import type { ContentItem } from "@/lib/types";
 

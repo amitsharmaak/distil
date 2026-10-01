@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { ContentCacheProvider, useContentCache, useContentQuery } from "../content-cache";
 import { announceAccountChange, CONTENT_AUTH_STORAGE_KEY } from "../auth-events";
 
@@ -28,6 +29,20 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
+});
+
+it("survives development Strict Mode's effect replay without expiring the account", async () => {
+  mockFetch.mockResolvedValue(response("Available report"));
+  render(
+    <StrictMode>
+      <ContentCacheProvider accountKey="one">
+        <View />
+      </ContentCacheProvider>
+    </StrictMode>
+  );
+  await screen.findByText("Available report");
+  expect(screen.queryByText("Your session changed.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Refresh failed")).not.toBeInTheDocument();
 });
 
 it("deduplicates concurrent consumers and remounts from fresh account memory", async () => {

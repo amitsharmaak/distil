@@ -20,6 +20,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DeepResearch } from "@/components/feed/deep-research";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
+import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
+import { useContentCache } from "@/lib/client-cache/content-cache";
 
 const def = (id: string, keys: ShortcutDef["keys"], label: string): ShortcutDef => ({
   id,
@@ -66,11 +68,14 @@ export function DetailActionBar({
   initialFeedback,
 }: DetailActionBarProps) {
   const router = useRouter();
+  const cache = useContentCache();
+  const { updateItem } = useItemMutation();
+  const overrides = useItemOverrides(itemId);
   const suffix = filter ? `?filter=${filter}` : "";
 
   const [rating, setRating] = useState<number | null>(initialFeedback?.rating ?? null);
   const [submitting, setSubmitting] = useState(false);
-  const [read, setRead] = useState(isRead);
+  const read = overrides?.isRead ?? isRead;
   const [markingRead, setMarkingRead] = useState(false);
   const [researchOpen, setResearchOpen] = useState(false);
   const researchBtn = useRef<HTMLButtonElement>(null);
@@ -97,7 +102,11 @@ export function DetailActionBar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId, rating: value }),
       });
-      if (res.ok) setRating(value);
+      if (res.ok) {
+        setRating(value);
+        void cache.invalidate(["feed"]);
+        void cache.invalidate(["today"]);
+      }
     } catch {
       /* retry later */
     } finally {
@@ -109,40 +118,30 @@ export function DetailActionBar({
     if (read || markingRead) return;
     setMarkingRead(true);
     try {
-      const res = await fetch(`/api/items/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: true }),
-      });
-      if (res.ok) {
-        setRead(true);
-        if (nextId) {
-          router.push(`/feed/${nextId}${suffix}`);
-        } else {
-          router.push(`/feed${suffix}`);
-        }
+      await updateItem(itemId, { isRead: true });
+      if (nextId) {
+        router.push(`/feed/${nextId}${suffix}`);
+      } else {
+        router.push(`/feed${suffix}`);
       }
+    } catch {
+      // The shared cache restores the previous state on failure.
     } finally {
       setMarkingRead(false);
     }
-  }, [read, markingRead, itemId, nextId, suffix, router]);
+  }, [read, markingRead, itemId, nextId, suffix, router, updateItem]);
 
   const handleMarkUnread = useCallback(async () => {
     if (!read || markingRead) return;
     setMarkingRead(true);
     try {
-      const res = await fetch(`/api/items/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: false }),
-      });
-      if (res.ok) setRead(false);
+      await updateItem(itemId, { isRead: false });
     } catch {
       /* stays read */
     } finally {
       setMarkingRead(false);
     }
-  }, [read, markingRead, itemId]);
+  }, [read, markingRead, itemId, updateItem]);
 
   const handleCopyLink = useCallback(async () => {
     try {

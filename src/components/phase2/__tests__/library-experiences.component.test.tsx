@@ -59,7 +59,7 @@ describe("library experiences", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading archive");
     expect(await screen.findByText("A saved article")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Offline");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this change.");
     expect(screen.getByText("A saved article")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/items/item-1/state",

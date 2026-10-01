@@ -27,9 +27,7 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("@/lib/config", () => ({
-  config: { apiBaseUrl: "https://distil.test" },
-}));
+jest.mock("@/lib/public-config", () => ({ apiBaseUrl: "https://distil.test" }));
 
 // The page loads the markdown renderer lazily via next/dynamic; mock the
 // module it resolves so the tests do not pull in react-markdown.

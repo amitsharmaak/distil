@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeepResearch } from "@/components/feed/deep-research";
-import { config } from "@/lib/config";
+import { apiBaseUrl } from "@/lib/public-config";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import { Kbd } from "@/components/ui/kbd";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
@@ -80,12 +80,12 @@ export default function ResearchListPage() {
   const cache = useContentCache();
   const reportsQuery = useContentQuery<ResearchReportsResponse>({
     key: REPORTS_KEY,
-    url: `${config.apiBaseUrl}/api/ai/research/list`,
+    url: `${apiBaseUrl}/api/ai/research/list`,
     staleTime: CACHE_FRESHNESS.library,
   });
   const suggestionsQuery = useContentQuery<ResearchSuggestionsResponse>({
     key: SUGGESTIONS_KEY,
-    url: `${config.apiBaseUrl}/api/ai/research/suggestions`,
+    url: `${apiBaseUrl}/api/ai/research/suggestions`,
     staleTime: CACHE_FRESHNESS.library,
   });
   const reports = reportsQuery.data?.reports ?? [];
@@ -110,7 +110,7 @@ export default function ResearchListPage() {
     setScanResult(null);
     setScanError(null);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/proactive`, { method: "POST" });
+      const res = await fetch(`${apiBaseUrl}/api/ai/research/proactive`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Scan failed");
@@ -128,7 +128,7 @@ export default function ResearchListPage() {
   async function handleStartSuggestion(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/suggestions/${id}/start`, {
+      const res = await fetch(`${apiBaseUrl}/api/ai/research/suggestions/${id}/start`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -155,7 +155,7 @@ export default function ResearchListPage() {
   async function handleDismiss(id: string) {
     setActionId(id);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research/suggestions/${id}`, {
+      const res = await fetch(`${apiBaseUrl}/api/ai/research/suggestions/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) return;

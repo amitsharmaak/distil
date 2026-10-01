@@ -5,20 +5,9 @@ import { useState } from "react";
 import { ArchiveRestore, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  CACHE_FRESHNESS,
-  useContentCache,
-  useContentQuery,
-} from "@/lib/client-cache/content-cache";
+import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
+import { useItemMutation } from "@/lib/client-cache/item-mutations";
 import type { FeedItem } from "@/lib/feed/feed-query";
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } };
-  if (!response.ok)
-    throw new Error(payload.error?.message || "The request could not be completed.");
-  return payload;
-}
 
 function ItemLink({ item }: { item: FeedItem }) {
   return (
@@ -51,36 +40,24 @@ function updatedLabel(updatedAt: number): string {
 }
 
 export function ArchiveExperience() {
-  const cache = useContentCache();
+  const { updateItem } = useItemMutation();
   const archiveQuery = useContentQuery<ArchiveResponse>({
     key: ARCHIVE_KEY,
     url: "/api/v1/feed?archive=only&sort=recent&limit=100",
     staleTime: CACHE_FRESHNESS.library,
   });
-  const items = archiveQuery.data?.items ?? [];
+  const items = (archiveQuery.data?.items ?? []).filter(
+    (item) => (item as FeedItem & { archived?: boolean }).archived !== false
+  );
   const loading = archiveQuery.isPending && !archiveQuery.data;
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   async function restore(itemId: string) {
     setRestoring(itemId);
     setMutationError(null);
-    const previous = cache.get<ArchiveResponse>(ARCHIVE_KEY);
-    cache.set<ArchiveResponse>(ARCHIVE_KEY, (current) => ({
-      items: (current?.items ?? []).filter((item) => item.id !== itemId),
-    }));
     try {
-      await api(`/api/v1/items/${itemId}/state`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ archived: false }),
-      });
-      await Promise.all([
-        cache.invalidate(["feed"]),
-        cache.invalidate(["today"]),
-        cache.invalidate(["item"]),
-      ]);
+      await updateItem(itemId, { archived: false });
     } catch (cause) {
-      cache.set(ARCHIVE_KEY, previous);
       setMutationError(cause instanceof Error ? cause.message : "Item could not be restored.");
     } finally {
       setRestoring(null);
@@ -139,7 +116,7 @@ export function ArchiveExperience() {
                 type="button"
                 variant="outline"
                 className="mt-2 min-h-11 shrink-0 gap-2"
-                disabled={restoring === item.id}
+                disabled={restoring !== null}
                 onClick={() => void restore(item.id)}
               >
                 <ArchiveRestore className="h-4 w-4" />

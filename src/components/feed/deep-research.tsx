@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { config } from "@/lib/config";
+import { apiBaseUrl } from "@/lib/public-config";
+import { useContentCache } from "@/lib/client-cache/content-cache";
 import { useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 
 interface DeepResearchProps {
@@ -35,6 +36,7 @@ export function DeepResearch({
   onOpenChange,
 }: DeepResearchProps) {
   const router = useRouter();
+  const cache = useContentCache();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
@@ -50,7 +52,7 @@ export function DeepResearch({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/api/ai/research`, {
+      const res = await fetch(`${apiBaseUrl}/api/ai/research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: query.trim(), ...(itemId && { itemId }) }),
@@ -62,6 +64,8 @@ export function DeepResearch({
       }
 
       const data = await res.json();
+      cache.set(["research", "report", data.report.id], { report: data.report });
+      void cache.invalidate(["research", "list"]);
       setOpen(false);
       router.push(`/research/${data.report.id}`);
     } catch (err) {

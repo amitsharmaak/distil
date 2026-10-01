@@ -16,7 +16,7 @@ jest.mock("next/link", () => ({
     <a href={href}>{children}</a>
   ),
 }));
-jest.mock("@/lib/config", () => ({ config: { apiBaseUrl: "https://distil.test" } }));
+jest.mock("@/lib/public-config", () => ({ apiBaseUrl: "https://distil.test" }));
 jest.mock("@/components/feed/deep-research", () => ({
   DeepResearch: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));

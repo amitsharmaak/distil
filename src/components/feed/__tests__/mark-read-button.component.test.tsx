@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { MarkReadButton } from "../mark-read-button";
 
@@ -25,7 +26,7 @@ describe("MarkReadButton", () => {
     expect(screen.getByRole("button", { name: "Marked as read" })).toBeDisabled();
     expect(onRead).toHaveBeenCalledWith(true);
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
-    expect(global.fetch).toHaveBeenCalledWith("/api/items/item-1", {
+    expect(global.fetch).toHaveBeenCalledWith("/api/v1/items/item-1/state", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isRead: true }),
@@ -33,7 +34,7 @@ describe("MarkReadButton", () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
-  it("rolls back and refreshes only when the update fails", async () => {
+  it("rolls back without a route refresh when the update fails", async () => {
     jest.mocked(global.fetch).mockResolvedValue({ ok: false } as Response);
     const onRead = jest.fn();
     render(<MarkReadButton itemId="item-2" isRead={false} onRead={onRead} showLabel />);
@@ -42,7 +43,7 @@ describe("MarkReadButton", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Mark as read" })).toBeEnabled());
     expect(onRead.mock.calls).toEqual([[true], [false]]);
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 });
 

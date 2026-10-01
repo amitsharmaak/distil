@@ -22,6 +22,7 @@ import {
 import { AREA_LABELS } from "@/lib/feed/quick-filters";
 import { LIFE_AREAS, type LifeArea } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
 
 export interface AreaBadgeProps {
   itemId: string;
@@ -51,11 +52,14 @@ export function AreaBadge({
   open,
   onOpenChange,
 }: AreaBadgeProps) {
-  const [current, setCurrent] = React.useState<LifeArea | undefined>(area);
+  const { updateItem } = useItemMutation();
+  const overrides = useItemOverrides(itemId);
+  const effectiveArea = overrides?.area ?? area;
+  const [current, setCurrent] = React.useState<LifeArea | undefined>(effectiveArea);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(false);
 
-  React.useEffect(() => setCurrent(area), [area]);
+  React.useEffect(() => setCurrent(effectiveArea), [effectiveArea]);
 
   async function choose(next: LifeArea) {
     if (next === current || saving) return;
@@ -64,12 +68,7 @@ export function AreaBadge({
     setSaving(true);
     setError(false);
     try {
-      const response = await fetch(`/api/v1/items/${itemId}/state`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ area: next }),
-      });
-      if (!response.ok) throw new Error("save failed");
+      await updateItem(itemId, { area: next });
       onChange?.({ area: next, manualArea: next === aiArea ? undefined : next });
     } catch {
       setCurrent(previous);

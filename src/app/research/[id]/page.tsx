@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { config } from "@/lib/config";
+import { apiBaseUrl } from "@/lib/public-config";
 import { useParams, useRouter } from "next/navigation";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
@@ -142,7 +142,7 @@ export default function ResearchPage() {
   const cache = useContentCache();
   const reportQuery = useContentQuery<ResearchReportResponse>({
     key: reportKey,
-    url: `${config.apiBaseUrl}/api/ai/research/${id}`,
+    url: `${apiBaseUrl}/api/ai/research/${id}`,
     staleTime: CACHE_FRESHNESS.detail,
     enabled: Boolean(id),
   });
@@ -196,7 +196,15 @@ export default function ResearchPage() {
       if (completionRefreshStarted || !active) return;
       completionRefreshStarted = true;
       stopLiveUpdates();
-      await refetchReport();
+      const result = await refetchReport();
+      if (!active) return;
+      if (result.error || !isTerminalStatus(result.data?.report.status ?? "")) {
+        completionRefreshStarted = false;
+        streamFailed = true;
+        schedulePoll();
+      } else {
+        void cache.invalidate(["research", "list"]);
+      }
     };
 
     // Fallback when the stream errors or reaches its deadline. Failed polls back off, and a
@@ -214,6 +222,7 @@ export default function ResearchPage() {
           const status = result.data?.report.status;
           if (status && isTerminalStatus(status)) {
             stopLiveUpdates();
+            void cache.invalidate(["research", "list"]);
             return;
           }
           pollAttempt = result.error ? Math.min(pollAttempt + 1, 4) : 0;
@@ -226,7 +235,7 @@ export default function ResearchPage() {
 
     const connectStream = () => {
       if (!active || !available() || es || streamFailed) return;
-      const stream = new EventSource(`${config.apiBaseUrl}/api/ai/research/${id}/stream`);
+      const stream = new EventSource(`${apiBaseUrl}/api/ai/research/${id}/stream`);
       es = stream;
       stream.addEventListener("progress", (event) => {
         const nextProgress = parseResearchProgress(event.data);
@@ -243,7 +252,10 @@ export default function ResearchPage() {
             return;
           }
           setCachedReport((current) => ({ ...current, status: value.status as string }));
-          if (isTerminalStatus(value.status)) stopLiveUpdates();
+          if (isTerminalStatus(value.status)) {
+            stopLiveUpdates();
+            void cache.invalidate(["research", "list"]);
+          }
         } catch {
           // Ignore malformed status events and keep the last valid cached state.
         }

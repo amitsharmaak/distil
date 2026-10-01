@@ -7,6 +7,7 @@ import type { CaptureReceipt } from "@/lib/contracts/capture";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useContentCache } from "@/lib/client-cache/content-cache";
 
 const ACTIVE_STATUSES = new Set(["queued", "processing"]);
 const POLL_INTERVAL_MS = 2_000;
@@ -35,52 +36,101 @@ function receiptFromPayload(payload: unknown): CaptureReceipt | undefined {
 }
 
 export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: CaptureReceipt }) {
+  const cache = useContentCache();
   const [receipt, setReceipt] = useState(initialReceipt);
   const [requestError, setRequestError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
   const startedAt = useRef(Date.now());
+  const request = useRef<{ controller: AbortController; promise: Promise<void> } | null>(null);
+  const notifiedReady = useRef<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const response = await fetch(`/api/v1/captures/${encodeURIComponent(receipt.id)}`, {
-      headers: { Accept: "application/json" },
+  useEffect(() => {
+    if (receipt.status !== "ready" || notifiedReady.current === receipt.id) return;
+    notifiedReady.current = receipt.id;
+    void cache.invalidate(["feed"]);
+    void cache.invalidate(["today"]);
+    if (receipt.itemId) void cache.invalidate(["item", receipt.itemId]);
+  }, [cache, receipt.status, receipt.id, receipt.itemId]);
+
+  const refresh = useCallback((): Promise<void> => {
+    if (request.current) return request.current.promise;
+    const controller = new AbortController();
+    const promise = (async () => {
+      const response = await fetch(`/api/v1/captures/${encodeURIComponent(receipt.id)}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Could not refresh the capture status.");
+      const next = receiptFromPayload(await response.json());
+      if (!next) throw new Error("The capture status response was incomplete.");
+      if (!controller.signal.aborted) {
+        setReceipt(next);
+        setRequestError(undefined);
+      }
+    })().finally(() => {
+      if (request.current?.controller === controller) request.current = null;
     });
-    if (!response.ok) throw new Error("Could not refresh the capture status.");
-    const next = receiptFromPayload(await response.json());
-    if (!next) throw new Error("The capture status response was incomplete.");
-    setReceipt(next);
-    setRequestError(undefined);
+    request.current = { controller, promise };
+    return promise;
   }, [receipt.id]);
+
+  useEffect(
+    () => () => {
+      request.current?.controller.abort();
+    },
+    [receipt.id]
+  );
 
   useEffect(() => {
     if (!ACTIVE_STATUSES.has(receipt.status)) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
+    let failures = 0;
+    const available = () => document.visibilityState === "visible" && navigator.onLine !== false;
 
     const schedule = () => {
-      if (cancelled || Date.now() - startedAt.current >= POLL_TIMEOUT_MS) return;
-      timer = setTimeout(async () => {
-        timer = undefined;
-        if (document.visibilityState === "visible" && document.hasFocus()) {
-          try {
-            await refresh();
-          } catch (error) {
-            setRequestError(error instanceof Error ? error.message : "Could not refresh status.");
+      if (cancelled || timer || !available() || Date.now() - startedAt.current >= POLL_TIMEOUT_MS)
+        return;
+      timer = setTimeout(
+        async () => {
+          timer = undefined;
+          if (available()) {
+            try {
+              await refresh();
+              failures = 0;
+            } catch (error) {
+              if (!cancelled && available()) {
+                failures += 1;
+                setRequestError(
+                  error instanceof Error ? error.message : "Could not refresh status."
+                );
+              }
+            }
           }
-        }
-        schedule();
-      }, POLL_INTERVAL_MS);
+          schedule();
+        },
+        Math.min(POLL_INTERVAL_MS * 2 ** failures, 30_000)
+      );
     };
 
     const resume = () => {
-      if (document.visibilityState === "visible" && document.hasFocus() && !timer) schedule();
+      if (!available()) {
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+        request.current?.controller.abort();
+      } else if (!timer) schedule();
     };
     window.addEventListener("focus", resume);
+    window.addEventListener("online", resume);
+    window.addEventListener("offline", resume);
     document.addEventListener("visibilitychange", resume);
     schedule();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
       window.removeEventListener("focus", resume);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("offline", resume);
       document.removeEventListener("visibilitychange", resume);
     };
   }, [receipt.status, refresh]);
