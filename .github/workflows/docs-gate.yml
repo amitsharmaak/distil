@@ -38,10 +38,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: Install only Prettier, at the repository's pinned version
+      - name: Install only Prettier, at the repository's locked version
         # Installed outside the checkout so npm does not pull the whole dependency tree.
+        # Read the exact version from package-lock.json: package.json holds a caret range,
+        # which would install a newer Prettier than ci.yml and format code files differently.
         run: |
-          version="$(node -p "require('./package.json').devDependencies.prettier")"
+          version="$(node -p "require('./package-lock.json').packages['node_modules/prettier'].version")"
           mkdir -p "$RUNNER_TEMP/prettier"
           cd "$RUNNER_TEMP/prettier"
           npm init -y > /dev/null
