@@ -481,9 +481,10 @@ What a red metric triggers:
 1. **Rules first.** Schema, caps, grounding of numbers and names, citation resolution. Free, and
    the same checks run in production on every output as guards (§5.9).
 2. **A model judge for what rules cannot see.** One property per call, structured output, the
-   candidate text treated as data. The judge is not the model under test; when candidates from
-   two providers are compared, a second judge from the other provider also scores and
-   disagreements go to Amit.
+   candidate text treated as data. The judge is `claude-sonnet-5-5` alone (Amit's decision,
+   2026-10-01). The judge is never the model under test, so a comparison in which
+   `claude-sonnet-5-5` is a candidate needs another grader for that comparison, chosen when it is
+   run.
 3. **Calibration.** Before a judge's scores steer anything, it is run on the briefs Amit graded.
    Agreement well under 90% on clear cases means the rubric is not ready.
 4. **Pairwise for changes.** For a model or prompt change, the judge sees the source and two
@@ -506,12 +507,15 @@ What a red metric triggers:
 
 ### 5.10 Cadence
 
+Model-backed suites run locally, started by Amit or an agent; nothing runs them on a schedule and
+no provider key is stored in GitHub (Amit's decision, 2026-10-01). A change in a provider's model
+is therefore noticed at the next local run, not before.
+
 | When                                   | What runs                                                                         |
 | -------------------------------------- | --------------------------------------------------------------------------------- |
 | Every pull request                     | Deterministic tests, including the prompt-version guard and the metric unit tests |
-| A change to a prompt, model or formula | That stage's suite against the frozen baseline (the change gate)                  |
-| Nightly                                | A small public smoke subset per model-backed stage, to catch provider drift       |
-| Weekly                                 | The full suites and the scorecard                                                 |
+| A change to a prompt, model or formula | That stage's suite against the frozen baseline (the change gate), run locally     |
+| Weekly                                 | The scorecard card; a local run of the full suites when one is due                |
 | Monthly                                | Amit's check, the model watch, a research suite run                               |
 
 ## 6. Model policy
@@ -560,15 +564,18 @@ with the provider catalogue before acting.
 - The state log describes the Production Gemini key as free-tier (last on 2026-09-30). Google's
   terms for unpaid use allow it to use submitted content to improve its products and to have human
   reviewers read it, and say not to submit confidential or personal information. The current
-  billing state was not checked in this audit.
+  billing state was not checked in this audit. Amit decided on 2026-10-01 to confirm it and enable
+  billing before any phase of the plan starts.
 
 ### 6.3 Tiers and the swap rule
 
-| Tier     | Stages                                                         | Rule                                                            |
-| -------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| Quality  | Brief, detailed, research outline and sections, the eval judge | The best model that fits the latency limit, proven on the suite |
-| Balanced | Chunk notes, research plan and gaps                            | Mid tier; revisit when the long-document brief score is low     |
-| Economy  | Life area, preference profile, any future triage call          | The cheapest model that clears the bar on the suite             |
+| Tier     | Stages                                                | Rule                                                            |
+| -------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| Quality  | Brief, detailed, research outline and sections        | The best model that fits the latency limit, proven on the suite |
+| Balanced | Chunk notes, research plan and gaps                   | Mid tier; revisit when the long-document brief score is low     |
+| Economy  | Life area, preference profile, any future triage call | The cheapest model that clears the bar on the suite             |
+
+The eval judge is fixed at `claude-sonnet-5-5` (§5.8).
 
 A model changes only through the change gate: run the incumbent and the candidate on the stage's
 suite, pairwise and blind, with cost and latency beside quality. Adopt when the candidate is not
