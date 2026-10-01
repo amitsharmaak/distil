@@ -87,6 +87,19 @@ describe("AppShell", () => {
     expect(screen.queryByRole("img", { name: "Distil logo" })).not.toBeInTheDocument();
   });
 
+  it("renders the public privacy policy without any shell chrome", () => {
+    mockUsePathname.mockReturnValue("/privacy");
+
+    render(
+      <AppShell>
+        <p>Privacy</p>
+      </AppShell>
+    );
+
+    expect(screen.queryByText("Topbar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mobile")).not.toBeInTheDocument();
+  });
+
   it("recognises only single-item feed routes as reader pages", () => {
     expect(isReaderPath("/feed/abc")).toBe(true);
     expect(isReaderPath("/feed")).toBe(false);

@@ -1,68 +1,12 @@
 import type { RepositorySet } from "@/lib/repositories/ports";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
-import { enqueueSummaryRegeneration, getItemIntelligence } from "../service";
+import { getItemIntelligence } from "../service";
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
   actorKind: "user",
   actorId: "10000000-0000-4000-8000-000000000001",
   requestId: "30000000-0000-4000-8000-000000000001",
-});
-
-describe("summary regeneration", () => {
-  it("creates one pending artifact and durable deterministic job", async () => {
-    const repositories = {
-      items: { findById: jest.fn().mockResolvedValue({ id: "item-1" }) },
-      contentVersions: {
-        findLatestForItem: jest.fn().mockResolvedValue({ id: "version-1" }),
-      },
-      intelligenceArtifacts: {
-        publish: jest.fn().mockImplementation(async (record) => ({
-          record: { ...record, version: 2, isCurrent: false },
-          created: true,
-        })),
-      },
-      jobs: { enqueue: jest.fn() },
-    } as unknown as RepositorySet;
-    const result = await enqueueSummaryRegeneration(
-      context,
-      repositories,
-      "item-1",
-      { length: "brief", idempotencyKey: "retry-key" },
-      new Date("2026-09-07T00:00:00Z")
-    );
-    expect(result.artifact).toMatchObject({ status: "pending", isCurrent: false });
-    expect(repositories.jobs.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: result.jobId,
-        jobType: "regenerate_intelligence_summary",
-        payload: expect.stringContaining('"contentVersionId":"version-1"'),
-      })
-    );
-  });
-
-  it("rejects missing items and items without versioned content", async () => {
-    const missing = {
-      items: { findById: jest.fn().mockResolvedValue(undefined) },
-    } as unknown as RepositorySet;
-    await expect(
-      enqueueSummaryRegeneration(context, missing, "missing", {
-        length: "brief",
-        idempotencyKey: "key",
-      })
-    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND", status: 404 });
-
-    const unversioned = {
-      items: { findById: jest.fn().mockResolvedValue({ id: "item-1" }) },
-      contentVersions: { findLatestForItem: jest.fn().mockResolvedValue(undefined) },
-    } as unknown as RepositorySet;
-    await expect(
-      enqueueSummaryRegeneration(context, unversioned, "item-1", {
-        length: "brief",
-        idempotencyKey: "key",
-      })
-    ).rejects.toMatchObject({ code: "CONTENT_NOT_READY", status: 409 });
-  });
 });
 
 describe("item intelligence", () => {

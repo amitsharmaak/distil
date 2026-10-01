@@ -1485,17 +1485,6 @@
       "testProfile": "owner"
     },
     {
-      "path": "/api/v1/items/:id/summaries/regenerate",
-      "source": "src/app/api/v1/items/[id]/summaries/regenerate/route.ts",
-      "methods": ["POST"],
-      "currentAuth": "proxy_session_plus_route_session",
-      "requiredPrincipal": "user_session",
-      "scope": "owner",
-      "resources": ["items", "item_content_versions", "intelligence_artifacts", "job_queue"],
-      "currentFeatureGate": "DISTIL_PHASE2_KNOWLEDGE_UI",
-      "testProfile": "owner"
-    },
-    {
       "path": "/api/v1/preferences/reset",
       "source": "src/app/api/v1/preferences/reset/route.ts",
       "methods": ["POST"],
@@ -1712,6 +1701,15 @@
       "dataPath": "/api/v1/account to detect a session, the sign-in card when signed out, then POST /api/v1/extension/connections on an explicit Connect click; the token goes to the pinned extension id and is never rendered",
       "testProfile": "public",
       "notes": "Public so it can host the sign-in card; it mints nothing without a session, an allowed Origin and a state nonce supplied by the extension."
+    },
+    {
+      "path": "/privacy",
+      "source": "src/app/privacy/page.tsx",
+      "currentAuth": "public-static",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "no personal data",
+      "testProfile": "public",
+      "notes": "Static privacy policy linked from the Chrome Web Store listing; readable without an account."
     },
     {
       "path": "/login",
@@ -1953,21 +1951,6 @@
       "resources": ["job_queue", "items", "item_embeddings", "notifications"]
     },
     {
-      "id": "job-worker-knowledge-backfill",
-      "source": "src/lib/agent/job-worker.ts",
-      "jobType": "knowledge_backfill",
-      "currentTenant": "absent",
-      "requiredTenant": "one checkpoint/job per user; every batch candidate scoped before cursoring",
-      "resources": [
-        "job_queue",
-        "knowledge_backfill_checkpoints",
-        "items",
-        "item_content_versions",
-        "content_chunks",
-        "intelligence_artifacts"
-      ]
-    },
-    {
       "id": "job-worker-digest",
       "source": "src/lib/agent/job-worker.ts",
       "jobType": "digest_run",
@@ -1980,23 +1963,6 @@
         "digest_runs",
         "digest_items",
         "items"
-      ]
-    },
-    {
-      "id": "job-worker-regenerate-intelligence-summary",
-      "source": "src/lib/agent/job-worker.ts",
-      "jobType": "regenerate_intelligence_summary",
-      "currentTenant": "absent; payload carries item, content-version and artifact IDs but no user identity",
-      "requiredTenant": "job.user_id plus same-owner validation for job, item, content version, artifact, chunks, claims, evidence, AI budget and audit",
-      "resources": [
-        "job_queue",
-        "items",
-        "item_content_versions",
-        "content_chunks",
-        "intelligence_artifacts",
-        "intelligence_claims",
-        "claim_evidence",
-        "audit_log"
       ]
     },
     {
@@ -2058,9 +2024,9 @@
     {
       "id": "grounded-answers",
       "source": "src/lib/knowledge/service.ts",
-      "entryPoints": ["getItemIntelligence", "enqueueSummaryRegeneration"],
+      "entryPoints": ["getItemIntelligence"],
       "currentScope": "caller-authenticated but repository/search context unscoped",
-      "requiredScope": "TenantContext reaches artifact read and job envelope"
+      "requiredScope": "TenantContext reaches artifact read"
     },
     {
       "id": "grounded-intelligence-summary-runtime",
@@ -2445,8 +2411,8 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 47,
-    "expectedApiRouteFileCount": 91,
-    "expectedPageFileCount": 18,
+    "expectedApiRouteFileCount": 90,
+    "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }
