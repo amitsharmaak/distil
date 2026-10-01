@@ -113,7 +113,6 @@
   "POST /api/v1/digests/run",
   "POST /api/v1/extension/connections",
   "POST /api/v1/items/:id/annotations",
-  "POST /api/v1/items/:id/summaries/regenerate",
   "POST /api/v1/items/:id/transcript",
   "POST /api/v1/preferences/reset",
   "POST /api/v1/shortcut-pairings",
