@@ -104,7 +104,15 @@ beforeAll(async () => {
     migrationsDirectory: tenantMigrations,
   });
   // Item projections read columns from every later stage (life-areas: area, manual_area).
-  for (const stage of ["perf-indexes", "summary-structure", "feed-search", "life-areas"] as const) {
+  for (const stage of [
+    "perf-indexes",
+    "summary-structure",
+    "feed-search",
+    "life-areas",
+    "drop-collections",
+    "browser-connections",
+    "phone-pairing",
+  ] as const) {
     await applyTenantMigrationStage({
       sql: harness.sql,
       stage,

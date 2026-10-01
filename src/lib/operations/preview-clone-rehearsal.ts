@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { TENANT_MIGRATION_STAGES } from "../postgres/tenant-migration/migrator";
+
 const uuid = z.string().uuid();
 const opaqueId = z.string().trim().min(1).max(200);
 const sha = z.string().regex(/^[0-9a-f]{7,64}$/u, "release SHA must be lowercase hexadecimal");
@@ -109,6 +111,7 @@ export function buildPreviewCloneRehearsalPlan(raw: PreviewCloneRehearsalInput) 
       "Pause after every mutating step and retain the previous branch and deployment read-only.",
       "Replay deletion tombstones newer than the recovery point before enabling any worker or traffic.",
     ],
+    migrationStages: [...TENANT_MIGRATION_STAGES],
     steps,
   };
 }

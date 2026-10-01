@@ -31,6 +31,24 @@ describe("tenant migration CLI contract", () => {
     expect(JSON.stringify(plan)).not.toContain("email");
   });
 
+  it.each(["summary-structure", "phone-pairing"])(
+    "accepts the %s verification inventory",
+    (through) => {
+      expect(
+        parseTenantMigrationArgs([
+          "--amit-user-id",
+          ownerId,
+          "--stage",
+          "rehearsal",
+          "--output",
+          "current.json",
+          "--through",
+          through,
+        ])
+      ).toMatchObject({ through });
+    }
+  );
+
   it("requires an output for rehearsals and before snapshots", () => {
     expect(() =>
       parseTenantMigrationArgs(["--amit-user-id", ownerId, "--stage", "rehearsal"])
