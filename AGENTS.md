@@ -284,8 +284,8 @@ _deployed_ (which deployment, which origin).
   authorization from Amit. Historical approvals recorded in the state file are evidence, not
   standing permission.
 - Cloud, Preview and Production work follow the release gate: a `main` commit passes the Quick
-  gate, that commit is deployed, and both `distilai.app` and the legacy Vercel alias resolve to
-  it. While the release pin is `unpinned` (iteration phase) Vercel deploys each `main` push
+  gate, that commit is deployed, and `distilai.app` resolves to it (the legacy Vercel alias
+  `distil-pv-1850.vercel.app` was removed on 2026-10-01). While the release pin is `unpinned` (iteration phase) Vercel deploys each `main` push
   automatically; when it holds an exact SHA, update the pin before deploying that commit.
 - Reversible local work (code, tests, docs, local branches) proceeds without asking. Ask only for
   material missing decisions; state assumptions otherwise.
