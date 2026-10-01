@@ -1,6 +1,11 @@
 /** @jest-environment jsdom */
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { ContentCacheProvider, useContentCache } from "../content-cache";
+import {
+  CACHE_FRESHNESS,
+  ContentCacheProvider,
+  useContentCache,
+  useContentQuery,
+} from "../content-cache";
 import { useItemMutation, useItemOverrides } from "../item-mutations";
 
 beforeEach(() => jest.mocked(fetch).mockReset());
@@ -128,6 +133,63 @@ it("serializes same-item writes across independent mutation hook instances", asy
   expect(result.current.cache.get(key)).toEqual({
     items: [{ id: "a", manualPriority: "low" }],
   });
+});
+
+it("does not wait for reconciliation and cancels it before the next same-item write", async () => {
+  const { result } = renderHook(
+    () => ({
+      state: useContentQuery({
+        key: ["item", "a", "state"],
+        url: "/api/v1/items/a/state",
+        staleTime: CACHE_FRESHNESS.detail,
+        initialData: { state: { isRead: false } },
+      }),
+      ...useItemMutation(),
+    }),
+    {
+      wrapper: ({ children }) => (
+        <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+      ),
+    }
+  );
+  let firstReadSignal: AbortSignal | undefined;
+  let readCount = 0;
+  jest.mocked(fetch).mockImplementation((_url, init) => {
+    if (init?.method === "PATCH") return Promise.resolve({ ok: true } as Response);
+    readCount += 1;
+    if (readCount > 1) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ state: { isRead: false } }),
+      } as Response);
+    }
+    firstReadSignal = init?.signal ?? undefined;
+    return new Promise((_resolve, reject) => {
+      firstReadSignal?.addEventListener("abort", () =>
+        reject(new DOMException("Request cancelled", "AbortError"))
+      );
+    });
+  });
+
+  let firstSettled = false;
+  let first!: Promise<void>;
+  act(() => {
+    first = result.current.updateItem("a", { isRead: true });
+    void first.then(() => {
+      firstSettled = true;
+    });
+  });
+  await waitFor(() => expect(firstReadSignal).toBeDefined());
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(firstSettled).toBe(true);
+  expect(firstReadSignal?.aborted).toBe(false);
+
+  await act(async () => result.current.updateItem("a", { isRead: false }));
+  expect(firstReadSignal?.aborted).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  await first;
 });
 
 it("waits for an optimistic write before starting a new read", async () => {

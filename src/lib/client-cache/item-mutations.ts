@@ -113,9 +113,12 @@ export function useItemMutation() {
           release();
         }
         // Refresh active screens, mark inactive variants stale. Returning to a
-        // filtered view then reconciles membership/ranking with the server.
-        await Promise.all(families.map((family) => cache.invalidate(family)));
-        await cache.invalidate(["item", id, "state"]);
+        // filtered view then reconciles membership/ranking with the server. The
+        // confirmed write resolves immediately; a later write cancels these reads.
+        void Promise.all([
+          ...families.map((family) => cache.invalidate(family)),
+          cache.invalidate(["item", id, "state"]),
+        ]).catch(() => undefined);
       }),
     [cache]
   );
