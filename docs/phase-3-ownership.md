@@ -135,6 +135,8 @@ within a user, not globally.
   Its queue payload has resource and trace IDs but no `userId`; prompt assembly, budget reads, artifact
   promotion, claims/evidence writes and audit deltas all use the global repository set. This entire
   graph must be revalidated under one tenant transaction before any content reaches the AI provider.
+  (2026-10-01: that job type was never registered with a worker, and its only producer,
+  `POST /api/v1/items/:id/summaries/regenerate`, has been removed.)
 - Structured logger configuration has no redaction policy. Some calls log raw URLs or query prefixes;
   agent action persistence stores serialized parameters and results.
 - The browser extension stores one plaintext token plus a shared queue in `chrome.storage.local`.
