@@ -282,7 +282,7 @@ export interface CaptureRepository {
   ): Promise<CaptureRecord | undefined>;
 }
 
-/** `manual` is the account's pasted token; `browser` is one per connected browser extension. */
+/** Manual tokens are pasted credentials; browser and phone tokens belong to one device. */
 export type CaptureTokenKind = "manual" | "browser" | "phone";
 
 export interface CaptureTokenRecord {
@@ -292,7 +292,7 @@ export interface CaptureTokenRecord {
   tokenHash: string;
   tokenPrefix: string;
   kind: CaptureTokenKind;
-  /** Human label for a browser connection, for example "Chrome on macOS". */
+  /** Human label for a device, for example "Chrome on macOS" or "iPhone". */
   label?: string;
   createdAt: string;
   lastUsedAt?: string;
@@ -303,7 +303,7 @@ export interface CaptureTokenRepository {
   create(record: CaptureTokenRecord): Promise<void>;
   /**
    * Revokes every active token of the same kind for the tenant and inserts `record` in one
-   * statement. Tokens of the other kind are untouched.
+   * statement. Tokens of other kinds are untouched.
    */
   replaceActive(record: CaptureTokenRecord): Promise<void>;
   findActiveByHash(tokenHash: string): Promise<CaptureTokenRecord | undefined>;
@@ -748,6 +748,7 @@ export interface RepositorySet {
   digests: DigestRepository;
   captures: CaptureRepository;
   captureTokens: CaptureTokenRepository;
+  shortcutPairings: ShortcutPairingRepository;
   rateLimits: RateLimitRepository;
   oauthTokens: OAuthTokenRepository;
   connectorOAuthStates: ConnectorOAuthStateRepository;

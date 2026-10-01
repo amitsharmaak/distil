@@ -1,4 +1,11 @@
-import { mapCapture, mapCaptureToken, mapItem, mapItemSummary } from "../mappers";
+import {
+  mapCapture,
+  mapCaptureToken,
+  mapItem,
+  mapItemSummary,
+  mapShortcutPairing,
+  mapCaptureTokenSummary,
+} from "../mappers";
 
 describe("PostgreSQL row mappers", () => {
   it("maps native PostgreSQL JSON, booleans, and timestamps to public item types", () => {
@@ -92,6 +99,42 @@ describe("PostgreSQL row mappers", () => {
       extractedLinks: [{ text: "Docs", url: "https://postgresql.org" }],
       contentClassification: { kind: "article" },
       detectedMedia: [{ kind: "video" }],
+    });
+  });
+
+  it("preserves phone kind in authentication and owner summaries and maps pairing lifecycle fields", () => {
+    const phone = {
+      user_id: "11111111-1111-4111-8111-111111111111",
+      id: "phone",
+      name: "iPhone Shortcut",
+      kind: "phone",
+      label: "Personal iPhone",
+      token_hash: "hash",
+      token_prefix: "prefix",
+      created_at: new Date("2026-10-01T00:00:00Z"),
+    };
+    expect(mapCaptureToken(phone).kind).toBe("phone");
+    expect(mapCaptureTokenSummary(phone)).toMatchObject({
+      kind: "phone",
+      label: "Personal iPhone",
+    });
+    expect(mapCaptureTokenSummary(phone)).not.toHaveProperty("tokenHash");
+    expect(
+      mapShortcutPairing({
+        user_id: phone.user_id,
+        id: "pairing",
+        code_hash: "hash",
+        created_at: phone.created_at,
+        expires_at: new Date("2026-10-01T00:10:00Z"),
+        attempts: 3,
+        consumed_at: null,
+        token_id: null,
+      })
+    ).toMatchObject({
+      attempts: 3,
+      consumedAt: undefined,
+      tokenId: undefined,
+      expiresAt: "2026-10-01T00:10:00.000Z",
     });
   });
 
