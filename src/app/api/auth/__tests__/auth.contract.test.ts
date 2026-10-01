@@ -259,6 +259,7 @@ describe("/api/v1/capture-tokens", () => {
     captureTokens.list.mockResolvedValue(
       (["manual", "browser", "phone"] as const).map((kind) => ({
         id: `${kind}-token`,
+        userId: authContext.userId,
         name: `${kind} connection`,
         kind,
         label: `${kind} label`,
