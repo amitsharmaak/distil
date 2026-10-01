@@ -1714,6 +1714,15 @@
       "notes": "Public so it can host the sign-in card; it mints nothing without a session, an allowed Origin and a state nonce supplied by the extension."
     },
     {
+      "path": "/privacy",
+      "source": "src/app/privacy/page.tsx",
+      "currentAuth": "public-static",
+      "requiredPrincipal": "anonymous",
+      "dataPath": "no personal data",
+      "testProfile": "public",
+      "notes": "Static privacy policy linked from the Chrome Web Store listing; readable without an account."
+    },
+    {
       "path": "/login",
       "source": "src/app/login/page.tsx",
       "currentAuth": "public",
@@ -2446,7 +2455,7 @@
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 47,
     "expectedApiRouteFileCount": 91,
-    "expectedPageFileCount": 18,
+    "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
   }

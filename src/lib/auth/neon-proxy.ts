@@ -14,6 +14,7 @@ const PUBLIC_PATHS = new Set([
   "/invite",
   "/sign-in",
   "/extension/connect",
+  "/privacy",
   "/access-denied",
   "/reset-password",
   "/api/health",

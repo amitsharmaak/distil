@@ -29,7 +29,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname === "/sign-in" ||
     pathname === "/invite" ||
     pathname === "/reset-password" ||
-    pathname === "/access-denied"
+    pathname === "/access-denied" ||
+    pathname === "/privacy"
   ) {
     return <main className="min-h-screen">{children}</main>;
   }
