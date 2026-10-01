@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FormEvent, useEffect, useState } from "react";
 import { Download, LogOut, Monitor, ShieldAlert, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -382,19 +384,22 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
             <span>
               Deletion status: {deletion?.status ?? "unavailable"}
-              {deletion?.purgeAfter
-                ? ` · purge after ${new Date(deletion.purgeAfter).toLocaleDateString()}`
-                : ""}
+              {deletion?.purgeAfter ? ` · purge after ${formatDate(deletion.purgeAfter)}` : ""}
             </span>
             {deletionCanBeCancelled ? (
-              <Button onClick={() => void cancelDeletion()} size="sm" variant="outline">
+              <Button
+                className="min-h-11 min-w-11"
+                onClick={() => void cancelDeletion()}
+                size="sm"
+                variant="outline"
+              >
                 Cancel deletion
               </Button>
             ) : null}
           </div>
         </section>
         {notice ? (
-          <p aria-live="polite" className="text-sm text-primary">
+          <p aria-live="polite" className="text-sm text-success">
             {notice}
           </p>
         ) : null}
@@ -412,6 +417,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
+                  className="min-h-11 min-w-11"
                   disabled={saving}
                   onClick={() => void requestFreshAuthentication()}
                   size="sm"
@@ -420,6 +426,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                   Email verification link
                 </Button>
                 <Button
+                  className="min-h-11 min-w-11"
                   disabled={saving}
                   onClick={retryFreshAuthAction}
                   size="sm"
@@ -461,10 +468,13 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   if (!account) {
-    return (
-      <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-        {error ?? "Loading account…"}
-      </p>
+    return error ? (
+      <p className="text-sm text-destructive">{error}</p>
+    ) : (
+      <div role="status" aria-label="Loading account" className="space-y-4">
+        <Skeleton className="h-10 w-2/3" />
+        <Skeleton className="h-48 w-full" />
+      </div>
     );
   }
 
@@ -530,7 +540,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
             </span>
           </label>
         </div>
-        <Button className="mt-5" disabled={saving} type="submit">
+        <Button className="min-h-11 min-w-11 mt-5" disabled={saving} type="submit">
           {saving ? "Saving…" : onboarding ? "Finish setup" : "Save changes"}
         </Button>
       </form>
@@ -540,7 +550,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
           <section className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex gap-3">
-                <Monitor className="mt-0.5 h-5 w-5 text-primary" />
+                <Monitor className="mt-0.5 h-5 w-5 text-muted-foreground" />
                 <div>
                   <h2 className="text-base font-semibold">Sessions and devices</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -548,7 +558,12 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                   </p>
                 </div>
               </div>
-              <Button onClick={() => void signOut()} size="sm" variant="outline">
+              <Button
+                className="min-h-11 min-w-11"
+                onClick={() => void signOut()}
+                size="sm"
+                variant="outline"
+              >
                 <LogOut className="h-4 w-4" />
                 Sign out
               </Button>
@@ -565,13 +580,21 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                         {session.current ? "This device" : (session.userAgent ?? "Unknown device")}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Last used {new Date(session.updatedAt).toLocaleString()}
+                        Last used{" "}
+                        {formatDate(session.updatedAt, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
                       </p>
                     </div>
                     {session.current ? (
                       <span className="text-xs text-muted-foreground">Current</span>
                     ) : (
                       <Button
+                        className="min-h-11 min-w-11"
                         onClick={() => void revokeSession(session.id)}
                         size="sm"
                         variant="outline"
@@ -589,7 +612,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
             )}
             {sessions.some((session) => !session.current) ? (
               <Button
-                className="mt-4"
+                className="min-h-11 min-w-11 mt-4"
                 onClick={() => void revokeOthers()}
                 size="sm"
                 variant="outline"
@@ -603,7 +626,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
 
           <section className="rounded-xl border border-border bg-card p-5">
             <div className="flex gap-3">
-              <Download className="mt-0.5 h-5 w-5 text-primary" />
+              <Download className="mt-0.5 h-5 w-5 text-muted-foreground" />
               <div>
                 <h2 className="text-base font-semibold">Your data export</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -613,7 +636,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
               </div>
             </div>
             <Button
-              className="mt-4"
+              className="min-h-11 min-w-11 mt-4"
               onClick={() => void requestExport()}
               size="sm"
               variant="outline"
@@ -636,7 +659,12 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                         Download
                       </a>
                     ) : (
-                      <Button onClick={() => void refreshExport(item.id)} size="sm" variant="ghost">
+                      <Button
+                        className="min-h-11 min-w-11"
+                        onClick={() => void refreshExport(item.id)}
+                        size="sm"
+                        variant="ghost"
+                      >
                         Refresh status
                       </Button>
                     )}
@@ -661,12 +689,15 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
                 <span>
                   Deletion status: {deletion.status}
-                  {deletion.purgeAfter
-                    ? ` · purge after ${new Date(deletion.purgeAfter).toLocaleDateString()}`
-                    : ""}
+                  {deletion.purgeAfter ? ` · purge after ${formatDate(deletion.purgeAfter)}` : ""}
                 </span>
                 {deletionCanBeCancelled ? (
-                  <Button onClick={() => void cancelDeletion()} size="sm" variant="outline">
+                  <Button
+                    className="min-h-11 min-w-11"
+                    onClick={() => void cancelDeletion()}
+                    size="sm"
+                    variant="outline"
+                  >
                     Cancel deletion
                   </Button>
                 ) : null}
@@ -691,6 +722,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                     />
                     <div className="mt-3 flex gap-2">
                       <Button
+                        className="min-h-11 min-w-11"
                         disabled={deleteConfirmation !== DELETE_CONFIRMATION}
                         onClick={() => void requestDeletion()}
                         size="sm"
@@ -699,6 +731,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                         Confirm deletion
                       </Button>
                       <Button
+                        className="min-h-11 min-w-11"
                         onClick={() => {
                           setDeleteConfirmationOpen(false);
                           setDeleteConfirmation("");
@@ -712,6 +745,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                   </div>
                 ) : (
                   <Button
+                    className="min-h-11 min-w-11"
                     onClick={() => setDeleteConfirmationOpen(true)}
                     size="sm"
                     variant="destructive"
@@ -768,12 +802,17 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
                 required
                 type="password"
               />
-              <Button disabled={changingPassword} size="sm" type="submit">
+              <Button
+                className="min-h-11 min-w-11"
+                disabled={changingPassword}
+                size="sm"
+                type="submit"
+              >
                 {changingPassword ? "Changing…" : "Change password"}
               </Button>
             </form>
             <Button
-              className="mt-4"
+              className="min-h-11 min-w-11 mt-4"
               onClick={() => void requestPasswordSetupLink()}
               size="sm"
               variant="outline"
@@ -781,7 +820,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
               Email me a password setup link
             </Button>
             {passwordNotice ? (
-              <p aria-live="polite" className="mt-3 text-sm text-primary">
+              <p aria-live="polite" className="mt-3 text-sm text-success">
                 {passwordNotice}
               </p>
             ) : null}
@@ -804,7 +843,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       )}
 
       {notice ? (
-        <p aria-live="polite" className="text-sm text-primary">
+        <p aria-live="polite" className="text-sm text-success">
           {notice}
         </p>
       ) : null}
@@ -822,6 +861,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
+                className="min-h-11 min-w-11"
                 disabled={saving}
                 onClick={() => void requestFreshAuthentication()}
                 size="sm"
@@ -829,7 +869,13 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
               >
                 Email verification link
               </Button>
-              <Button disabled={saving} onClick={retryFreshAuthAction} size="sm" variant="outline">
+              <Button
+                className="min-h-11 min-w-11"
+                disabled={saving}
+                onClick={retryFreshAuthAction}
+                size="sm"
+                variant="outline"
+              >
                 Retry action
               </Button>
             </div>

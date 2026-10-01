@@ -74,7 +74,7 @@ export function ReportLink({ node: _node, href, title, children, ...rest }: Link
         title={label === domain ? url : `${label} — ${url}`}
         aria-label={`${label} (${domain}), opens in a new tab`}
         data-citation-chip=""
-        className="mx-0.5 inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-border bg-muted/60 px-1.5 py-px align-middle font-sans text-[0.6875rem] leading-4 font-medium text-muted-foreground! no-underline! transition-colors hover:border-foreground/25 hover:text-foreground!"
+        className="mx-0.5 inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-border bg-muted/60 px-1.5 py-px align-middle font-sans text-xs leading-4 font-medium text-muted-foreground! no-underline! transition-colors hover:border-foreground/25 hover:text-foreground!"
       >
         <span className="truncate">{domain}</span>
         <ExternalLink className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
@@ -166,7 +166,7 @@ export function createCitationLink(sourcesById: Map<number, ResearchSource>) {
     const ids = markerRunIds(textOf(props.children)).filter((id) => sourcesById.has(id));
     if (ids.length === 0) return <>{`[${textOf(props.children).split(",").join("][")}]`}</>;
     return (
-      <sup className="ml-0.5 font-sans text-[0.7em] leading-none" data-citation-group="">
+      <sup className="ml-0.5 font-sans text-xs leading-none" data-citation-group="">
         {ids.map((id, index) => {
           const source = sourcesById.get(id)!;
           const label = sourceLabel(source);

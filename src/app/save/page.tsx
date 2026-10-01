@@ -1,26 +1,17 @@
-import { BookmarkPlus, Share2 } from "lucide-react";
+import { Share2 } from "lucide-react";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { CaptureForm } from "@/components/capture/capture-form";
 
 export const metadata = { title: "Save an article — Distil" };
 
 export default function SavePage() {
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <header className="space-y-3">
-        <div className="inline-flex rounded-full bg-primary/10 p-3 text-primary">
-          <BookmarkPlus className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="font-serif text-display font-semibold tracking-tight">Save an article</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-            Paste a link and Distil will extract, summarize, and organize it for your feed.
-          </p>
-        </div>
-      </header>
-      <section
-        className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"
-        aria-label="Article capture form"
-      >
+    <PageContainer size="reading" className="space-y-8">
+      <PageHeader
+        title="Save an article"
+        description="Paste a link and Distil will extract, summarize, and organize it for your feed."
+      />
+      <section className="border-y border-border py-6" aria-label="Article capture form">
         <CaptureForm />
       </section>
       <aside className="flex gap-3 rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
@@ -30,6 +21,6 @@ export default function SavePage() {
           without copying the link.
         </p>
       </aside>
-    </div>
+    </PageContainer>
   );
 }

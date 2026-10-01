@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { SignInCard } from "@/components/auth/sign-in-card";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { describeBrowser } from "@/lib/extension/browser-label";
 import {
@@ -103,9 +105,11 @@ export function ExtensionConnect({ state }: { state?: string }) {
   switch (phase.name) {
     case "checking":
       return (
-        <p aria-live="polite" className="text-sm text-muted-foreground">
-          Checking your session…
-        </p>
+        <div role="status" aria-label="Checking your session" className="space-y-4">
+          <PageHeader title="Connect your browser" />
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-11 w-28" />
+        </div>
       );
     case "signed-out":
       return (
@@ -152,15 +156,21 @@ export function ExtensionConnect({ state }: { state?: string }) {
     case "connecting":
       return (
         <>
-          <div>
-            <h1 className="text-2xl font-semibold">Connect this browser to Distil?</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {phase.email ? `Signed in as ${phase.email}. ` : ""}
-              Pages you save from this browser will go to your Distil account. You can disconnect it
-              any time in Settings.
-            </p>
-          </div>
-          <Button disabled={phase.name === "connecting"} onClick={() => void connect()}>
+          <PageHeader
+            title="Connect this browser to Distil?"
+            description={
+              <>
+                {phase.email ? `Signed in as ${phase.email}. ` : ""}
+                Pages you save from this browser will go to your Distil account. You can disconnect
+                it any time in Settings.
+              </>
+            }
+          />
+          <Button
+            className="min-h-11"
+            disabled={phase.name === "connecting"}
+            onClick={() => void connect()}
+          >
             {phase.name === "connecting" ? "Connecting…" : "Connect"}
           </Button>
         </>
@@ -171,8 +181,7 @@ export function ExtensionConnect({ state }: { state?: string }) {
 function Message({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div role="status">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <div className="mt-2 text-sm text-muted-foreground">{children}</div>
+      <PageHeader title={title} description={children} />
     </div>
   );
 }

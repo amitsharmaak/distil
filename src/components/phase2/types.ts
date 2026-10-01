@@ -29,24 +29,3 @@ export type KnowledgeItem = Partial<
   isRead?: boolean;
   reason: string;
 };
-
-export type AnnotationFixture = {
-  id: string;
-  quote: string;
-  comment?: string;
-  state: "active" | "orphaned";
-};
-
-export type IntelligenceState = "ready" | "degraded" | "pending";
-
-export type ReaderKnowledgeFixture = {
-  itemId: string;
-  title: string;
-  source: string;
-  body: string[];
-  note: string;
-  annotations: AnnotationFixture[];
-  intelligenceState: IntelligenceState;
-  degradedReason?: string;
-  archived?: boolean;
-};

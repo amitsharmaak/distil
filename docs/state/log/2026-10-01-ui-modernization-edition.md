@@ -1,8 +1,8 @@
 ---
 topic: ui-modernization
-title: Daily edition UI modernization — text-first reader revision for review
+title: Daily edition UI modernization — approved reader and final verification
 date: 2026-10-01
-time: 09:11
+time: 09:32
 status: in-progress
 branch: codex/ui-modernization
 ---
@@ -173,24 +173,47 @@ screenshots. Local-only generated environment lives in ignored `.env.local`. Reg
 were fetched through the existing capture pipeline. Screenshot/seed scripts and evidence live in
 ignored `test-results/ui-modernization/`; no credentials in the state log or artifacts.
 
+## Approved direction and final integration
+
+Amit approved the revised text-first reader with “Looks good”; Waves 3 and 4 then proceeded.
+The approved revision is `94ded0d`. Current main `5fe4369` was merged into this task with
+`4387c8c`; the incoming change was an independent backlog state entry.
+
+Secondary surfaces now use the shared headers, containers, semantic statuses and skeletons.
+Research reports have a centered column with contents disclosed on demand; failed research rows
+never show a completion date. Phone Settings tabs wrap without overflow. Authentication, account,
+archive, digest, extension-connect and privacy surfaces use the same layout and type system.
+Shared inputs/buttons and dialog close controls meet the 44px target. Publication labels also
+ignore legacy capture-method values and fall back to the hostname.
+
+Cleanup confirmed zero live importers before removing the nine requested unused components,
+reader-view-overlay (only used by the deleted reader-view), their four dedicated test files,
+and orphan reader fixture types/data. Active behavior tests remain. Routes, APIs, tenant/auth
+logic, feature flags, database schema, dependencies and release pins are unchanged.
+
+Final root checks:
+
+- `npm run check`: **passed, 252 suites / 2,123 tests**, TypeScript, formatting and state validation;
+  zero ESLint errors and four remaining pre-existing warnings. An earlier simultaneous dev-server restart
+  caused transient missing generated `.next/dev/types` files; the stable final run passed.
+- Official `npm run test:e2e`: **39 passed / 6 conditional skips** with features enabled across
+  desktop Chromium, mobile Chromium and mobile WebKit. The real PostgreSQL keyboard flow passed
+  in all three projects. Separate disabled-feature and local-admin runs passed **3 + 3** cases,
+  covering each conditional branch. No test was weakened or deleted to make the run pass.
+- The enabled Phase 2 smoke needed the same local-session cookie as the keyboard test because
+  reader authentication happens server-side even in proxy test mode; that test setup is fixed.
+- E2E used the isolated `distil_ui_e2e` database inside the owned loopback Docker container.
+  Admin invitation tests used synthetic example.test accounts and revoked their local invitations.
+- Final 36-combination matrix (nine surfaces × light/dark × 1440/390): zero horizontal overflow,
+  zero page errors and zero axe WCAG A/AA violations. Today shows five full desktop headlines
+  and three phone headlines. Root visually reviewed the final reader and secondary pages.
+- All 72 before/after viewport screenshots are in `docs/reviews/ui-modernization/`, with a
+  comparison index. Full-page captures and interaction evidence remain ignored local artifacts.
+
 ## Next
 
-**Paused for review of the revised reader at the user-requested Wave 2 checkpoint.** No E/F work, PR, push, merge or
-Production deployment yet. The task is unfinished.
-
-1. Review the revised text-first reader with Amit. Today and Feed are accepted; continue with
-   E/F once he approves the revised reader direction.
-2. Resume in `/Users/amitsharma/Projects/distil-ui-modernization` on `codex/ui-modernization`.
-   Run `npm run state`, verify git status/HEAD and that the owned Docker container (5440), preview
-   (3302) and gallery (3303) are running. Do not reseed unless needed; scripts live in
-   `test-results/ui-modernization/`. To restart preview: `npm run dev -- --webpack --port 3302`.
-   To restart gallery: `python3 -m http.server 3303 --bind 127.0.0.1 --directory
-test-results/ui-modernization`.
-3. Launch E and F with the ownership from the user's brief. E modernizes secondary surfaces,
-   including the known phone Settings overflow. F confirms importers before deleting the listed
-   unused components and their tests. Root handles remaining page/container/type/token gaps.
-4. Root reviews every diff, runs final `npm run check` and `npm run test:e2e` on desktop/mobile
-   (including the local PostgreSQL keyboard flow). Use an isolated empty local test database so
-   registered remote-image fixtures do not conflict with the E2E network guard.
-5. Capture the full nine-surface, two-theme, two-width after matrix, prepare before/after PR
-   evidence, update this single entry and open one PR. Do not merge without task-specific approval.
+Implementation and local automated checks are complete. Finish the final screenshot matrix,
+attach before/after evidence, and open the single task PR. No merge or Production deployment is
+authorized. Resume in `/Users/amitsharma/Projects/distil-ui-modernization`, branch
+`codex/ui-modernization`; run `npm run state`, inspect git status and the latest PR checks.
+The local preview uses port 3302, the gallery 3303 and the owned Docker container 5440.

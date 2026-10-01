@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import { BrandMark } from "@/components/layout/brand-mark";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,22 +42,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center px-4 py-[calc(2rem+env(safe-area-inset-top,0px))]">
+    <PageContainer
+      size="reading"
+      className="flex min-h-[100dvh] items-center justify-center px-4 py-[calc(2rem+env(safe-area-inset-top,0px))]"
+    >
       <div className="w-full max-w-sm space-y-7 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <header className="text-center">
-          <Image
-            src="/logo.png"
-            alt="Distil"
-            width={64}
-            height={40}
-            className="mx-auto h-10 w-auto rounded-md object-cover"
-            priority
-          />
-          <h1 className="mt-5 font-serif text-2xl font-semibold">Welcome to Distil</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to your private knowledge space.
-          </p>
-        </header>
+        <BrandMark className="mx-auto size-10" />
+        <PageHeader
+          title="Welcome to Distil"
+          description="Sign in to your private knowledge space."
+          className="text-center"
+        />
         <form onSubmit={login} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
@@ -87,6 +83,6 @@ export default function LoginPage() {
           </Button>
         </form>
       </div>
-    </div>
+    </PageContainer>
   );
 }

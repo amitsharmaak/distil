@@ -271,11 +271,12 @@ describe("ResearchReportView", () => {
     expect(markdownCalls[1].components?.h2).toBeDefined();
     expect(markdownCalls[1].components?.a).toBe(ReportLink);
 
-    // Both TOC variants render with de-duplicated ids.
+    // One on-demand TOC retains all de-duplicated heading links.
     const navs = screen.getAllByRole("navigation", { name: "On this page" });
-    expect(navs).toHaveLength(2);
+    fireEvent.click(within(navs[0]).getByText("On this page"));
+    expect(navs).toHaveLength(1);
     expect(
-      within(navs[1])
+      within(navs[0])
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"))
     ).toEqual(["#tldr", "#key-findings", "#branching", "#key-findings-2", "#conclusion"]);
@@ -633,8 +634,9 @@ describe("stored R3 report fixture", () => {
     expect(body).toContain("*This section could not be written; see sources [2](#source-2");
 
     const navs = screen.getAllByRole("navigation", { name: "On this page" });
+    fireEvent.click(within(navs[0]).getByText("On this page"));
     expect(
-      within(navs[1])
+      within(navs[0])
         .getAllByRole("link")
         .map((link) => [link.textContent, link.getAttribute("href")])
     ).toEqual([

@@ -14,7 +14,10 @@ function hostname(url: string | undefined): string {
 
 /** Publication identity, never the way a story was captured. */
 export function publisherLabel(item: { publication?: string; url?: string }): string {
-  return toPlainText(item.publication) || hostname(item.url) || "Saved item";
+  const publication = toPlainText(item.publication);
+  const captureLabel =
+    /^(?:manual|link|extension|browser[- ]extension|web|gmail|slack|publisher)$/i;
+  return (captureLabel.test(publication) ? "" : publication) || hostname(item.url) || "Saved item";
 }
 
 function normalizedLabel(value: string): string {

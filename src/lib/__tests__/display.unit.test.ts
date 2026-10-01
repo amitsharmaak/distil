@@ -16,6 +16,16 @@ describe("publisherLabel and displayTitle", () => {
     expect(publisherLabel({ url: "not-a-url" })).toBe("Saved item");
   });
 
+  it("ignores legacy capture-method values stored as publication names", () => {
+    expect(publisherLabel({ publication: "Manual", url: "https://www.example.test/story" })).toBe(
+      "example.test"
+    );
+    expect(publisherLabel({ publication: "Extension" })).toBe("Saved item");
+    expect(publisherLabel({ publication: "YouTube", url: "https://youtu.be/video" })).toBe(
+      "YouTube"
+    );
+  });
+
   it.each([
     [
       "A clear headline | Example Review",
