@@ -4,8 +4,23 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { ReaderKnowledgeControls } from "../reader-knowledge-controls";
+import { ReaderLibraryMenuItems, ReaderKnowledgeControls } from "../reader-knowledge-controls";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+function renderLibraryMenu() {
+  render(
+    <DropdownMenu defaultOpen>
+      <DropdownMenuTrigger>More</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <ReaderLibraryMenuItems itemId="item-1" />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
@@ -57,11 +72,11 @@ describe("ReaderKnowledgeControls", () => {
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
       return Promise.resolve(ok({}));
     });
-    render(<ReaderKnowledgeControls itemId="item-1" />);
-    await screen.findByRole("button", { name: "Archive item" });
-    fireEvent.click(screen.getByRole("button", { name: "Archive item" }));
+    renderLibraryMenu();
+    await screen.findByRole("menuitem", { name: "Archive item" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive item" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Try again");
-    expect(screen.getByRole("button", { name: "Archive item" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Archive item" })).toBeInTheDocument();
   });
 
   it("supports restore, unread, priority, and progress controls", async () => {
@@ -77,13 +92,13 @@ describe("ReaderKnowledgeControls", () => {
       if (init?.method === "PATCH") return Promise.resolve(ok({ item: { archivedAt: undefined } }));
       return Promise.resolve(ok({}));
     });
-    render(<ReaderKnowledgeControls itemId="item-1" />);
-    expect(await screen.findByRole("button", { name: "Restore item" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Restore item" }));
-    expect(await screen.findByRole("button", { name: "Archive item" })).toBeInTheDocument();
+    renderLibraryMenu();
+    expect(await screen.findByRole("menuitem", { name: "Restore item" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore item" }));
+    expect(await screen.findByRole("menuitem", { name: "Archive item" })).toBeInTheDocument();
     await screen.findByText("Item restored");
     expect(screen.queryByRole("button", { name: /Mark (un)?read/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Manual priority"), { target: { value: "low" } });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Low" }));
     await screen.findByText("Priority updated");
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/items/item-1/state",

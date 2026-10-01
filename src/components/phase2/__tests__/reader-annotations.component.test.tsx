@@ -93,7 +93,7 @@ describe("ReaderAnnotations", () => {
         <p>Reader text</p>
       </ReaderAnnotations>
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Loading highlights");
+    expect(screen.getByRole("status", { name: "Loading highlights" })).toBeInTheDocument();
 
     cleanup();
     fetchMock.mockReset();

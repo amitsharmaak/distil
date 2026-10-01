@@ -1,8 +1,8 @@
 ---
 topic: ui-modernization
-title: Daily edition UI modernization — shared contract and implementation checkpoint
+title: Daily edition UI modernization — Wave 2 visual approval checkpoint
 date: 2026-10-01
-time: 08:15
+time: 14:05
 status: in-progress
 branch: codex/ui-modernization
 ---
@@ -93,17 +93,74 @@ the audit file is absent from this base main. The user's attached brief is the t
 
 ## Verification
 
-Completed: current state/open topics and local instructions read; clean base verified; dedicated
-worktree created; `npm ci` completed. No implementation checks or visual approval yet.
+Wave 1 integrated as `382d659`: editorial shell/primitives/fonts/tokens and feed-only display metadata.
+Root independently ran typecheck and 11 focused suites (120 tests), all passed. B also ran eight
+feed-query integration cases in a disposable Testcontainers PostgreSQL, all passed. A reported
+semantic badge contrast of 5.72–8.21:1; root browser accessibility results follow below.
+
+Baseline capture: 36 combinations (nine surfaces, light/dark, 1440/390), plus full-page versions,
+under local ignored `test-results/ui-modernization/before/`. No browser page errors. Today fit two
+headlines at 1440×900 and one at 390×844. Settings overflowed at 390px in both themes; E owns the fix.
+Seven of eight registered links captured locally, with six real thumbnails. Brief/detailed summaries
+and two research reports are deterministic local fixtures; meeting-note body/title were replaced
+with synthetic content before the final baseline capture. No provider keys or Production data.
+
+Wave 2 implementation is complete in this checkpoint commit: Today has a lead, four standard
+stories, compact remainder and revisit strip; Feed uses shared story rows and publisher/read-time
+metadata. Reader has the larger header, fixed-ratio hero/video poster, Summary/Original tabs,
+Brief/Detailed control, persistent Aa settings, progress, one-row actions and notes/highlights rail.
+Read-time policy is identical between list SQL metadata and detail fallback. Excerpts omit
+label-only TL;DR introductions. URL filters, SSR, flags, API paths and shortcut handlers remain.
+
+Root verification at the Wave 2 checkpoint:
+
+- `npm run check`: passed, 256 suites / 2,140 deterministic tests; TypeScript and formatting
+  passed, ESLint has five pre-existing warnings and zero errors.
+- Browser axe WCAG A/AA: no violations across all 20 checkpoint view/theme/width combinations;
+  no horizontal overflow. Final screenshots report no page errors.
+- Today: five complete headlines at 1440×900 and three at 390×844, excluding the fixed phone
+  tab bar. Feed: four and three respectively.
+- 360px reader interaction smoke: all action targets at least 44×44, one row; title 32px versus
+  body 19px; Aa size/width/typeface survived reload; Summary/Original and Brief/Detailed
+  shortcuts, overflow actions, progress, note persistence/deletion and poster-to-player passed.
+- Desktop/phone keyboard smoke passed: Today → Feed, row navigation, area menu, open reader,
+  return, help and search focus. This is a checkpoint smoke, not the final `test:e2e` run.
+- Final official desktop/mobile Playwright suite, including `tests/e2e/keyboard.spec.ts`, remains
+  pending for Wave 4, after secondary surfaces and cleanup.
+
+Visual evidence: `test-results/ui-modernization/checkpoint/` has Today, Feed and reader
+summary/original/video, both themes at 1440×900 and 390×844 (20 viewport screenshots plus full-page
+versions). `gallery.html` in its parent is the before/after review, served locally at
+`http://localhost:3303/gallery.html`. `checks.json`, `card-inspection.json`,
+`reader-inspection.json` and `keyboard-inspection.json` hold the local measurements. Baseline and
+checkpoint evidence are ignored local artifacts, retained in this worktree for final PR evidence.
 
 ## External resources
 
-None changed. Use a dedicated loopback PostgreSQL and only the registered test links/clearly
-synthetic test fixtures for visual evidence. Never use Production data or credentials.
+No hosted resources changed. Dedicated Docker container `distil-ui-modernization-postgres`, bound
+only to loopback port 5440. Preview at `http://localhost:3302`; baseline server has stopped after
+screenshots. Local-only generated environment lives in ignored `.env.local`. Registered public URLs
+were fetched through the existing capture pipeline. Screenshot/seed scripts and evidence live in
+ignored `test-results/ui-modernization/`; no credentials in the state log or artifacts.
 
 ## Next
 
-Capture baseline; execute A/B then C/D; re-run focused checks and present Today, Feed and reader
-(summary/original/video) light/dark screenshots at 1440 and 390. Stop for Amit's direction
-approval before E/F. Finish with full deterministic check and desktop/mobile E2E, final screenshot
-matrix, and one unmerged PR.
+**Paused at the user-requested Wave 2 direction approval.** No E/F work, PR, push, merge or
+Production deployment yet. The task is unfinished.
+
+1. Review the gallery with Amit. Apply requested visual corrections, or continue only after he
+   approves the direction.
+2. Resume in `/Users/amitsharma/Projects/distil-ui-modernization` on `codex/ui-modernization`.
+   Run `npm run state`, verify git status/HEAD and that the owned Docker container (5440), preview
+   (3302) and gallery (3303) are running. Do not reseed unless needed; scripts live in
+   `test-results/ui-modernization/`. To restart preview: `npm run dev -- --webpack --port 3302`.
+   To restart gallery: `python3 -m http.server 3303 --bind 127.0.0.1 --directory
+test-results/ui-modernization`.
+3. Launch E and F with the ownership from the user's brief. E modernizes secondary surfaces,
+   including the known phone Settings overflow. F confirms importers before deleting the listed
+   unused components and their tests. Root handles remaining page/container/type/token gaps.
+4. Root reviews every diff, runs final `npm run check` and `npm run test:e2e` on desktop/mobile
+   (including the local PostgreSQL keyboard flow). Use an isolated empty local test database so
+   registered remote-image fixtures do not conflict with the E2E network guard.
+5. Capture the full nine-surface, two-theme, two-width after matrix, prepare before/after PR
+   evidence, update this single entry and open one PR. Do not merge without task-specific approval.

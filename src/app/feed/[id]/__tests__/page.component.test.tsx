@@ -67,8 +67,20 @@ jest.mock("@/lib/content-strategies", () => ({
 }));
 
 jest.mock("@/components/phase2/reader-annotations", () => ({
-  ReaderAnnotations: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="reader-annotations">{children}</div>
+  ReaderAnnotations: ({
+    children,
+    header,
+    rail,
+  }: {
+    children: React.ReactNode;
+    header: React.ReactNode;
+    rail: React.ReactNode;
+  }) => (
+    <div data-testid="reader-annotations">
+      {header}
+      {children}
+      {rail}
+    </div>
   ),
 }));
 jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
@@ -91,6 +103,12 @@ jest.mock("@/components/feed/detail-action-bar", () => ({
     </div>
   ),
 }));
+jest.mock("@/components/feed/reader-experience", () => ({
+  ReaderExperience: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ReaderDisplaySettings: () => <button> Aa </button>,
+  // eslint-disable-next-line @next/next/no-img-element
+  ReaderHero: ({ src }: { src: string }) => <img src={src} alt="Story" />,
+}));
 jest.mock("@/components/feed/reader-area-badge", () => ({
   ReaderAreaBadge: () => <span data-testid="area-badge" />,
 }));
@@ -101,6 +119,7 @@ jest.mock("@/components/feed/article-navigation", () => ({
 }));
 jest.mock("@/components/feed/video-embed", () => ({
   VideoEmbed: () => <div data-testid="video">video</div>,
+  VideoHero: () => <div data-testid="video-hero">video poster</div>,
 }));
 jest.mock("@/components/feed/lazy-article-extract", () => ({
   LazyArticleExtract: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -260,7 +279,7 @@ describe("feed item detail page", () => {
     }
     expect(screen.getByText("@reader")).toBeInTheDocument();
     expect(screen.getByTestId("video")).toBeInTheDocument();
-    expect(screen.getByText("Listen to Podcast")).toBeInTheDocument();
+    expect(screen.getByText("Listen to this episode")).toBeInTheDocument();
     expect(screen.queryByTestId("knowledge-controls")).not.toBeInTheDocument();
   });
 });

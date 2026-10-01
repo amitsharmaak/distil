@@ -184,7 +184,7 @@ describe("FeedList without a server page (client fetch)", () => {
 
     render(<FeedList initialPage={null} />);
 
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading feed" })).toBeInTheDocument();
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
     expect(screen.getByText("Read video")).toBeInTheDocument();
     expect(screen.queryByText("Rejected")).not.toBeInTheDocument();
@@ -363,7 +363,7 @@ describe("FeedList without a server page (client fetch)", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Feed is unavailable");
     expect(screen.getByRole("alert")).toHaveTextContent("Sign in to load your feed.");
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading feed" })).not.toBeInTheDocument();
   });
 
   it("falls back to an empty list when a successful response carries no items", async () => {
@@ -416,7 +416,7 @@ describe("FeedList with a server-rendered page", () => {
     expect(
       screen.queryByRole("link", { name: ["Collec", "tions"].join("") })
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading feed" })).not.toBeInTheDocument();
     await settleInitialFetch();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();

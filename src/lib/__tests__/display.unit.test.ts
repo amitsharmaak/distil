@@ -88,6 +88,30 @@ describe("cardExcerpt", () => {
     expect(cardExcerpt({ summary })).toBe("A useful lead.");
   });
 
+  it.each([
+    "Here is the tl;dr ELI5.",
+    "Here is the TL:DR ELI5.",
+    "Here are the KEY-POINTS.",
+    "Here's the key points.",
+    "TL;DR ELI5.",
+  ])("skips a label-only introduction: %s", (intro) => {
+    expect(cardExcerpt({ summary: `${intro} A substantive sentence. More detail.` })).toBe(
+      "A substantive sentence."
+    );
+    expect(cardExcerpt({ summary: intro })).toBe("");
+  });
+
+  it("preserves substantive prose that mentions a summary label", () => {
+    const summary = "Here is the tl;dr version of a complex argument. More detail.";
+    expect(cardExcerpt({ summary })).toBe("Here is the tl;dr version of a complex argument.");
+    expect(cardExcerpt({ summary: "The key points explain how retries work." })).toBe(
+      "The key points explain how retries work."
+    );
+    expect(cardExcerpt({ summary: "tl:dr: A substantive sentence." })).toBe(
+      "A substantive sentence."
+    );
+  });
+
   it("never cuts a word, including an exact word boundary", () => {
     const summary = "Alpha beta gamma delta epsilon.";
     expect(cardExcerpt({ summary }, 16)).toBe("Alpha beta…");
@@ -155,8 +179,18 @@ describe("readingMinutes and readTimeLabel", () => {
     expect(readTimeLabel({ contentType: "video", duration: "5:99" })).toBe("");
   });
 
-  it("ignores invalid estimates and markup-only text", () => {
+  it("matches SQL list estimates when stored HTML crosses a minute boundary", () => {
+    const fullContent = "<p>" + "word ".repeat(720) + "</p>";
+    // 3,600 text characters plus the stored HTML: SQL char_length estimates four minutes.
+    expect(readTimeLabel({ fullContent })).toBe("4 min read");
+    expect(readTimeLabel({ fullContent })).toBe(readTimeLabel({ readingMinutes: 4 }));
+    expect(readingMinutes({ summary: "📖".repeat(1200) })).toBe(1);
+    expect(readingMinutes({ summary: "", aiSummary: "An AI brief." })).toBe(0);
+    expect(readingMinutes({ readingMinutes: 0, aiSummary: "An AI brief." })).toBe(0);
+  });
+
+  it("ignores invalid estimates and counts stored content consistently", () => {
     expect(readingMinutes({ readingMinutes: Number.NaN, summary: "Short read." })).toBe(1);
-    expect(readingMinutes({ readingMinutes: -8, fullContent: "<p></p>" })).toBe(0);
+    expect(readingMinutes({ readingMinutes: -8, fullContent: "<p></p>" })).toBe(1);
   });
 });

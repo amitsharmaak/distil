@@ -69,9 +69,19 @@ function summaryLead(value: string | undefined): string {
     source
       .replace(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]\s*>/gi, "\n## $1\n")
       .replace(/^\s*\*\*(.+?)\*\*\s*:?\s*$/gm, "## $1")
-      .replace(/^\s*(?:TL;?DR|Summary|Key [Pp]oints)\s*:?\s*$/gm, "## $&")
+      .replace(/^\s*(?:TL[;:]?DR|Summary|Key[ -]points)\s*:?\s*$/gim, "## $&")
   );
-  return toPlainText(digest.lead).replace(/^(?:TL;?DR|Summary)\s*:\s*/i, "");
+  let lead = toPlainText(digest.lead);
+  // Imported posts sometimes introduce their summary with a label-only sentence.
+  // Match the whole sentence so substantive prose about summaries stays intact.
+  const labelOnlyIntro =
+    /^(?:(?:here (?:is|are)|here['’]s)\s+(?:(?:the|a|my)\s+)?)?(?:tl[;:]?dr|key[ -]points)(?:\s*[-,:–—]?\s*\(?ELI5\)?)?[.!?:;]*$/i;
+  while (lead) {
+    const sentence = firstSentence(lead);
+    if (!labelOnlyIntro.test(sentence)) break;
+    lead = lead.slice(sentence.length).trimStart();
+  }
+  return lead.replace(/^(?:TL[;:]?DR|Summary|Key[ -]points)\s*:\s*/i, "");
 }
 
 function firstSentence(value: string): string {
@@ -125,10 +135,12 @@ export function readingMinutes(item: Partial<ContentItem>): number {
   const duration = item.contentType === "video" ? durationMinutes(item.duration) : undefined;
   if (duration !== undefined) return duration;
   if (item.readingMinutes !== undefined && Number.isFinite(item.readingMinutes)) {
-    if (item.readingMinutes > 0) return Math.max(1, Math.ceil(item.readingMinutes));
+    if (item.readingMinutes >= 0) return Math.ceil(item.readingMinutes);
   }
-  const text = toPlainText(item.fullContent || item.summary || item.aiSummary);
-  return text ? Math.max(1, Math.ceil(text.length / 1200)) : 0;
+  // Match the feed's char_length(COALESCE(NULLIF(full_content, ''), summary, '')):
+  // count stored markup too, and count Unicode characters rather than UTF-16 units.
+  const text = item.fullContent || item.summary || "";
+  return Math.ceil(Array.from(text).length / 1200);
 }
 
 export function readTimeLabel(item: Partial<ContentItem>): string {

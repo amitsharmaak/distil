@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Play, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,14 +74,14 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center p-8 gap-3">
-          <div className="rounded-full bg-sky-500/10 p-4">
-            <svg className="h-8 w-8 text-sky-500" viewBox="0 0 24 24" fill="currentColor">
+          <div className="rounded-full bg-muted p-4">
+            <svg className="h-8 w-8 text-muted-foreground" viewBox="0 0 24 24" fill="currentColor">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
             </svg>
           </div>
           <p className="text-sm font-medium">View this post on X</p>
           {duration && <p className="text-xs text-muted-foreground">{duration}</p>}
-          <Button variant="outline" size="sm" className="gap-2" asChild>
+          <Button variant="outline" size="sm" className="min-h-11 gap-2" asChild>
             <a href={url} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
               Open on X
@@ -95,12 +96,12 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
   return (
     <Card>
       <CardContent className="flex flex-col items-center justify-center p-12">
-        <div className="rounded-full bg-primary/10 p-4">
-          <Play className="h-8 w-8 text-primary" />
+        <div className="rounded-full bg-muted p-4">
+          <Play className="h-8 w-8 text-muted-foreground" />
         </div>
         <p className="mt-3 text-sm font-medium">Watch Video</p>
         {duration && <p className="text-xs text-muted-foreground">{duration}</p>}
-        <Button variant="outline" size="sm" className="mt-3 gap-2" asChild>
+        <Button variant="outline" size="sm" className="mt-3 min-h-11 gap-2" asChild>
           <a href={url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" />
             Open Video
@@ -108,5 +109,58 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+/** The captured thumbnail is the video header until the reader chooses to load its player. */
+export function VideoHero({
+  thumbnailUrl,
+  title,
+  nativeVideoUrl,
+  ...video
+}: VideoEmbedProps & { thumbnailUrl: string; title: string; nativeVideoUrl?: string }) {
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="relative mb-8 aspect-video overflow-hidden rounded-xl bg-muted">
+      {playing ? (
+        nativeVideoUrl ? (
+          <video
+            src={nativeVideoUrl}
+            controls
+            autoPlay
+            preload="metadata"
+            className="h-full w-full"
+          />
+        ) : (
+          <VideoEmbed {...video} />
+        )
+      ) : (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={thumbnailUrl}
+            alt={title}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className="h-full w-full object-cover"
+            style={{ visibility: failed ? "hidden" : "visible" }}
+            onError={() => setFailed(true)}
+          />
+          <button
+            type="button"
+            aria-label="Play video"
+            onClick={() => setPlaying(true)}
+            className="absolute inset-0 flex h-full w-full items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="flex min-h-12 items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-medium text-primary-foreground shadow-lg">
+              <Play className="h-5 w-5 fill-current" />
+              Play video
+            </span>
+          </button>
+        </>
+      )}
+    </div>
   );
 }

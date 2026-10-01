@@ -32,9 +32,9 @@ const rowClass =
 
 const pillClass = (selected: boolean) =>
   cn(
-    "inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
     selected
-      ? "border-primary/30 bg-primary/10 text-primary"
+      ? "border-foreground/20 bg-muted text-foreground"
       : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
   );
 
@@ -113,7 +113,7 @@ export function FilterBar({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         {leading}
         <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
           <div
@@ -141,7 +141,7 @@ export function FilterBar({
               aria-label={label}
               enterKeyHint="search"
               autoComplete="off"
-              className="h-9 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-10 text-base text-foreground transition-colors placeholder:text-muted-foreground hover:bg-muted focus-visible:border-border focus-visible:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
+              className="h-11 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-10 text-base text-foreground transition-colors placeholder:text-muted-foreground hover:bg-muted focus-visible:border-border focus-visible:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm [&::-webkit-search-cancel-button]:hidden"
             />
             {draft ? (
               <button
@@ -151,14 +151,14 @@ export function FilterBar({
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             ) : (
               <kbd
                 aria-hidden="true"
-                className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border bg-card px-1.5 font-mono text-[11px] leading-4 text-muted-foreground sm:block"
+                className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border bg-card px-1.5 font-mono text-xs leading-4 text-muted-foreground sm:block"
               >
                 /
               </kbd>
@@ -189,7 +189,7 @@ export function FilterBar({
                 setDraft("");
                 onChange(CLEAR_ALL_FILTERS);
               }}
-              className="min-h-9 shrink-0 px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              className="min-h-11 shrink-0 px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
               Clear
             </button>
