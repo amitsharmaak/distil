@@ -16,8 +16,6 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
       "chatConversations",
       "chatMessages",
       "claimEvidence",
-      "collectionItems",
-      "collections",
       "connectorOAuthStates",
       "annotations",
       "contentChunks",
@@ -66,7 +64,6 @@ it("exposes relational metadata for critical capture tables", () => {
   expect(schema.itemNotes.itemId).toBeDefined();
   expect(schema.annotations.contentVersion).toBeDefined();
   expect(schema.annotations.contentHash).toBeDefined();
-  expect(schema.collectionItems.collectionId).toBeDefined();
   expect(schema.itemEvents.eventKey).toBeDefined();
   expect(schema.digestRuns.digestDate).toBeDefined();
   expect(schema.digestRuns.localDate).toBeDefined();

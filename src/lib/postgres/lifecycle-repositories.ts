@@ -30,11 +30,6 @@ const EXPORT_DATASETS = [
   ],
   ["item-notes", `SELECT to_jsonb(t) - 'user_id' AS value FROM item_notes t ORDER BY item_id`],
   ["annotations", `SELECT to_jsonb(t) - 'user_id' AS value FROM annotations t ORDER BY id`],
-  ["collections", `SELECT to_jsonb(t) - 'user_id' AS value FROM collections t ORDER BY id`],
-  [
-    "collection-items",
-    `SELECT to_jsonb(t) - 'user_id' AS value FROM collection_items t ORDER BY collection_id, position, item_id`,
-  ],
   [
     "item-events",
     `SELECT to_jsonb(t) - 'user_id' AS value FROM item_events t ORDER BY occurred_at, id`,
@@ -611,7 +606,9 @@ export class PostgresControlPlaneLifecycleRepository implements ControlPlaneLife
     metadata?: Record<string, string | number | boolean>;
     at: string;
   }) {
-    if (!/^(account\.(suspend|delete|export|restore)|invitation\.revoke)$/u.test(input.action)) {
+    if (
+      !/^(account\.(suspend|delete|export|restore)|invitation\.(issue|revoke))$/u.test(input.action)
+    ) {
       throw new Error("Unsupported privileged audit action");
     }
     const targetHash = createHash("sha256").update(String(input.targetUserId)).digest("hex");

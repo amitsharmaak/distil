@@ -247,9 +247,43 @@ describe("Life areas F2 migration", () => {
   });
 });
 
+describe("Collections removal migration", () => {
+  const raw = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0014_drop_collections.sql"),
+    "utf8"
+  );
+  const migration = raw
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n");
+
+  it("extends the stage check, records row counts, and drops only the two collections tables and their views", () => {
+    expect(migration).toContain(
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure','feed-search','life-areas','drop-collections'))"
+    );
+    expect(migration.match(/RAISE NOTICE/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(migration.match(/^DROP TABLE /gm)).toEqual(["DROP TABLE ", "DROP TABLE "]);
+    const dropItems = migration.indexOf("DROP TABLE IF EXISTS public.collection_items;");
+    const dropCollections = migration.indexOf("DROP TABLE IF EXISTS public.collections;");
+    expect(dropItems).toBeGreaterThan(-1);
+    expect(dropCollections).toBeGreaterThan(dropItems);
+    expect(migration).toContain("DROP VIEW IF EXISTS tenant_api.collection_items;");
+    expect(migration).toContain("DROP VIEW IF EXISTS tenant_api.collections;");
+    expect(migration).not.toMatch(/CASCADE|TRUNCATE|DELETE FROM|DROP COLUMN|DISABLE ROW LEVEL/);
+    expect(migration.indexOf("RAISE NOTICE")).toBeLessThan(dropItems);
+  });
+
+  it("documents ordering, idempotency, rollback and the data loss", () => {
+    expect(raw).toContain("Deploy order");
+    expect(raw).toContain("DELETES DATA");
+    expect(raw).toContain("Idempotent");
+    expect(raw).toContain("Rollback");
+  });
+});
+
 describe("Browser connections X1 migration", () => {
   const migration = readFileSync(
-    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0014_browser_connections.sql"),
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0015_browser_connections.sql"),
     "utf8"
   )
     .split("\n")
@@ -258,7 +292,7 @@ describe("Browser connections X1 migration", () => {
 
   it("extends the ledger stage list by exactly one stage", () => {
     expect(migration).toContain(
-      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure','feed-search','life-areas','browser-connections'))"
+      "CHECK (stage IN ('expand','backfill','contract','lifecycle','returning-auth','perf-indexes','summary-structure','feed-search','life-areas','drop-collections','browser-connections'))"
     );
   });
 

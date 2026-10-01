@@ -418,53 +418,6 @@ export const annotations = pgTable(
   ]
 );
 
-export const collections = pgTable(
-  "collections",
-  {
-    userId: tenantOwner(),
-    id: text().primaryKey(),
-    name: text().notNull(),
-    description: text(),
-    createdAt: time("created_at").notNull(),
-    updatedAt: time("updated_at").notNull(),
-  },
-  (t) => [
-    uniqueIndex("collections_user_id_id_idx").on(t.userId, t.id),
-    check("collections_name_check", sql`length(trim(${t.name})) > 0`),
-  ]
-);
-
-export const collectionItems = pgTable(
-  "collection_items",
-  {
-    userId: tenantOwner(),
-    collectionId: text("collection_id")
-      .notNull()
-      .references(() => collections.id, { onDelete: "cascade" }),
-    itemId: text("item_id")
-      .notNull()
-      .references(() => items.id, { onDelete: "cascade" }),
-    position: integer().notNull().default(0),
-    addedAt: time("added_at").notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.collectionId, t.itemId] }),
-    foreignKey({
-      columns: [t.userId, t.collectionId],
-      foreignColumns: [collections.userId, collections.id],
-      name: "collection_items_user_collection_fk",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [t.userId, t.itemId],
-      foreignColumns: [items.userId, items.id],
-      name: "collection_items_user_item_fk",
-    }).onDelete("cascade"),
-    index("collection_items_item_idx").on(t.itemId),
-    index("collection_items_order_idx").on(t.collectionId, t.position, t.addedAt),
-    check("collection_items_position_check", sql`${t.position} >= 0`),
-  ]
-);
-
 export const itemEvents = pgTable(
   "item_events",
   {

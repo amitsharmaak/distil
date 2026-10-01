@@ -20,7 +20,7 @@ describe("tenant migration CLI contract", () => {
       connectsToDatabase: false,
       immutableOwner: { userId: ownerId, source: "explicit-cli-argument" },
     });
-    expect(plan.tenantTables).toHaveLength(36);
+    expect(plan.tenantTables).toHaveLength(34);
     expect(plan.lifecycle).toEqual([
       expect.objectContaining({ stage: "expand", implementedHere: true }),
       expect.objectContaining({ stage: "backfill", implementedHere: true }),

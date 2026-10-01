@@ -18,7 +18,7 @@ extension: token-free sign-in and Web Store listing — plan X1–X3 — 2026-09
 `docs/project-state.md`.
 
 **X1, server.** Tenant stage `browser-connections`
-(`src/lib/postgres/tenant-migrations/0014_browser_connections.sql`) adds `capture_tokens.kind`
+(`src/lib/postgres/tenant-migrations/0015_browser_connections.sql`) adds `capture_tokens.kind`
 (`manual` default, or `browser`) and `label`, and rebuilds `tenant_api.capture_tokens`.
 `GET`/`POST /api/v1/extension/connections` and `DELETE …/:id` list, mint and revoke per-browser
 tokens (kind-scoped; regenerating the manual token leaves browser rows alone). Public
@@ -72,8 +72,9 @@ None. Local Docker Postgres scratch databases only.
 - Deploy order for X1: apply the stage before the code, because the new code names the columns
   (`npm run db:tenant:migrate -- --stage browser-connections --amit-user-id <uuid>` on
   Production, Amit's authorization), then merge. The stage is additive and safe for the running app.
-- Migration number: PR #114 (Collections drop) also adds a 0014 stage. Whichever merges second
-  renumbers its file and appends its stage to `distil_tenant_migrations_stage_check`.
+- Migration number: renumbered to 0015 after PR #114's `0014_drop_collections.sql` merged and was
+  applied on Production; `browser-connections` now requires `drop-collections` and its stage check
+  lists both.
 - After X1 is live: load the 2.0 extension unpacked, sign in against Production, save a page,
   Disconnect in Settings, and confirm "Sign in again".
 - Amit moves the extension private key into safe storage; losing it changes the pinned id.

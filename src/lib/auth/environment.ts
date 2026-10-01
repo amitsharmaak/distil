@@ -40,3 +40,19 @@ export function readAuthEnvironment(env: NodeJS.ProcessEnv = process.env): AuthE
     legacyCaptureToken: env.DISTIL_API_TOKEN || undefined,
   });
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * User ids allowed to administer invitations, from DISTIL_ADMIN_USER_IDS
+ * (comma-separated UUIDs). Anything that is not a UUID is ignored, so a typo
+ * can never widen access; an unset variable means nobody is an admin.
+ */
+export function readAdminUserIds(env: NodeJS.ProcessEnv = process.env): ReadonlySet<string> {
+  return new Set(
+    (env.DISTIL_ADMIN_USER_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => UUID_PATTERN.test(value))
+  );
+}

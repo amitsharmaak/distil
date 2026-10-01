@@ -52,8 +52,8 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
-  `src/lib/postgres/tenant-migrations/0005–0013` (Phase 3 expand/backfill/contract/lifecycle/
-  returning-auth, the P7 perf-indexes stage, the summary-structure and feed-search stages, then the life-areas stage) run through `npm run db:tenant:migrate` and are
+  `src/lib/postgres/tenant-migrations/0005–0014` (Phase 3 expand/backfill/contract/lifecycle/
+  returning-auth, the P7 perf-indexes stage, the summary-structure and feed-search stages, the life-areas stage, then drop-collections) run through `npm run db:tenant:migrate` and are
   checked by
   `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
   the restricted runtime role in `DATABASE_URL`. Row-level security is forced.
@@ -67,7 +67,14 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   invitation-gated sign-up, no social providers) when `FEATURE_NEON_AUTH="true"`; otherwise the
   legacy single-user session bridge (`src/lib/auth/legacy-bridge.ts`). Production uses hosted
   auth. Invitations: `src/lib/auth/invitations.ts`, `scripts/auth-invitations.ts`, `/invite`
-  (invitation acceptance only; returning users sign in at `/sign-in`).
+  (invitation acceptance only; returning users sign in at `/sign-in`). Admins issue, list and
+  revoke invitations from Settings → Invitations through `/api/v1/admin/invitations`
+  (`src/lib/auth/admin-invitations.ts`): an admin is a user id in `DISTIL_ADMIN_USER_IDS` (env
+  allowlist, no schema), the check is server-side, the work runs on the control-plane client
+  (`DATABASE_CONTROL_PLANE_URL`; the runtime role cannot touch `invitations`), issues are limited
+  to 20 per admin per day, and each issue or revoke writes an `operator_audit_events` row.
+  `/api/v1/account` reports `isAdmin`; the capture diagnostics panel lives in the admin-only
+  Settings → Troubleshooting tab.
   Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
   `/reset-password` page, and the account-center password section. Capture clients share one
   hashed capture token per account, shown once at generation; regenerating revokes every earlier

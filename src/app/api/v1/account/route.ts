@@ -5,6 +5,7 @@ import {
   updateAccountProfile,
 } from "@/lib/account/profile";
 import { resolveCurrentAccount, resolveRequestAuthContext } from "@/lib/auth/account-service";
+import { isPlatformAdmin } from "@/lib/auth/admin-invitations";
 import { AccessDeniedError } from "@/lib/auth/account";
 import { readAuthEnvironment } from "@/lib/auth/environment";
 import { AuthError, errorResponse } from "@/lib/auth/errors";
@@ -48,6 +49,7 @@ export async function GET(request: Request): Promise<Response> {
           status: accountView.status,
           ...(accountView.email ? { email: accountView.email } : {}),
           ...profile,
+          isAdmin: isPlatformAdmin(accountView.context),
         },
       },
       { headers: sensitiveHeaders }

@@ -94,18 +94,6 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       highValue: ["selected_quote", "content_hash", "comment"],
       references: [ref("item", ["item_id"], "items")],
     }),
-    tenant("collections", {
-      identity: ["id"],
-      highValue: ["name", "description"],
-    }),
-    tenant("collection_items", {
-      identity: ["collection_id", "item_id"],
-      highValue: ["position", "added_at"],
-      references: [
-        ref("collection", ["collection_id"], "collections"),
-        ref("item", ["item_id"], "items"),
-      ],
-    }),
     tenant("item_events", {
       identity: ["id"],
       highValue: ["event_key", "metadata"],
@@ -395,6 +383,12 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
       highValue: ["key", "count"],
       uniqueness: [unique("window", ["key", "window_start", "window_seconds"])],
     }),
+  ],
+  // Dropped by tenant stage drop-collections (0014). Expand through contract still create them on
+  // a fresh database, so the verifier must keep tolerating them until the stage runs.
+  retiredTables: [
+    { schema: "public", table: "collections" },
+    { schema: "public", table: "collection_items" },
   ],
   supplementalTables: [
     {

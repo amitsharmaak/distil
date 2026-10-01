@@ -28,6 +28,7 @@ function repository(): AuthRepositoryPort & { invitation?: InvitationRecord } {
     findInvitationById: jest.fn(async (id) =>
       result.invitation?.id === id ? result.invitation : undefined
     ),
+    listInvitations: jest.fn(),
     revokeInvitation: jest.fn(),
     claimInvitationDispatch: jest.fn().mockResolvedValue(true),
     completeInvitationDispatch: jest.fn().mockResolvedValue(true),
