@@ -2,9 +2,10 @@
 topic: ui-modernization
 title: Daily edition UI modernization — approved reader and final verification
 date: 2026-10-01
-time: 09:32
+time: 09:34
 status: in-progress
 branch: codex/ui-modernization
+pr: 132
 ---
 
 ## Scope and ownership
@@ -210,10 +211,23 @@ Final root checks:
 - All 72 before/after viewport screenshots are in `docs/reviews/ui-modernization/`, with a
   comparison index. Full-page captures and interaction evidence remain ignored local artifacts.
 
+## Pull request and external checks
+
+Implementation and visual evidence committed as `20bb29a78320475f7ab78e78dd5adc4615ec5703`.
+PR: https://github.com/amitsharmaak/distil/pull/132, open and unmerged. All 72 comparison images
+are embedded in its description and indexed in `docs/reviews/ui-modernization/README.md`.
+At this checkpoint, GitHub Quick gate and Vercel Preview checks are pending; local verification
+above is complete. No Production deployment or hosted environment/data mutation was performed.
+
 ## Next
 
-Implementation and local automated checks are complete. Finish the final screenshot matrix,
-attach before/after evidence, and open the single task PR. No merge or Production deployment is
-authorized. Resume in `/Users/amitsharma/Projects/distil-ui-modernization`, branch
-`codex/ui-modernization`; run `npm run state`, inspect git status and the latest PR checks.
-The local preview uses port 3302, the gallery 3303 and the owned Docker container 5440.
+Amit reviews PR #132 and explicitly authorizes a merge when ready; merging main auto-deploys.
+Do not merge based on the design approval alone. Before any later authorized merge, re-check the
+exact PR head, Quick gate, Vercel check and current main; follow the release gate in AGENTS.md.
+
+Resume in `/Users/amitsharma/Projects/distil-ui-modernization`, branch `codex/ui-modernization`;
+run `npm run state`, inspect git status and `gh pr checks 132`. The local preview uses port 3302,
+the gallery 3303 and the owned Docker container 5440. Screenshot and browser-inspection scripts
+remain in ignored `test-results/ui-modernization/`; do not re-seed or repeat accepted checks
+without a new risk. Implementation is complete and locally verified; integration and Production
+release are intentionally unfinished pending Amit's authorization.
