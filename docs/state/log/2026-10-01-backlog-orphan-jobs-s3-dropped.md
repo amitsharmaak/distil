@@ -1,6 +1,6 @@
 ---
 topic: backlog
-title: S3, content_hash and P7 index question dropped; orphan job types removed
+title: S3, content_hash, P7 index question and auth-lookup item closed; orphan job types removed
 date: 2026-10-01
 time: 07:20
 status: ongoing
@@ -31,6 +31,13 @@ This entry supersedes the "Remaining backlog" list in `2026-09-30-backlog-severi
   Fixing it would need a `SECURITY DEFINER` feed function or a policy-free read path, which weakens
   database-enforced isolation. Revisit only if feed or search queries show up as slow in timings,
   or a tenant nears ~5,000 items. Do not re-propose it otherwise.
+- **`distil_resolve_auth_identity` lookup cost** closed as already fixed by P8 (`1d2831a`; topic
+  `performance-p8-p11`, checkpoint "Performance P8: Neon HTTP proxy identity lookup —
+  2026-09-30" in `docs/project-state.md`). P8 found that the indexed `SECURITY DEFINER` query took about 4–5 ms and that
+  per-request connection setup was the real cost. It moved only the proxy lookup to Neon's HTTP
+  driver (`src/lib/auth/neon-http-repository.ts`), and warm Preview samples came in at about
+  7–27 ms, under the 30 ms target. The backlog line predated P8. The remaining
+  first-request-after-suspend latency belongs to the cold-start item.
 
 **Orphan job types removed (this branch)**
 
@@ -59,7 +66,6 @@ This entry supersedes the "Remaining backlog" list in `2026-09-30-backlog-severi
 **Remaining backlog (each becomes its own topic when picked up)**
 
 - Classifier model (inline-search decision 12).
-- Performance: the `distil_resolve_auth_identity` lookup cost.
 - Performance: the Vercel + Neon cold start.
 - Capture diagnostics in Settings (admin-invitations phase I3).
 - Housekeeping: stale local branches and the `jabra-evolve-mic-test` worktree.
