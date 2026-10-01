@@ -57,6 +57,9 @@ export interface CreateCaptureResponse {
 export const API_ERROR_CODES = [
   "INVALID_REQUEST",
   "UNAUTHORIZED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "SERVICE_UNAVAILABLE",
   "ORIGIN_NOT_ALLOWED",
   "RATE_LIMITED",
   "UNSAFE_URL",

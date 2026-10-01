@@ -19,6 +19,9 @@ export interface InvitationRecord {
   consumedByUserId?: UserId;
 }
 
+/** An invitation as shown to an admin: never the salt, hashes or the issued link. */
+export type InvitationSummary = Omit<InvitationRecord, "emailHash" | "tokenSalt" | "tokenHash">;
+
 export interface ConsumeInvitationInput {
   invitationId: string;
   tokenHash: string;
@@ -39,6 +42,8 @@ export interface InvitationDispatchClaimInput {
 export interface InvitationRepositoryPort {
   createInvitation(record: InvitationRecord): Promise<void>;
   findInvitationById(id: string): Promise<InvitationRecord | undefined>;
+  /** Newest first. Control-plane clients only; the runtime role cannot read the table. */
+  listInvitations(limit: number): Promise<InvitationSummary[]>;
   revokeInvitation(input: {
     invitationId: string;
     revokedAt: string;

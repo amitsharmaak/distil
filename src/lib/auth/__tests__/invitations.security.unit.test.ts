@@ -36,6 +36,9 @@ function fakeRepositories(): AuthRepositoryPort & {
     async findInvitationById(id) {
       return repository.invitation?.id === id ? repository.invitation : undefined;
     },
+    async listInvitations() {
+      return [];
+    },
     async revokeInvitation(input) {
       if (!repository.invitation || repository.invitation.id !== input.invitationId) return false;
       repository.invitation.status = "revoked";

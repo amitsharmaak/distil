@@ -22,6 +22,11 @@ async function main() {
       : action === "revoke"
         ? { action, invitationId: subject, revokedByActorId: actorId, reason }
         : usage();
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not set. This script does not read .env.local; pass it inline, e.g. DATABASE_URL=... npm run auth:invite -- ..."
+    );
+  }
   const result = await executeInvitationCommand(command, await getAuthRepositoryPort());
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

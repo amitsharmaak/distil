@@ -378,7 +378,7 @@
       "source": "src/lib/postgres/schema.ts",
       "currentScope": "operator-control-plane",
       "requiredScope": "operator-control-plane",
-      "ownerVia": "no tenant before acceptance; operator reason and audit required",
+      "ownerVia": "no tenant before acceptance; operator reason and audit required; issued through the CLI or the self-admin-session routes under /api/v1/admin/invitations",
       "sensitive": true
     },
     {
@@ -1259,6 +1259,28 @@
       "resources": ["items", "job_queue"],
       "testProfile": "owner",
       "notes": "POST checks Origin and enqueues the first items.area-backfill tenant job for the caller only; GET returns the caller's area counts and backfill run totals (counts only, no content)."
+    },
+    {
+      "path": "/api/v1/admin/invitations",
+      "source": "src/app/api/v1/admin/invitations/route.ts",
+      "methods": ["GET", "POST"],
+      "currentAuth": "route_session_plus_admin_allowlist",
+      "requiredPrincipal": "platform_admin",
+      "scope": "platform",
+      "resources": ["invitations", "operator_audit_events", "rate_limit_windows"],
+      "testProfile": "platformAdmin",
+      "notes": "Admin path self-admin-session: the session user must be listed in DISTIL_ADMIN_USER_IDS (user actor kind only), every other caller gets 403. Runs on the control-plane client because the runtime role cannot read or write invitations. POST checks Origin, is limited to 20 issues per admin per day, returns the link once and writes an operator_audit_events row; GET returns masked addresses and no links."
+    },
+    {
+      "path": "/api/v1/admin/invitations/:id",
+      "source": "src/app/api/v1/admin/invitations/[id]/route.ts",
+      "methods": ["DELETE"],
+      "currentAuth": "route_session_plus_admin_allowlist",
+      "requiredPrincipal": "platform_admin",
+      "scope": "platform",
+      "resources": ["invitations", "operator_audit_events"],
+      "testProfile": "platformAdmin",
+      "notes": "Admin path self-admin-session. Checks Origin, revokes only a pending invitation with a reason, and writes an operator_audit_events row; missing and non-pending ids both return 404."
     },
     {
       "path": "/api/v1/capture-tokens/:id",
@@ -2392,7 +2414,7 @@
   ],
   "inventoryCoverage": {
     "expectedDrizzleTableCount": 47,
-    "expectedApiRouteFileCount": 87,
+    "expectedApiRouteFileCount": 89,
     "expectedPageFileCount": 17,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."
