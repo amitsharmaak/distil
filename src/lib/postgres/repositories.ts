@@ -10,6 +10,7 @@ import type {
   CaptureRepository,
   CaptureTokenKind,
   CaptureTokenRepository,
+  ShortcutPairingRepository,
   CaptureTransition,
   ClaimRepository,
   AnnotationRecord,
@@ -71,6 +72,7 @@ import {
   mapCapture,
   mapCaptureToken,
   mapCaptureTokenSummary,
+  mapShortcutPairing,
   mapItem,
   mapItemSummary,
 } from "./mappers";
@@ -79,6 +81,7 @@ import { PostgresAuthRepository } from "./auth-repository";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { PostgresFeedQuery } from "@/lib/feed/feed-query";
+import { safeTokenEqual } from "@/lib/auth/capture-tokens";
 import { tenantLockKey, withTenantLocks } from "./tenant-lock";
 import { PostgresTenantLifecycleRepository } from "./lifecycle-repositories";
 import { PostgresConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
@@ -591,6 +594,63 @@ class PostgresCaptureTokens implements CaptureTokenRepository {
   async touchLastUsed(id: string, at: string) {
     await this
       .sql`UPDATE capture_tokens SET last_used_at=${at} WHERE id=${id} AND revoked_at IS NULL`;
+  }
+}
+
+class PostgresShortcutPairings implements ShortcutPairingRepository {
+  constructor(
+    private readonly sql: Sql,
+    private readonly context: AuthContext
+  ) {}
+
+  async replacePending(record: Parameters<ShortcutPairingRepository["replacePending"]>[0]) {
+    if (record.userId !== this.context.userId)
+      throw new Error("Pairing owner does not match tenant");
+    await withTenantLocks(this.sql, [tenantLockKey("shortcut-pairing")], async (tx) => {
+      await tx`UPDATE shortcut_pairings SET consumed_at=${record.createdAt}
+        WHERE user_id=${this.context.userId} AND consumed_at IS NULL`;
+      await tx`INSERT INTO shortcut_pairings
+        (user_id,id,code_hash,created_at,expires_at,attempts,consumed_at,token_id)
+        VALUES (${record.userId},${record.id},${record.codeHash},${record.createdAt},${record.expiresAt},0,NULL,NULL)`;
+    });
+  }
+
+  async findById(id: string) {
+    const rows = await this.sql<Row[]>`SELECT * FROM shortcut_pairings
+      WHERE user_id=${this.context.userId} AND id=${id}`;
+    return rows[0] ? mapShortcutPairing(rows[0]) : undefined;
+  }
+
+  async exchange(input: Parameters<ShortcutPairingRepository["exchange"]>[0]) {
+    if (input.token.kind !== "phone" || input.token.userId !== this.context.userId) return false;
+    const now = new Date(input.now).getTime();
+    if (!Number.isFinite(now)) return false;
+    return withTenantLocks(this.sql, [tenantLockKey("shortcut-pairing")], async (tx) => {
+      const rows = await tx<Row[]>`SELECT * FROM shortcut_pairings
+        WHERE user_id=${this.context.userId} AND id=${input.id} FOR UPDATE`;
+      if (!rows[0]) return false;
+      const pairing = mapShortcutPairing(rows[0]);
+      if (
+        pairing.consumedAt ||
+        new Date(pairing.expiresAt).getTime() <= now ||
+        pairing.attempts >= 5
+      )
+        return false;
+      if (!safeTokenEqual(pairing.codeHash, input.codeHash)) {
+        const attempts = Math.min(pairing.attempts + 1, 5);
+        await tx`UPDATE shortcut_pairings SET attempts=${attempts},
+          consumed_at=${attempts === 5 ? input.now : null}
+          WHERE user_id=${this.context.userId} AND id=${input.id}`;
+        return false;
+      }
+      await new PostgresCaptureTokens(tx).create(input.token);
+      const consumed =
+        await tx`UPDATE shortcut_pairings SET consumed_at=${input.now},token_id=${input.token.id}
+        WHERE user_id=${this.context.userId} AND id=${input.id} AND consumed_at IS NULL RETURNING id`;
+      // Throw so the transaction rolls back the insert if the locked row unexpectedly vanished.
+      if (consumed.length !== 1) throw new Error("Pairing consumption failed");
+      return true;
+    });
   }
 }
 
@@ -2178,6 +2238,9 @@ export function createPostgresRepositories(sql: Sql, context?: AuthContext): Rep
     digests: new PostgresDigests(sql),
     captures: new PostgresCaptures(sql),
     captureTokens: new PostgresCaptureTokens(sql),
+    shortcutPairings: context
+      ? new PostgresShortcutPairings(sql, context)
+      : tenantOnly<RepositorySet["shortcutPairings"]>("Shortcut pairing"),
     rateLimits: new PostgresRateLimits(sql),
     oauthTokens: new PostgresOAuth(sql),
     connectorOAuthStates: new PostgresConnectorOAuthStateRepository(sql),

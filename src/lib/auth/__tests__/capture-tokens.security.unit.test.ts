@@ -81,6 +81,18 @@ describe("capture token issuance", () => {
     expect(JSON.stringify(repo.create.mock.calls)).not.toContain(issued.token);
   });
 
+  it("issues phone tokens independently and retains manual issuance as the default", async () => {
+    const repo = repository();
+    await issueCaptureToken(context, repo, { kind: "phone", label: "Personal iPhone" });
+    expect(repo.replaceActive).not.toHaveBeenCalled();
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "phone", label: "Personal iPhone", name: "iPhone Shortcut" })
+    );
+    await issueCaptureToken(context, repo);
+    expect(repo.replaceActive).toHaveBeenCalledWith(expect.objectContaining({ kind: "manual" }));
+    expect(repo.create).toHaveBeenCalledTimes(1);
+  });
+
   it("normalizes browser labels to short single-line text", () => {
     expect(normalizeBrowserLabel(undefined)).toBe("Browser");
     expect(normalizeBrowserLabel("   ")).toBe("Browser");
