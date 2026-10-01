@@ -33,13 +33,19 @@ const token: CaptureTokenRecord = {
 };
 const input = { id: pairing.id, codeHash: pairing.code_hash, now, token };
 
-function sqlDouble(responses: unknown[][] = []) {
+function sqlDouble(responses: unknown[][] = [], activeAccount = true) {
   const queries: Array<{ text: string; values: unknown[]; inTransaction: boolean }> = [];
   let inTransaction = false;
   const sql = jest.fn((parts: TemplateStringsArray, ...values: unknown[]) => {
     const text = parts.join("?").replace(/\s+/g, " ").trim();
     queries.push({ text, values, inTransaction });
-    return Promise.resolve(text.includes("pg_advisory_xact_lock") ? [] : (responses.shift() ?? []));
+    return Promise.resolve(
+      text.startsWith("SELECT id FROM users")
+        ? activeAccount
+          ? [{ id: context.userId }]
+          : []
+        : (responses.shift() ?? [])
+    );
   });
   const begin = jest.fn(async (callback: (transaction: Sql) => Promise<unknown>) => {
     inTransaction = true;
@@ -70,8 +76,10 @@ describe("tenant pairing repository", () => {
     });
     expect(fake.begin).toHaveBeenCalledTimes(1);
     expect(fake.queries.every((query) => query.inTransaction)).toBe(true);
-    expect(fake.queries[0].text).toContain("pg_advisory_xact_lock");
-    expect(fake.queries[0].values).toEqual(['["shortcut-pairing"]']);
+    expect(fake.queries[0].text).toBe(
+      "SELECT id FROM users WHERE id=? AND status='active' FOR UPDATE"
+    );
+    expect(fake.queries[0].values).toEqual([context.userId]);
     expect(fake.queries[1].text).toBe(
       "UPDATE shortcut_pairings SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL"
     );
@@ -90,8 +98,13 @@ describe("tenant pairing repository", () => {
     await expect(repository(fake).exchange(input)).resolves.toBe(true);
     expect(fake.begin).toHaveBeenCalledTimes(1);
     expect(fake.queries.every((query) => query.inTransaction)).toBe(true);
-    expect(fake.queries[0].values).toEqual(['["shortcut-pairing"]']);
-    expect(fake.queries[1].text).toContain("WHERE user_id=? AND id=? FOR UPDATE");
+    expect(fake.queries[0].text).toBe(
+      "SELECT id FROM users WHERE id=? AND status='active' FOR UPDATE"
+    );
+    expect(fake.queries[0].values).toEqual([context.userId]);
+    expect(fake.queries[1].text).toContain(
+      "WHERE user_id=? AND id=? AND expires_at > clock_timestamp() FOR UPDATE"
+    );
     expect(fake.queries[2].text).toContain("INSERT INTO capture_tokens");
     expect(fake.queries[2].values).toContain("phone");
     expect(fake.queries[3].text).toContain("SET consumed_at=?,token_id=?");
@@ -133,6 +146,24 @@ describe("tenant pairing repository", () => {
       );
     }
   );
+
+  it("does not create or exchange after the account becomes inactive", async () => {
+    const fake = sqlDouble([[pairing]], false);
+    const repo = repository(fake);
+    await expect(repo.exchange(input)).resolves.toBe(false);
+    await expect(
+      repo.replacePending({
+        userId: context.userId,
+        id: pairing.id,
+        codeHash: pairing.code_hash,
+        createdAt: now,
+        expiresAt: pairing.expires_at,
+        attempts: 0,
+      })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    expect(fake.queries).toHaveLength(2);
+    expect(fake.queries.every(({ text }) => text.startsWith("SELECT id FROM users"))).toBe(true);
+  });
 
   it("rejects mismatched owners, non-phone issuance, and invalid timestamps before any query", async () => {
     const fake = sqlDouble();

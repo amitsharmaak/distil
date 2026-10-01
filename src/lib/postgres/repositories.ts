@@ -82,6 +82,7 @@ import type { AuthContext } from "@/lib/contracts/tenant-context";
 import { PostgresDigestStore } from "@/lib/digests/postgres-store";
 import { PostgresFeedQuery } from "@/lib/feed/feed-query";
 import { safeTokenEqual } from "@/lib/auth/capture-tokens";
+import { AuthError } from "@/lib/auth/errors";
 import { tenantLockKey, withTenantLocks } from "./tenant-lock";
 import { PostgresTenantLifecycleRepository } from "./lifecycle-repositories";
 import { PostgresConnectorOAuthStateRepository } from "@/lib/connectors/oauth-state";
@@ -606,7 +607,12 @@ class PostgresShortcutPairings implements ShortcutPairingRepository {
   async replacePending(record: Parameters<ShortcutPairingRepository["replacePending"]>[0]) {
     if (record.userId !== this.context.userId)
       throw new Error("Pairing owner does not match tenant");
-    await withTenantLocks(this.sql, [tenantLockKey("shortcut-pairing")], async (tx) => {
+    await this.sql.begin(async (transaction) => {
+      const tx = transaction as unknown as Sql;
+      // The account row serializes pairing work and matches lifecycle's lock order.
+      const active = await tx`SELECT id FROM users
+        WHERE id=${this.context.userId} AND status='active' FOR UPDATE`;
+      if (!active.length) throw new AuthError("UNAUTHORIZED", 401, "Authentication required");
       await tx`UPDATE shortcut_pairings SET consumed_at=${record.createdAt}
         WHERE user_id=${this.context.userId} AND consumed_at IS NULL`;
       await tx`INSERT INTO shortcut_pairings
@@ -625,9 +631,16 @@ class PostgresShortcutPairings implements ShortcutPairingRepository {
     if (input.token.kind !== "phone" || input.token.userId !== this.context.userId) return false;
     const now = new Date(input.now).getTime();
     if (!Number.isFinite(now)) return false;
-    return withTenantLocks(this.sql, [tenantLockKey("shortcut-pairing")], async (tx) => {
+    return this.sql.begin(async (transaction) => {
+      const tx = transaction as unknown as Sql;
+      // Lock the account before the pairing, like deletion and suspension. Rechecking its
+      // status here closes the race after the pre-context resolver has returned an owner.
+      const active = await tx`SELECT id FROM users
+        WHERE id=${this.context.userId} AND status='active' FOR UPDATE`;
+      if (!active.length) return false;
       const rows = await tx<Row[]>`SELECT * FROM shortcut_pairings
-        WHERE user_id=${this.context.userId} AND id=${input.id} FOR UPDATE`;
+        WHERE user_id=${this.context.userId} AND id=${input.id}
+          AND expires_at > clock_timestamp() FOR UPDATE`;
       if (!rows[0]) return false;
       const pairing = mapShortcutPairing(rows[0]);
       if (
