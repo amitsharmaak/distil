@@ -4,12 +4,13 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AppShell, isReaderPath } from "../app-shell";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 const mockUsePathname = jest.fn<string, []>();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
 }));
 jest.mock("next/image", () => ({
   __esModule: true,
@@ -26,6 +27,13 @@ jest.mock("@/components/layout/topbar", () => ({
 jest.mock("@/components/layout/mobile-nav", () => ({ MobileNav: () => <nav>Mobile</nav> }));
 
 describe("AppShell", () => {
+  const renderShell = (children: React.ReactNode) =>
+    render(
+      <ContentCacheProvider accountKey="app-shell-test">
+        <AppShell>{children}</AppShell>
+      </ContentCacheProvider>
+    );
+
   beforeEach(() => {
     mockUsePathname.mockReturnValue("/feed");
   });
@@ -35,11 +43,7 @@ describe("AppShell", () => {
   });
 
   it("keeps the content offset aligned with the sidebar width", () => {
-    render(
-      <AppShell>
-        <p>Content</p>
-      </AppShell>
-    );
+    renderShell(<p>Content</p>);
 
     const content = screen.getByText("Content").parentElement?.parentElement;
     expect(content).toHaveClass("md:pl-64");
@@ -52,11 +56,7 @@ describe("AppShell", () => {
   });
 
   it("shows the mobile tab bar and reserves space for it on list routes", () => {
-    render(
-      <AppShell>
-        <p>Content</p>
-      </AppShell>
-    );
+    renderShell(<p>Content</p>);
 
     expect(screen.getByText("Mobile")).toBeInTheDocument();
     expect(screen.getByText("Content").parentElement).toHaveClass(
@@ -68,11 +68,7 @@ describe("AppShell", () => {
   it("drops the mobile tab bar and routes Back through the top bar on reader pages", () => {
     mockUsePathname.mockReturnValue("/feed/item-42");
 
-    render(
-      <AppShell>
-        <p>Article</p>
-      </AppShell>
-    );
+    renderShell(<p>Article</p>);
 
     expect(screen.queryByText("Mobile")).not.toBeInTheDocument();
     expect(screen.getByText("Article").parentElement).not.toHaveClass(
@@ -84,11 +80,7 @@ describe("AppShell", () => {
   it("renders the login route without any shell chrome", () => {
     mockUsePathname.mockReturnValue("/login");
 
-    render(
-      <AppShell>
-        <p>Sign in</p>
-      </AppShell>
-    );
+    renderShell(<p>Sign in</p>);
 
     expect(screen.queryByText("Topbar")).not.toBeInTheDocument();
     expect(screen.queryByText("Mobile")).not.toBeInTheDocument();

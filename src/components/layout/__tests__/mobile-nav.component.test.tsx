@@ -3,7 +3,10 @@
 import { render, screen } from "@testing-library/react";
 import { MobileNav } from "../mobile-nav";
 
-jest.mock("next/navigation", () => ({ usePathname: () => "/save" }));
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/save",
+  useRouter: () => ({ prefetch: jest.fn() }),
+}));
 
 describe("MobileNav", () => {
   it("renders the four primary destinations and marks the active page", () => {

@@ -5,7 +5,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { ContentCard } from "../content-card";
 import type { ContentItem } from "@/lib/types";
 
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: jest.fn(), prefetch: jest.fn() }),
+}));
 
 const item = {
   id: "item-1",

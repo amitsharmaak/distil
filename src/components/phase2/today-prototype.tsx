@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef } from "react";
-import Link from "next/link";
 import { Bookmark, Clock3 } from "lucide-react";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import { toSummaryDigest } from "@/lib/format";
 import type { KnowledgeItem } from "./types";
+import { IntentLink } from "@/components/navigation/intent-link";
 
 /** Lead paragraph plus key points, in reading type, for a card that links onward. */
 function SummaryDigest({ summary }: { summary: string }) {
@@ -35,7 +35,7 @@ type TodayPrototypeProps = {
 function TodayItem({ item }: { item: KnowledgeItem }) {
   return (
     <li data-row data-item-id={item.id}>
-      <Link
+      <IntentLink
         href={item.href}
         className="block rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
       >
@@ -53,7 +53,7 @@ function TodayItem({ item }: { item: KnowledgeItem }) {
         </div>
         <SummaryDigest summary={item.summary} />
         <p className="mt-4 text-xs text-muted-foreground">Why now: {item.reason}</p>
-      </Link>
+      </IntentLink>
     </li>
   );
 }
@@ -133,12 +133,12 @@ export function TodayResults({
             </span>
           )}
         </div>
-        <Link
+        <IntentLink
           href={searchEverythingHref}
           className="text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
           Search everything →
-        </Link>
+        </IntentLink>
       </div>
       {items.length ? (
         <ul className="space-y-3">

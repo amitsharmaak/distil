@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Play, Headphones } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,6 +10,7 @@ import { ContentItem, ContentType } from "@/lib/types";
 import { detectStrategy } from "@/lib/content-strategies";
 import { sourceIcons, sourceLabels, sourceColors, priorityColors } from "@/lib/constants";
 import { timeAgo, stripMarkdown } from "@/lib/format";
+import { IntentLink } from "@/components/navigation/intent-link";
 
 function ContentTypeIcon({ type }: { type: ContentType }) {
   if (type === "video") return <Play className="h-3.5 w-3.5" />;
@@ -113,12 +113,12 @@ export function ContentCard({
         data-item-id={item.id}
         className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent/50"
       >
-        <Link
+        <IntentLink
           href={href}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-lg after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           {compactContent}
-        </Link>
+        </IntentLink>
         {markRead}
       </article>
     );
@@ -180,7 +180,7 @@ export function ContentCard({
           </div>
         </>
       ) : (
-        <Link
+        <IntentLink
           href={href}
           className="block rounded-sm after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
@@ -195,7 +195,7 @@ export function ContentCard({
           <p className="mt-2 font-serif text-[15px] leading-relaxed text-foreground/80 line-clamp-3">
             {displaySummary}
           </p>
-        </Link>
+        </IntentLink>
       )}
 
       {/* Footer */}

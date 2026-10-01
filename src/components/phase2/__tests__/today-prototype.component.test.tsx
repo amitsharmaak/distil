@@ -7,7 +7,7 @@ import { todayFixture } from "../fixtures";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
 }));
 
 const render = (ui: ReactElement, options?: RenderOptions) =>
