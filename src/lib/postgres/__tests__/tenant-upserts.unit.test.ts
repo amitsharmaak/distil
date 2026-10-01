@@ -21,7 +21,6 @@ describe("tenant-view-safe PostgreSQL upserts", () => {
     expect(`${repositories}\n${digestStore}`).not.toMatch(/\bON\s+CONFLICT\b/i);
     for (const table of [
       "item_notes",
-      "collection_items",
       "item_events",
       "digest_runs",
       "personal_preferences",

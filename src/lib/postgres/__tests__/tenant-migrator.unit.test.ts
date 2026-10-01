@@ -226,4 +226,36 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+
+  it("applies the drop-collections stage only after the life-areas ledger entry", async () => {
+    const fake = sqlDouble();
+    for (const [stage, name] of [
+      ["expand", "0005_phase3_tenant_expand.sql"],
+      ["backfill", "0006_phase3_tenant_backfill.sql"],
+      ["contract", "0007_phase3_tenant_contract.sql"],
+      ["lifecycle", "0008_phase3_lifecycle.sql"],
+      ["returning-auth", "0009_phase3_returning_auth.sql"],
+      ["perf-indexes", "0010_perf_indexes.sql"],
+      ["summary-structure", "0011_summary_structure.sql"],
+      ["feed-search", "0012_feed_search.sql"],
+    ]) {
+      fake.applied.push({ stage, name, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "drop-collections", ownerId })
+    ).rejects.toThrow("drop-collections requires the life-areas stage first");
+    fake.applied.push({
+      stage: "life-areas",
+      name: "0013_life_areas.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "drop-collections", ownerId })
+    ).resolves.toMatchObject({
+      stage: "drop-collections",
+      file: "0014_drop_collections.sql",
+      alreadyApplied: false,
+    });
+  });
 });
