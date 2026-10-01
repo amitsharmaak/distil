@@ -1,6 +1,6 @@
 ---
 topic: backlog
-title: Housekeeping done; legacy alias removed, merged worktrees and branches cleaned
+title: Housekeeping done, legacy alias removed; capture diagnostics item closed as delivered
 date: 2026-10-01
 time: 07:41
 status: ongoing
@@ -10,7 +10,7 @@ branch: claude/housekeeping-legacy-alias
 ## What changed
 
 This entry supersedes the "Remaining backlog" list in `2026-10-01-backlog-orphan-jobs-s3-dropped.md`.
-Both housekeeping items are closed.
+Both housekeeping items are closed, and the capture diagnostics item is closed as already delivered.
 
 **Legacy Vercel alias removed (Amit, 2026-10-01)**
 
@@ -31,11 +31,18 @@ Both housekeeping items are closed.
 - The `jabra-evolve-mic-test` worktree had already been removed earlier; its leftover Claude
   transcript folder was deleted.
 
+**Capture diagnostics in Settings closed as already delivered**
+
+- It shipped as phase I3 of admin-invitations: an admin-only Settings → Troubleshooting tab
+  (`src/components/capture/capture-diagnostics.tsx`, rendered under `isAdmin` in
+  `src/app/settings/page.tsx`) that lists rejected or failed captures and shows a failure-count
+  badge. Recorded in `2026-09-30-admin-invitations-i1-i3.md` and verified on Production on
+  2026-10-01 (topic `admin-invitations`, status `released`). The backlog line predated I3.
+
 **Remaining backlog (each becomes its own topic when picked up)**
 
 - Classifier model (inline-search decision 12), waiting on Amit naming the model.
 - Performance: the Vercel + Neon cold start.
-- Capture diagnostics in Settings (admin-invitations phase I3).
 - Phase 4 (mobile), only on Amit's decision.
 
 ## Verification
