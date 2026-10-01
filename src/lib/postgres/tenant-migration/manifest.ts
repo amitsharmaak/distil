@@ -206,6 +206,21 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     }),
     tenant("ai_summaries", {
       identity: ["id"],
+      migrationColumns: ["structured", "prompt_version"],
+      jsonColumns: [
+        {
+          ...jsonRefs("structured", [
+            {
+              name: "brief_summary",
+              column: "structured",
+              path: "$.briefId",
+              targetTable: "ai_summaries",
+              targetColumn: "id",
+            },
+          ]),
+          introducedIn: "summary-structure",
+        },
+      ],
       highValue: ["summary"],
       references: [ref("item", ["item_id"], "items")],
       uniqueness: [unique("item_prompt", ["item_id", "prompt_type"])],
@@ -393,6 +408,17 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
   supplementalTables: [
     {
       schema: "public",
+      table: "shortcut_pairings",
+      tenantBearing: true,
+      ownerColumn: "user_id",
+      lifecycle: "identity",
+      references: [ref("token", ["token_id"], "capture_tokens")],
+      jsonColumns: [],
+      reason: "Single-use pairing credentials start empty and have no frozen predecessor rows.",
+      introducedIn: "phone-pairing",
+    },
+    {
+      schema: "public",
       table: "users",
       tenantBearing: true,
       ownerColumn: "id",
@@ -496,6 +522,14 @@ export const tenantMigrationManifest: TenantMigrationManifest = {
     },
   ],
   controlTables: [
+    {
+      schema: "public",
+      table: "shortcut_pairing_rate_limits",
+      tenantBearing: false,
+      reason:
+        "Bounded anonymous pairing attempts keyed by hashed IP; accessible only through the limiter function.",
+      introducedIn: "phone-pairing",
+    },
     {
       schema: "public",
       table: "distil_migrations",

@@ -1,28 +1,32 @@
 import { tenantMigrationManifest, tenantBearingTableNames } from "./manifest";
 import { normalizeExplicitAmitUserId, sha256, validateManifest } from "./verifier";
-import type { TenantMigrationStage } from "./types";
+import {
+  TENANT_VERIFICATION_STAGES,
+  type TenantMigrationStage,
+  type TenantVerificationThrough,
+} from "./types";
 
 export interface TenantMigrationCliOptions {
   readonly ownerId: string;
   readonly dryRun: boolean;
   readonly stage?: TenantMigrationStage;
-  readonly through?: "expand" | "lifecycle";
+  readonly through?: TenantVerificationThrough;
   readonly output?: string;
   readonly baseline?: string;
 }
 
 export const TENANT_MIGRATION_USAGE = `Usage:
   npm run db:tenant:verify -- --amit-user-id <uuid> --dry-run
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage rehearsal --output <report.json> [--through expand|lifecycle]
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage before --output <report.json> [--through expand|lifecycle]
-  npm run db:tenant:verify -- --amit-user-id <uuid> --stage after --baseline <before.json> --output <report.json> [--through expand|lifecycle]
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage rehearsal --output <report.json> [--through expand|lifecycle|summary-structure|phone-pairing]
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage before --output <report.json> [--through expand|lifecycle|summary-structure|phone-pairing]
+  npm run db:tenant:verify -- --amit-user-id <uuid> --stage after --baseline <before.json> --output <report.json> [--through expand|lifecycle|summary-structure|phone-pairing]
 
 The Amit UUID must be supplied directly. Email addresses and environment-derived ownership are not accepted.`;
 
 export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrationCliOptions {
   let ownerId: string | undefined;
   let stage: TenantMigrationStage | undefined;
-  let through: "expand" | "lifecycle" | undefined;
+  let through: TenantVerificationThrough | undefined;
   let output: string | undefined;
   let baseline: string | undefined;
   let dryRun = false;
@@ -45,10 +49,10 @@ export function parseTenantMigrationArgs(argv: readonly string[]): TenantMigrati
     else if (argument === "--baseline") baseline = next();
     else if (argument === "--through") {
       const value = next();
-      if (value !== "expand" && value !== "lifecycle") {
+      if (!TENANT_VERIFICATION_STAGES.includes(value as TenantVerificationThrough)) {
         throw new Error(`Invalid --through: ${value}`);
       }
-      through = value;
+      through = value as TenantVerificationThrough;
     } else if (argument === "--dry-run") dryRun = true;
     else if (argument === "--help" || argument === "-h") throw new Error(TENANT_MIGRATION_USAGE);
     else throw new Error(`Unknown argument: ${argument}`);
