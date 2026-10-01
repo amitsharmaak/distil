@@ -784,6 +784,27 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
     ).resolves.toMatchObject({ status: "complete" });
     respond(report);
     await expect(r.research.listReports()).resolves.toHaveLength(1);
+    respond(report);
+    await expect(r.research.listReportSummaries(50)).resolves.toEqual([
+      {
+        id: "report",
+        itemId: undefined,
+        query: "testing",
+        status: "pending",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        completedAt: undefined,
+        progress: undefined,
+      },
+    ]);
+    const summaryQuery = fake.queries.at(-1) ?? "";
+    expect(summaryQuery).toContain(
+      "SELECT id,item_id,query,status,created_at,completed_at,progress"
+    );
+    expect(summaryQuery).toContain("ORDER BY created_at DESC");
+    expect(summaryQuery).toContain("LIMIT ?");
+    expect(summaryQuery).not.toMatch(/\breport\b/);
+    expect(summaryQuery).not.toContain("sources");
+    expect(summaryQuery).not.toContain("model");
 
     const suggestion = {
       id: "sg",

@@ -394,6 +394,12 @@ export interface ResearchReportRecord {
   progress?: string | null;
 }
 
+/** Lightweight projection used by report-card lists and stale-run repair. */
+export type ResearchReportSummaryRecord = Pick<
+  ResearchReportRecord,
+  "id" | "itemId" | "query" | "status" | "createdAt" | "completedAt" | "progress"
+>;
+
 export interface ResearchSuggestionRecord {
   id: string;
   topicKey: string;
@@ -418,6 +424,7 @@ export interface ResearchRepository {
     >
   ): Promise<ResearchReportRecord | undefined>;
   listReports(limit?: number): Promise<ResearchReportRecord[]>;
+  listReportSummaries(limit?: number): Promise<ResearchReportSummaryRecord[]>;
   listPendingSuggestions(): Promise<ResearchSuggestionRecord[]>;
   findSuggestion(id: string): Promise<ResearchSuggestionRecord | undefined>;
   replacePendingSuggestions(

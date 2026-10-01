@@ -42,6 +42,7 @@ import type {
   RawContentRepository,
   RepositorySet,
   ResearchReportRecord,
+  ResearchReportSummaryRecord,
   ResearchRepository,
   ResearchSuggestionRecord,
   SettingsRepository,
@@ -880,6 +881,17 @@ class PostgresResearch implements ResearchRepository {
       progress: r.progress == null ? undefined : String(r.progress),
     };
   }
+  private reportSummary(r: Row): ResearchReportSummaryRecord {
+    return {
+      id: String(r.id),
+      itemId: r.item_id == null ? undefined : String(r.item_id),
+      query: String(r.query),
+      status: String(r.status),
+      createdAt: iso(r.created_at),
+      completedAt: r.completed_at == null ? undefined : iso(r.completed_at),
+      progress: r.progress == null ? undefined : String(r.progress),
+    };
+  }
   private suggestion(r: Row): ResearchSuggestionRecord {
     return {
       id: String(r.id),
@@ -922,6 +934,16 @@ class PostgresResearch implements ResearchRepository {
     return (
       await this.sql<Row[]>`SELECT * FROM research_reports ORDER BY created_at DESC LIMIT ${limit}`
     ).map((r) => this.report(r));
+  }
+  async listReportSummaries(limit = 20) {
+    return (
+      await this.sql<Row[]>`
+        SELECT id,item_id,query,status,created_at,completed_at,progress
+        FROM research_reports
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `
+    ).map((r) => this.reportSummary(r));
   }
   async listPendingSuggestions() {
     return (

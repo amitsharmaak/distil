@@ -91,6 +91,21 @@ describe("tenant-bound PostgreSQL repository access", () => {
     expect((fake.sql.begin as jest.Mock).mock.calls).toHaveLength(1);
   });
 
+  it("runs the research card projection inside the verified tenant transaction", async () => {
+    const fake = sqlDouble();
+    const repositories = createPostgresRepositoryAccess(fake.sql).getTenantRepositories(context);
+
+    await expect(repositories.research.listReportSummaries(50)).resolves.toEqual([]);
+
+    expect((fake.sql.begin as jest.Mock).mock.calls).toHaveLength(1);
+    expect(fake.queries.filter((query) => query.includes("AS search_path"))).toHaveLength(1);
+    expect(
+      fake.queries.some((query) =>
+        query.includes("SELECT id,item_id,query,status,created_at,completed_at,progress")
+      )
+    ).toBe(true);
+  });
+
   it("shares one tenant transaction across repositories in withTenantRepositories", async () => {
     const fake = sqlDouble();
     const result = await withTenantRepositories(fake.sql, context, async (repositories) => {
