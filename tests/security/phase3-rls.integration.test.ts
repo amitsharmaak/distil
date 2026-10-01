@@ -360,7 +360,8 @@ describeWithTenantMigration(
     });
 
     it("keeps browser connections tenant-scoped, kind-scoped and independent of the manual token", async () => {
-      const repositoriesFor = (session: typeof fixture.alpha.auth.session) =>
+      const repositoriesFor =
+        (session: typeof fixture.alpha.auth.session) =>
         <T>(run: (repositories: ReturnType<typeof createPostgresRepositories>) => Promise<T>) =>
           pool.asTenant(session, (transaction) =>
             run(createPostgresRepositories(transaction as unknown as Sql))

@@ -182,11 +182,6 @@ async function getStoredConfig() {
   };
 }
 
-async function getConfiguration() {
-  const config = await getStoredConfig();
-  return config?.token ? config : null;
-}
-
 async function accountKeyFor(origin, accountId) {
   const input = new TextEncoder().encode(`${origin}\n${accountId}`);
   const digest = await crypto.subtle.digest("SHA-256", input);
