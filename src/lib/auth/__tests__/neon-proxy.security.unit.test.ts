@@ -106,6 +106,9 @@ describe("composed Neon proxy authorization", () => {
     // The connect page hosts the sign-in card, but every API it calls stays behind the session.
     expect(isPublicNeonPath("/extension/connect")).toBe(true);
     expect(isPublicNeonPath("/extension")).toBe(false);
+    // The privacy policy must be readable by Chrome Web Store reviewers without an account.
+    expect(isPublicNeonPath("/privacy")).toBe(true);
+    expect(isPublicNeonPath("/privacy/anything")).toBe(false);
     expect(isPublicNeonPath("/api/v1/extension/connections")).toBe(false);
     expect(isPublicNeonPath("/api/v1/extension/connections/123")).toBe(false);
     expect(isPublicNeonPath("/api/health")).toBe(true);
