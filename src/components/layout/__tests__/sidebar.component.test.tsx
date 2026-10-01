@@ -49,10 +49,10 @@ describe("Sidebar", () => {
   it("renders the expanded brand and all navigation destinations", () => {
     render(<Sidebar />);
 
-    expect(screen.getByRole("img", { name: "Distil logo" })).toHaveAttribute(
-      "data-src",
-      "/logo.svg"
-    );
+    const logo = screen.getByRole("img", { name: "Distil logo" });
+    expect(logo.tagName.toLowerCase()).toBe("svg");
+    expect(logo).toHaveAttribute("width", "28");
+    expect(logo).toHaveAttribute("height", "28");
     expect(screen.getByText("distil")).toBeInTheDocument();
     expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");

@@ -8,6 +8,7 @@ import {
   todaySearchEverythingHref,
   todayView,
   todayViewKey,
+  toKnowledgeItem,
   topicOptions,
 } from "@/lib/feed/today-selection";
 
@@ -30,6 +31,37 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     ...overrides,
   } as FeedItem;
 }
+
+describe("toKnowledgeItem", () => {
+  it("carries story metadata and effective area through the Today presentation mapping", () => {
+    const metadata = {
+      thumbnailUrl: "https://example.test/image.jpg",
+      readingMinutes: 9,
+      duration: "8:42",
+      url: "https://example.test/story",
+      publication: "Example Review",
+      author: "A writer",
+      createdAt: "2026-09-07T00:00:00.000Z",
+      contentType: "video" as const,
+      priority: "medium" as const,
+      area: "learning" as const,
+      aiArea: "work" as const,
+      aiSummary: "## TL;DR\nA useful brief.",
+    };
+    expect(toKnowledgeItem(item(metadata))).toMatchObject({
+      ...metadata,
+      source: "Example Review",
+      href: "/feed/a",
+      summary: metadata.aiSummary,
+    });
+  });
+
+  it("uses the site when publication is absent, never author or capture method", () => {
+    expect(
+      toKnowledgeItem(item({ author: "A writer", sourceType: "browser-extension" })).source
+    ).toBe("example.test");
+  });
+});
 
 describe("todayFilterState", () => {
   it("always scopes to unread, active items and ignores cursors", () => {

@@ -44,16 +44,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen">
         <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         <div
-          className={`min-w-0 flex-1 transition-all duration-300 ${
-            sidebarCollapsed ? "md:pl-16" : "md:pl-64"
-          }`}
+          data-sidebar-collapsed={sidebarCollapsed}
+          className="distil-shell-content min-w-0 flex-1 transition-[padding-left] duration-200 motion-reduce:transition-none"
         >
           <Topbar backHref={reader ? "/feed" : undefined} />
           <main
             className={
               reader
-                ? "px-4 py-4 sm:px-6 sm:py-6 md:px-8"
-                : "px-4 py-4 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 md:px-8 md:pb-6"
+                ? "px-4 py-5 sm:px-6 sm:py-8 md:px-8"
+                : "px-4 py-5 pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-8 md:px-8 md:pb-8"
             }
           >
             {children}

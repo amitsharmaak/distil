@@ -25,17 +25,18 @@ jest.mock("@/components/layout/theme-toggle", () => ({
 describe("Topbar", () => {
   beforeEach(() => {
     mockPush.mockClear();
-    jest.spyOn(Date.prototype, "toLocaleDateString").mockReturnValue("Wednesday, January 15");
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it("renders the date and an icon-only theme toggle", () => {
+  it("renders a compact wordmark, page title and phone theme toggle", () => {
     render(<Topbar />);
 
-    expect(screen.getByText("Wednesday, January 15")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Distil home" })).toHaveTextContent("distil");
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.getByRole("banner")).toHaveClass("md:hidden");
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "true");
   });
 
@@ -55,11 +56,11 @@ describe("Topbar", () => {
     expect(screen.queryByRole("button", { name: "Ask Distil" })).not.toBeInTheDocument();
   });
 
-  it("replaces the date with a back link on reader routes", () => {
+  it("replaces the wordmark with a back link on reader routes", () => {
     render(<Topbar backHref="/feed" />);
 
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
-    expect(screen.queryByText("Wednesday, January 15")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Distil home" })).not.toBeInTheDocument();
   });
 
   it("u and Escape go back on reader routes; nothing on other routes", () => {

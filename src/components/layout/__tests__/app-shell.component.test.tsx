@@ -42,13 +42,12 @@ describe("AppShell", () => {
     );
 
     const content = screen.getByText("Content").parentElement?.parentElement;
-    expect(content).toHaveClass("md:pl-64");
-    expect(content).not.toHaveClass("md:pl-16");
+    expect(content).toHaveClass("distil-shell-content");
+    expect(content).toHaveAttribute("data-sidebar-collapsed", "false");
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
-    expect(content).toHaveClass("md:pl-16");
-    expect(content).not.toHaveClass("md:pl-64");
+    expect(content).toHaveAttribute("data-sidebar-collapsed", "true");
   });
 
   it("shows the mobile tab bar and reserves space for it on list routes", () => {

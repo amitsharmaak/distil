@@ -92,6 +92,28 @@ beforeEach(async () => {
 afterAll(async () => harness.stop());
 
 describe("PostgresFeedQuery", () => {
+  it("returns feed-only images and content-length estimates without returning article bodies", async () => {
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    await repos.items.insert(
+      item("long-read", {
+        fullContent: "<p>Synthetic body marker " + "word ".repeat(1200) + "</p>",
+        thumbnailUrl: "https://example.test/story.jpg",
+      })
+    );
+    await repos.items.insert(item("summary-only", { summary: "word ".repeat(300) }));
+    await repos.items.insert(item("empty", { summary: "", fullContent: "" }));
+    const page = await repos.feed.list({ sort: "recent" });
+    const items = new Map(page.items.map((entry) => [entry.id, entry]));
+    expect(items.get("long-read")).toMatchObject({
+      thumbnailUrl: "https://example.test/story.jpg",
+      readingMinutes: 6,
+    });
+    expect(items.get("summary-only")?.readingMinutes).toBe(2);
+    expect(items.get("empty")?.readingMinutes).toBe(0);
+    for (const entry of page.items) expect(entry).not.toHaveProperty("fullContent");
+    expect(JSON.stringify(page)).not.toContain("Synthetic body marker");
+  });
+
   it("applies OR within facets, AND across facets, excludes archive by default, and keyset-paginates", async () => {
     const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
     await repos.items.insert(item("match-a", { topics: ["engineering", "ai"], priority: "high" }));
@@ -115,7 +137,7 @@ describe("PostgresFeedQuery", () => {
     });
     expect(first.items).toHaveLength(1);
     expect(first.items[0].id).toBe("match-b");
-    expect(first.items[0].rank.reasons).toContain("Item priority: high");
+    expect(first.items[0].rank.reasons).toEqual(["Recent items receive a small tie-break"]);
     expect(first.nextCursor).toBeTruthy();
 
     const second = await feed.list({

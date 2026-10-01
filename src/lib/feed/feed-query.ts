@@ -55,7 +55,8 @@ export interface FeedRankExplanation {
 }
 
 /** Feed rows are the summary projection: list surfaces never receive article bodies. */
-export type FeedItem = ContentItemSummary & { rank: FeedRankExplanation };
+export type FeedItem = ContentItemSummary &
+  Pick<ContentItem, "thumbnailUrl"> & { rank: FeedRankExplanation };
 
 export interface FeedPage {
   items: FeedItem[];
@@ -129,8 +130,13 @@ interface Cursor {
 
 type Row = Record<string, unknown>;
 
-/** Static summary projection for the `items i` alias; never built from caller input. */
-const FEED_ITEM_COLUMNS = itemSummaryColumnsSql("i");
+/**
+ * Feed-only display metadata. About 200 words of six characters per minute;
+ * PostgreSQL returns only the estimate, never the article body. Other list
+ * queries keep their existing shared summary projection.
+ */
+const FEED_ITEM_COLUMNS = `${itemSummaryColumnsSql("i")}, i.thumbnail_url,
+  CEIL(char_length(COALESCE(NULLIF(i.full_content, ''), i.summary, '')) / 1200.0)::integer AS reading_minutes`;
 
 function priorityScore(priority: Priority): number {
   return priority === "high" ? 90 : priority === "medium" ? 50 : 20;
@@ -307,9 +313,9 @@ export function explainFeedRank(
   const reasons = item.manualPriority
     ? [`Manual priority: ${item.manualPriority}`, "Recent items receive a small tie-break"]
     : [
-        sort === "priority" || item.aiPriorityScore === undefined
-          ? `Item priority: ${item.priority}`
-          : "Current baseline priority score",
+        ...(sort === "for_you" && item.aiPriorityScore !== undefined
+          ? ["Current baseline priority score"]
+          : []),
         "Recent items receive a small tie-break",
       ];
   if (!item.manualPriority && affinityScore !== 0) {
@@ -526,6 +532,8 @@ export class PostgresFeedQuery {
       if (sort !== "recent") rank.score = Number(row.feed_rank_score);
       return {
         ...item,
+        thumbnailUrl: row.thumbnail_url == null ? undefined : String(row.thumbnail_url),
+        readingMinutes: row.reading_minutes == null ? undefined : Number(row.reading_minutes),
         rank,
       };
     });

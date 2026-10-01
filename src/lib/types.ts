@@ -42,6 +42,8 @@ export interface ContentItem {
   createdAt: string;
   duration?: string;
   thumbnailUrl?: string;
+  /** Feed-only estimate derived from content length, without sending the article body. */
+  readingMinutes?: number;
   /** Hyperlinks extracted from article body on ingestion. */
   extractedLinks?: ExtractedLink[];
   /** ISO timestamp of when content extraction was last attempted (success or failure). */
