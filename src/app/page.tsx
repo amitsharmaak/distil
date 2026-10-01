@@ -30,13 +30,14 @@ import { readPhase2FeatureFlags } from "@/lib/phase2/feature-flags";
 import { loadPageData } from "@/lib/server-render/page-data";
 
 type SearchParams = Record<string, string | string[] | undefined>;
+type TimedToday = { view: TodayInitial | null; updatedAt?: number };
 
-async function loadToday(params: SearchParams): Promise<TodayInitial | null> {
+async function loadToday(params: SearchParams): Promise<TimedToday> {
   const state = todayFilterState(params);
   let query: FeedQueryParams;
   if (isTodayFiltered(state)) {
     const parsed = parseFeedQuery(todayResultsSearch(state));
-    if (!parsed.ok) return null;
+    if (!parsed.ok) return { view: null };
     query = parsed.data;
   } else {
     query = todayFeedParams();
@@ -45,10 +46,11 @@ async function loadToday(params: SearchParams): Promise<TodayInitial | null> {
   const loaded = await loadPageData("/", (repositories) =>
     loadFeedPage(repositories, query, { personalization: flags.personalization })
   );
-  if (!loaded) return null;
-  return todayView(state, loaded);
+  if (!loaded) return { view: null };
+  return { view: todayView(state, loaded), updatedAt: Date.now() };
 }
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  return <TodayExperience initial={await loadToday(await searchParams)} />;
+  const initial = await loadToday(await searchParams);
+  return <TodayExperience initial={initial.view} initialDataUpdatedAt={initial.updatedAt} />;
 }
