@@ -1,6 +1,6 @@
 import * as schema from "../schema";
 
-it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => {
+it("exports every PostgreSQL table through the phone-pairing stage", () => {
   expect(Object.keys(schema).sort()).toEqual(
     [
       "agentActions",
@@ -44,6 +44,8 @@ it("exports every PostgreSQL table through the Phase 3 tenant expansion", () => 
       "researchSuggestionSources",
       "researchSuggestions",
       "sessionMetadata",
+      "shortcutPairingRateLimits",
+      "shortcutPairings",
       "usageCounters",
       "userEntitlements",
       "userQuotas",
