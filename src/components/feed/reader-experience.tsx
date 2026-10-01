@@ -193,23 +193,3 @@ export function ReaderDisplaySettings() {
     </Popover>
   );
 }
-
-export function ReaderHero({ src, title }: { src: string; title: string }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className="mb-8 aspect-[16/9] md:aspect-[21/9] overflow-hidden rounded-xl bg-muted">
-      {/* Captured media stays remote; it is never proxied or sent a referrer. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={title}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        className="h-full w-full object-cover"
-        style={{ visibility: failed ? "hidden" : "visible" }}
-        onError={() => setFailed(true)}
-      />
-    </div>
-  );
-}

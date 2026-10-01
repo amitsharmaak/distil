@@ -153,14 +153,8 @@
   max-width: var(--reader-line-width, 68ch);
 }
 .distil-reader-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2.5rem;
   max-width: var(--reader-line-width, 68ch);
   margin-inline: auto;
-}
-.distil-reader-rail {
-  min-width: 0;
 }
 .distil-reader-progress {
   position: fixed;
@@ -190,17 +184,6 @@
   .distil-shell-content[data-sidebar-collapsed="false"] .distil-action-bar,
   .distil-shell-content[data-sidebar-collapsed="false"] .distil-reader-progress {
     left: var(--sidebar-width);
-  }
-}
-@media (min-width: 1280px) {
-  .distil-reader-layout {
-    grid-template-columns: minmax(0, 1fr) 15rem;
-    align-items: start;
-    gap: 3rem;
-    max-width: none;
-  }
-  .distil-reader-rail {
-    padding-top: 6rem;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -80,6 +80,21 @@ describe("AppShell", () => {
     expect(screen.getByText("Topbar")).toHaveAttribute("data-back", "/feed");
   });
 
+  it("keeps reader navigation quiet until the sidebar shortcut is used", () => {
+    mockUsePathname.mockReturnValue("/feed/item-42");
+    const { container } = render(
+      <AppShell>
+        <p>Article</p>
+      </AppShell>
+    );
+    const shell = container.querySelector(".distil-shell");
+    expect(shell).toHaveAttribute("data-reader-navigation", "false");
+    fireEvent.keyDown(window, { key: "[" });
+    expect(shell).toHaveAttribute("data-reader-navigation", "true");
+    fireEvent.keyDown(window, { key: "[" });
+    expect(shell).toHaveAttribute("data-reader-navigation", "false");
+  });
+
   it("renders the login route without any shell chrome", () => {
     mockUsePathname.mockReturnValue("/login");
 

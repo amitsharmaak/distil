@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Play, ExternalLink } from "lucide-react";
+import { useId, useState } from "react";
+import { Play, ExternalLink, ChevronDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { ContentType } from "@/lib/types";
@@ -112,55 +112,46 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
   );
 }
 
-/** The captured thumbnail is the video header until the reader chooses to load its player. */
-export function VideoHero({
-  thumbnailUrl,
-  title,
+/** Keep the reader about the text until its video player is requested. */
+export function VideoDisclosure({
   nativeVideoUrl,
   ...video
-}: VideoEmbedProps & { thumbnailUrl: string; title: string; nativeVideoUrl?: string }) {
-  const [playing, setPlaying] = useState(false);
-  const [failed, setFailed] = useState(false);
+}: VideoEmbedProps & { nativeVideoUrl?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const playerId = useId();
   return (
-    <div className="relative mb-8 aspect-video overflow-hidden rounded-xl bg-muted">
-      {playing ? (
-        nativeVideoUrl ? (
-          <video
-            src={nativeVideoUrl}
-            controls
-            autoPlay
-            preload="metadata"
-            className="h-full w-full"
-          />
-        ) : (
-          <VideoEmbed {...video} />
-        )
-      ) : (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={thumbnailUrl}
-            alt={title}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            className="h-full w-full object-cover"
-            style={{ visibility: failed ? "hidden" : "visible" }}
-            onError={() => setFailed(true)}
-          />
-          <button
-            type="button"
-            aria-label="Play video"
-            onClick={() => setPlaying(true)}
-            className="absolute inset-0 flex h-full w-full items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <span className="flex min-h-12 items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-medium text-primary-foreground shadow-lg">
-              <Play className="h-5 w-5 fill-current" />
-              Play video
-            </span>
-          </button>
-        </>
-      )}
+    <div className="mb-4">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={playerId}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex min-h-11 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Play className="h-4 w-4" />
+        <span>{expanded ? "Hide video" : "Play video"}</span>
+        {video.duration && <span className="text-xs">· {video.duration}</span>}
+        <ChevronDown
+          className={`h-4 w-4 transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div id={playerId} hidden={!expanded}>
+        {expanded && (
+          <div className="mt-2 overflow-hidden rounded-lg">
+            {nativeVideoUrl ? (
+              <video
+                src={nativeVideoUrl}
+                controls
+                autoPlay
+                preload="metadata"
+                className="aspect-video w-full bg-muted"
+              />
+            ) : (
+              <VideoEmbed {...video} />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

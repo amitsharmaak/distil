@@ -9,7 +9,7 @@ import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/shortcuts-help-dialog";
 import { useGlobalShortcuts } from "@/components/shortcuts/use-global-shortcuts";
 
-/** Reader routes (`/feed/<id>`) drop the mobile tab bar so only the action bar stays fixed. */
+/** Reader routes (`/feed/<id>`) use a quiet shell with navigation available on demand. */
 export function isReaderPath(pathname: string): boolean {
   return /^\/feed\/[^/]+$/.test(pathname);
 }
@@ -21,8 +21,13 @@ function GlobalShortcuts({ toggleSidebar }: { toggleSidebar: () => void }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const reader = isReaderPath(pathname);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const toggleSidebar = useCallback(() => setSidebarCollapsed((v) => !v), []);
+  const [readerNavigationVisible, setReaderNavigationVisible] = useState(false);
+  const toggleSidebar = useCallback(() => {
+    if (reader) setReaderNavigationVisible((visible) => !visible);
+    else setSidebarCollapsed((collapsed) => !collapsed);
+  }, [reader]);
 
   if (
     pathname === "/login" ||
@@ -35,13 +40,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <main className="min-h-screen">{children}</main>;
   }
 
-  const reader = isReaderPath(pathname);
-
   return (
     <ShortcutsProvider>
       <GlobalShortcuts toggleSidebar={toggleSidebar} />
       <ShortcutsHelpDialog />
-      <div className="flex min-h-screen">
+      <div
+        className="distil-shell flex min-h-screen"
+        data-reader={reader}
+        data-reader-navigation={readerNavigationVisible}
+      >
         <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         <div
           data-sidebar-collapsed={sidebarCollapsed}

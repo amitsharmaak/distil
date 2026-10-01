@@ -61,6 +61,9 @@ describe("Topbar", () => {
 
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
     expect(screen.queryByRole("link", { name: "Distil home" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.getByRole("banner")).not.toHaveClass("md:hidden");
+    expect(screen.getByRole("banner")).not.toHaveClass("sticky");
   });
 
   it("u and Escape go back on reader routes; nothing on other routes", () => {

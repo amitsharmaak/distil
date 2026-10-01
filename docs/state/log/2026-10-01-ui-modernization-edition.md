@@ -1,8 +1,8 @@
 ---
 topic: ui-modernization
-title: Daily edition UI modernization — Wave 2 visual approval checkpoint
+title: Daily edition UI modernization — text-first reader revision for review
 date: 2026-10-01
-time: 14:05
+time: 09:11
 status: in-progress
 branch: codex/ui-modernization
 ---
@@ -24,6 +24,13 @@ Sub-agents edit disjoint files in the task worktree; root alone commits their in
   Amit approves the screenshots. Root handles gaps outside their ownership lists.
 
 ## Shared design contract
+
+**Amit's reader principle (revision after first review):** minimize clutter while consuming
+information. Today and Feed retain their blended imagery; the reader follows Safari Reader's
+text-first direction. One centered text column, no captured hero image, no persistent sidebar or
+notes rail. Original inline images remain when part of the content; video playback and
+notes/highlights open on demand. This explicitly supersedes the original reader-hero and xl-rail
+requirements, while retaining card imagery and existing functionality.
 
 Warm paper and existing blue primary remain. Semantic CSS variables and Tailwind colors:
 `success`, `success-foreground`, `success-muted`; `warning`, `warning-foreground`,
@@ -135,6 +142,29 @@ versions). `gallery.html` in its parent is the before/after review, served local
 `reader-inspection.json` and `keyboard-inspection.json` hold the local measurements. Baseline and
 checkpoint evidence are ignored local artifacts, retained in this worktree for final PR evidence.
 
+## Reader revision after visual feedback
+
+First checkpoint: `d80dceb`. Amit approved the imagery on the larger discovery pages and asked
+for a Safari Reader-like, uncluttered consumption view. The revision in this checkpoint removes
+article heroes, collapses video playback behind a compact control, and centers the text at all
+widths. Notes/highlights sit behind a disclosure after the article and open automatically on text
+selection. Summary/Original and Brief/Detailed share one understated toolbar. The reader shell
+hides desktop navigation by default; the existing `[` shortcut reveals/hides it. Back and theme
+controls scroll away. Today and Feed retain their approved design.
+
+Root re-ran `npm run check`: 256 suites / 2,141 tests passed, including TypeScript/formatting and
+zero lint errors (five pre-existing warnings). Re-ran 12 reader axe/overflow combinations (three
+views, two themes, two widths): no violations or horizontal overflow. Browser interaction checks
+passed for sidebar shortcut, 360px action targets/row, persistent Aa settings, summary shortcuts,
+overflow actions, progress, collapsed/reopened notes with save/reload/delete, and on-demand video.
+Reader agent's scoped 36 tests additionally check inline original-image preservation, no hero,
+selection-triggered notes, and unloading the video on collapse.
+
+Revised screenshots replace the 12 reader views under `checkpoint/`; `first-checkpoint/` preserves
+the first presented design. The gallery now defaults to reader summary and allows comparison
+against either the first design or the original app. Reader inspection and screenshot scripts
+remain local ignored artifacts. Official final E2E remains pending for Wave 4.
+
 ## External resources
 
 No hosted resources changed. Dedicated Docker container `distil-ui-modernization-postgres`, bound
@@ -145,11 +175,11 @@ ignored `test-results/ui-modernization/`; no credentials in the state log or art
 
 ## Next
 
-**Paused at the user-requested Wave 2 direction approval.** No E/F work, PR, push, merge or
+**Paused for review of the revised reader at the user-requested Wave 2 checkpoint.** No E/F work, PR, push, merge or
 Production deployment yet. The task is unfinished.
 
-1. Review the gallery with Amit. Apply requested visual corrections, or continue only after he
-   approves the direction.
+1. Review the revised text-first reader with Amit. Today and Feed are accepted; continue with
+   E/F once he approves the revised reader direction.
 2. Resume in `/Users/amitsharma/Projects/distil-ui-modernization` on `codex/ui-modernization`.
    Run `npm run state`, verify git status/HEAD and that the owned Docker container (5440), preview
    (3302) and gallery (3303) are running. Do not reseed unless needed; scripts live in

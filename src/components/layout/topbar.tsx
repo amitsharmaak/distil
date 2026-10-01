@@ -40,7 +40,7 @@ function pageTitle(pathname: string): string {
   return titles[pathname] ?? "Distil";
 }
 
-/** A compact phone header. Reader shortcuts stay registered at every viewport width. */
+/** Compact navigation; reader controls scroll away with the page at every width. */
 export function Topbar({
   backHref,
 }: {
@@ -56,7 +56,13 @@ export function Topbar({
   useShortcut(BACK_ESC, goBack, !!backHref);
 
   return (
-    <header className="distil-topbar sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur md:hidden">
+    <header
+      className={
+        backHref
+          ? "distil-topbar mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6"
+          : "distil-topbar sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur md:hidden"
+      }
+    >
       {backHref ? (
         <Link
           href={backHref}
@@ -75,9 +81,11 @@ export function Topbar({
           distil
         </Link>
       )}
-      <span className="border-l border-border pl-3 text-sm font-medium text-muted-foreground">
-        {pageTitle(pathname)}
-      </span>
+      {!backHref && (
+        <span className="border-l border-border pl-3 text-sm font-medium text-muted-foreground">
+          {pageTitle(pathname)}
+        </span>
+      )}
       <ThemeToggle
         collapsed
         registerShortcut={false}

@@ -316,3 +316,15 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Reader navigation is opt-in with the sidebar shortcut; the article stays centered when it is closed. */
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-sidebar {
+  display: none;
+}
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-shell-content {
+  padding-left: 0;
+}
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-action-bar,
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-reader-progress {
+  left: 0;
+}

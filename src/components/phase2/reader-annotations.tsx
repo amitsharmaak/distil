@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Highlighter, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { ChevronDown, Highlighter, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -111,14 +111,16 @@ export function ReaderAnnotations({
   itemId,
   children,
   header,
-  rail,
+  notes,
 }: {
   itemId: string;
   children: React.ReactNode;
   header?: React.ReactNode;
-  rail?: React.ReactNode;
+  notes?: React.ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const disclosureId = useId();
+  const [expanded, setExpanded] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selection, setSelection] = useState<SelectionAnchor | null>(null);
   const [reanchorId, setReanchorId] = useState<string | null>(null);
@@ -169,6 +171,7 @@ export function ReaderAnnotations({
     setError(null);
     setNotice(null);
     setSelection(anchor);
+    setExpanded(true);
     if (reanchorId) setComment(annotations.find((entry) => entry.id === reanchorId)?.comment ?? "");
   }, [annotations, reanchorId]);
 
@@ -297,177 +300,191 @@ export function ReaderAnnotations({
         </div>
       </div>
 
-      <aside className="distil-reader-rail space-y-6" aria-label="Highlights and notes">
-        <section
-          className="border-t pt-6 xl:border-t-0 xl:pt-0"
-          aria-labelledby="highlights-heading"
+      <aside className="mt-10 border-t pt-3" aria-label="Highlights and notes">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={disclosureId}
+          onClick={() => setExpanded((value) => !value)}
+          className="flex min-h-11 w-full items-center gap-2 rounded-md text-left text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <div className="flex items-center gap-2">
-            <Highlighter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            <h2
-              id="highlights-heading"
-              className="text-xs font-medium uppercase tracking-widest text-muted-foreground"
-            >
-              Highlights
-            </h2>
-            {!loading && activeCount > 0 && (
-              <span className="text-xs text-muted-foreground">{activeCount} active</span>
-            )}
-          </div>
+          <Highlighter className="h-4 w-4" aria-hidden />
+          Notes and highlights
+          {!loading && activeCount > 0 && <span className="text-xs">({activeCount})</span>}
+          <ChevronDown
+            className={`ml-auto h-4 w-4 transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+            aria-hidden
+          />
+        </button>
+        <div id={disclosureId} hidden={!expanded} className="space-y-6 pt-4">
+          <section aria-labelledby="highlights-heading">
+            <div className="flex items-center gap-2">
+              <Highlighter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <h2
+                id="highlights-heading"
+                className="text-xs font-medium uppercase tracking-widest text-muted-foreground"
+              >
+                Highlights
+              </h2>
+              {!loading && activeCount > 0 && (
+                <span className="text-xs text-muted-foreground">{activeCount} active</span>
+              )}
+            </div>
 
-          {selection && (
-            <div
-              className="mt-4 rounded-lg border bg-card p-3"
-              role="dialog"
-              aria-label="Save highlight"
-            >
-              <q className="block text-sm font-medium">{selection.quote}</q>
-              <label className="mt-3 block text-sm font-medium" htmlFor="highlight-comment">
-                Comment (optional)
-              </label>
-              <textarea
-                id="highlight-comment"
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-                className="mt-1 min-h-20 w-full rounded-md border bg-background p-2 text-base"
-                disabled={saving}
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  onClick={() => void saveSelection()}
+            {selection && (
+              <div
+                className="mt-4 rounded-lg border bg-card p-3"
+                role="dialog"
+                aria-label="Save highlight"
+              >
+                <q className="block text-sm font-medium">{selection.quote}</q>
+                <label className="mt-3 block text-sm font-medium" htmlFor="highlight-comment">
+                  Comment (optional)
+                </label>
+                <textarea
+                  id="highlight-comment"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  className="mt-1 min-h-20 w-full rounded-md border bg-background p-2 text-base"
                   disabled={saving}
-                  className="min-h-11 gap-2"
-                >
-                  <Save className="h-4 w-4" />
-                  {reanchorId ? "Save re-anchor" : "Save highlight"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={cancelSelection}
-                  disabled={saving}
-                  className="min-h-11 gap-2"
-                >
-                  <X className="h-4 w-4" />
-                  Cancel
-                </Button>
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void saveSelection()}
+                    disabled={saving}
+                    className="min-h-11 gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {reanchorId ? "Save re-anchor" : "Save highlight"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelSelection}
+                    disabled={saving}
+                    className="min-h-11 gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {loading ? (
-            <div role="status" aria-label="Loading highlights" className="mt-4 space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : annotations.length ? (
-            <ul className="mt-4 space-y-3">
-              {annotations.map((annotation) => (
-                <li key={annotation.id} className="rounded-lg border p-3">
-                  <q className="block font-medium">{annotation.selectedQuote}</q>
-                  {annotation.status === "orphaned" && (
-                    <p role="status" className="mt-2 text-sm text-warning">
-                      This highlight no longer matches the source. Select its replacement text and
-                      re-anchor it.
-                    </p>
-                  )}
-                  {editingId === annotation.id ? (
-                    <>
-                      <label
-                        className="mt-2 block text-sm font-medium"
-                        htmlFor={`edit-comment-${annotation.id}`}
-                      >
-                        Comment
-                      </label>
-                      <textarea
-                        id={`edit-comment-${annotation.id}`}
-                        value={editingComment}
-                        onChange={(event) => setEditingComment(event.target.value)}
-                        className="mt-1 min-h-20 w-full rounded-md border bg-background p-2 text-base"
+            {loading ? (
+              <div role="status" aria-label="Loading highlights" className="mt-4 space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            ) : annotations.length ? (
+              <ul className="mt-4 space-y-3">
+                {annotations.map((annotation) => (
+                  <li key={annotation.id} className="rounded-lg border p-3">
+                    <q className="block font-medium">{annotation.selectedQuote}</q>
+                    {annotation.status === "orphaned" && (
+                      <p role="status" className="mt-2 text-sm text-warning">
+                        This highlight no longer matches the source. Select its replacement text and
+                        re-anchor it.
+                      </p>
+                    )}
+                    {editingId === annotation.id ? (
+                      <>
+                        <label
+                          className="mt-2 block text-sm font-medium"
+                          htmlFor={`edit-comment-${annotation.id}`}
+                        >
+                          Comment
+                        </label>
+                        <textarea
+                          id={`edit-comment-${annotation.id}`}
+                          value={editingComment}
+                          onChange={(event) => setEditingComment(event.target.value)}
+                          className="mt-1 min-h-20 w-full rounded-md border bg-background p-2 text-base"
+                          disabled={saving}
+                        />
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={() => void saveComment(annotation)}
+                            disabled={saving}
+                            className="min-h-11 gap-2"
+                          >
+                            <Save className="h-4 w-4" /> Save comment
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setEditingId(null)}
+                            disabled={saving}
+                            className="min-h-11"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      annotation.comment && (
+                        <p className="mt-2 text-sm text-muted-foreground">{annotation.comment}</p>
+                      )
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-11 gap-2"
                         disabled={saving}
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          type="button"
-                          onClick={() => void saveComment(annotation)}
-                          disabled={saving}
-                          className="min-h-11 gap-2"
-                        >
-                          <Save className="h-4 w-4" /> Save comment
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setEditingId(null)}
-                          disabled={saving}
-                          className="min-h-11"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    annotation.comment && (
-                      <p className="mt-2 text-sm text-muted-foreground">{annotation.comment}</p>
-                    )
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-11 gap-2"
-                      disabled={saving}
-                      onClick={() => {
-                        setEditingId(annotation.id);
-                        setEditingComment(annotation.comment ?? "");
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" /> Edit comment
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-11 gap-2"
-                      disabled={saving}
-                      onClick={() => {
-                        setReanchorId(annotation.id);
-                        setComment(annotation.comment ?? "");
-                        setNotice("Select replacement text above");
-                      }}
-                    >
-                      <RefreshCw className="h-4 w-4" /> Re-anchor
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-11 gap-2 text-destructive hover:text-destructive"
-                      disabled={saving}
-                      onClick={() => void removeAnnotation(annotation)}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              No highlights yet. Select text above to save one.
-            </p>
-          )}
-          {(error || notice) && (
-            <p
-              className={
-                error ? "mt-3 text-sm text-destructive" : "mt-3 text-sm text-muted-foreground"
-              }
-              role={error ? "alert" : "status"}
-            >
-              {error || notice}
-            </p>
-          )}
-        </section>
-        {rail}
+                        onClick={() => {
+                          setEditingId(annotation.id);
+                          setEditingComment(annotation.comment ?? "");
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" /> Edit comment
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-11 gap-2"
+                        disabled={saving}
+                        onClick={() => {
+                          setReanchorId(annotation.id);
+                          setComment(annotation.comment ?? "");
+                          setNotice("Select replacement text above");
+                        }}
+                      >
+                        <RefreshCw className="h-4 w-4" /> Re-anchor
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-11 gap-2 text-destructive hover:text-destructive"
+                        disabled={saving}
+                        onClick={() => void removeAnnotation(annotation)}
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No highlights yet. Select text above to save one.
+              </p>
+            )}
+            {(error || notice) && (
+              <p
+                className={
+                  error ? "mt-3 text-sm text-destructive" : "mt-3 text-sm text-muted-foreground"
+                }
+                role={error ? "alert" : "status"}
+              >
+                {error || notice}
+              </p>
+            )}
+          </section>
+          {notes}
+        </div>
       </aside>
     </div>
   );

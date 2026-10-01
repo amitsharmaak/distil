@@ -223,3 +223,18 @@ it("s, d and Shift+S drive the summary controls and expose their keys", async ()
     )
   );
 });
+
+it("preserves inline images in the original article while keeping the summary text-first", () => {
+  render(
+    <AISummary
+      itemId="one"
+      ogSummary="An article"
+      initialBriefSummary="Brief text"
+      fullContent='<p>Original article with a meaningful diagram.</p><img src="https://example.test/diagram.png" alt="System diagram" />'
+      fullContentIsHtml
+    />
+  );
+  expect(screen.queryByRole("img", { name: "System diagram" })).not.toBeInTheDocument();
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Original" }), { button: 0, ctrlKey: false });
+  expect(screen.getByRole("img", { name: "System diagram" })).toBeVisible();
+});

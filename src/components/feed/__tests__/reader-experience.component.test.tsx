@@ -3,10 +3,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import {
   ReaderExperience,
   ReaderDisplaySettings,
-  ReaderHero,
   READER_PREFERENCES_KEY,
 } from "../reader-experience";
-import { VideoHero } from "../video-embed";
+import { VideoDisclosure } from "../video-embed";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 
 jest.mock("next/navigation", () => ({
@@ -75,39 +74,27 @@ it("ignores malformed storage values and leaves readable defaults", () => {
   );
 });
 
-it("hides a failed remote hero without collapsing its reserved image box", () => {
-  render(<ReaderHero src="https://example.test/image.jpg" title="Article image" />);
-  const image = screen.getByRole("img", { name: "Article image" });
-  expect(image).toHaveAttribute("loading", "lazy");
-  expect(image).toHaveAttribute("decoding", "async");
-  expect(image).toHaveAttribute("referrerPolicy", "no-referrer");
-  fireEvent.error(image);
-  expect(image).not.toBeVisible();
-  expect(image.parentElement).toBeVisible();
-  expect(image.parentElement).toHaveClass("aspect-[16/9]");
-});
-
-it("replaces the captured video poster with one player in the same fixed box", () => {
-  const { container } = render(
-    <VideoHero
-      thumbnailUrl="https://example.test/video.jpg"
-      title="A video"
+it("keeps video collapsed until requested and unloads the player when hidden", () => {
+  render(
+    <VideoDisclosure
       contentType="video"
       url="https://www.youtube.com/watch?v=example123"
+      duration="12:30"
     />
   );
-  const box = container.firstElementChild;
-  expect(box).toHaveClass("aspect-video");
-  expect(screen.getByRole("img", { name: "A video" })).toHaveAttribute(
-    "referrerPolicy",
-    "no-referrer"
-  );
+  const control = screen.getByRole("button", { name: /Play video/ });
+  expect(control).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
   expect(screen.queryByTitle("YouTube video player")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Play video" }));
+  fireEvent.click(control);
   expect(screen.getByTitle("YouTube video player")).toHaveAttribute(
     "src",
     "https://www.youtube-nocookie.com/embed/example123"
   );
-  expect(screen.queryByRole("img", { name: "A video" })).not.toBeInTheDocument();
-  expect(container.firstElementChild).toBe(box);
+  fireEvent.click(screen.getByRole("button", { name: /Hide video/ }));
+  expect(screen.queryByTitle("YouTube video player")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Play video/ })).toHaveAttribute(
+    "aria-expanded",
+    "false"
+  );
 });

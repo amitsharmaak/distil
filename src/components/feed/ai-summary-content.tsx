@@ -369,18 +369,30 @@ export function AISummary({
   );
   return (
     <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
-      <TabsList
-        variant="line"
-        aria-label="Reader view"
-        className="mb-5 h-11 w-full justify-start border-b p-0"
-      >
-        <TabsTrigger value="ai" aria-keyshortcuts="s" className="min-h-11 flex-none px-4">
-          Summary
-        </TabsTrigger>
-        <TabsTrigger value="original" aria-keyshortcuts="s" className="min-h-11 flex-none px-4">
-          Original
-        </TabsTrigger>
-      </TabsList>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-2 border-b">
+        <TabsList variant="line" aria-label="Reader view" className="h-11 justify-start p-0">
+          <TabsTrigger value="ai" aria-keyshortcuts="s" className="min-h-11 flex-none px-2">
+            Summary
+          </TabsTrigger>
+          <TabsTrigger value="original" aria-keyshortcuts="s" className="min-h-11 flex-none px-2">
+            Original
+          </TabsTrigger>
+        </TabsList>
+        {hasAISummary && viewMode === "ai" && (
+          <div aria-keyshortcuts="d" title="Brief / detailed · D">
+            <SegmentedControl
+              aria-label="Summary length"
+              value={summaryLength}
+              onValueChange={(length) => void handleLengthChange(length)}
+              className="bg-transparent p-0 [&_button]:bg-transparent [&_button]:shadow-none [&_button]:underline-offset-8 [&_button[aria-checked=true]]:underline"
+              options={[
+                { value: "brief", label: "Brief", disabled: loading },
+                { value: "detailed", label: "Detailed", disabled: loading },
+              ]}
+            />
+          </div>
+        )}
+      </div>
       {error && (
         <div className="mb-4 text-sm text-danger" role="alert">
           <p>{error}</p>
@@ -403,19 +415,6 @@ export function AISummary({
         </div>
       )}
       <TabsContent value="ai" className="mt-0">
-        {hasAISummary && (
-          <div className="mb-6" aria-keyshortcuts="d" title="Brief / detailed · D">
-            <SegmentedControl
-              aria-label="Summary length"
-              value={summaryLength}
-              onValueChange={(length) => void handleLengthChange(length)}
-              options={[
-                { value: "brief", label: "Brief", disabled: loading },
-                { value: "detailed", label: "Detailed", disabled: loading },
-              ]}
-            />
-          </div>
-        )}
         {!loading &&
           (aiSummary ? (
             <StructuredSummaryMarkdown content={aiSummary} />

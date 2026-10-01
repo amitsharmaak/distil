@@ -43,7 +43,11 @@ describe("ReaderAnnotations", () => {
         <p>An anchored sentence follows.</p>
       </ReaderAnnotations>
     );
-    await screen.findByText(/No highlights yet/);
+    expect(screen.getByRole("button", { name: /Notes and highlights/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(await screen.findByText(/No highlights yet/)).not.toBeVisible();
 
     const paragraph = screen.getByText("An anchored sentence follows.");
     const textNode = paragraph.firstChild;
@@ -57,6 +61,10 @@ describe("ReaderAnnotations", () => {
     fireEvent.mouseUp(paragraph);
 
     expect(await screen.findByRole("dialog", { name: "Save highlight" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Notes and highlights/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save highlight" }));
     expect(await screen.findByText("Highlight saved")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -93,6 +101,7 @@ describe("ReaderAnnotations", () => {
         <p>Reader text</p>
       </ReaderAnnotations>
     );
+    fireEvent.click(screen.getByRole("button", { name: /Notes and highlights/ }));
     expect(screen.getByRole("status", { name: "Loading highlights" })).toBeInTheDocument();
 
     cleanup();
@@ -103,6 +112,7 @@ describe("ReaderAnnotations", () => {
         <p>Reader text</p>
       </ReaderAnnotations>
     );
+    fireEvent.click(screen.getByRole("button", { name: /Notes and highlights/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Highlights unavailable");
   });
 
@@ -125,7 +135,8 @@ describe("ReaderAnnotations", () => {
         <p>Current reader text</p>
       </ReaderAnnotations>
     );
-    expect(await screen.findByText(/no longer matches/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Notes and highlights/ }));
+    expect(await screen.findByText(/no longer matches/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Edit comment" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(screen.getByRole("button", { name: "Re-anchor" }));

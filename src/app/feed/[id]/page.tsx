@@ -8,21 +8,17 @@
 
 import Link from "next/link";
 import { headers } from "next/headers";
-import { ArrowLeft, Headphones } from "lucide-react";
+import { Headphones } from "lucide-react";
 import { ReaderAreaBadge } from "@/components/feed/reader-area-badge";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  ReaderExperience,
-  ReaderDisplaySettings,
-  ReaderHero,
-} from "@/components/feed/reader-experience";
+import { ReaderExperience, ReaderDisplaySettings } from "@/components/feed/reader-experience";
 import { displayTitle, publisherLabel, readTimeLabel, cardExcerpt } from "@/lib/display";
 import { formatDate } from "@/lib/format";
 import { withTenantRepositories } from "@/lib/database";
 import { resolveRequestAuthContext } from "@/lib/auth/account-service";
 import { detectStrategy } from "@/lib/content-strategies";
-import { VideoEmbed, VideoHero } from "@/components/feed/video-embed";
+import { VideoDisclosure } from "@/components/feed/video-embed";
 import { ArticleNavigation } from "@/components/feed/article-navigation";
 import { LazyArticleExtract } from "@/components/feed/lazy-article-extract";
 import { AISummary } from "@/components/feed/ai-summary";
@@ -169,24 +165,12 @@ export default async function ItemDetailPage({
     day: "numeric",
     year: "numeric",
   });
-  const videoInHeader = Boolean(
-    item.thumbnailUrl && (strategy.detail.showEmbedPlayer || twitterVideo?.embedUrl)
-  );
   const header = (
     <>
-      <Link
-        href={`/feed${filter ? `?filter=${filter}` : ""}`}
-        className="mb-4 hidden min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
-        aria-label="Back to feed"
-        aria-keyshortcuts="u Escape"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to feed
-      </Link>
       <PageHeader
         display
         title={title}
-        className="mb-7"
+        className="mb-5"
         eyebrow={
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2">
@@ -215,35 +199,16 @@ export default async function ItemDetailPage({
           </div>
         }
       />
-      {item.thumbnailUrl &&
-        (videoInHeader ? (
-          <VideoHero
-            thumbnailUrl={item.thumbnailUrl}
-            title={title}
-            url={item.url}
-            contentType={item.contentType}
-            duration={item.duration}
-            nativeVideoUrl={twitterVideo?.embedUrl}
-          />
-        ) : (
-          <ReaderHero src={item.thumbnailUrl} title={title} />
-        ))}
     </>
   );
   const content = (
     <section className="min-h-[30vh]">
-      {strategy.detail.showEmbedPlayer && !videoInHeader && (
-        <div className="mb-6">
-          <VideoEmbed url={item.url} contentType={item.contentType} duration={item.duration} />
-        </div>
-      )}
-      {twitterVideo?.embedUrl && !videoInHeader && (
-        <video
-          src={twitterVideo.embedUrl}
-          poster={item.thumbnailUrl ?? undefined}
-          controls
-          preload="metadata"
-          className="mb-6 max-h-[30rem] w-full rounded-xl border border-border bg-muted"
+      {(strategy.detail.showEmbedPlayer || twitterVideo?.embedUrl) && (
+        <VideoDisclosure
+          url={item.url}
+          contentType={item.contentType}
+          duration={item.duration}
+          nativeVideoUrl={twitterVideo?.embedUrl}
         />
       )}
       {linkedYouTubeId(item) && !hasTranscript(item) && <VideoTranscriptButton itemId={item.id} />}
@@ -308,7 +273,7 @@ export default async function ItemDetailPage({
           <ReaderAnnotations
             itemId={item.id}
             header={header}
-            rail={<ReaderKnowledgeControls itemId={item.id} />}
+            notes={<ReaderKnowledgeControls itemId={item.id} />}
           >
             {content}
           </ReaderAnnotations>
