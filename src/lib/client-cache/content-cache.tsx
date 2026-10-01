@@ -28,6 +28,8 @@ interface CacheScope {
   account: string | null;
   active: boolean;
   expire: () => void;
+  activate: () => void;
+  deactivate: () => void;
   writes: Set<Promise<void>>;
 }
 const ScopeContext = createContext<CacheScope | null>(null);
@@ -103,6 +105,12 @@ function AccountCache({
       account: accountKey,
       active: true,
       writes: new Set(),
+      activate: () => {
+        value.active = true;
+      },
+      deactivate: () => {
+        value.active = false;
+      },
       expire: () => {
         value.active = false;
         void client.cancelQueries();
@@ -113,7 +121,7 @@ function AccountCache({
     return value;
   });
   useEffect(() => {
-    scope.active = true;
+    scope.activate();
     const clear = () => scope.expire();
     const storage = (event: StorageEvent) => {
       if (event.key === CONTENT_AUTH_STORAGE_KEY && event.newValue) clear();
@@ -129,7 +137,7 @@ function AccountCache({
       }
     });
     return () => {
-      scope.active = false;
+      scope.deactivate();
       window.removeEventListener(CONTENT_AUTH_EVENT, clear);
       window.removeEventListener("storage", storage);
       unsubscribe();

@@ -10,6 +10,7 @@ export interface ItemPatch {
   archived?: boolean;
   area?: LifeArea;
   manualPriority?: Priority | null;
+  readingProgress?: number;
 }
 type ItemValue = Record<string, unknown>;
 const families = [["feed"], ["today"], ["library", "archive"]] as const;
