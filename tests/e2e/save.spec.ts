@@ -66,9 +66,12 @@ test("publishes install metadata and keeps login outside the app shell", async (
   const manifest = await response.json();
   expect(manifest).toMatchObject({
     short_name: "Distil",
-    start_url: "/save",
+    id: "/",
+    start_url: "/",
+    scope: "/",
     display: "standalone",
   });
+  expect(manifest.shortcuts).toEqual([expect.objectContaining({ url: "/save" })]);
 });
 
 test("returns to a validated protected destination after login", async ({ page }) => {

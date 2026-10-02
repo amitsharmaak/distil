@@ -9,7 +9,11 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Distil — Personal Knowledge Capture",
     short_name: "Distil",
     description: "Save articles and turn them into focused, actionable insight.",
-    start_url: "/save",
+    // Today is the home of the app. `id` is pinned so that a later change of `start_url` does not
+    // change the identity of an installed app: without it the identity is derived from `start_url`.
+    id: "/",
+    start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: "#f6f3ed",
     theme_color: "#172329",
@@ -22,6 +26,16 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
+      },
+    ],
+    // Capture stays one long-press (or right-click) away from the installed app's icon.
+    shortcuts: [
+      {
+        name: "Save a link",
+        short_name: "Save",
+        description: "Save a link to Distil.",
+        url: "/save",
+        icons: [{ src: icon("icon-192"), sizes: "192x192", type: "image/png" }],
       },
     ],
   };

@@ -40,13 +40,13 @@ it("signs in and restores a validated protected destination", async () => {
 });
 
 it.each(["", "?next=https%3A%2F%2Fevil.test", "?next=%2F%2Fevil.test"])(
-  "falls back to save for an absent or hostile destination: %s",
+  "lands on Today for an absent or hostile destination: %s",
   async (search) => {
     window.history.replaceState({}, "", `/login${search}`);
     fetchMock.mockResolvedValue(response({}, 200));
     render(<LoginPage />);
     submit();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/save"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
   }
 );
 
@@ -78,5 +78,5 @@ it("disables the form while authentication is pending", async () => {
   submit();
   expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
   resolveResponse(response({}, 200));
-  await waitFor(() => expect(replace).toHaveBeenCalledWith("/save"));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
 });

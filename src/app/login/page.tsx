@@ -31,7 +31,7 @@ export default function LoginPage() {
       if (!response.ok) throw new Error(payload.error?.message ?? "Unable to sign in.");
       const requested = new URLSearchParams(window.location.search).get("next");
       const destination =
-        requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/save";
+        requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/";
       router.replace(destination);
       router.refresh();
     } catch (caught) {
