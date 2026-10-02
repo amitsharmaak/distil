@@ -1,4 +1,8 @@
 import type { MetadataRoute } from "next";
+import { ICON_VERSION } from "@/components/brand/icon-version";
+
+/** Installed apps refetch an icon only when its URL changes; see `ICON_VERSION`. */
+const icon = (name: string) => `/icons/${name}.png?v=${ICON_VERSION}`;
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -11,10 +15,10 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#172329",
     orientation: "portrait-primary",
     icons: [
-      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: icon("icon-192"), sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: icon("icon-512"), sizes: "512x512", type: "image/png", purpose: "any" },
       {
-        src: "/icons/icon-maskable-512.png",
+        src: icon("icon-maskable-512"),
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

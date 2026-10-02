@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { DistilLogo } from "@/components/brand/distil-logo";
 
 const BACK_U: ShortcutDef = {
   id: "reader.back",
@@ -44,7 +45,7 @@ function pageTitle(pathname: string): string {
 export function Topbar({
   backHref,
 }: {
-  /** When set, a "Back to feed" link replaces the wordmark on small screens. */
+  /** When set, a "Back to feed" link replaces the logo on small screens. */
   backHref?: string;
 }) {
   const router = useRouter();
@@ -76,9 +77,9 @@ export function Topbar({
         <Link
           href="/"
           aria-label="Distil home"
-          className="inline-flex min-h-11 items-center rounded-sm font-serif text-2xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          distil
+          <DistilLogo className="h-7 w-auto text-foreground" />
         </Link>
       )}
       {!backHref && (

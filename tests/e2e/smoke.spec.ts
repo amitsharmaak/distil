@@ -26,6 +26,24 @@ test("has no serious or critical accessibility violations", async ({ page }, tes
   await expectNoBlockingAccessibilityViolations(page, testInfo);
 });
 
+test("the phone top bar and the installed-app manifest carry the logo", async ({
+  page,
+  request,
+  viewport,
+}) => {
+  const manifest = await (await request.get("/manifest.webmanifest")).json();
+  for (const icon of manifest.icons) {
+    expect(icon.src).toMatch(/^\/icons\/[\w-]+\.png\?v=\w+$/);
+    expect((await request.get(icon.src)).headers()["content-type"]).toBe("image/png");
+  }
+
+  test.skip((viewport?.width ?? 0) >= 768, "The top bar is replaced by the sidebar from md up.");
+  await page.goto("/");
+  const logo = page.getByRole("banner").locator('svg[aria-label="Distil logo"]');
+  await expect(logo).toBeVisible();
+  await expect(logo.locator("path")).toHaveCount(2);
+});
+
 function heading(page: Page, name: string) {
   return page.getByRole("heading", { name, level: 1 });
 }

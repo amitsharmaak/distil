@@ -1,5 +1,6 @@
 "use client";
 
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -34,6 +35,7 @@ function InvitationAcceptanceCard() {
 
   return (
     <>
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <PageHeader
         title="Accept your invitation"
         description={<>Enter the email address your invitation was sent to.</>}

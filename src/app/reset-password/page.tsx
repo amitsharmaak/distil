@@ -1,5 +1,6 @@
 "use client";
 
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -34,6 +35,7 @@ function RequestResetForm({ invalidLink }: { invalidLink: boolean }) {
 
   return (
     <>
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <PageHeader
         title="Reset your password"
         description={
@@ -97,6 +99,7 @@ function SetPasswordForm({ token }: { token: string }) {
 
   return (
     <>
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <PageHeader title="Choose a new password" description={<> At least 12 characters </>} />
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <label className="text-sm font-medium" htmlFor="newPassword">

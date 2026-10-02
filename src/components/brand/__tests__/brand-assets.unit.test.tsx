@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import sharp from "sharp";
+import manifest from "@/app/manifest";
 import { DistilLogo } from "../distil-logo";
+import { ICON_VERSION } from "../icon-version";
 
 /** A missing even-odd fill rule once filled in the d's counter during vector export. */
 it.each(["export", "component"])(
@@ -49,4 +51,15 @@ it("keeps the complete maskable symbol inside the safe circle on an opaque backg
   expect(symbolPixels).toBeGreaterThan(10_000);
   expect(transparentPixels).toBe(0);
   expect(clippedPixels).toBe(0);
+});
+
+/** An installed app keeps the icon it captured until the manifest names a different URL. */
+it("versions every installed-app icon URL and points at a generated file", () => {
+  const icons = manifest().icons ?? [];
+  expect(icons.map((icon) => icon.purpose)).toEqual(["any", "any", "maskable"]);
+  for (const { src } of icons) {
+    const [path, query] = src.split("?");
+    expect(query).toBe(`v=${ICON_VERSION}`);
+    expect(existsSync(resolve(`public${path}`))).toBe(true);
+  }
 });

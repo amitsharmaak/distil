@@ -31,10 +31,16 @@ describe("Topbar", () => {
     jest.restoreAllMocks();
   });
 
-  it("renders a compact wordmark, page title and phone theme toggle", () => {
+  it("renders the logo, page title and phone theme toggle", () => {
     render(<Topbar />);
 
-    expect(screen.getByRole("link", { name: "Distil home" })).toHaveTextContent("distil");
+    const home = screen.getByRole("link", { name: "Distil home" });
+    expect(home).toHaveAttribute("href", "/");
+    // The approved inline lockup (mark and outlined wordmark), not serif text.
+    const logo = home.querySelector("svg");
+    expect(logo).toHaveAttribute("aria-label", "Distil logo");
+    expect(logo?.querySelectorAll("path")).toHaveLength(2);
+    expect(home).toHaveTextContent("");
     expect(screen.getByText("Reading")).toBeInTheDocument();
     expect(screen.getByRole("banner")).toHaveClass("md:hidden");
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "true");
@@ -56,7 +62,7 @@ describe("Topbar", () => {
     expect(screen.queryByRole("button", { name: "Ask Distil" })).not.toBeInTheDocument();
   });
 
-  it("replaces the wordmark with a back link on reader routes", () => {
+  it("replaces the logo with a back link on reader routes", () => {
     render(<Topbar backHref="/feed" />);
 
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
