@@ -67,8 +67,20 @@ jest.mock("@/lib/content-strategies", () => ({
 }));
 
 jest.mock("@/components/phase2/reader-annotations", () => ({
-  ReaderAnnotations: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="reader-annotations">{children}</div>
+  ReaderAnnotations: ({
+    children,
+    header,
+    notes,
+  }: {
+    children: React.ReactNode;
+    header: React.ReactNode;
+    notes: React.ReactNode;
+  }) => (
+    <div data-testid="reader-annotations">
+      {header}
+      {children}
+      {notes}
+    </div>
   ),
 }));
 jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
@@ -91,6 +103,10 @@ jest.mock("@/components/feed/detail-action-bar", () => ({
     </div>
   ),
 }));
+jest.mock("@/components/feed/reader-experience", () => ({
+  ReaderExperience: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ReaderDisplaySettings: () => <button> Aa </button>,
+}));
 jest.mock("@/components/feed/reader-area-badge", () => ({
   ReaderAreaBadge: () => <span data-testid="area-badge" />,
 }));
@@ -100,7 +116,7 @@ jest.mock("@/components/feed/article-navigation", () => ({
   ),
 }));
 jest.mock("@/components/feed/video-embed", () => ({
-  VideoEmbed: () => <div data-testid="video">video</div>,
+  VideoDisclosure: () => <div data-testid="video">video control</div>,
 }));
 jest.mock("@/components/feed/lazy-article-extract", () => ({
   LazyArticleExtract: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -176,7 +192,11 @@ describe("feed item detail page", () => {
   });
 
   it("renders an article with knowledge UI and navigation context", async () => {
-    const current = item({ id: "current", title: "https://example.test/raw" });
+    const current = item({
+      id: "current",
+      title: "https://example.test/raw",
+      thumbnailUrl: "https://example.test/unused-hero.jpg",
+    });
     repositories.items.findById.mockResolvedValue(current);
     repositories.items.findNeighbours.mockResolvedValue({ previousId: "previous", nextId: "next" });
 
@@ -188,6 +208,7 @@ describe("feed item detail page", () => {
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("A useful summary.");
     expect(screen.getByTestId("reader-annotations")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByTestId("knowledge-controls")).toHaveTextContent("current");
     expect(screen.getByTestId("actions")).toHaveTextContent("https://example.test/raw");
     // The whole read runs inside one tenant transaction; neighbours come from a
@@ -260,7 +281,7 @@ describe("feed item detail page", () => {
     }
     expect(screen.getByText("@reader")).toBeInTheDocument();
     expect(screen.getByTestId("video")).toBeInTheDocument();
-    expect(screen.getByText("Listen to Podcast")).toBeInTheDocument();
+    expect(screen.getByText("Listen to this episode")).toBeInTheDocument();
     expect(screen.queryByTestId("knowledge-controls")).not.toBeInTheDocument();
   });
 });

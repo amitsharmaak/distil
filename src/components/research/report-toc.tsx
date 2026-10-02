@@ -67,7 +67,7 @@ function TocList({
                 isActive
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
-              } ${entry.level === 3 ? "text-[0.8125rem]" : ""}`}
+              } ${entry.level === 3 ? "text-xs" : ""}`}
             >
               {entry.text}
             </a>
@@ -103,7 +103,7 @@ export function ReportToc({
   if (variant === "rail") {
     return (
       <nav aria-label="On this page" className={className}>
-        <p className="mb-2 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
+        <p className="mb-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
           On this page
         </p>
         <div className="border-l border-border">

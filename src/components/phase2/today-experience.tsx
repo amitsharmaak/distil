@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { normalizeSearchQuery } from "@/lib/feed/feed-url";
 import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
@@ -122,7 +123,7 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
       onChange={replaceFilters}
       onSearchDraftChange={setSearchDraft}
       placeholder="Search unread"
-      leading={<TodayHeading />}
+      leading={<TodayHeading items={view ? viewItems(view) : []} />}
       sheet={
         <FeedFilterSheet
           filters={filters}
@@ -139,7 +140,7 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
   if (error) {
     return (
       <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
-        <div className="rounded-xl border border-destructive/40 p-5 text-sm" role="alert">
+        <div className="rounded-xl border border-danger/40 p-5 text-sm" role="alert">
           <p className="font-medium">Today is unavailable</p>
           <p className="mt-1 text-muted-foreground">{error}</p>
         </div>
@@ -149,8 +150,15 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
   if (!view) {
     return (
       <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
-        <div className="py-12 text-center text-muted-foreground" role="status">
-          Loading Today…
+        <div role="status" aria-label="Loading Today" className="grid gap-6 lg:grid-cols-2">
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="space-y-3 py-4">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-5/6" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ))}
         </div>
       </TodayPrototype>
     );

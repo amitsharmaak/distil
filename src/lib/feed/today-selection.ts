@@ -8,6 +8,7 @@ import {
   type FeedSearchInput,
 } from "@/lib/feed/feed-url";
 import { hasActiveFilters } from "@/lib/feed/quick-filters";
+import { publisherLabel } from "@/lib/display";
 
 /**
  * Today's selection is one feed read: the six highest-priority unread items,
@@ -24,20 +25,28 @@ export const TODAY_FEED_QUERY = {
 
 export const REVISIT_REASON = "Unopened for two weeks · worth another look";
 
-function sourceName(item: FeedItem): string {
-  return item.publication || item.author || item.sourceType;
-}
-
 export function toKnowledgeItem(item: FeedItem): KnowledgeItem {
   return {
     id: item.id,
     title: item.title || "Untitled",
-    // Raw Markdown/HTML; the card renders it as a digest (lead + key points).
+    // Keep the brief available for the lead card; compact cards derive its lead only.
     summary: item.aiSummary || item.summary || "",
-    source: sourceName(item),
+    source: publisherLabel(item),
     href: `/feed/${item.id}`,
     isRead: item.isRead,
     reason: item.rank.reasons[0] || "Saved for your reading queue",
+    thumbnailUrl: item.thumbnailUrl,
+    readingMinutes: item.readingMinutes,
+    duration: item.duration,
+    url: item.url,
+    publication: item.publication,
+    author: item.author,
+    createdAt: item.createdAt,
+    contentType: item.contentType,
+    priority: item.priority,
+    area: item.area,
+    aiArea: item.aiArea,
+    aiSummary: item.aiSummary,
   };
 }
 

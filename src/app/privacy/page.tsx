@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
 
 export const metadata: Metadata = {
   title: "Privacy · Distil",
@@ -11,11 +12,10 @@ export const metadata: Metadata = {
  */
 export default function PrivacyPage() {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="font-serif text-3xl font-semibold tracking-tight">Privacy</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Last updated 1 October 2026</p>
+    <PageContainer size="reading" className="px-6 py-12">
+      <PageHeader title="Privacy" meta="Last updated 1 October 2026" />
 
-      <div className="mt-8 space-y-8 text-[15px] leading-7">
+      <div className="mt-8 space-y-8 text-base leading-7">
         <section aria-labelledby="overview">
           <h2 id="overview" className="font-serif text-xl font-semibold">
             Overview
@@ -88,6 +88,6 @@ export default function PrivacyPage() {
           </p>
         </section>
       </div>
-    </main>
+    </PageContainer>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/format";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Check, Copy, MailPlus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -24,8 +26,6 @@ interface IssuedInvitation {
   invitationUrl: string;
   expiresAt: string;
 }
-
-const formatDate = (value: string) => new Date(value).toLocaleDateString();
 
 const statusLabel: Record<InvitationStatus, string> = {
   pending: "Pending",
@@ -133,7 +133,7 @@ export function InvitationsSettings() {
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex gap-3">
-          <MailPlus className="mt-0.5 h-5 w-5 text-primary" />
+          <MailPlus className="mt-0.5 h-5 w-5 text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold">Invite someone</h3>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -172,13 +172,13 @@ export function InvitationsSettings() {
               className="mt-1"
             />
           </div>
-          <Button type="submit" disabled={busy || !email.trim()} className="min-h-11">
+          <Button type="submit" disabled={busy || !email.trim()} className="min-h-11 min-w-11">
             {busy && !revoking ? "Sending…" : "Send invitation"}
           </Button>
         </form>
 
         {issued && (
-          <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
             <p className="text-sm font-medium">Copy this link now, it will not be shown again</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Expires {formatDate(issued.expiresAt)}. Send it to the invitee yourself.
@@ -188,6 +188,7 @@ export function InvitationsSettings() {
                 {issued.invitationUrl}
               </code>
               <Button
+                className="min-h-11 min-w-11"
                 variant="outline"
                 size="icon"
                 onClick={() => void copyLink()}
@@ -209,9 +210,13 @@ export function InvitationsSettings() {
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="text-sm font-semibold">Invitations</h3>
         {!rows ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            {error ? "Invitations could not be loaded." : "Loading…"}
-          </p>
+          error ? (
+            <p className="mt-3 text-sm text-muted-foreground">Invitations could not be loaded.</p>
+          ) : (
+            <div role="status" aria-label="Loading invitations" className="mt-3">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          )
         ) : rows.length === 0 ? (
           <p className="mt-3 text-xs text-muted-foreground">
             No invitations yet. After you send one, the invitee opens the link, enters the invited
@@ -223,14 +228,22 @@ export function InvitationsSettings() {
               <li key={row.id} className="rounded-lg border border-border/70 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-sm">{row.maskedEmail}</span>
-                  <Badge variant={row.status === "pending" ? "default" : "outline"}>
+                  <StatusBadge
+                    tone={
+                      row.status === "accepted"
+                        ? "success"
+                        : row.status === "pending"
+                          ? "warning"
+                          : "neutral"
+                    }
+                  >
                     {statusLabel[row.status]}
-                  </Badge>
+                  </StatusBadge>
                   {row.status === "pending" && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="ml-auto h-8 text-xs"
+                      className="min-h-11 min-w-11 ml-auto text-xs"
                       onClick={() => {
                         setRevoking(row.id);
                         setReason("");
@@ -266,6 +279,7 @@ export function InvitationsSettings() {
                     </p>
                     <div className="mt-3 flex gap-2">
                       <Button
+                        className="min-h-11 min-w-11"
                         variant="destructive"
                         size="sm"
                         disabled={busy}
@@ -274,6 +288,7 @@ export function InvitationsSettings() {
                         {busy ? "Revoking…" : "Revoke invitation"}
                       </Button>
                       <Button
+                        className="min-h-11 min-w-11"
                         variant="ghost"
                         size="sm"
                         disabled={busy}

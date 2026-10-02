@@ -55,7 +55,8 @@ export interface FeedRankExplanation {
 }
 
 /** Feed rows are the summary projection: list surfaces never receive article bodies. */
-export type FeedItem = ContentItemSummary & { rank: FeedRankExplanation };
+export type FeedItem = ContentItemSummary &
+  Pick<ContentItem, "thumbnailUrl"> & { rank: FeedRankExplanation };
 
 export interface FeedPage {
   items: FeedItem[];
@@ -129,8 +130,21 @@ interface Cursor {
 
 type Row = Record<string, unknown>;
 
-/** Static summary projection for the `items i` alias; never built from caller input. */
-const FEED_ITEM_COLUMNS = itemSummaryColumnsSql("i");
+/**
+ * Feed-only display metadata. About 200 words of six characters per minute;
+ * PostgreSQL returns only the estimate, never the article body. Other list
+ * queries keep their existing shared summary projection.
+ *
+ * The estimate has to read (de-TOAST) the whole body, so it is computed in an
+ * outer SELECT over the page that ORDER BY ... LIMIT already cut down. In the
+ * ranked SELECT list PostgreSQL evaluates it for every matching row before the
+ * sort. The inner query therefore carries the body only as an unread reference
+ * (`feed_body`), and the outer list never returns it.
+ */
+const FEED_ITEM_COLUMNS = `${itemSummaryColumnsSql("i")}, i.thumbnail_url, i.full_content AS feed_body`;
+const FEED_PAGE_COLUMNS = `${itemSummaryColumnsSql("page")}, page.thumbnail_url,
+  CEIL(char_length(COALESCE(NULLIF(page.feed_body, ''), page.summary, '')) / 1200.0)::integer AS reading_minutes,
+  page.ai_summary_text, page.feed_affinity_score, page.feed_rank_score`;
 
 function priorityScore(priority: Priority): number {
   return priority === "high" ? 90 : priority === "medium" ? 50 : 20;
@@ -307,9 +321,9 @@ export function explainFeedRank(
   const reasons = item.manualPriority
     ? [`Manual priority: ${item.manualPriority}`, "Recent items receive a small tie-break"]
     : [
-        sort === "priority" || item.aiPriorityScore === undefined
-          ? `Item priority: ${item.priority}`
-          : "Current baseline priority score",
+        ...(sort === "for_you" && item.aiPriorityScore !== undefined
+          ? ["Current baseline priority score"]
+          : []),
         "Recent items receive a small tie-break",
       ];
   if (!item.manualPriority && affinityScore !== 0) {
@@ -498,15 +512,23 @@ export class PostgresFeedQuery {
       sort === "recent"
         ? this.sql`ORDER BY i.created_at DESC, i.id DESC`
         : this.sql`ORDER BY ${score} DESC, i.created_at DESC, i.id DESC`;
+    const pageOrder =
+      sort === "recent"
+        ? this.sql`ORDER BY page.created_at DESC, page.id DESC`
+        : this.sql`ORDER BY page.feed_rank_score DESC, page.created_at DESC, page.id DESC`;
     const rows = await this.sql<Row[]>`
-      SELECT ${this.sql.unsafe(FEED_ITEM_COLUMNS)}, s.summary AS ai_summary_text, i.ai_priority_score, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
-      FROM items i
-      LEFT JOIN ai_summaries s ON s.user_id=${this.context.userId}::uuid
-        AND s.item_id=i.id AND s.prompt_type='brief'
-      ${affinityJoin}
-      ${where}
-      ${order}
-      LIMIT ${limit + 1}`;
+      SELECT ${this.sql.unsafe(FEED_PAGE_COLUMNS)}
+      FROM (
+        SELECT ${this.sql.unsafe(FEED_ITEM_COLUMNS)}, s.summary AS ai_summary_text, ${affinity} AS feed_affinity_score, ${score} AS feed_rank_score
+        FROM items i
+        LEFT JOIN ai_summaries s ON s.user_id=${this.context.userId}::uuid
+          AND s.item_id=i.id AND s.prompt_type='brief'
+        ${affinityJoin}
+        ${where}
+        ${order}
+        LIMIT ${limit + 1}
+      ) page
+      ${pageOrder}`;
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     let items = pageRows.map((row) => {
@@ -526,6 +548,8 @@ export class PostgresFeedQuery {
       if (sort !== "recent") rank.score = Number(row.feed_rank_score);
       return {
         ...item,
+        thumbnailUrl: row.thumbnail_url == null ? undefined : String(row.thumbnail_url),
+        readingMinutes: row.reading_minutes == null ? undefined : Number(row.reading_minutes),
         rank,
       };
     });

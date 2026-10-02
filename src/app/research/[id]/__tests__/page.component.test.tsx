@@ -337,7 +337,7 @@ describe("ResearchPage", () => {
     render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Provider failed")).toBeInTheDocument();
-    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
@@ -378,7 +378,7 @@ describe("ResearchPage", () => {
     });
 
     // A run started before the outline/write stages reports `synthesizing`: shown as outlining.
-    expect(screen.getByText("synthesizing")).toBeInTheDocument();
+    expect(screen.getByText("Synthesizing")).toBeInTheDocument();
     expect(screen.getByText("Outlining the report...")).toBeInTheDocument();
 
     act(() => {
@@ -400,7 +400,7 @@ describe("ResearchPage", () => {
     });
     expect(screen.getByText("Writing (2/5): How the options compare")).toBeInTheDocument();
     // Earlier stages are shown as done, the writing stage as current.
-    expect(screen.getByText("Outlining the report...").className).toContain("text-green-600");
+    expect(screen.getByText("Outlining the report...").className).toContain("text-success");
     expect(screen.getByText("Writing (2/5): How the options compare").className).toContain(
       "font-medium"
     );
@@ -420,7 +420,7 @@ describe("ResearchPage", () => {
       stream.emit("status", "not-json");
     });
 
-    expect(screen.getByText("pending")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.getByText("Planning research questions...")).toBeInTheDocument();
   });
 
@@ -444,10 +444,8 @@ describe("ResearchPage", () => {
 
     const current = await screen.findByText("Deepening (2/2): What about battery?");
     expect(current.className).toContain("font-medium");
-    expect(screen.getByText("Planning research questions...").className).toContain(
-      "text-green-600"
-    );
-    expect(screen.getByText("Researched sub-questions").className).toContain("text-green-600");
+    expect(screen.getByText("Planning research questions...").className).toContain("text-success");
+    expect(screen.getByText("Researched sub-questions").className).toContain("text-success");
     expect(screen.queryByText("Researching (0/1)")).not.toBeInTheDocument();
     expect(screen.getByText("Outlining the report...").className).toContain(
       "text-muted-foreground"

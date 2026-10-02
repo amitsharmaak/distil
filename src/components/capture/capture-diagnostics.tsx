@@ -1,10 +1,11 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, RefreshCw, TriangleAlert } from "lucide-react";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
 import { CAPTURE_JUNK_ERROR_CODE } from "@/lib/contracts/capture-triage";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 
 /** The captures that never produced an item, newest first. */
@@ -113,7 +114,9 @@ export function CaptureDiagnostics() {
       {error && <p className="mt-4 text-xs text-destructive">{error}</p>}
 
       {loading ? (
-        <p className="mt-5 text-xs text-muted-foreground">Loading…</p>
+        <div role="status" aria-label="Loading capture diagnostics" className="mt-5">
+          <Skeleton className="h-24 w-full" />
+        </div>
       ) : error && receipts.length === 0 ? null : receipts.length === 0 ? ( // A diagnostics panel must not claim nothing failed when it could not look.
         <p className="mt-5 text-xs text-muted-foreground">
           Nothing to report — every capture has produced an item.
@@ -125,9 +128,9 @@ export function CaptureDiagnostics() {
             return (
               <li key={receipt.id} className="rounded-lg border border-border/70 p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="text-[11px]">
+                  <StatusBadge tone="danger" className="text-xs">
                     {copy.label}
-                  </Badge>
+                  </StatusBadge>
                   <a
                     href={receipt.normalizedUrl}
                     target="_blank"
@@ -137,7 +140,7 @@ export function CaptureDiagnostics() {
                     <span className="truncate">{readableUrl(receipt.normalizedUrl)}</span>
                     <ExternalLink className="h-3 w-3 shrink-0" />
                   </a>
-                  <span className="ml-auto text-[11px] text-muted-foreground">
+                  <span className="ml-auto text-xs text-muted-foreground">
                     {timeAgo(receipt.createdAt)}
                   </span>
                 </div>
@@ -146,19 +149,19 @@ export function CaptureDiagnostics() {
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {receipt.error?.code && (
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                       {receipt.error.code}
                     </code>
                   )}
                   {receipt.attempts > 1 && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {receipt.attempts} attempts
                     </span>
                   )}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-auto h-8 gap-1.5 text-xs"
+                    className="min-h-11 min-w-11 ml-auto h-8 gap-1.5 text-xs"
                     disabled={busyId === receipt.id}
                     onClick={() =>
                       receipt.status === "failed" && receipt.retryable

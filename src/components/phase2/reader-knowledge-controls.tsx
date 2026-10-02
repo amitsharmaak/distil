@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { Archive, ArchiveRestore, Save, Trash2 } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { Priority } from "@/lib/types";
 
 type ReaderState = {
@@ -14,57 +21,37 @@ type ReaderState = {
 };
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
-  const payload = (await response.json().catch(() => ({}))) as T & {
-    error?: { message?: string };
-  };
+  const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } };
   if (!response.ok) throw new Error(payload.error?.message || "This change could not be saved.");
   return payload;
 }
 
-export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
+/** Library actions live in the reader overflow; the note stays alongside highlights. */
+export function ReaderLibraryMenuItems({ itemId }: { itemId: string }) {
   const [state, setState] = useState<ReaderState | null>(null);
-  const [note, setNote] = useState("");
-  const [savedNote, setSavedNote] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [statePayload, notePayload] = await Promise.all([
-          requestJson<{ state: ReaderState }>(`/api/v1/items/${itemId}/state`),
-          requestJson<{ note: { body: string } | null }>(`/api/v1/items/${itemId}/note`),
-        ]);
-        if (cancelled) return;
-        setState(statePayload.state);
-        const body = notePayload.note?.body ?? "";
-        setNote(body);
-        setSavedNote(body);
-      } catch (cause) {
+    void requestJson<{ state: ReaderState }>(`/api/v1/items/${itemId}/state`)
+      .then((payload) => {
+        if (!cancelled) setState(payload.state);
+      })
+      .catch((cause) => {
         if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Unable to load reader controls.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
+          setError(cause instanceof Error ? cause.message : "Reader controls are unavailable.");
+      });
     return () => {
       cancelled = true;
     };
   }, [itemId]);
 
-  const dirty = note !== savedNote;
-
   async function updateState(patch: Partial<ReaderState>, label: string) {
     if (!state || saving) return;
     const previous = state;
     setState({ ...state, ...patch });
-    setSaving(label);
+    setSaving(true);
     setError(null);
     try {
       const payload = await requestJson<{ item: ReaderState & { archivedAt?: string } }>(
@@ -80,17 +67,113 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
           ? { ...current, ...payload.item, archived: Boolean(payload.item.archivedAt) }
           : current
       );
-      setNotice(label);
+      setMessage(label);
     } catch (cause) {
       setState(previous);
       setError(cause instanceof Error ? cause.message : "This change could not be saved.");
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   }
 
+  return (
+    <>
+      <DropdownMenuSeparator />
+      {!state && !error && (
+        <div role="status" aria-label="Loading library actions" className="p-2">
+          <Skeleton className="h-8 w-full" />
+        </div>
+      )}
+      {state && (
+        <>
+          <DropdownMenuItem
+            className="min-h-11"
+            disabled={saving}
+            onSelect={(event) => {
+              event.preventDefault();
+              void updateState(
+                { archived: !state.archived },
+                state.archived ? "Item restored" : "Item archived"
+              );
+            }}
+          >
+            {state.archived ? <ArchiveRestore /> : <Archive />}
+            {state.archived ? "Restore item" : "Archive item"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Priority</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            aria-label="Manual priority"
+            value={state.manualPriority ?? "auto"}
+            onValueChange={(value) =>
+              void updateState(
+                { manualPriority: value === "auto" ? null : (value as Priority) },
+                "Priority updated"
+              )
+            }
+          >
+            {[
+              { value: "auto", label: "Feed ranking" },
+              { value: "high", label: "High" },
+              { value: "medium", label: "Medium" },
+              { value: "low", label: "Low" },
+            ].map((option) => (
+              <DropdownMenuRadioItem
+                key={option.value}
+                className="min-h-11"
+                value={option.value}
+                disabled={saving}
+                onSelect={(event) => event.preventDefault()}
+              >
+                {option.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </>
+      )}
+      {(error || message) && (
+        <p
+          className={`px-2 py-2 text-sm ${error ? "text-danger" : "text-muted-foreground"}`}
+          role={error ? "alert" : "status"}
+        >
+          {error || message}
+        </p>
+      )}
+    </>
+  );
+}
+
+export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
+  const [note, setNote] = useState("");
+  const [savedNote, setSavedNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void requestJson<{ note: { body: string } | null }>(`/api/v1/items/${itemId}/note`)
+      .then((payload) => {
+        if (cancelled) return;
+        const body = payload.note?.body ?? "";
+        setNote(body);
+        setSavedNote(body);
+      })
+      .catch((cause) => {
+        if (!cancelled)
+          setError(cause instanceof Error ? cause.message : "Unable to load your note.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [itemId]);
+  const dirty = note !== savedNote;
+
   async function saveNote() {
-    setSaving("Saving note…");
+    setSaving(true);
     setError(null);
     try {
       await requestJson(`/api/v1/items/${itemId}/note`, {
@@ -103,15 +186,14 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Note could not be saved.");
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   }
-
   async function deleteNote() {
     const previous = note;
     setNote("");
     setSavedNote("");
-    setSaving("Deleting note…");
+    setSaving(true);
     setError(null);
     try {
       await requestJson(`/api/v1/items/${itemId}/note`, { method: "DELETE" });
@@ -121,128 +203,72 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
       setSavedNote(previous);
       setError(cause instanceof Error ? cause.message : "Note could not be deleted.");
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   }
 
-  if (loading)
-    return (
-      <aside className="mt-10 border-t pt-4 text-sm text-muted-foreground" role="status">
-        Loading your reader controls…
-      </aside>
-    );
-  if (!state)
-    return (
-      <aside className="mt-10 border-t pt-4 text-sm text-destructive" role="alert">
-        {error || "Reader controls are unavailable."}
-      </aside>
-    );
-
-  const labelClass = "text-[11px] font-medium uppercase tracking-widest text-muted-foreground";
-  const showNoteActions = dirty || Boolean(savedNote);
-
   return (
-    <aside className="mt-10 space-y-6 border-t pt-6" aria-label="Reader knowledge controls">
-      {/* Note — one quiet field; actions appear only once there is something to save or delete. */}
-      <section aria-labelledby="reader-note-heading">
-        <h2 id="reader-note-heading" className={labelClass}>
-          Your note
-        </h2>
-        <textarea
-          aria-label="Item note"
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          rows={dirty || savedNote ? 3 : 1}
-          className="mt-2 w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 font-serif text-base leading-relaxed placeholder:text-muted-foreground/70 focus:border-border focus:bg-background focus:px-2 focus:outline-none"
-          placeholder="Add a thought you want to remember…"
-          disabled={Boolean(saving)}
-        />
-        {showNoteActions && (
-          <div className="mt-1 flex items-center gap-3">
-            <Button
-              type="button"
-              size="sm"
-              onClick={saveNote}
-              disabled={!dirty || Boolean(saving)}
-              className="h-8 gap-1.5"
-            >
-              <Save className="h-3.5 w-3.5" />
-              Save note
-            </Button>
-            {savedNote && (
+    <section
+      className="space-y-3 border-t pt-6"
+      aria-label="Reader knowledge controls"
+      aria-labelledby="reader-note-heading"
+    >
+      <h2
+        id="reader-note-heading"
+        className="text-xs font-medium uppercase tracking-widest text-muted-foreground"
+      >
+        Your note
+      </h2>
+      {loading ? (
+        <div role="status" aria-label="Loading your note">
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : (
+        <>
+          <textarea
+            aria-label="Item note"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={dirty || savedNote ? 4 : 3}
+            className="min-h-24 w-full resize-y rounded-md border border-border bg-transparent p-3 text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Add a thought you want to remember…"
+            disabled={saving}
+          />
+          {(dirty || Boolean(savedNote)) && (
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                size="sm"
-                variant="ghost"
-                onClick={deleteNote}
-                disabled={Boolean(saving)}
-                className="h-8 gap-1.5 text-muted-foreground"
+                onClick={() => void saveNote()}
+                disabled={!dirty || saving}
+                className="min-h-11 gap-2"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
+                <Save className="h-4 w-4" />
+                Save note
               </Button>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Archive and priority: the action bar already covers read/unread. */}
-      <section
-        className="flex flex-wrap items-center gap-x-5 gap-y-2"
-        aria-labelledby="reader-library-heading"
-      >
-        <h2 id="reader-library-heading" className="sr-only">
-          Reading controls
-        </h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
-          disabled={Boolean(saving)}
-          onClick={() =>
-            void updateState(
-              { archived: !state.archived },
-              state.archived ? "Item restored" : "Item archived"
-            )
-          }
-        >
-          {state.archived ? (
-            <ArchiveRestore className="h-3.5 w-3.5" />
-          ) : (
-            <Archive className="h-3.5 w-3.5" />
+              {savedNote && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void deleteNote()}
+                  disabled={saving}
+                  className="min-h-11 gap-2 text-muted-foreground"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              )}
+            </div>
           )}
-          {state.archived ? "Restore item" : "Archive item"}
-        </Button>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Priority
-          <select
-            aria-label="Manual priority"
-            value={state.manualPriority ?? ""}
-            onChange={(event) =>
-              void updateState(
-                { manualPriority: (event.target.value || null) as Priority | null },
-                "Priority updated"
-              )
-            }
-            disabled={Boolean(saving)}
-            className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
-          >
-            <option value="">Feed ranking</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </label>
-        {(error || notice || saving) && (
-          <p
-            className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
-            role={error ? "alert" : "status"}
-          >
-            {error || saving || notice}
-          </p>
-        )}
-      </section>
-    </aside>
+        </>
+      )}
+      {(error || notice) && (
+        <p
+          className={`text-sm ${error ? "text-danger" : "text-muted-foreground"}`}
+          role={error ? "alert" : "status"}
+        >
+          {error || notice}
+        </p>
+      )}
+    </section>
   );
 }

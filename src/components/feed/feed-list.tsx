@@ -23,6 +23,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useShortcut, useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import {
@@ -277,82 +280,98 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
       : "No items match your filters.";
 
   return (
-    <div ref={listRef} className="space-y-5">
-      {/* Page header: title and links, with the search and Filters on the right. */}
-      <FilterBar
-        filters={optimisticFilters}
-        onChange={replaceFilters}
-        onSearchDraftChange={setSearchDraft}
-        leading={
-          <div className="flex items-baseline gap-4">
-            <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
-            <nav aria-label="Feed views" className="flex gap-3 text-sm text-muted-foreground">
-              <Link href="/archive" className="hover:text-foreground">
-                Archive
-              </Link>
-            </nav>
-          </div>
-        }
-        sheet={
-          <FeedFilterSheet
-            filters={optimisticFilters}
-            onChange={replaceFilters}
-            activeCount={activeFilterChips(optimisticFilters).length}
-            topicOptions={topicOptions}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            open={filtersOpen}
-            onOpenChange={setFiltersOpen}
-          />
-        }
-      />
-
-      {/* Item list; a pending navigation keeps the current page visible, dimmed. */}
-      <div
-        className={`${viewMode === "card" ? "space-y-3" : "space-y-1"}${pendingUrl || isPending ? " opacity-60 transition-opacity" : ""}`}
-        aria-busy={Boolean(pendingUrl) || isPending || loading}
-      >
-        {loading ? (
-          // Loading state shown while the first API fetch is in flight.
-          <div className="py-12 text-center text-muted-foreground">Loading…</div>
-        ) : loadError && filteredItems.length === 0 ? (
-          <div
-            className="mx-auto max-w-3xl rounded-xl border border-destructive/40 p-5 text-sm"
-            role="alert"
-          >
-            <p className="font-medium">Feed is unavailable</p>
-            <p className="mt-1 text-muted-foreground">{loadError}</p>
-          </div>
-        ) : visibleItems.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground" role="status">
-            {emptyMessage}
-          </div>
-        ) : (
-          visibleItems.map((item) => (
-            <ContentCard
-              key={item.id}
-              item={item}
-              compact={viewMode === "compact"}
-              onMarkRead={handleMarkRead}
-              filter={filters.showRead ? "all" : "unread"}
-              areaOpen={areaOpenId === item.id}
-              onAreaOpenChange={(open) => setAreaOpenId(open ? item.id : null)}
+    <PageContainer size="list">
+      <div ref={listRef} className="space-y-5">
+        {/* Page header: title and links, with the search and Filters on the right. */}
+        <FilterBar
+          filters={optimisticFilters}
+          onChange={replaceFilters}
+          onSearchDraftChange={setSearchDraft}
+          leading={
+            <PageHeader
+              title="Feed"
+              className="mb-0"
+              meta={
+                <nav aria-label="Feed views">
+                  <Link
+                    href="/archive"
+                    className="inline-flex min-h-11 items-center hover:text-foreground"
+                  >
+                    Archive
+                  </Link>
+                </nav>
+              }
             />
-          ))
+          }
+          sheet={
+            <FeedFilterSheet
+              filters={optimisticFilters}
+              onChange={replaceFilters}
+              activeCount={activeFilterChips(optimisticFilters).length}
+              topicOptions={topicOptions}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              open={filtersOpen}
+              onOpenChange={setFiltersOpen}
+            />
+          }
+        />
+
+        {/* Item list; a pending navigation keeps the current page visible, dimmed. */}
+        <div
+          className={`border-t border-foreground/30${pendingUrl || isPending ? " opacity-60 transition-opacity" : ""}`}
+          aria-busy={Boolean(pendingUrl) || isPending || loading}
+        >
+          {loading ? (
+            // Loading state shown while the first API fetch is in flight.
+            <div role="status" aria-label="Loading feed">
+              {[0, 1, 2, 3].map((row) => (
+                <div key={row} className="space-y-3 border-b border-border py-6">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-6 w-3/4" />
+                  <Skeleton className="h-4 w-5/6" />
+                </div>
+              ))}
+            </div>
+          ) : loadError && filteredItems.length === 0 ? (
+            <div
+              className="mx-auto max-w-3xl rounded-xl border border-danger/40 p-5 text-sm"
+              role="alert"
+            >
+              <p className="font-medium">Feed is unavailable</p>
+              <p className="mt-1 text-muted-foreground">{loadError}</p>
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div role="status">
+              <EmptyState title={emptyMessage} className="border-0 py-12" />
+            </div>
+          ) : (
+            visibleItems.map((item) => (
+              <ContentCard
+                key={item.id}
+                item={item}
+                compact={viewMode === "compact"}
+                onMarkRead={handleMarkRead}
+                filter={filters.showRead ? "all" : "unread"}
+                areaOpen={areaOpenId === item.id}
+                onAreaOpenChange={(open) => setAreaOpenId(open ? item.id : null)}
+              />
+            ))
+          )}
+        </div>
+        {nextCursor && !loading && !narrowing && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              data-load-more
+              className="min-h-11 rounded-md border px-4 text-sm font-medium hover:bg-accent"
+              onClick={() => void fetchItems(nextCursor, true)}
+            >
+              Load more
+            </button>
+          </div>
         )}
       </div>
-      {nextCursor && !loading && !narrowing && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            data-load-more
-            className="min-h-11 rounded-md border px-4 text-sm font-medium hover:bg-accent"
-            onClick={() => void fetchItems(nextCursor, true)}
-          >
-            Load more
-          </button>
-        </div>
-      )}
-    </div>
+    </PageContainer>
   );
 }

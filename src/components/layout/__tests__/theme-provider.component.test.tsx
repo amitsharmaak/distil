@@ -86,4 +86,19 @@ describe("ThemeProvider", () => {
     expect(removeSpy).toHaveBeenCalledWith("storage", expect.any(Function));
     expect(removeSpy).toHaveBeenCalledWith("distil-theme-change", expect.any(Function));
   });
+
+  it("still toggles when browser storage is unavailable", () => {
+    jest.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage unavailable", "SecurityError");
+    });
+    render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Theme: light" }));
+    expect(document.documentElement).toHaveClass("dark");
+    expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
+  });
 });

@@ -126,9 +126,7 @@ describe("TodayExperience", () => {
 
     render(<TodayExperience />);
 
-    expect(
-      await screen.findByText("Why it matters Durable capture beats connectors.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Durable capture beats connectors.")).toBeInTheDocument();
   });
 
   it("surfaces an API failure instead of silently showing fixtures", async () => {

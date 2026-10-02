@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
@@ -23,21 +23,32 @@ const BACK_ESC: ShortcutDef = {
   alwaysOn: true,
 };
 
-function formatDate() {
-  return new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+function pageTitle(pathname: string): string {
+  if (pathname === "/") return "Today";
+  if (/^\/feed\/[^/]+$/.test(pathname)) return "Reading";
+  if (pathname.startsWith("/research/")) return "Research";
+  const titles: Record<string, string> = {
+    "/feed": "Feed",
+    "/save": "Save",
+    "/settings": "Settings",
+    "/research": "Research",
+    "/archive": "Archive",
+    "/digests": "Digests",
+    "/account": "Account",
+    "/onboarding": "Welcome",
+  };
+  return titles[pathname] ?? "Distil";
 }
 
+/** Compact navigation; reader controls scroll away with the page at every width. */
 export function Topbar({
   backHref,
 }: {
-  /** When set, a "Back to feed" link replaces the date on small screens. */
+  /** When set, a "Back to feed" link replaces the wordmark on small screens. */
   backHref?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const goBack = () => {
     if (backHref) router.push(backHref);
   };
@@ -45,23 +56,41 @@ export function Topbar({
   useShortcut(BACK_ESC, goBack, !!backHref);
 
   return (
-    <header className="distil-topbar sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 sm:px-6 md:px-8 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header
+      className={
+        backHref
+          ? "distil-topbar mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:px-6"
+          : "distil-topbar sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur md:hidden"
+      }
+    >
       {backHref ? (
         <Link
           href={backHref}
           aria-keyshortcuts="u Escape"
           title="Back to feed · U"
-          className="inline-flex h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground md:h-9"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to feed
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" /> Back to feed
         </Link>
       ) : (
-        <span className="hidden text-[13px] text-muted-foreground md:block">{formatDate()}</span>
+        <Link
+          href="/"
+          aria-label="Distil home"
+          className="inline-flex min-h-11 items-center rounded-sm font-serif text-2xl font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          distil
+        </Link>
       )}
-
-      <div className="ml-auto flex items-center gap-1">
-        <ThemeToggle collapsed registerShortcut={false} className="h-11 w-11 md:h-9 md:w-9" />
-      </div>
+      {!backHref && (
+        <span className="border-l border-border pl-3 text-sm font-medium text-muted-foreground">
+          {pageTitle(pathname)}
+        </span>
+      )}
+      <ThemeToggle
+        collapsed
+        registerShortcut={false}
+        className="ml-auto size-11 text-muted-foreground hover:bg-muted hover:text-foreground"
+      />
     </header>
   );
 }

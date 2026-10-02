@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/format";
 import { useEffect, useState } from "react";
 import { Check, Copy, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,6 @@ interface CaptureTokenSummary {
 interface IssuedToken extends CaptureTokenSummary {
   token: string;
 }
-
-const formatDate = (value: string) => new Date(value).toLocaleDateString();
 
 /** Manages the account's manual capture token: generate once, copy once, regenerate to replace. */
 export function TokenSettings() {
@@ -79,8 +78,8 @@ export function TokenSettings() {
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex gap-3">
-        <KeyRound className="mt-0.5 h-5 w-5 text-primary" />
-        <div>
+        <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold">Capture token</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             For scripts and capture clients that use a token.
@@ -113,7 +112,7 @@ export function TokenSettings() {
       )}
 
       {issued && (
-        <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+        <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
           <p className="text-sm font-medium">Copy this token now</p>
           <p className="mt-1 text-xs text-muted-foreground">
             It will not be shown again. Paste it into each client that uses your manual token.
@@ -123,6 +122,7 @@ export function TokenSettings() {
               {issued.token}
             </code>
             <Button
+              className="min-h-11 min-w-11"
               variant="outline"
               size="icon"
               onClick={() => void copyToken()}
@@ -148,21 +148,34 @@ export function TokenSettings() {
                 Your current token stops working immediately. You will need to paste the new one
                 into every client that uses your manual token. Paired devices stay connected.
               </p>
-              <div className="mt-3 flex gap-2">
-                <Button onClick={() => void generate()} disabled={busy}>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  className="min-h-11 min-w-11"
+                  onClick={() => void generate()}
+                  disabled={busy}
+                >
                   {busy ? "Regenerating…" : "Regenerate token"}
                 </Button>
-                <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+                <Button
+                  className="min-h-11 min-w-11"
+                  variant="ghost"
+                  onClick={() => setConfirming(false)}
+                  disabled={busy}
+                >
                   Cancel
                 </Button>
               </div>
             </div>
           ) : hasToken ? (
-            <Button variant="outline" onClick={() => setConfirming(true)}>
+            <Button
+              className="min-h-11 min-w-11"
+              variant="outline"
+              onClick={() => setConfirming(true)}
+            >
               Regenerate…
             </Button>
           ) : (
-            <Button onClick={() => void generate()} disabled={busy}>
+            <Button className="min-h-11 min-w-11" onClick={() => void generate()} disabled={busy}>
               {busy ? "Generating…" : "Generate token"}
             </Button>
           )}

@@ -160,7 +160,6 @@ describe("feed ranking contracts", () => {
 
   it("explains baseline priorities and rejects every remaining resurfacing disqualifier", () => {
     expect(explainFeedRank({ ...base }, "priority", now).reasons).toEqual([
-      "Item priority: medium",
       "Recent items receive a small tie-break",
     ]);
     expect(explainFeedRank({ ...base, priority: "high" }, "priority", now).score).toBeGreaterThan(
@@ -303,9 +302,14 @@ describe("feed ranking contracts", () => {
     expect(chronological.statements[0]).not.toContain("item_events");
   });
 
-  it("selects the summary projection so feed rows never carry article bodies", async () => {
+  it("adds thumbnail and reading time while keeping article bodies out of feed payloads", async () => {
     const sql = fakeFeedSql([
-      { ...feedRow("summary-only"), full_content: "<p>the whole body</p>" },
+      {
+        ...feedRow("summary-only"),
+        full_content: "<p>the whole body</p>",
+        thumbnail_url: "https://example.test/image.jpg",
+        reading_minutes: 8,
+      },
     ]);
     const page = await new PostgresFeedQuery(sql as never, context).list({
       sort: "for_you",
@@ -315,21 +319,35 @@ describe("feed ranking contracts", () => {
     expect(sql.statements).toHaveLength(1);
     const statement = sql.statements[0];
     expect(statement).toContain("SELECT i.id,i.title,i.summary,");
-    expect(statement).toContain("s.summary AS ai_summary_text, i.ai_priority_score,");
+    expect(statement).toContain("s.summary AS ai_summary_text,");
+    expect(statement).toContain("i.thumbnail_url");
+    expect(statement).toContain(
+      "CEIL(char_length(COALESCE(NULLIF(page.feed_body, ''), page.summary, '')) / 1200.0)::integer AS reading_minutes"
+    );
+    // The estimate runs in the outer SELECT, after the inner ORDER BY ... LIMIT.
+    expect(statement.indexOf("AS reading_minutes")).toBeLessThan(statement.indexOf("FROM ("));
+    expect(statement.indexOf("LIMIT")).toBeLessThan(statement.indexOf(") page"));
+    // The body is carried once as a reference and read only inside the estimate,
+    // never returned as a column.
+    expect(statement.match(/i\.full_content/g)).toHaveLength(1);
+    expect(statement.match(/feed_body/g)).toHaveLength(2);
     expect(statement).not.toContain("i.*");
     for (const column of [
-      "full_content",
       "extracted_links",
       "detected_media",
       "content_classification",
-      "thumbnail_url",
       "search_vector",
     ]) {
       expect(statement).not.toContain(column);
     }
     expect(page.items).toHaveLength(1);
     expect(page.items[0]).not.toHaveProperty("fullContent");
-    expect(page.items[0]).toMatchObject({ id: "summary-only", title: "Item summary-only" });
+    expect(page.items[0]).toMatchObject({
+      id: "summary-only",
+      title: "Item summary-only",
+      thumbnailUrl: "https://example.test/image.jpg",
+      readingMinutes: 8,
+    });
     expect(JSON.stringify(page)).not.toContain("the whole body");
   });
 
@@ -473,7 +491,9 @@ describe("feed ranking with a capture triage priority", () => {
     const bucket = explainFeedRank({ ...base }, "for_you", now);
     expect(scored.score - bucket.score).toBeCloseTo(80 - 50, 5);
     expect(scored.reasons[0]).toBe("Current baseline priority score");
-    expect(bucket.reasons[0]).toBe("Item priority: medium");
+    // The edition no longer prints the priority bucket as a reason; the bucket
+    // path is identified by the absence of the stored-score reason.
+    expect(bucket.reasons).toEqual(["Recent items receive a small tie-break"]);
   });
 
   it("reads the bucket under priority and the stored score under for_you in PostgreSQL", async () => {

@@ -51,7 +51,7 @@ describe("library experiences", () => {
       return Promise.resolve(response({ items: [item()] }));
     });
     render(<ArchiveExperience />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading archive");
+    expect(screen.getByRole("status", { name: "Loading archive" })).toBeInTheDocument();
     expect(await screen.findByText("A saved article")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Offline");

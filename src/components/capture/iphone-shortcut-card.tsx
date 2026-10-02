@@ -172,7 +172,7 @@ export function IphoneShortcutCard() {
       className="rounded-xl border border-border bg-card p-5"
     >
       <div className="flex gap-3">
-        <Smartphone aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+        <Smartphone aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <h3 id="iphone-shortcut-title" className="text-sm font-semibold">
             iPhone Shortcut
@@ -186,14 +186,14 @@ export function IphoneShortcutCard() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         {iosShortcutUrl && (
-          <Button asChild variant="outline" className="min-h-11">
+          <Button asChild variant="outline" className="min-h-11 min-w-11">
             <a href={iosShortcutUrl} target="_blank" rel="noopener noreferrer">
               Get the Shortcut
             </a>
           </Button>
         )}
         <Button
-          className="min-h-11"
+          className="min-h-11 min-w-11"
           onClick={() => void createPairing()}
           disabled={generating || !devices}
         >
@@ -202,7 +202,7 @@ export function IphoneShortcutCard() {
       </div>
 
       {pairing && (
-        <div className="mt-4 rounded-lg border border-border p-4">
+        <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
           {active ? (
             <>
               <p className="text-sm">Enter this code when the Shortcut asks to pair.</p>
@@ -260,7 +260,7 @@ export function IphoneShortcutCard() {
               </div>
               <Button
                 variant="outline"
-                className="min-h-11 self-start"
+                className="min-h-11 min-w-11 self-start"
                 aria-label={`Disconnect ${device.label || "iPhone"}`}
                 disabled={Boolean(disconnecting)}
                 onClick={() => void disconnect(device.id)}
@@ -276,7 +276,11 @@ export function IphoneShortcutCard() {
           <p role="alert" className="text-sm text-destructive">
             {loadError}
           </p>
-          <Button variant="link" onClick={() => void loadDevices()}>
+          <Button
+            variant="link"
+            className="min-h-11 min-w-11 px-0"
+            onClick={() => void loadDevices()}
+          >
             Retry loading iPhones
           </Button>
         </div>

@@ -1,4 +1,4 @@
-import type { KnowledgeItem, ReaderKnowledgeFixture } from "./types";
+import type { KnowledgeItem } from "./types";
 
 export const todayFixture: { priority: KnowledgeItem[]; revisiting: KnowledgeItem[] } = {
   priority: [
@@ -30,25 +30,4 @@ export const todayFixture: { priority: KnowledgeItem[]; revisiting: KnowledgeIte
       reason: "Saved to Product · opened 21 days ago",
     },
   ],
-};
-
-export const readerKnowledgeFixture: ReaderKnowledgeFixture = {
-  itemId: "reader-1",
-  title: "A practical guide to resilient systems",
-  source: "The Ken",
-  body: [
-    "Resilient systems make ordinary failure easy to contain and easy to understand.",
-    "The best operational teams write down the decision, its evidence, and the condition that would cause them to revisit it.",
-  ],
-  note: "Use this framing for the next reliability review.",
-  annotations: [
-    {
-      id: "annotation-1",
-      quote: "write down the decision, its evidence",
-      comment: "Useful operating principle.",
-      state: "active",
-    },
-  ],
-  intelligenceState: "degraded",
-  degradedReason: "The source was captured, but the AI summary could not be refreshed.",
 };

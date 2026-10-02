@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { usePathname } from "next/navigation";
 import {
   Newspaper,
@@ -46,30 +46,21 @@ export function Sidebar({
 
   return (
     <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 hidden min-h-screen md:flex flex-col border-r bg-sidebar text-sidebar-foreground border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
-      )}
+      data-collapsed={collapsed}
+      className="distil-sidebar fixed left-0 top-0 z-40 hidden h-dvh flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 motion-reduce:transition-none md:flex"
     >
       {/* Brand */}
-      <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-        <Image
-          src="/logo.svg"
-          alt="Distil logo"
-          width={28}
-          height={28}
-          sizes="(max-width: 768px) 32px, 64px"
-          className="h-7 w-7 rounded-md object-cover"
-        />
+      <div className="flex h-20 shrink-0 items-center gap-2.5 px-4">
+        <BrandMark className="size-7 shrink-0" />
         {!collapsed && (
-          <span className="font-serif text-lg font-semibold tracking-tight text-sidebar-foreground">
+          <span className="font-serif text-2xl font-semibold tracking-tight text-sidebar-foreground">
             distil
           </span>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 px-3 py-4">
+      <nav aria-label="Sidebar" className="flex-1 space-y-1 px-2 py-2">
         {navItems.map((item) => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
@@ -80,13 +71,13 @@ export function Sidebar({
               aria-current={isActive ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+                "flex min-h-11 min-w-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80"
+                  : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
               )}
             >
-              <item.icon className="h-[18px] w-[18px] shrink-0" />
+              <item.icon className="size-4 shrink-0" />
               {!collapsed && <span>{item.label}</span>}
             </Link>
           );
@@ -94,15 +85,15 @@ export function Sidebar({
       </nav>
 
       {/* Keyboard shortcuts */}
-      <div className="px-3 pb-1">
+      <div className="px-2 pb-1">
         <button
           type="button"
           onClick={() => help.setOpen(true)}
           aria-label={collapsed ? "Keyboard shortcuts" : undefined}
           aria-keyshortcuts="?"
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Keyboard className="h-[18px] w-[18px] shrink-0" />
+          <Keyboard className="size-4 shrink-0" />
           {!collapsed && (
             <>
               <span>Keyboard shortcuts</span>
@@ -113,17 +104,18 @@ export function Sidebar({
       </div>
 
       {/* Theme toggle */}
-      <div className="px-3 pb-1">
+      <div className="px-2 pb-1">
         <ThemeToggle collapsed={collapsed} />
       </div>
 
       {/* Collapse toggle */}
-      <div className="border-t border-sidebar-border p-3">
+      <div className="mt-2 border-t border-sidebar-border p-2">
         <button
           type="button"
-          className="inline-flex h-8 w-full items-center justify-center rounded-md text-sidebar-foreground/30 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="inline-flex min-h-11 min-w-11 w-full items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>

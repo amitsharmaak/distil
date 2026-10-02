@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Clock3, ExternalLink, Loader2, Play, Sparkles, X } from "lucide-react";
 
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type { DigestItem, DigestRun, PersonalPreferences } from "@/lib/digests/types";
 
@@ -27,29 +32,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function localTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
-function formatDate(value: string, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "full",
-      timeZone: timezone,
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
-
-function formatTimestamp(value: string, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: timezone,
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function statusLabel(digest: DigestRun): string {
@@ -151,9 +133,7 @@ function DigestItemCard({
   return (
     <li className="rounded-xl border bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-          {itemCategoryLabel(item)}
-        </span>
+        <StatusBadge>{itemCategoryLabel(item)}</StatusBadge>
         <span aria-hidden="true">·</span>
         <span>{item.reason}</span>
       </div>
@@ -341,27 +321,25 @@ export function DigestExperience() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-4xl" aria-labelledby="digests-heading">
-        <p role="status" className="py-12 text-center text-muted-foreground">
-          Loading digests…
-        </p>
-      </main>
+      <PageContainer size="list" aria-labelledby="digests-heading">
+        <PageHeader title={<span id="digests-heading">Digests</span>} />
+        <div role="status" aria-label="Loading digests" className="space-y-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </PageContainer>
     );
   }
 
   if (unavailable) {
     return (
-      <main className="mx-auto max-w-4xl space-y-5" aria-labelledby="digests-heading">
-        <header>
-          <h1 id="digests-heading" className="font-serif text-3xl font-semibold">
-            Digests
-          </h1>
-          <p className="mt-1 text-muted-foreground">
-            A calm, prioritized view of what is worth your attention.
-          </p>
-        </header>
+      <PageContainer size="list" className="space-y-5" aria-labelledby="digests-heading">
+        <PageHeader
+          title={<span id="digests-heading">Digests</span>}
+          description="A calm, prioritized view of what is worth your attention."
+        />
         <section
-          className="rounded-xl border border-amber-400/50 bg-amber-50 p-5 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"
+          className="rounded-xl border border-warning/30 bg-warning-muted p-5 text-sm text-warning-foreground"
           role="alert"
         >
           <div className="flex items-start gap-3">
@@ -373,48 +351,46 @@ export function DigestExperience() {
             </div>
           </div>
         </section>
-      </main>
+      </PageContainer>
     );
   }
 
   if (!preferences) {
     return (
-      <main className="mx-auto max-w-4xl" aria-labelledby="digests-heading">
+      <PageContainer size="list" aria-labelledby="digests-heading">
         <section className="rounded-xl border border-destructive/40 p-5" role="alert">
-          <h1 id="digests-heading" className="font-serif text-2xl font-semibold">
-            Digests unavailable
-          </h1>
+          <PageHeader title={<span id="digests-heading">Digests unavailable</span>} />
           <p className="mt-1 text-sm text-muted-foreground">
             {error || "Preferences could not be loaded."}
           </p>
         </section>
-      </main>
+      </PageContainer>
     );
   }
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6" aria-labelledby="digests-heading">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 id="digests-heading" className="font-serif text-3xl font-semibold">
-            Digests
-          </h1>
-          <p className="mt-1 text-muted-foreground">
-            A calm, prioritized view of what is worth your attention.
-          </p>
-        </div>
-        {preferences.digestEnabled && (
-          <Button
-            type="button"
-            onClick={() => void runNow()}
-            disabled={running}
-            className="min-h-11 gap-2"
-          >
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {running ? "Running…" : "Run now"}
-          </Button>
-        )}
-      </header>
+    <PageContainer size="list" className="space-y-6" aria-labelledby="digests-heading">
+      <PageHeader
+        title={<span id="digests-heading">Digests</span>}
+        description="A calm, prioritized view of what is worth your attention."
+        actions={
+          preferences.digestEnabled && (
+            <Button
+              type="button"
+              onClick={() => void runNow()}
+              disabled={running}
+              className="min-h-11 gap-2"
+            >
+              {running ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {running ? "Running…" : "Run now"}
+            </Button>
+          )
+        }
+      />
 
       <DigestPreferences
         preferences={preferences}
@@ -424,7 +400,7 @@ export function DigestExperience() {
 
       {!preferences.digestEnabled ? (
         <section
-          className="rounded-xl border border-dashed p-6"
+          className="rounded-xl border border-border p-6"
           aria-labelledby="digest-opt-in-heading"
         >
           <h2 id="digest-opt-in-heading" className="font-serif text-xl font-semibold">
@@ -452,21 +428,36 @@ export function DigestExperience() {
               </h2>
               {currentDigest && (
                 <span className="text-sm text-muted-foreground">
-                  {formatDate(currentDigest.localDate, currentDigest.timezone)}
+                  {formatDate(currentDigest.localDate, {
+                    dateStyle: "full",
+                    timeZone: currentDigest.timezone,
+                  })}
                 </span>
               )}
             </div>
             {currentDigest ? (
               <article className="rounded-xl border bg-card p-5 sm:p-6">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="rounded-full bg-secondary px-2.5 py-1 font-medium">
+                  <StatusBadge
+                    tone={
+                      currentDigest.status === "failed"
+                        ? "danger"
+                        : currentDigest.status === "degraded"
+                          ? "warning"
+                          : "neutral"
+                    }
+                  >
                     {statusLabel(currentDigest)}
-                  </span>
+                  </StatusBadge>
                   <span aria-hidden="true">·</span>
-                  <span>{formatTimestamp(currentDigest.createdAt, currentDigest.timezone)}</span>
-                  {currentDigest.dismissedAt && (
-                    <span className="text-amber-700 dark:text-amber-300">Dismissed</span>
-                  )}
+                  <span>
+                    {formatDate(currentDigest.createdAt, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                      timeZone: currentDigest.timezone,
+                    })}
+                  </span>
+                  {currentDigest.dismissedAt && <span className="text-warning">Dismissed</span>}
                 </div>
                 <h3 className="mt-3 font-serif text-2xl font-semibold">{currentDigest.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -474,7 +465,7 @@ export function DigestExperience() {
                 </p>
                 {currentDigest.status === "degraded" && (
                   <p
-                    className="mt-4 rounded-lg border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"
+                    className="mt-4 rounded-lg border border-warning/30 bg-warning-muted p-3 text-sm text-warning-foreground"
                     role="status"
                   >
                     AI enrichment is unavailable, so this digest uses deterministic priority and
@@ -492,9 +483,7 @@ export function DigestExperience() {
                     ))}
                   </ol>
                 ) : (
-                  <p className="mt-5 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    No items remain in this digest.
-                  </p>
+                  <EmptyState title="No items remain in this digest." className="mt-5" />
                 )}
                 {!currentDigest.dismissedAt && (
                   <Button
@@ -508,7 +497,7 @@ export function DigestExperience() {
                 )}
               </article>
             ) : (
-              <div className="rounded-xl border border-dashed p-6" role="status">
+              <div className="rounded-xl border border-border p-6" role="status">
                 <div className="flex items-start gap-3">
                   <Clock3 className="mt-0.5 h-5 w-5 text-muted-foreground" />
                   <div>
@@ -524,7 +513,7 @@ export function DigestExperience() {
 
           <section aria-labelledby="digest-history-heading">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
+              <Sparkles className="h-5 w-5 text-muted-foreground" />
               <h2 id="digest-history-heading" className="font-serif text-2xl font-semibold">
                 History
               </h2>
@@ -536,7 +525,10 @@ export function DigestExperience() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="font-medium">{digest.title}</h3>
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(digest.localDate, digest.timezone)}
+                        {formatDate(digest.localDate, {
+                          dateStyle: "full",
+                          timeZone: digest.timezone,
+                        })}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">{digest.summary}</p>
@@ -548,9 +540,7 @@ export function DigestExperience() {
                 ))}
               </ul>
             ) : (
-              <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                No previous digests.
-              </p>
+              <EmptyState title="No previous digests." className="mt-3" />
             )}
           </section>
         </>
@@ -564,6 +554,6 @@ export function DigestExperience() {
           {error || notice}
         </p>
       )}
-    </main>
+    </PageContainer>
   );
 }

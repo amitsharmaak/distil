@@ -1,5 +1,6 @@
 "use client";
 
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -11,7 +12,7 @@ import {
   TriangleAlert,
   UserRound,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectedBrowsers } from "@/components/capture/connected-browsers";
@@ -89,17 +90,14 @@ export default function SettingsPage() {
   useShortcut(ACCOUNT_TAB, () => setTab("account"));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-serif text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Configure your Distil preferences</p>
-      </div>
+    <PageContainer className="min-w-0 space-y-6">
+      <PageHeader title="Settings" description="Configure your Distil preferences" />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="group-data-[orientation=horizontal]/tabs:h-auto w-full flex-wrap justify-start">
           <TabsTrigger
             value="capture"
-            className="gap-1.5"
+            className="min-h-11 gap-1.5 text-foreground"
             aria-keyshortcuts="1"
             title="Capture (1)"
           >
@@ -107,25 +105,25 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger
             value="account"
-            className="gap-1.5"
+            className="min-h-11 gap-1.5 text-foreground"
             aria-keyshortcuts="2"
             title="Account (2)"
           >
             <UserRound className="h-3.5 w-3.5" /> Account
           </TabsTrigger>
           {isAdmin && (
-            <TabsTrigger value="invitations" className="gap-1.5">
+            <TabsTrigger value="invitations" className="min-h-11 gap-1.5 text-foreground">
               <MailPlus className="h-3.5 w-3.5" /> Invitations
             </TabsTrigger>
           )}
           {isAdmin && (
-            <TabsTrigger value="troubleshooting" className="gap-1.5">
+            <TabsTrigger value="troubleshooting" className="min-h-11 gap-1.5 text-foreground">
               <TriangleAlert className="h-3.5 w-3.5" /> Troubleshooting
               {failureCount > 0 && (
-                <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+                <StatusBadge tone="danger" className="px-1.5 py-0 text-xs">
                   {failureCount}
                   <span className="sr-only"> failed captures</span>
-                </Badge>
+                </StatusBadge>
               )}
             </TabsTrigger>
           )}
@@ -157,7 +155,7 @@ export default function SettingsPage() {
                 Profile, privacy, devices and data export or deletion live in the account centre.
               </p>
             </div>
-            <Button asChild variant="outline" className="min-h-11">
+            <Button asChild variant="outline" className="min-h-11 min-w-11">
               <Link href="/account">Open account centre</Link>
             </Button>
           </div>
@@ -170,17 +168,17 @@ export default function SettingsPage() {
               Quieter surfaces that are not in the main navigation.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+              <Button asChild variant="outline" size="sm" className="min-h-11 min-w-11 gap-1.5">
                 <Link href="/digests">
                   <Sparkles className="h-3.5 w-3.5" /> Digests
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+              <Button asChild variant="outline" size="sm" className="min-h-11 min-w-11 gap-1.5">
                 <Link href="/archive">
                   <Archive className="h-3.5 w-3.5" /> Archive
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="sm" className="min-h-9 gap-1.5">
+              <Button asChild variant="outline" size="sm" className="min-h-11 min-w-11 gap-1.5">
                 <Link href="/research">
                   <FlaskConical className="h-3.5 w-3.5" /> Research
                 </Link>
@@ -189,6 +187,6 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

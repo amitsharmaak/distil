@@ -30,29 +30,27 @@ export function ThemeToggle({
   /** Only one mounted toggle should own Shift+T. */
   registerShortcut?: boolean;
 }) {
-  const { theme, toggle } = useTheme();
+  const { toggle } = useTheme();
   return (
     <>
       {registerShortcut && <ThemeShortcut toggle={toggle} />}
       <button
         type="button"
         className={cn(
-          "inline-flex h-8 items-center justify-center gap-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className ??
-            "w-full text-sidebar-foreground/65 hover:text-sidebar-foreground/85 hover:bg-sidebar-accent/50"
+            "w-full text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/70"
         )}
         onClick={toggle}
         aria-label="Toggle theme"
         aria-keyshortcuts="Shift+T"
       >
-        {theme === "dark" ? (
-          <Sun className="h-4 w-4 shrink-0" />
-        ) : (
-          <Moon className="h-4 w-4 shrink-0" />
-        )}
+        <Sun aria-hidden="true" className="distil-theme-light h-4 w-4 shrink-0" />
+        <Moon aria-hidden="true" className="distil-theme-dark h-4 w-4 shrink-0" />
         {!collapsed && (
-          <span className="text-[13px] font-medium">
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+          <span className="text-sm font-medium">
+            <span className="distil-theme-light">Light mode</span>
+            <span className="distil-theme-dark">Dark mode</span>
           </span>
         )}
       </button>

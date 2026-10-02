@@ -32,7 +32,7 @@ export function KeyboardShortcutsCard() {
       <Button
         variant="outline"
         size="sm"
-        className="min-h-9 gap-2"
+        className="min-h-11 min-w-11 min-h-9 gap-2"
         aria-keyshortcuts="?"
         onClick={() => help.setOpen(true)}
       >
