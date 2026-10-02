@@ -4,11 +4,16 @@
  * self-packed build shares it. The matching private key never lives in this repository.
  *
  * The Chrome Web Store may refuse a manifest that carries `key` and assigns its own id to the
- * listing. The connect page therefore tries every id in DISTIL_EXTENSION_IDS in order; X3 appends
- * the store id after the first upload, and both builds then connect without a coordinated release.
+ * listing. The connect page therefore tries every id in DISTIL_EXTENSION_IDS in order: the
+ * development id first, then the store id, so both builds connect without a coordinated release.
  */
 export const DISTIL_EXTENSION_ID = "fkodjlobficbnhjidcgeihniinpoiaop";
-export const DISTIL_EXTENSION_IDS: readonly string[] = [DISTIL_EXTENSION_ID];
+/** Id the Chrome Web Store assigned to the listing (the store build carries no `key`). */
+export const DISTIL_STORE_EXTENSION_ID = "malhlcmmheemmdebmjpgliligpjlnama";
+export const DISTIL_EXTENSION_IDS: readonly string[] = [
+  DISTIL_EXTENSION_ID,
+  DISTIL_STORE_EXTENSION_ID,
+];
 
 /** Where users install the extension from. Replaced with the store listing URL once X3 ships. */
 export const DISTIL_EXTENSION_INSTALL_URL = `https://chromewebstore.google.com/detail/${DISTIL_EXTENSION_ID}`;

@@ -7,9 +7,10 @@ Everything the Chrome Web Store developer dashboard asks for, ready to paste. Th
 ## Package
 
 - Upload: `dist/distil-extension-2.0.0.zip`
-- After the first upload the dashboard shows the item id. Add it to `DISTIL_EXTENSION_IDS` in
-  `src/lib/extension/constants.ts` (after the development id) and deploy before testers install,
-  otherwise the connect page cannot reach the store build.
+- Item id (assigned at the first upload, 2026-10-02): `malhlcmmheemmdebmjpgliligpjlnama`. It is
+  listed in `DISTIL_EXTENSION_IDS` in `src/lib/extension/constants.ts` after the development id.
+  That change must be deployed before testers install, otherwise the connect page cannot reach
+  the store build.
 
 ## Store listing tab
 

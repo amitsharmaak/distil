@@ -1,6 +1,8 @@
 import { describeBrowser } from "@/lib/extension/browser-label";
 import {
   DISTIL_EXTENSION_ID,
+  DISTIL_EXTENSION_IDS,
+  DISTIL_STORE_EXTENSION_ID,
   EXTENSION_CONNECT_MESSAGE,
   EXTENSION_STATE_PATTERN,
 } from "@/lib/extension/constants";
@@ -28,6 +30,12 @@ afterEach(() => {
 describe("extension id and state contract", () => {
   it("pins a well-formed 32-letter Chrome extension id", () => {
     expect(DISTIL_EXTENSION_ID).toMatch(/^[a-p]{32}$/);
+  });
+
+  it("lists the development id first and the Chrome Web Store id after it", () => {
+    expect(DISTIL_STORE_EXTENSION_ID).toBe("malhlcmmheemmdebmjpgliligpjlnama");
+    expect(DISTIL_EXTENSION_IDS).toEqual([DISTIL_EXTENSION_ID, DISTIL_STORE_EXTENSION_ID]);
+    for (const id of DISTIL_EXTENSION_IDS) expect(id).toMatch(/^[a-p]{32}$/);
   });
 
   it("accepts hex and base64url nonces and rejects short or unsafe values", () => {
@@ -59,10 +67,32 @@ describe("page-to-extension handoff", () => {
       expect.any(Function)
     );
 
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
     sendMessage.mockImplementation((_id, _message, callback) => callback({ ok: false }));
     await expect(sendConnectMessage(payload)).resolves.toBe("rejected");
     sendMessage.mockImplementation((_id, _message, callback) => callback(undefined));
     await expect(sendConnectMessage(payload)).resolves.toBe("rejected");
+  });
+
+  it("falls through to the store build when the development id is not installed", async () => {
+    const runtime: { lastError?: { message: string }; sendMessage: jest.Mock } = {
+      sendMessage: jest.fn((id: string, _message: unknown, callback: (r?: unknown) => void) => {
+        if (id === DISTIL_STORE_EXTENSION_ID) {
+          delete runtime.lastError;
+          callback({ ok: true });
+        } else {
+          runtime.lastError = { message: "Could not establish connection." };
+          callback();
+        }
+      }),
+    };
+    scope.chrome = { runtime };
+    await expect(sendConnectMessage(payload)).resolves.toBe("accepted");
+    expect(runtime.sendMessage.mock.calls.map(([id]) => id)).toEqual([
+      DISTIL_EXTENSION_ID,
+      DISTIL_STORE_EXTENSION_ID,
+    ]);
   });
 
   it("treats lastError, a throw and silence as unreachable", async () => {
@@ -85,7 +115,8 @@ describe("page-to-extension handoff", () => {
     jest.useFakeTimers();
     scope.chrome = { runtime: { sendMessage: () => undefined } };
     const pending = sendConnectMessage(payload, 50);
-    jest.advanceTimersByTime(60);
+    // One timeout per id: each id is only tried after the previous one stays silent.
+    await jest.advanceTimersByTimeAsync(50 * DISTIL_EXTENSION_IDS.length + 10);
     await expect(pending).resolves.toBe("unreachable");
   });
 });
