@@ -63,6 +63,9 @@ function startServer(): void {
         SLACK_CLIENT_ID: "",
         SLACK_CLIENT_SECRET: "",
         SYNC_INTERVAL_HOURS: "0",
+        // Production renders in UTC while readers are elsewhere. Pin the server so a spec that
+        // moves the browser to another timezone reproduces that split on any machine.
+        TZ: "UTC",
       },
       stdio: "inherit",
     }
