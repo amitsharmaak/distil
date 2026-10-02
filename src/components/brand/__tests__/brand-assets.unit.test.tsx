@@ -63,3 +63,15 @@ it("versions every installed-app icon URL and points at a generated file", () =>
     expect(existsSync(resolve(`public${path}`))).toBe(true);
   }
 });
+
+/** The installed app opens on Today; Save is a shortcut on its icon, not the start page. */
+it("starts the installed app on Today with a pinned identity and a Save shortcut", () => {
+  const { id, start_url, scope, shortcuts = [] } = manifest();
+  expect({ id, start_url, scope }).toEqual({ id: "/", start_url: "/", scope: "/" });
+  expect(shortcuts.map(({ name, url }) => ({ name, url }))).toEqual([
+    { name: "Save a link", url: "/save" },
+  ]);
+  for (const { src } of shortcuts.flatMap((shortcut) => shortcut.icons ?? [])) {
+    expect(existsSync(resolve(`public${src.split("?")[0]}`))).toBe(true);
+  }
+});

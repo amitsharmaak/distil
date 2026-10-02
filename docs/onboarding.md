@@ -81,13 +81,13 @@ This installs Distil as a standalone app. Use Safari, because Chrome on iOS cann
 web apps.
 
 1. In Safari, open **https://distilai.app/sign-in** and sign in.
-2. Go to **https://distilai.app/save**.
+2. Go to **https://distilai.app**.
 3. Tap the **Share** button, then **Add to Home Screen**.
 4. Keep the name **Distil** and tap **Add**.
 5. Open the new icon. If it shows the sign-in page, sign in once more. This is expected, as the
    installed app keeps its own session separate from Safari.
 
-The installed app opens straight to the save screen, and the rest of Distil is one tap away.
+The installed app opens on Today, and Save is one tap away in the bottom navigation.
 
 ## Day to day
 

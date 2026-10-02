@@ -69,7 +69,7 @@ new phone pairing are unaffected.
 ## Add Distil to the Home Screen
 
 1. Open `https://distilai.app/sign-in` in Safari and sign in.
-2. Go to `https://distilai.app/save`. The manifest's `start_url` is `/save`, so installing from
+2. Go to `https://distilai.app`. The manifest's `start_url` is `/` (Today), so installing from
    there gives the cleanest result.
 3. Tap **Share**, then **Add to Home Screen**.
 4. Confirm the name **Distil** and tap **Add**.
@@ -77,8 +77,10 @@ new phone pairing are unaffected.
    This is expected: the installed app keeps its own cookie jar and does not share Safari's
    session.
 
-The installed app opens directly to the save screen and respects the iPhone safe areas. Distil does
-not register a service worker, so private feed responses are never cached for offline access.
+The installed app opens on Today and respects the iPhone safe areas; Save is in the bottom
+navigation. iOS stores the start page in the Home Screen icon when it is added, so an icon added
+while the start page was the save screen keeps opening there: delete it and add it again. Distil
+does not register a service worker, so private feed responses are never cached for offline access.
 
 ### Reinstall after an origin change
 
@@ -115,7 +117,7 @@ install link. Amit owns those device and environment steps.
       pair it and confirm each account receives only its own captures.
 - [ ] Confirm the permissions and file save/read/delete actions on the target iOS version. Verify
       shared-file behavior separately if using multiple devices on one Apple Account.
-- [ ] Add `/save` to the Home Screen; icon, standalone display, status bar, keyboard and safe areas
+- [ ] Add Distil to the Home Screen; it opens on Today; icon, standalone display, status bar, keyboard and safe areas
       render correctly.
 - [ ] Turn on Airplane Mode; the Shortcut never claims the article was saved. Reconnect and retry.
 
