@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, RefreshCw, TriangleAlert } from "lucide-react";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
+import { CAPTURE_JUNK_ERROR_CODE } from "@/lib/contracts/capture-triage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -166,7 +167,11 @@ export function CaptureDiagnostics() {
                     }
                   >
                     <RefreshCw className="h-3 w-3" />
-                    {receipt.status === "failed" && receipt.retryable ? "Retry" : "Save again"}
+                    {receipt.status === "failed" && receipt.retryable
+                      ? "Retry"
+                      : receipt.error?.code === CAPTURE_JUNK_ERROR_CODE
+                        ? "Save anyway"
+                        : "Save again"}
                   </Button>
                 </div>
               </li>
