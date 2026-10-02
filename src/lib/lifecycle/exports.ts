@@ -20,6 +20,28 @@ export const ACCOUNT_EXPORT_JOB_TYPE = "account.export";
 export const ACCOUNT_EXPORT_RETENTION_JOB_TYPE = "account.export-expire";
 export const EXPORT_DOWNLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 export const EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * An export that is still `pending` or `running` this long after its last
+ * transition has no live worker: the job allows five one-minute deliveries and
+ * each runs for at most a minute. It is failed the next time the owner
+ * requests, lists or reads exports, so it can never block new requests. A late
+ * delivery can still claim a failed export and complete it.
+ */
+export const EXPORT_STALE_AFTER_MS = 15 * 60 * 1000;
+export const EXPORT_STORAGE_UNAVAILABLE_CODE = "EXPORT_STORAGE_UNAVAILABLE";
+
+/** Fixed, content-free text for the client; never the underlying error. */
+const EXPORT_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  [EXPORT_STORAGE_UNAVAILABLE_CODE]:
+    "Export storage is not available right now. Please try again later.",
+  EXPORT_STALLED: "This export did not finish. Please request a new one.",
+  QUOTA_EXCEEDED: "The export limit was reached. Please try again later.",
+};
+const EXPORT_FAILURE_FALLBACK = "This export could not be created. Please request a new one.";
+
+function staleBefore(now: Date): string {
+  return new Date(now.getTime() - EXPORT_STALE_AFTER_MS).toISOString();
+}
 
 const encoder = new TextEncoder();
 
@@ -114,8 +136,12 @@ export async function requestAccountExport(
     requestedAt: now.toISOString(),
     downloadExpiresAt: new Date(now.getTime() + EXPORT_DOWNLOAD_TTL_MS).toISOString(),
     purgeAfter: new Date(now.getTime() + EXPORT_RETENTION_MS).toISOString(),
+    staleBefore: staleBefore(now),
   });
   const jobId = result.record.id;
+  // Another export is already pending or running for this account: hand it
+  // back without a second quota charge or a second pair of jobs.
+  if (result.existing === "active") return { export: result.record, jobId, created: false };
   if (result.created) {
     const usage = await repositories.lifecycle.consumeUsage({
       date: now.toISOString().slice(0, 10),
@@ -156,13 +182,46 @@ export async function requestAccountExport(
 
 export async function listAccountExports(
   repositories: RepositorySet,
-  input: { limit?: number } = {}
+  input: { limit?: number; now?: Date } = {}
 ): Promise<ReturnType<typeof publicExport>[]> {
   const limit = input.limit ?? 20;
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new LifecycleError("INVALID_REQUEST", 400, "Invalid export list limit");
   }
+  await failStaleAccountExports(repositories, input.now);
   return (await repositories.lifecycle.listExports({ limit })).map(publicExport);
+}
+
+/** Owner-scoped status read; a foreign or unknown id is indistinguishable. */
+export async function getAccountExport(
+  repositories: RepositorySet,
+  exportId: string,
+  now?: Date
+): Promise<ReturnType<typeof publicExport>> {
+  await failStaleAccountExports(repositories, now);
+  const record = await repositories.lifecycle.findExport(exportId);
+  if (!record) throw new LifecycleError("NOT_FOUND", 404, "Export not found");
+  return publicExport(record);
+}
+
+async function failStaleAccountExports(repositories: RepositorySet, now = new Date()) {
+  await repositories.lifecycle.failStaleExports({
+    staleBefore: staleBefore(now),
+    at: now.toISOString(),
+  });
+}
+
+/** Terminal state for an export whose worker could not reach object storage. */
+export async function failAccountExportWithoutStorage(
+  repositories: RepositorySet,
+  exportId: string,
+  now = new Date()
+): Promise<void> {
+  await repositories.lifecycle.failExport(
+    exportId,
+    EXPORT_STORAGE_UNAVAILABLE_CODE,
+    now.toISOString()
+  );
 }
 
 export async function purgeExpiredAccountExport(
@@ -279,5 +338,11 @@ export function publicExport(record: AccountExportRecord) {
     purgeAfter: record.purgeAfter,
     sizeBytes: record.sizeBytes,
     failureCode: record.failureCode,
+    ...(record.status === "failed"
+      ? {
+          failureMessage:
+            EXPORT_FAILURE_MESSAGES[record.failureCode ?? ""] ?? EXPORT_FAILURE_FALLBACK,
+        }
+      : {}),
   };
 }

@@ -190,12 +190,30 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
     requestedAt: string;
     downloadExpiresAt: string;
     purgeAfter: string;
+    staleBefore?: string;
   }) {
-    await this
-      .sql`SELECT pg_advisory_xact_lock(hashtext(${`export:${this.context.userId}:${input.idempotencyKey}`}))`;
+    // One lock per account, held to the end of this tenant transaction, so
+    // concurrent requests (double clicks, several tabs) are serialized and the
+    // second one sees the row the first one inserted.
+    await this.sql`SELECT pg_advisory_xact_lock(hashtext(${`export:${this.context.userId}`}))`;
     const existing = await this.sql<Row[]>`
       SELECT * FROM account_exports WHERE idempotency_key=${input.idempotencyKey} LIMIT 1`;
-    if (existing[0]) return { record: mapExport(existing[0])!, created: false };
+    if (existing[0]) {
+      return {
+        record: mapExport(existing[0])!,
+        created: false,
+        existing: "idempotency-key" as const,
+      };
+    }
+    if (input.staleBefore) {
+      await this.failStaleExports({ staleBefore: input.staleBefore, at: input.requestedAt });
+    }
+    const active = await this.sql<Row[]>`
+      SELECT * FROM account_exports WHERE status IN ('pending','running')
+      ORDER BY requested_at DESC, id DESC LIMIT 1`;
+    if (active[0]) {
+      return { record: mapExport(active[0])!, created: false, existing: "active" as const };
+    }
     const rows = await this.sql<Row[]>`
       INSERT INTO account_exports
         (id,user_id,status,idempotency_key,manifest_version,requested_at,updated_at,download_expires_at,purge_after)
@@ -205,6 +223,15 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
          ${input.downloadExpiresAt}::timestamptz,${input.purgeAfter}::timestamptz)
       RETURNING *`;
     return { record: mapExport(rows[0])!, created: true };
+  }
+
+  async failStaleExports(input: { staleBefore: string; at: string }) {
+    const rows = await this.sql<Row[]>`
+      UPDATE account_exports
+      SET status='failed',failure_code='EXPORT_STALLED',updated_at=${input.at}::timestamptz
+      WHERE status IN ('pending','running') AND updated_at<${input.staleBefore}::timestamptz
+      RETURNING id`;
+    return rows.length;
   }
 
   async findExport(id: string) {

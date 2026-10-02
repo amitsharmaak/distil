@@ -1604,7 +1604,8 @@
       "requiredPrincipal": "user_session",
       "scope": "owner",
       "resources": ["account_exports", "job_queue", "usage_counters", "user_quotas"],
-      "testProfile": "owner"
+      "testProfile": "owner",
+      "notes": "Serialized per account by an advisory lock; returns the caller's unfinished export instead of creating a second one, and fails the caller's own stalled exports first."
     },
     {
       "path": "/api/v1/account/exports",
@@ -1615,7 +1616,7 @@
       "scope": "owner",
       "resources": ["account_exports"],
       "testProfile": "owner",
-      "notes": "Returns only caller-owned sanitized export status records; no object references or signed URLs."
+      "notes": "Returns only caller-owned sanitized export status records; no object references or signed URLs. Marks the caller's own stalled exports failed before reading."
     },
     {
       "path": "/api/v1/account/exports/:id",

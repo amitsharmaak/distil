@@ -116,9 +116,21 @@ export interface VercelTenantJobSender {
   <T>(
     topic: string,
     message: T,
-    options: { idempotencyKey: string; region?: string; delaySeconds?: number }
+    options: {
+      idempotencyKey: string;
+      region?: string;
+      delaySeconds?: number;
+      retentionSeconds?: number;
+    }
   ): Promise<unknown>;
 }
+
+/**
+ * Vercel Queues limits (`@vercel/queue` 0.5.1 README, "Parameter Constraints"):
+ * retention defaults to 24 hours and is at most 7 days; a delay may not exceed
+ * the retention. A delayed message therefore needs an explicit retention.
+ */
+export const VERCEL_QUEUE_MAX_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
 /** Test-only in-memory dispatcher for the minimal tenant job envelope. */
 export class FakeTenantJobDispatcher implements TenantJobDispatcher {
@@ -197,7 +209,14 @@ export class VercelTenantJobDispatcher implements TenantJobDispatcher {
     await this.sender(ACCOUNT_LIFECYCLE_QUEUE_TOPIC, message, {
       idempotencyKey: options.idempotencyKey,
       region: this.region,
-      ...(options.delaySeconds === undefined ? {} : { delaySeconds: options.delaySeconds }),
+      // Without a retention the 24-hour default applies and a longer delay is
+      // outside the documented limits.
+      ...(options.delaySeconds === undefined
+        ? {}
+        : {
+            delaySeconds: Math.min(options.delaySeconds, VERCEL_QUEUE_MAX_RETENTION_SECONDS),
+            retentionSeconds: VERCEL_QUEUE_MAX_RETENTION_SECONDS,
+          }),
     });
   }
 }

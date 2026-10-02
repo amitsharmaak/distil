@@ -19,7 +19,11 @@ import {
 } from "@/lib/lifecycle/deletion";
 import { FakeAuthAccountPurger } from "@/lib/lifecycle/fakes";
 import { authProviderSubjectSchema } from "@/lib/lifecycle/ports";
+import { LifecycleError } from "@/lib/lifecycle/errors";
 import {
+  EXPORT_STALE_AFTER_MS,
+  getAccountExport,
+  listAccountExports,
   processAccountExport,
   readAccountExportDownload,
   requestAccountExport,
@@ -289,6 +293,191 @@ it("P3-RECOVERY-001: recovers durable export after queue and object-store outage
   ]);
   expect(jobs[0]?.count).toBe(2);
   expect(usage[0]?.request_count).toBe(1);
+});
+
+it("creates one export for concurrent requests with different idempotency keys", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql);
+  const alphaRepositories = access.getTenantRepositories(alpha);
+  const betaRepositories = access.getTenantRepositories(beta);
+  const dispatcher = new FakeTenantJobDispatcher();
+
+  // Eight clicks in a row, each with its own key, as the account page sent them.
+  const results = await Promise.all(
+    Array.from({ length: 8 }, (_, index) =>
+      requestAccountExport(alpha, alphaRepositories, {
+        idempotencyKey: `concurrent-export-${index}`,
+        now,
+        dispatcher,
+      })
+    )
+  );
+  expect(results.filter(({ created }) => created)).toHaveLength(1);
+  expect(new Set(results.map((result) => result.export.id)).size).toBe(1);
+  expect(new Set(results.map((result) => result.jobId)).size).toBe(1);
+
+  const [exports, jobs, usage] = await Promise.all([
+    harness.sql<Array<{ status: string }>>`
+      SELECT status FROM account_exports WHERE user_id=${alpha.userId}::uuid`,
+    harness.sql<Array<{ count: number }>>`
+      SELECT count(*)::integer AS count FROM job_queue
+      WHERE user_id=${alpha.userId}::uuid
+        AND job_type IN ('account.export','account.export-expire')`,
+    harness.sql<Array<{ request_count: number }>>`
+      SELECT request_count FROM usage_counters
+      WHERE user_id=${alpha.userId}::uuid AND operation='account.exports'`,
+  ]);
+  expect([...exports]).toEqual([{ status: "pending" }]);
+  expect(jobs[0]?.count).toBe(2);
+  expect(Number(usage[0]?.request_count)).toBe(1);
+  expect(dispatcher.messages).toHaveLength(2);
+
+  // A later request while the export is still running is handed the same one.
+  await alphaRepositories.lifecycle.claimExport(results[0]!.export.id, now.toISOString());
+  const later = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "concurrent-export-later",
+    now: new Date(now.getTime() + 60_000),
+    dispatcher,
+  });
+  expect(later).toMatchObject({ created: false, export: { id: results[0]!.export.id } });
+  expect(later.export.status).toBe("running");
+  expect(dispatcher.messages).toHaveLength(2);
+
+  // The guard is per account: another tenant still gets its own export.
+  const other = await requestAccountExport(beta, betaRepositories, {
+    idempotencyKey: "concurrent-export-beta",
+    now,
+    dispatcher,
+  });
+  expect(other.created).toBe(true);
+  expect(other.export.id).not.toBe(results[0]!.export.id);
+});
+
+it("fails stalled exports so they reach a terminal state and never block a new request", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql);
+  const alphaRepositories = access.getTenantRepositories(alpha);
+  const betaRepositories = access.getTenantRepositories(beta);
+  // Eight pending rows that no worker ever touched, as left behind in Production, plus one of
+  // another tenant that the owner's sweep must not see.
+  await harness.sql`
+    INSERT INTO account_exports
+      (id,user_id,status,idempotency_key,manifest_version,requested_at,updated_at,
+       download_expires_at,purge_after)
+    SELECT gen_random_uuid(),${alpha.userId}::uuid,'pending','stuck-export-' || n,1,
+      ${now.toISOString()}::timestamptz,${now.toISOString()}::timestamptz,
+      ${now.toISOString()}::timestamptz + interval '1 day',
+      ${now.toISOString()}::timestamptz + interval '7 days'
+    FROM generate_series(1,8) AS n`;
+  const betaExport = await requestAccountExport(beta, betaRepositories, {
+    idempotencyKey: "stuck-export-beta",
+    now,
+  });
+
+  // Inside the threshold they still count as in progress: no new export, nothing failed.
+  const early = new Date(now.getTime() + EXPORT_STALE_AFTER_MS - 1_000);
+  const blocked = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "stuck-export-early",
+    now: early,
+  });
+  expect(blocked.created).toBe(false);
+  await expect(listAccountExports(alphaRepositories, { now: early })).resolves.toHaveLength(8);
+  const stillPending = await harness.sql<Array<{ count: number }>>`
+    SELECT count(*)::integer AS count FROM account_exports
+    WHERE user_id=${alpha.userId}::uuid AND status='pending'`;
+  expect(stillPending[0]?.count).toBe(8);
+
+  // Past the threshold, listing gives every stalled row a terminal state with safe text.
+  const late = new Date(now.getTime() + EXPORT_STALE_AFTER_MS + 1_000);
+  const listed = await listAccountExports(alphaRepositories, { now: late });
+  expect(listed).toHaveLength(8);
+  for (const item of listed) {
+    expect(item).toMatchObject({
+      status: "failed",
+      failureCode: "EXPORT_STALLED",
+      failureMessage: "This export did not finish. Please request a new one.",
+      updatedAt: late.toISOString(),
+    });
+  }
+  await expect(betaRepositories.lifecycle.findExport(betaExport.export.id)).resolves.toMatchObject({
+    status: "pending",
+  });
+
+  // A new request is no longer blocked, and it does not resurrect the stalled rows.
+  const fresh = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "stuck-export-fresh",
+    now: late,
+  });
+  expect(fresh.created).toBe(true);
+  expect(fresh.export.status).toBe("pending");
+
+  // The request path performs the same sweep on its own, before looking for an unfinished one.
+  const later = new Date(late.getTime() + EXPORT_STALE_AFTER_MS + 1_000);
+  const next = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "stuck-export-next",
+    now: later,
+  });
+  expect(next.created).toBe(true);
+  expect(next.export.id).not.toBe(fresh.export.id);
+  await expect(getAccountExport(alphaRepositories, fresh.export.id, later)).resolves.toMatchObject({
+    status: "failed",
+    failureCode: "EXPORT_STALLED",
+  });
+  await expect(getAccountExport(betaRepositories, fresh.export.id, later)).rejects.toMatchObject({
+    code: "NOT_FOUND",
+  });
+});
+
+it("marks an export failed when its worker has no object storage, and completes it on a later retry", async () => {
+  const access = createPostgresRepositoryAccess(runtimeSql);
+  const alphaRepositories = access.getTenantRepositories(alpha);
+  const dispatcher = new FakeTenantJobDispatcher();
+  const requested = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "storage-unavailable-export",
+    now,
+    dispatcher,
+  });
+  const envelope = dispatcher.messages.find(
+    ({ message }) => message.jobType === "account.export"
+  )!.message;
+  const store = new FakeTenantObjectStore();
+  let storageConfigured = false;
+  const consume = () =>
+    consumeLifecycleTenantJobEnvelope(envelope, {
+      getTenantRepositories: async (context) => access.getTenantRepositories(context),
+      getObjectStore: () => {
+        if (!storageConfigured) {
+          throw new LifecycleError(
+            "UNAVAILABLE",
+            503,
+            "Account export storage has not been configured"
+          );
+        }
+        return store;
+      },
+    });
+
+  await expect(consume()).resolves.toBe("failed");
+  const failed = await getAccountExport(alphaRepositories, requested.export.id);
+  expect(failed).toMatchObject({
+    status: "failed",
+    failureCode: "EXPORT_STORAGE_UNAVAILABLE",
+    failureMessage: "Export storage is not available right now. Please try again later.",
+  });
+  expect(JSON.stringify(failed)).not.toContain("configured");
+
+  // A failed export is terminal for its owner: a new request is accepted at once.
+  const again = await requestAccountExport(alpha, alphaRepositories, {
+    idempotencyKey: "storage-unavailable-export-again",
+    now,
+    dispatcher,
+  });
+  expect(again.created).toBe(true);
+
+  // The job kept its retry budget, so a delivery after storage is repaired completes it.
+  storageConfigured = true;
+  await expect(consume()).resolves.toBe("completed");
+  await expect(alphaRepositories.lifecycle.findExport(requested.export.id)).resolves.toMatchObject({
+    status: "ready",
+  });
 });
 
 it("P3-RECOVERY-002: retries one durable capture after queue publication fails", async () => {

@@ -1,5 +1,8 @@
 import { createAuthContext } from "@/lib/contracts";
 import {
+  EXPORT_STALE_AFTER_MS,
+  failAccountExportWithoutStorage,
+  getAccountExport,
   listAccountExports,
   processAccountExport,
   publicExport,
@@ -68,6 +71,7 @@ function exportRepositories(overrides: Record<string, unknown> = {}) {
   return {
     lifecycle: {
       createExport: jest.fn().mockResolvedValue({ record: pending, created: true }),
+      failStaleExports: jest.fn().mockResolvedValue(0),
       listExports: jest.fn().mockResolvedValue([ready]),
       findExport: jest.fn().mockResolvedValue(pending),
       claimExport: jest.fn().mockResolvedValue(running),
@@ -143,6 +147,88 @@ describe("account export runtime", () => {
         idempotencyKey: `account-export-expire:${exportId}`,
         runAfter: record.purgeAfter,
       })
+    );
+  });
+
+  it("returns the unfinished export without a second quota charge or a second enqueue", async () => {
+    const active = exportRecord("running", { idempotencyKey: "first-click-key" });
+    const repositories = exportRepositories({
+      createExport: jest
+        .fn()
+        .mockResolvedValue({ record: active, created: false, existing: "active" }),
+    });
+    const dispatcher = { dispatch: jest.fn() };
+
+    await expect(
+      requestAccountExport(context, repositories as never, {
+        idempotencyKey: "second-click-key",
+        now,
+        dispatcher,
+      })
+    ).resolves.toEqual({ export: active, jobId: exportId, created: false });
+    expect(repositories.lifecycle.createExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "second-click-key",
+        staleBefore: new Date(now.getTime() - EXPORT_STALE_AFTER_MS).toISOString(),
+      })
+    );
+    expect(repositories.lifecycle.consumeUsage).not.toHaveBeenCalled();
+    expect(repositories.jobs.enqueue).not.toHaveBeenCalled();
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("fails stalled exports before listing or reading one, and conceals unknown ids", async () => {
+    const repositories = exportRepositories();
+    const stale = {
+      staleBefore: new Date(now.getTime() - EXPORT_STALE_AFTER_MS).toISOString(),
+      at: now.toISOString(),
+    };
+
+    await listAccountExports(repositories as never, { now });
+    expect(repositories.lifecycle.failStaleExports).toHaveBeenLastCalledWith(stale);
+    expect(repositories.lifecycle.failStaleExports.mock.invocationCallOrder[0]).toBeLessThan(
+      repositories.lifecycle.listExports.mock.invocationCallOrder[0]
+    );
+
+    await expect(getAccountExport(repositories as never, exportId, now)).resolves.toMatchObject({
+      id: exportId,
+      status: "pending",
+    });
+    expect(repositories.lifecycle.failStaleExports).toHaveBeenCalledTimes(2);
+
+    repositories.lifecycle.findExport.mockResolvedValueOnce(undefined);
+    await expect(getAccountExport(repositories as never, exportId, now)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+  });
+
+  it("gives a failed export fixed text and keeps other states free of it", async () => {
+    expect(publicExport(exportRecord("pending"))).not.toHaveProperty("failureMessage");
+    expect(
+      publicExport(exportRecord("failed", { failureCode: "EXPORT_STORAGE_UNAVAILABLE" }))
+    ).toMatchObject({
+      failureCode: "EXPORT_STORAGE_UNAVAILABLE",
+      failureMessage: "Export storage is not available right now. Please try again later.",
+    });
+    expect(publicExport(exportRecord("failed", { failureCode: "EXPORT_STALLED" }))).toMatchObject({
+      failureMessage: "This export did not finish. Please request a new one.",
+    });
+    expect(
+      publicExport(exportRecord("failed", { failureCode: "SOMETHING_INTERNAL" }))
+    ).toMatchObject({
+      failureMessage: "This export could not be created. Please request a new one.",
+    });
+  });
+
+  it("records the storage failure code when a worker has no object storage", async () => {
+    const repositories = exportRepositories();
+
+    await failAccountExportWithoutStorage(repositories as never, exportId, now);
+    expect(repositories.lifecycle.failExport).toHaveBeenCalledWith(
+      exportId,
+      "EXPORT_STORAGE_UNAVAILABLE",
+      now.toISOString()
     );
   });
 

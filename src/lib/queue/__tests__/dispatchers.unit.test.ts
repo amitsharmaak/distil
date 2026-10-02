@@ -151,7 +151,26 @@ describe("capture dispatchers", () => {
       idempotencyKey: "account-export:one",
       region: "sin1",
       delaySeconds: 42,
+      retentionSeconds: 604_800,
     });
+  });
+
+  it("keeps a seven-day delayed lifecycle message inside the queue's retention limit", async () => {
+    const sender = jest.fn().mockResolvedValue({ messageId: "queue-1" });
+    const dispatcher = new VercelTenantJobDispatcher(sender);
+    await dispatcher.dispatch(lifecycleMessage, {
+      idempotencyKey: "account-export-expire:one",
+      delaySeconds: 7 * 24 * 60 * 60,
+    });
+    await dispatcher.dispatch(lifecycleMessage, {
+      idempotencyKey: "account-export-expire:two",
+      delaySeconds: 8 * 24 * 60 * 60,
+    });
+    for (const [, , options] of sender.mock.calls) {
+      expect(options.retentionSeconds).toBe(604_800);
+      expect(options.delaySeconds).toBe(604_800);
+      expect(options.delaySeconds).toBeLessThanOrEqual(options.retentionSeconds);
+    }
   });
 
   it("omits delay for immediate lifecycle delivery and honors an explicit region", async () => {

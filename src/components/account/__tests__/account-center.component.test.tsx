@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const mockReplace = jest.fn();
 const mockRefresh = jest.fn();
@@ -727,5 +727,266 @@ describe("AccountCenter lifecycle recovery", () => {
         "If this email belongs to a Distil account, a password link is on its way."
       )
     ).toBeInTheDocument();
+  });
+});
+
+describe("AccountCenter export requests", () => {
+  const exportId = "55555555-5555-4555-8555-555555555555";
+  const pendingExport = {
+    id: exportId,
+    status: "pending",
+    requestedAt: "2026-10-02T00:00:00.000Z",
+  };
+  const statusUrl = `/api/v1/account/exports/${exportId}`;
+  // The component's polling bounds: every five seconds, at most 36 times.
+  const EXPORT_POLL_INTERVAL_MS = 5_000;
+  const EXPORT_POLL_MAX_ATTEMPTS = 36;
+  const exportSection = () => screen.getByRole("region", { name: "Your data export" });
+  const postCalls = () =>
+    fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/v1/account/export" && init?.method === "POST"
+    );
+  const statusCalls = () => fetchMock.mock.calls.filter(([url]) => url === statusUrl);
+  // Fires due timers, then lets the mocked fetch and its state updates settle.
+  const advance = (milliseconds: number) =>
+    act(async () => {
+      jest.advanceTimersByTime(milliseconds);
+      for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    });
+  const flush = () => advance(0);
+  const nextPoll = () => advance(EXPORT_POLL_INTERVAL_MS);
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("disables the button and shows progress while the request is pending", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    const button = await screen.findByRole("button", { name: "Request export" });
+    let resolvePost: (value: Response) => void = () => undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolvePost = resolve;
+      })
+    );
+
+    fireEvent.click(button);
+
+    const busy = await screen.findByRole("button", { name: "Requesting export…" });
+    expect(busy).toBeDisabled();
+
+    await act(async () => resolvePost(response({ export: pendingExport, created: true }, 202)));
+
+    const section = exportSection();
+    expect(
+      await within(section).findByText(
+        "Your export has been requested. It will appear here when ready."
+      )
+    ).toBeInTheDocument();
+    // An unfinished export keeps the button disabled, with the reason beside it.
+    expect(within(section).getByRole("button", { name: "Request export" })).toBeDisabled();
+    expect(
+      within(section).getByText(
+        "An export is in progress. You can request another when it finishes."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("sends one request for a double click", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    const button = await screen.findByRole("button", { name: "Request export" });
+    fetchMock.mockResolvedValue(response({ export: pendingExport, created: true }, 202));
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(await screen.findByText("pending")).toBeInTheDocument();
+    expect(postCalls()).toHaveLength(1);
+  });
+
+  it("says so when the server hands back an export that is already in progress", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    const button = await screen.findByRole("button", { name: "Request export" });
+    fetchMock.mockResolvedValueOnce(
+      response({ export: { ...pendingExport, status: "running" }, created: false }, 202)
+    );
+
+    fireEvent.click(button);
+
+    expect(
+      await within(exportSection()).findByText(
+        "An export is already in progress. It is shown below."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("running")).toHaveLength(1);
+  });
+
+  it("renders request errors inside the export section and re-enables the button", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    const button = await screen.findByRole("button", { name: "Request export" });
+    fetchMock.mockResolvedValueOnce(
+      response({ error: { code: "QUOTA_EXCEEDED", message: "Export quota exhausted" } }, 429)
+    );
+
+    fireEvent.click(button);
+
+    const section = exportSection();
+    const message = await within(section).findByText("Export quota exhausted");
+    expect(message.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getAllByText("Export quota exhausted")).toHaveLength(1);
+    expect(within(section).getByRole("button", { name: "Request export" })).toBeEnabled();
+
+    fetchMock.mockRejectedValueOnce(new TypeError("network down"));
+    fireEvent.click(within(section).getByRole("button", { name: "Request export" }));
+    expect(
+      await within(section).findByText("Could not request an export. Please try again.")
+    ).toBeInTheDocument();
+    expect(within(section).queryByText("Export quota exhausted")).not.toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: "Request export" })).toBeEnabled();
+  });
+
+  it("keeps the fresh-authentication recovery next to the export button", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    const button = await screen.findByRole("button", { name: "Request export" });
+    fetchMock.mockResolvedValueOnce(
+      response(
+        {
+          error: {
+            code: "FRESH_AUTH_REQUIRED",
+            message: "Recent authentication is required for this account action",
+            recovery: { kind: "CONTACT_OPERATOR_FOR_NEW_INVITATION" },
+          },
+        },
+        403
+      )
+    );
+
+    fireEvent.click(button);
+
+    const section = exportSection();
+    expect(await within(section).findByRole("alert")).toHaveTextContent(
+      "Recent authentication is required for this account action"
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+
+    fetchMock.mockResolvedValueOnce(response({ accepted: true }, 202));
+    fireEvent.click(within(section).getByRole("button", { name: "Email verification link" }));
+    expect(
+      await within(section).findByText(
+        "Verification link sent. Open it in this browser, then retry the action."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("shows a plain message for a failed export, preferring the server's safe text", async () => {
+    mockActiveHydration({
+      exports: [
+        {
+          ...pendingExport,
+          status: "failed",
+          failureMessage: "Export storage is not available right now. Please try again later.",
+        },
+        { ...pendingExport, id: "66666666-6666-4666-8666-666666666666", status: "failed" },
+      ],
+    });
+    render(<AccountCenter />);
+
+    const section = await screen.findByRole("region", { name: "Your data export" });
+    expect(
+      await within(section).findByText(
+        "Export storage is not available right now. Please try again later."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(section).getByText("This export could not be created. Please request a new one.")
+    ).toBeInTheDocument();
+    // A failed export is terminal: a new request is allowed.
+    expect(within(section).getByRole("button", { name: "Request export" })).toBeEnabled();
+  });
+
+  it("polls an unfinished export and stops when it reaches a terminal state", async () => {
+    jest.useFakeTimers();
+    mockActiveHydration({ exports: [pendingExport] });
+    render(<AccountCenter />);
+    await flush();
+    expect(screen.getByText("pending")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request export" })).toBeDisabled();
+    expect(statusCalls()).toHaveLength(0);
+
+    fetchMock.mockResolvedValueOnce(response({ export: { ...pendingExport, status: "running" } }));
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(1);
+    expect(statusCalls()[0][1]).toMatchObject({ headers: { Accept: "application/json" } });
+    expect(screen.getByText("running")).toBeInTheDocument();
+
+    fetchMock.mockResolvedValueOnce(
+      response({
+        export: {
+          ...pendingExport,
+          status: "failed",
+          failureMessage: "Export storage is not available right now. Please try again later.",
+        },
+      })
+    );
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(2);
+    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Export storage is not available right now. Please try again later.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request export" })).toBeEnabled();
+
+    await nextPoll();
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(2);
+  });
+
+  it("stops polling at the cap and says how to check again", async () => {
+    jest.useFakeTimers();
+    mockActiveHydration({ exports: [pendingExport] });
+    render(<AccountCenter />);
+    await flush();
+    // Failed reads count towards the cap as well.
+    fetchMock.mockResolvedValueOnce(response({ error: { message: "unavailable" } }, 503));
+    fetchMock.mockRejectedValueOnce(new TypeError("network down"));
+    fetchMock.mockResolvedValue(response({ export: pendingExport }));
+
+    for (let attempt = 0; attempt < EXPORT_POLL_MAX_ATTEMPTS; attempt += 1) await nextPoll();
+    expect(statusCalls()).toHaveLength(EXPORT_POLL_MAX_ATTEMPTS);
+    expect(
+      await screen.findByText(
+        "This export is taking longer than usual. Use Refresh status to check again."
+      )
+    ).toBeInTheDocument();
+
+    await nextPoll();
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(EXPORT_POLL_MAX_ATTEMPTS);
+    expect(screen.getByRole("button", { name: "Request export" })).toBeDisabled();
+  });
+
+  it("stops polling when the page is left", async () => {
+    jest.useFakeTimers();
+    mockActiveHydration({ exports: [pendingExport] });
+    const { unmount } = render(<AccountCenter />);
+    await flush();
+    fetchMock.mockResolvedValue(response({ export: pendingExport }));
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(1);
+
+    unmount();
+    await nextPoll();
+    await nextPoll();
+    expect(statusCalls()).toHaveLength(1);
   });
 });
