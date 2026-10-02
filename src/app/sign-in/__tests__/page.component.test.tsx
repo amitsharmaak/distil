@@ -8,6 +8,8 @@ import { navigateFullPage } from "@/lib/browser-navigation";
 
 import { SignInCard } from "@/components/auth/sign-in-card";
 import SignInPage from "../page";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
+import { CONTENT_AUTH_STORAGE_KEY } from "@/lib/client-cache/auth-events";
 
 const fetchMock = jest.mocked(global.fetch);
 const response = (status: number, body: unknown = {}) =>
@@ -45,6 +47,27 @@ it("signs in with a password and redirects home", async () => {
   );
   // Full navigation, not a client-side replace: see the comment in the page.
   await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/", window.location));
+});
+
+it("goes straight to the destination after sign-in without the session notice", async () => {
+  fetchMock.mockResolvedValue(response(200, { authenticated: true }));
+  const stored = jest.spyOn(Storage.prototype, "setItem");
+  // As in the root layout: the sign-in page renders inside the anonymous content cache.
+  render(
+    <ContentCacheProvider accountKey={null}>
+      <SignInPage />
+    </ContentCacheProvider>
+  );
+
+  submitSignIn("amit@example.com", "correct horse battery staple");
+
+  await waitFor(() => expect(navigateFullPage).toHaveBeenCalledWith("/", window.location));
+  // Other tabs are told to drop what they hold; this tab keeps its page until the new
+  // document arrives instead of showing "Your session changed" after valid credentials.
+  expect(stored).toHaveBeenCalledWith(CONTENT_AUTH_STORAGE_KEY, expect.any(String));
+  stored.mockRestore();
+  expect(screen.queryByText("Your session changed.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Sign(ing)? in/ })).toBeInTheDocument();
 });
 
 it("shows the server message on an invalid password", async () => {

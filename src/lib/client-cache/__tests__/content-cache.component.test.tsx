@@ -3,9 +3,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode } from "react";
 import { ContentCacheProvider, useContentCache, useContentQuery } from "../content-cache";
 import { announceAccountChange, CONTENT_AUTH_STORAGE_KEY } from "../auth-events";
-import { replaceFullPage } from "@/lib/browser-navigation";
+import { reloadFullPage } from "@/lib/browser-navigation";
 
-jest.mock("@/lib/browser-navigation", () => ({ replaceFullPage: jest.fn() }));
+jest.mock("@/lib/browser-navigation", () => ({ reloadFullPage: jest.fn() }));
 
 type Payload = { title: string };
 function View({ initial, updatedAt }: { initial?: Payload; updatedAt?: number }) {
@@ -32,7 +32,7 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
-  jest.mocked(replaceFullPage).mockReset();
+  jest.mocked(reloadFullPage).mockReset();
 });
 
 it("survives development Strict Mode's effect replay without expiring the account", async () => {
@@ -148,7 +148,7 @@ it("isolates account switches and ignores a previous account's late response", a
   // The second account is never rendered inside the first account's document: route output
   // cached for the first account may still be reachable, so the document is reloaded instead.
   await screen.findByText("Your session changed.");
-  expect(replaceFullPage).toHaveBeenCalledWith(window.location.href, window.location);
+  expect(reloadFullPage).toHaveBeenCalledWith(window.location);
   await act(async () => finish(response("First account private data")));
   expect(signal.aborted).toBe(true);
   expect(screen.queryByText("First account private data")).not.toBeInTheDocument();
@@ -164,7 +164,7 @@ it("reloads the document when a later server render reports no account", async (
     </ContentCacheProvider>
   );
   expect(screen.getByText("Private report")).toBeInTheDocument();
-  expect(replaceFullPage).not.toHaveBeenCalled();
+  expect(reloadFullPage).not.toHaveBeenCalled();
 
   // What `router.refresh()` after a sign-out delivers: the same tree for nobody.
   rerender(
@@ -175,8 +175,8 @@ it("reloads the document when a later server render reports no account", async (
 
   expect(screen.getByText("Your session changed.")).toBeInTheDocument();
   expect(screen.queryByText("Private report")).not.toBeInTheDocument();
-  expect(replaceFullPage).toHaveBeenCalledTimes(1);
-  expect(replaceFullPage).toHaveBeenCalledWith(window.location.href, window.location);
+  expect(reloadFullPage).toHaveBeenCalledTimes(1);
+  expect(reloadFullPage).toHaveBeenCalledWith(window.location);
   expect(mockFetch).not.toHaveBeenCalled();
 });
 
@@ -192,7 +192,7 @@ it("keeps the document when an anonymous page signs in, then guards that account
     </ContentCacheProvider>
   );
   expect(screen.getByText("Private report")).toBeInTheDocument();
-  expect(replaceFullPage).not.toHaveBeenCalled();
+  expect(reloadFullPage).not.toHaveBeenCalled();
 
   rerender(
     <ContentCacheProvider accountKey="two">
@@ -202,7 +202,7 @@ it("keeps the document when an anonymous page signs in, then guards that account
   expect(screen.getByText("Your session changed.")).toBeInTheDocument();
   expect(screen.queryByText("Private report")).not.toBeInTheDocument();
   expect(screen.queryByText("Other account")).not.toBeInTheDocument();
-  expect(replaceFullPage).toHaveBeenCalledTimes(1);
+  expect(reloadFullPage).toHaveBeenCalledTimes(1);
 });
 
 it.each(["local", "other-tab", "unauthorized"])(
@@ -226,3 +226,122 @@ it.each(["local", "other-tab", "unauthorized"])(
     expect(screen.queryByText("Private report")).not.toBeInTheDocument();
   }
 );
+
+it("clears the cache without the notice in the tab that is leaving to sign in or out", async () => {
+  mockFetch.mockResolvedValue(response("Fetched after the change"));
+  render(
+    <ContentCacheProvider accountKey="one">
+      <View initial={{ title: "Private report" }} updatedAt={Date.now()} />
+    </ContentCacheProvider>
+  );
+  const stored = jest.spyOn(Storage.prototype, "setItem");
+
+  act(() => announceAccountChange({ leaving: true }));
+
+  // The page stays as it is until the new document arrives; no intermediate notice.
+  expect(screen.queryByText("Your session changed.")).not.toBeInTheDocument();
+  // Other tabs are still told, and this tab can no longer read or keep content.
+  expect(stored).toHaveBeenCalledWith(CONTENT_AUTH_STORAGE_KEY, expect.any(String));
+  stored.mockRestore();
+  fireEvent.click(screen.getByText("Refresh"));
+  await screen.findByText("Refresh failed");
+  expect(mockFetch).not.toHaveBeenCalled();
+  expect(screen.queryByText("Fetched after the change")).not.toBeInTheDocument();
+});
+
+it("lets another tab continue by reloading its own URL after a session change", async () => {
+  render(
+    <ContentCacheProvider accountKey="one">
+      <View initial={{ title: "Private report" }} />
+    </ContentCacheProvider>
+  );
+  act(() =>
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: CONTENT_AUTH_STORAGE_KEY, newValue: "nonce" })
+    )
+  );
+  expect(await screen.findByText("Your session changed.")).toBeInTheDocument();
+  expect(screen.queryByText("Private report")).not.toBeInTheDocument();
+  expect(reloadFullPage).not.toHaveBeenCalled();
+
+  // The browser may be signed in again (as anyone) or signed out; the server decides.
+  fireEvent.click(screen.getByRole("link", { name: "Continue" }));
+  expect(reloadFullPage).toHaveBeenCalledWith(window.location);
+});
+
+function Writer({ seed }: { seed: Payload }) {
+  const cache = useContentCache();
+  return (
+    <>
+      <View initial={seed} updatedAt={SEED_READ_AT} />
+      <button onClick={() => cache.set<Payload>(["research", "list"], { title: "Saved locally" })}>
+        Save
+      </button>
+    </>
+  );
+}
+const SEED_READ_AT = Date.now();
+function Filler({ index }: { index: number }) {
+  useContentQuery<Payload>({
+    key: ["filler", index],
+    url: "/api/filler",
+    staleTime: 300_000,
+    initialData: { title: "filler" },
+  });
+  return null;
+}
+/** Enough newer inactive queries to push an older one past the inactive-query limit. */
+const fillers = Array.from({ length: 61 }, (_, index) => <Filler key={index} index={index} />);
+
+it("does not reuse a route's seed after a local write once the query was evicted", async () => {
+  mockFetch.mockResolvedValue(response("Saved on the server"));
+  const seed = { title: "Seed from before the save" };
+  const tree = (children: React.ReactNode) => (
+    <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+  );
+  const { rerender } = render(tree(<Writer seed={seed} />));
+  expect(screen.getByText("Seed from before the save")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Save"));
+  expect(await screen.findByText("Saved locally")).toBeInTheDocument();
+
+  // Leave the page, then read enough other content for the saved query to be evicted.
+  rerender(tree(fillers));
+  rerender(tree(<p>Elsewhere</p>));
+  expect(mockFetch).not.toHaveBeenCalled();
+
+  // The reused route output still carries the old seed, well inside its freshness window.
+  rerender(tree(<Writer seed={seed} />));
+  expect(screen.queryByText("Seed from before the save")).not.toBeInTheDocument();
+  expect(await screen.findByText("Saved on the server")).toBeInTheDocument();
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+
+it("trusts a seed from a server render made after the local write", async () => {
+  const tree = (children: React.ReactNode) => (
+    <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+  );
+  const { rerender } = render(tree(<Writer seed={{ title: "Seed from before the save" }} />));
+  fireEvent.click(screen.getByText("Save"));
+  expect(await screen.findByText("Saved locally")).toBeInTheDocument();
+  rerender(tree(fillers));
+  rerender(tree(<p>Elsewhere</p>));
+
+  rerender(
+    tree(<View initial={{ title: "Rendered after the save" }} updatedAt={SEED_READ_AT + 1} />)
+  );
+  expect(screen.getByText("Rendered after the save")).toBeInTheDocument();
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it("still reuses an unwritten seed after eviction without a request", async () => {
+  const seed = { title: "Seed nobody changed" };
+  const tree = (children: React.ReactNode) => (
+    <ContentCacheProvider accountKey="one">{children}</ContentCacheProvider>
+  );
+  const { rerender } = render(tree(<Writer seed={seed} />));
+  rerender(tree(fillers));
+  rerender(tree(<p>Elsewhere</p>));
+  rerender(tree(<Writer seed={seed} />));
+  expect(screen.getByText("Seed nobody changed")).toBeInTheDocument();
+  expect(mockFetch).not.toHaveBeenCalled();
+});

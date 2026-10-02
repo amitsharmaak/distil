@@ -405,10 +405,7 @@ describe("FeedList without a server page (client fetch)", () => {
     await settleInitialFetch();
 
     expect(screen.getByText("Your session changed.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Continue to sign in" })).toHaveAttribute(
-      "href",
-      "/sign-in"
-    );
+    expect(screen.getByRole("link", { name: "Continue" })).toBeInTheDocument();
   });
 
   it("falls back to an empty list when a successful response carries no items", async () => {

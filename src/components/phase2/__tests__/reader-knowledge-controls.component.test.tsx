@@ -11,6 +11,7 @@ import {
   type ReaderLibraryInitial,
 } from "../reader-knowledge-controls";
 import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { useContentQuery } from "@/lib/client-cache/content-cache";
 
 import {
   DropdownMenu,
@@ -47,6 +48,19 @@ function Reader({
     </>
   );
 }
+function OtherQuery({ index }: { index: number }) {
+  useContentQuery({
+    key: ["filler", index],
+    url: "/api/filler",
+    staleTime: 300_000,
+    initialData: { index },
+  });
+  return null;
+}
+/** Enough other cached content to push an older inactive query past the cache's limit. */
+const otherContent = Array.from({ length: 61 }, (_, index) => (
+  <OtherQuery key={index} index={index} />
+));
 function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
@@ -333,5 +347,37 @@ describe("ReaderKnowledgeControls", () => {
     expect(await screen.findByText("Note deleted")).toBeInTheDocument();
     expect(screen.getByLabelText("Item note")).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("reads the saved note again when a reused route offers its older seed after eviction", async () => {
+    let serverNote: string | null = null;
+    jest.mocked(global.fetch).mockImplementation((url, init) => {
+      const path = String(url);
+      if (path.endsWith("/note") && init?.method === "PUT") {
+        serverNote = JSON.parse(String(init.body)).body as string;
+        return Promise.resolve(ok({ note: { body: serverNote } }));
+      }
+      if (path.endsWith("/note"))
+        return Promise.resolve(ok({ note: serverNote === null ? null : { body: serverNote } }));
+      return Promise.resolve(ok({}));
+    });
+    // The reader route was rendered before the note existed; its output is reused unchanged.
+    const routeSeed: ReaderKnowledgeInitial = { note: null, updatedAt: Date.now() };
+    const view = render(<ReaderKnowledgeControls itemId="item-1" initial={routeSeed} />);
+    fireEvent.change(await screen.findByLabelText("Item note"), {
+      target: { value: "First thought" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    expect(await screen.findByText("Note saved")).toBeInTheDocument();
+    const requests = jest.mocked(global.fetch).mock.calls.length;
+
+    view.rerender(<>{otherContent}</>);
+    view.rerender(<div>Elsewhere</div>);
+    view.rerender(<ReaderKnowledgeControls itemId="item-1" initial={routeSeed} />);
+
+    // Not the empty seed shown as fresh: a save from that state would overwrite the note.
+    expect(await screen.findByLabelText("Item note")).toHaveValue("First thought");
+    expect(jest.mocked(global.fetch).mock.calls.length).toBe(requests + 1);
+    expect(jest.mocked(global.fetch).mock.calls.at(-1)?.[0]).toBe("/api/v1/items/item-1/note");
   });
 });

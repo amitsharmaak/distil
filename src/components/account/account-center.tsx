@@ -242,7 +242,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     // Clears this tab's data cache and tells other tabs. Then leave by a document load, not
     // `router.replace`: the router cache still holds this account's rendered pages, and a
     // client-side navigation would keep them reachable through Back.
-    announceAccountChange();
+    announceAccountChange({ leaving: true });
     replaceFullPage("/sign-in", window.location);
   }
 

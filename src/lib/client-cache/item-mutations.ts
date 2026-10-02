@@ -72,6 +72,8 @@ export function useItemMutation() {
             : {}),
         };
         cache.set<ItemPatch>(overrideKey, { ...oldOverride, ...patch });
+        // A reused reader route still carries the state it was rendered with.
+        cache.markWritten(["item", id, "state"]);
         for (const [key] of snapshots)
           cache.set(key, (value: unknown) =>
             mapCachedItem(value, id, (item) => ({ ...item, ...changed }))

@@ -17,6 +17,7 @@ jest.mock("@/lib/browser-navigation", () => ({ replaceFullPage: jest.fn() }));
 import { AccountCenter } from "@/components/account/account-center";
 import { replaceFullPage } from "@/lib/browser-navigation";
 import { CONTENT_AUTH_EVENT } from "@/lib/client-cache/auth-events";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status = 200) =>
@@ -350,7 +351,11 @@ describe("AccountCenter lifecycle recovery", () => {
 
   it("signs out through the hosted-auth route and leaves by a full document load", async () => {
     mockActiveHydration({ sessions: [currentSession] });
-    render(<AccountCenter />);
+    render(
+      <ContentCacheProvider accountKey={account.userId}>
+        <AccountCenter />
+      </ContentCacheProvider>
+    );
     expect(await screen.findByText("This device")).toBeInTheDocument();
     const order: string[] = [];
     const announced = () => order.push("announced");
@@ -374,6 +379,8 @@ describe("AccountCenter lifecycle recovery", () => {
     // The data cache and other tabs are cleared first; then the document, and with it the
     // router cache of every route this account visited, is discarded.
     expect(order).toEqual(["announced", "left"]);
+    // This tab goes straight to /sign-in; the session notice is for other tabs.
+    expect(screen.queryByText("Your session changed.")).not.toBeInTheDocument();
     // A client-side replace or refresh would keep the previous account's cached routes.
     expect(mockReplace).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();

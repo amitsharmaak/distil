@@ -2,8 +2,12 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { QueryClient, QueryClientProvider, useQuery, type QueryKey } from "@tanstack/react-query";
-import { replaceFullPage } from "@/lib/browser-navigation";
-import { CONTENT_AUTH_EVENT, CONTENT_AUTH_STORAGE_KEY } from "./auth-events";
+import { reloadFullPage } from "@/lib/browser-navigation";
+import {
+  CONTENT_AUTH_EVENT,
+  CONTENT_AUTH_STORAGE_KEY,
+  type AccountChangeDetail,
+} from "./auth-events";
 
 export const CACHE_FRESHNESS = {
   feed: 120_000,
@@ -29,15 +33,43 @@ interface CacheScope {
   account: string | null;
   active: boolean;
   expire: () => void;
+  /** Clear and stop reading without replacing the page; the caller is leaving the document. */
+  retire: () => void;
   activate: () => void;
   dispose: () => void;
   writes: Set<Promise<void>>;
   itemWrites: Map<string, Promise<unknown>>;
+  /** Server read time of the newest seed each key has been offered. Never evicted. */
+  seedSeen: Map<string, number>;
+  /** Seeds read at or before this server time predate a local write to the key. Never evicted. */
+  seedSuperseded: Map<string, number>;
 }
 const ScopeContext = createContext<CacheScope | null>(null);
 
 function scopedKey(scope: CacheScope, key: QueryKey): QueryKey {
   return ["content", scope.account, ...key];
+}
+
+const seedKey = (key: QueryKey) => JSON.stringify(key);
+
+/**
+ * Route output can be reused for `experimental.staleTimes` and carries the seed it was rendered
+ * with. After a local write, that seed is out of date even though it is younger than the
+ * query's freshness window, and the query holding the newer value may have been evicted
+ * (`trimInactive`). Recreating the query from the old seed would show the old value as fresh,
+ * and the next save would overwrite the newer one. Such a seed is never used; the query reads
+ * from the server instead. Only a seed from a later server render is trusted again.
+ */
+function seedIsSuperseded(scope: CacheScope, key: QueryKey, updatedAt: number | undefined) {
+  const superseded = scope.seedSuperseded.get(seedKey(key));
+  return superseded !== undefined && (updatedAt === undefined || updatedAt <= superseded);
+}
+
+function recordLocalWrite(scope: CacheScope, key: QueryKey, always: boolean) {
+  const id = seedKey(key);
+  const seen = scope.seedSeen.get(id);
+  if (seen !== undefined) scope.seedSuperseded.set(id, seen);
+  else if (always) scope.seedSuperseded.set(id, Number.POSITIVE_INFINITY);
 }
 
 function trimInactive(client: QueryClient) {
@@ -122,7 +154,7 @@ export function ContentCacheProvider({
   if (documentAccount === null && accountKey !== null) setDocumentAccount(accountKey);
   const accountChanged = documentAccount !== null && accountKey !== documentAccount;
   useEffect(() => {
-    if (accountChanged) replaceFullPage(window.location.href, window.location);
+    if (accountChanged) reloadFullPage(window.location);
   }, [accountChanged]);
   if (accountChanged) return <SessionChanged />;
   return (
@@ -132,13 +164,26 @@ export function ContentCacheProvider({
   );
 }
 
-/** Shown in place of all content; its only exit is a document load, never a cached route. */
+/**
+ * Shown in place of all content; its only exit is a document load, never a cached route.
+ * Continue reloads this URL: a browser that is signed in again (another tab signed in) gets the
+ * page for that account, and one that is signed out is redirected to sign-in by the server.
+ */
 function SessionChanged() {
   return (
     <main className="mx-auto max-w-md p-8">
       <p>Your session changed.</p>
-      <a className="underline" href="/sign-in">
-        Continue to sign in
+      {/* A plain anchor on purpose: `next/link` would navigate inside this document. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+      <a
+        className="underline"
+        href="/"
+        onClick={(event) => {
+          event.preventDefault();
+          reloadFullPage(window.location);
+        }}
+      >
+        Continue
       </a>
     </main>
   );
@@ -171,6 +216,8 @@ function AccountCache({
       active: true,
       writes: new Set(),
       itemWrites: new Map(),
+      seedSeen: new Map(),
+      seedSuperseded: new Map(),
       activate: () => {
         lifecycle += 1;
         value.active = true;
@@ -184,10 +231,13 @@ function AccountCache({
           client.clear();
         });
       },
-      expire: () => {
+      retire: () => {
         value.active = false;
         void client.cancelQueries();
         client.clear();
+      },
+      expire: () => {
+        value.retire();
         setExpired(true);
       },
     };
@@ -195,11 +245,18 @@ function AccountCache({
   });
   useEffect(() => {
     scope.activate();
+    // The tab that signs in or out leaves by a document load straight away: it clears its
+    // cache but must not flash the notice. Every other source replaces the page with it.
+    const changed = (event: Event) => {
+      const leaving = (event as CustomEvent<AccountChangeDetail | undefined>).detail?.leaving;
+      if (leaving) scope.retire();
+      else scope.expire();
+    };
     const clear = () => scope.expire();
     const storage = (event: StorageEvent) => {
       if (event.key === CONTENT_AUTH_STORAGE_KEY && event.newValue) clear();
     };
-    window.addEventListener(CONTENT_AUTH_EVENT, clear);
+    window.addEventListener(CONTENT_AUTH_EVENT, changed);
     window.addEventListener("storage", storage);
     const unsubscribe = scope.client.getQueryCache().subscribe((event) => {
       if (
@@ -211,7 +268,7 @@ function AccountCache({
     });
     return () => {
       scope.dispose();
-      window.removeEventListener(CONTENT_AUTH_EVENT, clear);
+      window.removeEventListener(CONTENT_AUTH_EVENT, changed);
       window.removeEventListener("storage", storage);
       unsubscribe();
     };
@@ -233,12 +290,20 @@ function useScope() {
 
 export function useContentQuery<T>(options: ContentQueryOptions<T>) {
   const scope = useScope();
+  const { key, initialData, initialDataUpdatedAt } = options;
+  const id = seedKey(key);
+  const seeded = initialData !== undefined;
+  useEffect(() => {
+    if (!seeded || initialDataUpdatedAt === undefined) return;
+    scope.seedSeen.set(id, Math.max(scope.seedSeen.get(id) ?? 0, initialDataUpdatedAt));
+  }, [scope, id, seeded, initialDataUpdatedAt]);
+  const useSeed = seeded && !seedIsSuperseded(scope, key, initialDataUpdatedAt);
   return useQuery<T>({
     queryKey: scopedKey(scope, options.key),
     queryFn: ({ signal }) => readContent(scope, options, signal),
     staleTime: options.staleTime,
-    initialData: options.initialData,
-    initialDataUpdatedAt: options.initialDataUpdatedAt,
+    initialData: useSeed ? initialData : undefined,
+    initialDataUpdatedAt: useSeed ? initialDataUpdatedAt : undefined,
     enabled: scope.active && options.enabled !== false,
   });
 }
@@ -251,7 +316,13 @@ export function useContentCache() {
         return scope.client.getQueryData<T>(scopedKey(scope, key));
       },
       set<T>(key: QueryKey, value: T | ((old: T | undefined) => T | undefined)): void {
-        if (scope.active) scope.client.setQueryData<T>(scopedKey(scope, key), value);
+        if (!scope.active) return;
+        recordLocalWrite(scope, key, false);
+        scope.client.setQueryData<T>(scopedKey(scope, key), value);
+      },
+      /** A write that changed this key on the server without setting it here. */
+      markWritten(key: QueryKey): void {
+        recordLocalWrite(scope, key, true);
       },
       async invalidate(prefix: QueryKey = []): Promise<void> {
         await scope.client.invalidateQueries({ queryKey: scopedKey(scope, prefix) });

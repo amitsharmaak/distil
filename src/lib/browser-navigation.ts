@@ -25,3 +25,11 @@ export function navigateFullPage(path: string, location: Pick<Location, "assign"
 export function replaceFullPage(path: string, location: Pick<Location, "replace">): void {
   location.replace(path);
 }
+
+/**
+ * Reload the current document so the server decides what this URL shows for whoever is signed
+ * in now. Unlike `location.replace(location.href)`, this also reloads a URL that has a fragment.
+ */
+export function reloadFullPage(location: Pick<Location, "reload">): void {
+  location.reload();
+}
