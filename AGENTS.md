@@ -133,7 +133,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   TanStack Query cache above route navigation. Feed/Today are fresh for two minutes; Research lists,
   suggestions and Archive for five; report and reader metadata for thirty. Stale content stays
   visible during refresh. Scope reset cancels/clears on sign-out, account change and authorization
-  failures, including across tabs. Item mutations share optimistic updates and rollback through
+  failures, including across tabs. Sign-out, and a server render for a different account, leave by
+  a full document load (`replaceFullPage`) so the router cache is discarded too; do not replace
+  that with `router.replace`/`router.refresh()`. Item mutations share optimistic updates and rollback through
   `useItemMutation`; keep reads abortable and use the shared invalidation paths. Server rendering
   still supplies initial Feed/Today and reader metadata. Next browser route output is retained for
   thirty minutes, independently of the shorter data freshness windows. Summary/extraction/feedback
