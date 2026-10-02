@@ -1,4 +1,14 @@
+jest.mock("@/lib/ai/triage-capture", () => ({
+  triageInputFromText: jest.fn((args: { url: string; text: string }) => ({
+    url: args.url,
+    excerpt: args.text.slice(0, 2_000),
+    readableChars: args.text.length,
+  })),
+}));
+
 import { CaptureProcessingError, CaptureRetryScheduledError } from "../errors";
+import type { CaptureTriageVerdict } from "@/lib/contracts/capture-triage";
+import type { CaptureRecord } from "@/lib/repositories/ports";
 import { createCaptureQueueMessageV2 } from "@/lib/contracts/tenant-jobs";
 import { CaptureWorker, createDefaultCaptureProcessor } from "../worker";
 import {
@@ -871,5 +881,286 @@ describe("default capture processor", () => {
       itemId: "redirected-item",
     });
     expect(findByNormalizedUrl).toHaveBeenCalledWith("https://final.example.com/story");
+  });
+});
+
+describe("default capture processor triage", () => {
+  const shortText =
+    "Sign in to continue reading. Create a free account or log in with your existing " +
+    "subscription to access this page.";
+  const extracted = {
+    title: "Members only",
+    byline: null,
+    content: `<p>${shortText}</p>`,
+    textContent: shortText,
+    extractedLinks: [],
+  };
+  const junk = (patch: Partial<CaptureTriageVerdict> = {}): CaptureTriageVerdict => ({
+    kind: "login_wall",
+    readable: false,
+    confidence: 0.95,
+    priorityScore: 10,
+    reason: "A sign-in form with no article text.",
+    model: "test-model",
+    promptVersion: "triage-v1",
+    ...patch,
+  });
+  const content = (priorityScore: number): CaptureTriageVerdict =>
+    junk({ kind: "content", readable: true, confidence: 0.9, priorityScore });
+
+  function setup(
+    options: {
+      triage?: jest.Mock;
+      triageMode?: "on" | "shadow" | "off";
+      hasPriorJunkRejection?: jest.Mock;
+      extractContent?: jest.Mock;
+      html?: string;
+      omitTriage?: boolean;
+    } = {}
+  ) {
+    const rawContent = { insert: jest.fn(), attachItem: jest.fn() };
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+      updatePriorityScore: jest.fn().mockResolvedValue(undefined),
+    };
+    const enqueueEnrichment = jest.fn().mockResolvedValue(undefined);
+    const triage = options.triage ?? jest.fn().mockResolvedValue(junk());
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: rawContent as never,
+      enqueueEnrichment,
+      extractContent: options.extractContent ?? jest.fn().mockReturnValue(extracted),
+      ...(options.omitTriage
+        ? {}
+        : {
+            triage,
+            triageMode: options.triageMode ?? "on",
+            hasPriorJunkRejection: options.hasPriorJunkRejection,
+          }),
+      now: () => new Date("2026-10-01T00:00:00.000Z"),
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockResolvedValue(new Response(options.html ?? "<html></html>")),
+      },
+    });
+    return { processor, items, rawContent, enqueueEnrichment, triage };
+  }
+
+  it("rejects a confident junk verdict as CONTENT_JUNK before any item exists", async () => {
+    const { processor, items, enqueueEnrichment, triage } = setup();
+    const record = captureRecord();
+    const captures = new MemoryCaptureRepository([record]);
+    const worker = new CaptureWorker({ context, captures, processor });
+
+    await expect(worker.handle(captureQueueMessage(record.id))).resolves.toMatchObject({
+      status: "rejected",
+      retryable: false,
+      lastErrorCode: "CONTENT_JUNK",
+      lastErrorMessage: expect.stringContaining("a sign-in page"),
+    });
+    expect(triage).toHaveBeenCalledWith(
+      expect.objectContaining({ url: record.url, readableChars: shortText.length })
+    );
+    expect(items.insert).not.toHaveBeenCalled();
+    expect(enqueueEnrichment).not.toHaveBeenCalled();
+  });
+
+  it("fails open when triage throws", async () => {
+    const { processor, items, enqueueEnrichment } = setup({
+      triage: jest.fn().mockRejectedValue(new Error("timeout")),
+    });
+    await expect(processor(captureRecord())).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: "medium", contentClassification: undefined })
+    );
+    expect(items.updatePriorityScore).not.toHaveBeenCalled();
+    expect(enqueueEnrichment).toHaveBeenCalled();
+  });
+
+  it("keeps a junk verdict below the confidence bar", async () => {
+    const { processor, items } = setup({
+      triage: jest.fn().mockResolvedValue(junk({ confidence: 0.85 })),
+    });
+    await expect(processor(captureRecord())).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalled();
+  });
+
+  it("keeps a junk page the user wrote notes about", async () => {
+    const { processor, items } = setup();
+    await expect(processor(captureRecord({ notes: "read later" }))).resolves.toMatchObject({
+      status: "ready",
+    });
+    expect(items.insert).toHaveBeenCalled();
+  });
+
+  it("keeps a junk page saved with explicit high priority", async () => {
+    const { processor, items } = setup();
+    await expect(processor(captureRecord({ priority: "high" }))).resolves.toMatchObject({
+      status: "ready",
+    });
+    expect(items.insert).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
+  });
+
+  it("records but does not enforce a junk verdict in shadow mode", async () => {
+    const { processor, items } = setup({ triageMode: "shadow" });
+    await expect(processor(captureRecord())).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentClassification: {
+          triage: expect.objectContaining({
+            kind: "login_wall",
+            confidence: 0.95,
+            enforced: false,
+            triagedAt: "2026-10-01T00:00:00.000Z",
+          }),
+        },
+      })
+    );
+  });
+
+  it("saves a URL anyway when it was already rejected as junk", async () => {
+    const hasPriorJunkRejection = jest.fn().mockResolvedValue(true);
+    const { processor, items } = setup({ hasPriorJunkRejection });
+    const record = captureRecord();
+    await expect(processor(record)).resolves.toMatchObject({ status: "ready" });
+    expect(hasPriorJunkRejection).toHaveBeenCalledWith(record.normalizedUrl, record.id);
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentClassification: { triage: expect.objectContaining({ enforced: true }) },
+      })
+    );
+  });
+
+  it("still rejects when the prior-rejection lookup fails", async () => {
+    const { processor, items } = setup({
+      hasPriorJunkRejection: jest.fn().mockRejectedValue(new Error("db")),
+    });
+    await expect(processor(captureRecord())).rejects.toMatchObject({
+      code: "CONTENT_JUNK",
+      kind: "rejected",
+    });
+    expect(items.insert).not.toHaveBeenCalled();
+  });
+
+  it("applies the triage score to a default-priority capture", async () => {
+    const { processor, items } = setup({ triage: jest.fn().mockResolvedValue(content(82)) });
+    const record = captureRecord();
+    await expect(processor(record)).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
+    expect(items.updatePriorityScore).toHaveBeenCalledWith(record.id, 82, "high");
+  });
+
+  it("keeps an explicit low priority and writes no score", async () => {
+    const { processor, items } = setup({ triage: jest.fn().mockResolvedValue(content(82)) });
+    await expect(processor(captureRecord({ priority: "low" }))).resolves.toMatchObject({
+      status: "ready",
+    });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: "low",
+        contentClassification: { triage: expect.objectContaining({ priorityScore: 82 }) },
+      })
+    );
+    expect(items.updatePriorityScore).not.toHaveBeenCalled();
+  });
+
+  it("keeps the capture when the score write fails", async () => {
+    const { processor, items } = setup({ triage: jest.fn().mockResolvedValue(content(20)) });
+    items.updatePriorityScore.mockRejectedValue(new Error("db"));
+    await expect(processor(captureRecord())).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
+  });
+
+  it("skips triage in off mode", async () => {
+    const { processor, items, triage } = setup({ triageMode: "off" });
+    await expect(processor(captureRecord())).resolves.toMatchObject({ status: "ready" });
+    expect(triage).not.toHaveBeenCalled();
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: "medium", contentClassification: undefined })
+    );
+  });
+
+  it("behaves as before without a triage dependency", async () => {
+    const { processor, items, enqueueEnrichment } = setup({ omitTriage: true });
+    const record = captureRecord();
+    await expect(processor(record)).resolves.toEqual({ status: "ready", itemId: record.id });
+    expect(items.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: "medium", contentClassification: undefined })
+    );
+    expect(items.updatePriorityScore).not.toHaveBeenCalled();
+    expect(enqueueEnrichment).toHaveBeenCalledWith(record.id);
+  });
+
+  it("never triages a URL that is already saved", async () => {
+    const { processor, items, triage } = setup();
+    items.findByNormalizedUrl.mockResolvedValue({ id: "existing" });
+    await expect(processor(captureRecord())).resolves.toEqual({
+      status: "ready",
+      itemId: "existing",
+    });
+    expect(triage).not.toHaveBeenCalled();
+  });
+
+  const granolaPayload = JSON.stringify({
+    documentPanel: {
+      document: { title: "Sync", created_at: "2026-09-17T08:32:23.135Z", owner: { name: "S" } },
+      panel: {
+        content: {
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Ship it." }] }],
+        },
+      },
+    },
+  });
+  const specialPaths: Array<[string, Partial<CaptureRecord>, string]> = [
+    [
+      "YouTube",
+      { url: "https://www.youtube.com/watch?v=mUAsaprJ66s" },
+      '<script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"mUAsaprJ66s","title":"Video"}};</script>',
+    ],
+    [
+      "Granola",
+      { url: "https://notes.granola.ai/d/abc" },
+      `<script>self.__next_f.push([1,${JSON.stringify(granolaPayload)}])</script>`,
+    ],
+  ];
+
+  it.each(specialPaths)("never triages a %s capture", async (_name, patch, html) => {
+    const { processor, triage } = setup({ extractContent: jest.fn().mockReturnValue(null), html });
+    await expect(processor(captureRecord(patch))).resolves.toMatchObject({ status: "ready" });
+    expect(triage).not.toHaveBeenCalled();
+  });
+
+  it("never triages a Wispr Flow or X capture", async () => {
+    const triage = jest.fn().mockResolvedValue(junk());
+    const items = {
+      findByNormalizedUrl: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockImplementation(async (item) => item),
+      updatePriorityScore: jest.fn(),
+    };
+    const processor = createDefaultCaptureProcessor({
+      context,
+      items: items as never,
+      rawContent: { insert: jest.fn(), attachItem: jest.fn() } as never,
+      extractContent: jest.fn().mockReturnValue(null),
+      fetchWisprNote: jest.fn().mockResolvedValue({ title: "Note", owner: "A", markdown: "Hi" }),
+      fetchSocialMetadata: jest.fn().mockResolvedValue({ title: "Post", description: "Short." }),
+      triage,
+      triageMode: "on",
+      fetchOptions: {
+        resolve: publicDns,
+        fetch: jest.fn().mockImplementation(async () => new Response("<body></body>")),
+      },
+    });
+    await expect(
+      processor(captureRecord({ url: "https://notes.wisprflow.ai/shared/abc" }))
+    ).resolves.toMatchObject({ status: "ready" });
+    await expect(
+      processor(captureRecord({ url: "https://x.com/someone/status/1" }))
+    ).resolves.toMatchObject({ status: "ready" });
+    expect(items.insert).toHaveBeenCalledTimes(2);
+    expect(triage).not.toHaveBeenCalled();
   });
 });

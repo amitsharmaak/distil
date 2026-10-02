@@ -22,6 +22,18 @@ import {
   type YouTubeVideoDetails,
 } from "@/lib/youtube";
 import { config } from "@/lib/config";
+import {
+  CAPTURE_JUNK_ERROR_CODE,
+  junkRejectionMessage,
+  shouldRejectAsJunk,
+  type CaptureTriage,
+  type CaptureTriageMode,
+  type CaptureTriageVerdict,
+  type StoredCaptureTriage,
+  type TriageJunkKind,
+} from "@/lib/contracts/capture-triage";
+import { scoreToPriority } from "@/lib/ai/prioritize";
+import { triageInputFromText } from "@/lib/ai/triage-capture";
 import { apiLogger } from "@/lib/logger";
 import type {
   CaptureRecord,
@@ -173,7 +185,24 @@ export interface DefaultCaptureProcessorDependencies {
   fetchWisprNote?: (slug: string) => Promise<WisprNote | null>;
   pipeline?: (raw: RawContent) => Promise<ProcessingResult>;
   enqueueEnrichment?: (itemId: string) => Promise<void>;
+  /** Junk-page check and priority score for generic articles; absent means no triage. */
+  triage?: CaptureTriage;
+  /** `"on"` may reject junk, `"shadow"` only records the verdict, `"off"` skips triage. */
+  triageMode?: CaptureTriageMode;
+  /** True when this URL was already rejected as junk, so a resave is the user's override. */
+  hasPriorJunkRejection?: (normalizedUrl: string, captureId: string) => Promise<boolean>;
   now?: () => Date;
+}
+
+/** A log-safe identifier for a triage failure: an error code or name, never its message. */
+function triageErrorCode(error: unknown): string {
+  if (error && typeof error === "object") {
+    for (const key of ["code", "name"] as const) {
+      const value = (error as Record<string, unknown>)[key];
+      if (typeof value === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(value)) return value;
+    }
+  }
+  return "unknown";
 }
 
 export function createDefaultCaptureProcessor(
@@ -438,6 +467,76 @@ export function createDefaultCaptureProcessor(
       }
 
       const og = extractOGFromHtml(article.body);
+      const triageMode = dependencies.triageMode ?? "on";
+      let verdict: CaptureTriageVerdict | undefined;
+      if (dependencies.triage && triageMode !== "off") {
+        try {
+          verdict = await dependencies.triage(
+            triageInputFromText({
+              url: article.url,
+              title: capture.title ?? og.title ?? extracted.title ?? undefined,
+              author: extracted.byline ?? og.author ?? undefined,
+              publication: og.siteName ?? undefined,
+              text: readableText,
+            })
+          );
+        } catch (error) {
+          // Fail open: triage is advisory, so an AI outage never blocks a capture.
+          apiLogger.warn(
+            {
+              event: "capture_triage_skipped",
+              code: triageErrorCode(error),
+              traceId: dependencies.context.requestId,
+            },
+            "Capture triage skipped"
+          );
+          verdict = undefined;
+        }
+        if (verdict) {
+          const rejected =
+            triageMode === "on" &&
+            shouldRejectAsJunk(verdict, {
+              readableChars: readableText.length,
+              hasUserNotes: Boolean(capture.notes?.trim()),
+              explicitHighPriority: capture.priority === "high",
+            }) &&
+            // A resave of a URL already rejected as junk is the user's "save anyway".
+            !(await (
+              dependencies.hasPriorJunkRejection?.(capture.normalizedUrl, capture.id) ??
+              Promise.resolve(false)
+            ).catch(() => false));
+          apiLogger.info(
+            {
+              event: "capture_triage",
+              kind: verdict.kind,
+              confidence: verdict.confidence,
+              priorityScore: verdict.priorityScore,
+              rejected,
+              traceId: dependencies.context.requestId,
+            },
+            "Capture triaged"
+          );
+          if (rejected) {
+            throw new CaptureProcessingError(
+              CAPTURE_JUNK_ERROR_CODE,
+              junkRejectionMessage(verdict.kind as TriageJunkKind),
+              "rejected"
+            );
+          }
+        }
+      }
+      // Only the default priority yields to the score; an explicit choice is kept.
+      const triagePriority =
+        verdict && capture.priority === "medium"
+          ? scoreToPriority(verdict.priorityScore)
+          : undefined;
+      const storedTriage: StoredCaptureTriage | undefined = verdict
+        ? {
+            ...verdict,
+            triagedAt: (dependencies.now ?? (() => new Date()))().toISOString(),
+            enforced: triageMode === "on",
+          }
+        : undefined;
       const item = await dependencies.items.insert({
         id: capture.id,
         title: capture.title ?? og.title ?? extracted.title ?? new URL(article.url).hostname,
@@ -452,15 +551,21 @@ export function createDefaultCaptureProcessor(
         author: extracted.byline ?? og.author ?? undefined,
         publication: og.siteName ?? undefined,
         url: article.url,
-        priority: capture.priority,
+        priority: triagePriority ?? capture.priority,
         isRead: false,
         createdAt: fetchedAt,
         thumbnailUrl: og.image ?? undefined,
         extractedLinks: extracted.extractedLinks,
         contentExtractedAt: fetchedAt,
         processingStatus: "ready",
+        contentClassification: storedTriage ? { triage: storedTriage } : undefined,
       });
       await rawContent.attachItem(capture.id, item.id);
+      if (verdict && triagePriority) {
+        await dependencies.items
+          .updatePriorityScore(item.id, verdict.priorityScore, triagePriority)
+          .catch(() => undefined);
+      }
       // Capture durability is independent of AI availability or quota. Enrichment
       // is best-effort asynchronous work and never rolls the accepted item back.
       await dependencies.enqueueEnrichment?.(item.id).catch(() => undefined);
