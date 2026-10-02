@@ -4,9 +4,49 @@
 
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 
-import { ReaderKnowledgeControls } from "../reader-knowledge-controls";
+import {
+  ReaderKnowledgeControls,
+  ReaderLibraryMenuItems,
+  type ReaderKnowledgeInitial,
+  type ReaderLibraryInitial,
+} from "../reader-knowledge-controls";
 import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+function LibraryMenu({ initial }: { initial?: ReaderLibraryInitial }) {
+  return (
+    // Non-modal, so the note panel beside the open menu stays reachable in tests.
+    <DropdownMenu defaultOpen modal={false}>
+      <DropdownMenuTrigger>More</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <ReaderLibraryMenuItems itemId="item-1" initial={initial} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+function renderLibraryMenu(initial?: ReaderLibraryInitial) {
+  return render(<LibraryMenu initial={initial} />);
+}
+/** The reader page mounts the note panel and the overflow menu from one server read. */
+function Reader({
+  note,
+  library,
+}: {
+  note: ReaderKnowledgeInitial;
+  library: ReaderLibraryInitial;
+}) {
+  return (
+    <>
+      <ReaderKnowledgeControls itemId="item-1" initial={note} />
+      <LibraryMenu initial={library} />
+    </>
+  );
+}
 function ok(payload: unknown): Response {
   return { ok: true, json: jest.fn().mockResolvedValue(payload) } as unknown as Response;
 }
@@ -40,29 +80,33 @@ describe("ReaderKnowledgeControls", () => {
     });
   });
 
-  it("uses server-loaded state and note without mount requests", async () => {
+  it("uses the server-loaded note without a mount request", async () => {
     render(
       <ReaderKnowledgeControls
         itemId="item-1"
-        initial={{
-          state: {
-            isRead: true,
-            archived: true,
-            readingProgress: 0.75,
-            manualPriority: "high",
-          },
-          note: { body: "Loaded with the reader" },
-        }}
+        initial={{ note: { body: "Loaded with the reader" }, updatedAt: Date.now() }}
       />
     );
 
     expect(await screen.findByLabelText("Item note")).toHaveValue("Loaded with the reader");
-    expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Manual priority")).toHaveValue("high");
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("loads note and state then saves an edited note", async () => {
+  it("opens the library menu from server-loaded state without a mount request", async () => {
+    renderLibraryMenu({
+      state: { isRead: true, archived: true, readingProgress: 0.75, manualPriority: "high" },
+      updatedAt: Date.now(),
+    });
+
+    expect(await screen.findByRole("menuitem", { name: "Restore item" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "High" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("loads the note then saves an edited note", async () => {
     render(<ReaderKnowledgeControls itemId="item-1" />);
     const note = await screen.findByLabelText("Item note");
     expect(note).toHaveValue("Keep this");
@@ -93,14 +137,14 @@ describe("ReaderKnowledgeControls", () => {
       if (path.endsWith("/note")) return Promise.resolve(ok({ note: null }));
       return Promise.resolve(ok({}));
     });
-    render(<ReaderKnowledgeControls itemId="item-1" />);
-    await screen.findByRole("button", { name: "Archive item" });
-    fireEvent.click(screen.getByRole("button", { name: "Archive item" }));
+    renderLibraryMenu();
+    await screen.findByRole("menuitem", { name: "Archive item" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive item" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this change");
-    expect(screen.getByRole("button", { name: "Archive item" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Archive item" })).toBeInTheDocument();
   });
 
-  it("supports restore, unread, priority, and progress controls", async () => {
+  it("supports restore and priority controls through the shared item mutation", async () => {
     let serverState = {
       isRead: true,
       archived: true,
@@ -116,23 +160,19 @@ describe("ReaderKnowledgeControls", () => {
         serverState = { ...serverState, ...JSON.parse(String(init.body)) };
         return Promise.resolve(ok({ item: { archivedAt: undefined } }));
       }
-      if (init?.method === "PUT")
-        return Promise.resolve(
-          ok({ note: { body: JSON.parse(String(init.body)).body as string } })
-        );
       return Promise.resolve(ok({}));
     });
-    render(<ReaderKnowledgeControls itemId="item-1" />);
-    expect(await screen.findByRole("button", { name: "Restore item" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Restore item" }));
-    expect(await screen.findByRole("button", { name: "Archive item" })).toBeInTheDocument();
+    renderLibraryMenu();
+    expect(await screen.findByRole("menuitem", { name: "Restore item" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore item" }));
+    expect(await screen.findByRole("menuitem", { name: "Archive item" })).toBeInTheDocument();
     await screen.findByText("Item restored");
     expect(screen.queryByRole("button", { name: /Mark (un)?read/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Manual priority"), { target: { value: "low" } });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Low" }));
     await screen.findByText("Priority updated");
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/v1/items/item-1/state",
-      expect.objectContaining({ method: "PATCH" })
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ manualPriority: "low" }) })
     );
   });
 
@@ -140,12 +180,6 @@ describe("ReaderKnowledgeControls", () => {
     let deleteAttempt = false;
     jest.mocked(global.fetch).mockImplementation((url, init) => {
       const path = String(url);
-      if (path.endsWith("/state") && !init?.method)
-        return Promise.resolve(
-          ok({
-            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          })
-        );
       if (path.endsWith("/note") && !init?.method)
         return Promise.resolve(ok({ note: { body: "Keep this" } }));
       if (init?.method === "DELETE" && !deleteAttempt) {
@@ -173,10 +207,15 @@ describe("ReaderKnowledgeControls", () => {
     expect(await screen.findByText("Note deleted")).toBeInTheDocument();
   });
 
-  it("surfaces control load errors", async () => {
+  it("surfaces note and library load errors", async () => {
     jest.mocked(global.fetch).mockRejectedValue(new Error("Controls unavailable"));
-    render(<ReaderKnowledgeControls itemId="item-1" />);
+    const note = render(<ReaderKnowledgeControls itemId="item-1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Controls unavailable");
+    note.unmount();
+
+    renderLibraryMenu();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Controls unavailable");
+    expect(screen.queryByRole("menuitem", { name: /item$/ })).not.toBeInTheDocument();
   });
 
   it("keeps cached note and state mutations when old server props remount", async () => {
@@ -193,41 +232,31 @@ describe("ReaderKnowledgeControls", () => {
         );
       return Promise.resolve(ok({ note: { body: "Old server note" } }));
     });
-    const oldInitial = {
-      state: {
-        isRead: false,
-        archived: false,
-        readingProgress: 0,
-        manualPriority: null,
-      },
-      note: { body: "Old server note" },
-      updatedAt: Date.now(),
+    const updatedAt = Date.now();
+    const oldNote: ReaderKnowledgeInitial = { note: { body: "Old server note" }, updatedAt };
+    const oldLibrary: ReaderLibraryInitial = {
+      state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
+      updatedAt,
     };
-    const view = render(<ReaderKnowledgeControls itemId="item-1" initial={oldInitial} />);
+    const view = render(<Reader note={oldNote} library={oldLibrary} />);
     const note = await screen.findByLabelText("Item note");
     fireEvent.change(note, { target: { value: "Updated locally" } });
     fireEvent.click(screen.getByRole("button", { name: "Save note" }));
     expect(await screen.findByText("Note saved")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Archive item" }));
-    expect(await screen.findByRole("button", { name: "Restore item" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive item" }));
+    expect(await screen.findByRole("menuitem", { name: "Restore item" })).toBeInTheDocument();
 
     view.rerender(<div>Elsewhere</div>);
-    view.rerender(<ReaderKnowledgeControls itemId="item-1" initial={oldInitial} />);
+    view.rerender(<Reader note={oldNote} library={oldLibrary} />);
 
     expect(await screen.findByLabelText("Item note")).toHaveValue("Updated locally");
-    expect(screen.getByRole("button", { name: "Restore item" })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Restore item" })).toBeInTheDocument();
   });
 
   it("waits for an in-flight stale note read before saving", async () => {
     const staleNote = deferred<Response>();
     jest.mocked(global.fetch).mockImplementation((url, init) => {
       const path = String(url);
-      if (path.endsWith("/state") && !init?.method)
-        return Promise.resolve(
-          ok({
-            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          })
-        );
       if (path.endsWith("/note") && !init?.method) return staleNote.promise;
       if (path.endsWith("/note") && init?.method === "PUT")
         return Promise.resolve(ok({ note: { body: "Saved after refresh" } }));
@@ -237,11 +266,7 @@ describe("ReaderKnowledgeControls", () => {
     render(
       <ReaderKnowledgeControls
         itemId="item-1"
-        initial={{
-          state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          note: { body: "Older note" },
-          updatedAt: 1,
-        }}
+        initial={{ note: { body: "Older note" }, updatedAt: 1 }}
       />
     );
     await waitFor(() =>
@@ -275,12 +300,6 @@ describe("ReaderKnowledgeControls", () => {
     const staleNote = deferred<Response>();
     jest.mocked(global.fetch).mockImplementation((url, init) => {
       const path = String(url);
-      if (path.endsWith("/state") && !init?.method)
-        return Promise.resolve(
-          ok({
-            state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          })
-        );
       if (path.endsWith("/note") && !init?.method) return staleNote.promise;
       return Promise.resolve(ok({}));
     });
@@ -288,11 +307,7 @@ describe("ReaderKnowledgeControls", () => {
     render(
       <ReaderKnowledgeControls
         itemId="item-1"
-        initial={{
-          state: { isRead: false, archived: false, readingProgress: 0, manualPriority: null },
-          note: { body: "Delete me" },
-          updatedAt: 1,
-        }}
+        initial={{ note: { body: "Delete me" }, updatedAt: 1 }}
       />
     );
     await waitFor(() =>

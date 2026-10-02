@@ -65,6 +65,7 @@ export function CaptureForm() {
         )}
         <CaptureReceiptCard initialReceipt={receipt} />
         <Button
+          className="min-h-11 min-w-11"
           variant="ghost"
           onClick={() => {
             setReceipt(undefined);
@@ -128,7 +129,7 @@ export function CaptureForm() {
       <Button
         type="submit"
         size="lg"
-        className="min-h-11 w-full sm:w-auto"
+        className="min-h-11 min-w-11 w-full sm:w-auto"
         disabled={!hydrated || submitting}
       >
         <BookmarkPlus className="h-4 w-4" />

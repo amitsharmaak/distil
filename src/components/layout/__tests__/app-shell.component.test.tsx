@@ -46,13 +46,12 @@ describe("AppShell", () => {
     renderShell(<p>Content</p>);
 
     const content = screen.getByText("Content").parentElement?.parentElement;
-    expect(content).toHaveClass("md:pl-64");
-    expect(content).not.toHaveClass("md:pl-16");
+    expect(content).toHaveClass("distil-shell-content");
+    expect(content).toHaveAttribute("data-sidebar-collapsed", "false");
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
-    expect(content).toHaveClass("md:pl-16");
-    expect(content).not.toHaveClass("md:pl-64");
+    expect(content).toHaveAttribute("data-sidebar-collapsed", "true");
   });
 
   it("shows the mobile tab bar and reserves space for it on list routes", () => {
@@ -75,6 +74,17 @@ describe("AppShell", () => {
       "pb-[calc(1.5rem+4rem+env(safe-area-inset-bottom,0px))]"
     );
     expect(screen.getByText("Topbar")).toHaveAttribute("data-back", "/feed");
+  });
+
+  it("keeps reader navigation quiet until the sidebar shortcut is used", () => {
+    mockUsePathname.mockReturnValue("/feed/item-42");
+    const { container } = renderShell(<p>Article</p>);
+    const shell = container.querySelector(".distil-shell");
+    expect(shell).toHaveAttribute("data-reader-navigation", "false");
+    fireEvent.keyDown(window, { key: "[" });
+    expect(shell).toHaveAttribute("data-reader-navigation", "true");
+    fireEvent.keyDown(window, { key: "[" });
+    expect(shell).toHaveAttribute("data-reader-navigation", "false");
   });
 
   it("renders the login route without any shell chrome", () => {

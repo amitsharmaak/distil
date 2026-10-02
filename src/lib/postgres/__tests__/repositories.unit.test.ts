@@ -88,6 +88,7 @@ describe("PostgreSQL repositories with a controlled SQL adapter", () => {
       "digests",
       "captures",
       "captureTokens",
+      "shortcutPairings",
       "rateLimits",
       "oauthTokens",
       "connectorOAuthStates",

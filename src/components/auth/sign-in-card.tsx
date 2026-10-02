@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -80,14 +81,12 @@ export function SignInCard({ next }: { next?: string } = {}) {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-semibold">Sign in to Distil</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Enter your email and password, or request a magic link instead.
-        </p>
-      </div>
+      <PageHeader
+        title="Sign in to Distil"
+        description={<>Enter your email and password, or request a magic link instead.</>}
+      />
       {showResetNotice ? (
-        <p aria-live="polite" className="text-sm text-primary">
+        <p aria-live="polite" className="text-sm text-success">
           Password updated. Sign in with your new password.
         </p>
       ) : null}
@@ -106,10 +105,15 @@ export function SignInCard({ next }: { next?: string } = {}) {
           required
           type="password"
         />
-        <Button disabled={submitting} type="submit">
+        <Button className="min-h-11 min-w-11" disabled={submitting} type="submit">
           {submitting ? "Signing in…" : "Sign in"}
         </Button>
-        <Button onClick={sendMagicLink} type="button" variant="outline">
+        <Button
+          className="min-h-11 min-w-11"
+          onClick={sendMagicLink}
+          type="button"
+          variant="outline"
+        >
           Email me a magic link instead
         </Button>
       </form>

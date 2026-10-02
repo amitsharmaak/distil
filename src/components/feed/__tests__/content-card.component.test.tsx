@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 
 import { ContentCard } from "../content-card";
 import type { ContentItem } from "@/lib/types";
@@ -17,12 +17,12 @@ const item = {
   url: "https://example.com/a",
   sourceType: "manual",
   contentType: "article",
-  priority: "read-soon",
+  priority: "high",
   topics: [],
   isRead: false,
   area: "work",
   createdAt: new Date().toISOString(),
-  processingStatus: "done",
+  processingStatus: "ready",
 } as unknown as ContentItem;
 
 describe("ContentCard area control", () => {
@@ -36,7 +36,7 @@ describe("ContentCard area control", () => {
 });
 
 describe.each([false, true])("ContentCard (compact=%s)", (compact) => {
-  it("renders an article row with sibling link and buttons", () => {
+  it("renders an article row with sibling link and buttons", async () => {
     jest.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
     const { container } = render(<ContentCard item={item} compact={compact} />);
     const row = container.querySelector("article[data-row][data-item-id]");
@@ -45,7 +45,9 @@ describe.each([false, true])("ContentCard (compact=%s)", (compact) => {
     expect(container.querySelector("a")).toHaveAttribute("href", "/feed/item-1");
     const onClick = jest.fn((e: Event) => e.preventDefault());
     container.querySelector("a")!.addEventListener("click", onClick);
-    fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
+    });
     expect(onClick).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,22 @@
 # Distil user guide
 
+## Save from iPhone
+
+1. Open **Settings → Capture → iPhone** and choose **Get the Shortcut** to install **Save to
+   Distil**. The link appears once the shared Shortcut is published for the deployment.
+2. Choose **Pair this iPhone**, run the Shortcut, and enter the displayed code. It works once and
+   expires after ten minutes. You see **iPhone paired**; there is no token to copy or paste.
+3. In your browser or another article app, choose **Share → Save to Distil**. Later shares save
+   without asking for a code. **Saved to Distil** means the link was accepted for processing.
+
+Use **Disconnect** beside the phone connection in the same Settings card to turn it off. The next
+share reports **Distil disconnected this iPhone. Share again to pair.** Generate a new code and
+share again to reconnect. Browser connections and the manual token for scripts remain active.
+
+The Shortcut's saved credential uses iCloud Drive; devices on the same Apple Account can share
+that pairing. See the [iPhone guide](iphone-shortcut.md) for installation, account switching,
+recovery, the Home Screen app and the build-it-yourself recipe.
+
 ## Keyboard shortcuts
 
 Distil can be driven from the keyboard on desktop. Press `?` (or ⌘/ on Mac, Ctrl+/ elsewhere) at

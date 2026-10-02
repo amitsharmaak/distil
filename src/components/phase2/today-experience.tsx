@@ -7,6 +7,7 @@ import { RefreshCw } from "lucide-react";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
 import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
@@ -164,23 +165,27 @@ export function TodayExperience({
         onSearchDraftChange={setSearchDraft}
         placeholder="Search unread"
         leading={
-          <div className="flex items-end gap-3">
-            <TodayHeading />
-            <span className="pb-1 text-xs text-muted-foreground">
-              {updatedLabel(todayQuery.dataUpdatedAt)}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="mb-0.5 h-8 gap-1.5"
-              onClick={() => void todayQuery.refetch()}
-              disabled={todayQuery.isFetching}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${todayQuery.isFetching ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-          </div>
+          <TodayHeading
+            items={view ? viewItems(view) : []}
+            status={
+              <>
+                <span className="text-xs">{updatedLabel(todayQuery.dataUpdatedAt)}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 gap-1.5"
+                  onClick={() => void todayQuery.refetch()}
+                  disabled={todayQuery.isFetching}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${todayQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+                  />
+                  Refresh
+                </Button>
+              </>
+            }
+          />
         }
         sheet={
           <FeedFilterSheet
@@ -194,7 +199,7 @@ export function TodayExperience({
         }
       />
       {error && view && (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="text-sm text-danger" role="alert">
           Could not refresh Today. Showing the last loaded view.
         </p>
       )}
@@ -204,7 +209,7 @@ export function TodayExperience({
   if (error && !view) {
     return (
       <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
-        <div className="rounded-xl border border-destructive/40 p-5 text-sm" role="alert">
+        <div className="rounded-xl border border-danger/40 p-5 text-sm" role="alert">
           <p className="font-medium">Today is unavailable</p>
           <p className="mt-1 text-muted-foreground">{error}</p>
         </div>
@@ -214,8 +219,15 @@ export function TodayExperience({
   if (!view) {
     return (
       <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
-        <div className="py-12 text-center text-muted-foreground" role="status">
-          Loading Today…
+        <div role="status" aria-label="Loading Today" className="grid gap-6 lg:grid-cols-2">
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="space-y-3 py-4">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-5/6" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ))}
         </div>
       </TodayPrototype>
     );

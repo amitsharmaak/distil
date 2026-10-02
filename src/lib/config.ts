@@ -54,6 +54,9 @@ export const config = {
    */
   apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000",
 
+  /** Optional signed iCloud share link, also exposed through browser-safe public-config. */
+  iosShortcutUrl: process.env.NEXT_PUBLIC_IOS_SHORTCUT_URL?.trim() ?? "",
+
   /**
    * Current Node environment: "development", "test", or "production".
    * Used to gate dev-only behavior (e.g. verbose logging).

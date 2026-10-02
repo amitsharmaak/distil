@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageContainer } from "@/components/ui/page-header";
 
 import { ExtensionConnect } from "@/components/extension/extension-connect";
 
@@ -18,9 +19,9 @@ export default async function ExtensionConnectPage({
 }) {
   const { state } = await searchParams;
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
+    <PageContainer size="reading" className="flex min-h-screen flex-col justify-center gap-6 px-6">
       <meta content="no-referrer" name="referrer" />
       <ExtensionConnect state={typeof state === "string" ? state : undefined} />
-    </main>
+    </PageContainer>
   );
 }

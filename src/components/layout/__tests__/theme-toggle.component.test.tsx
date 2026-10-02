@@ -32,20 +32,19 @@ describe("ThemeToggle", () => {
     jest.clearAllMocks();
   });
 
-  it("offers dark mode while the light theme is active", () => {
-    const { container } = render(<ThemeToggle />);
+  it("uses the pre-paint theme class to select icons and labels without changing markup", () => {
+    const { container, rerender } = render(<ThemeToggle />);
+    const serverShape = container.innerHTML;
 
-    expect(screen.getByRole("button", { name: "Toggle theme" })).toHaveTextContent("Dark mode");
-    expect(container.querySelector(".lucide-moon")).toBeInTheDocument();
-  });
+    expect(screen.getByText("Light mode")).toHaveClass("distil-theme-light");
+    expect(screen.getByText("Dark mode")).toHaveClass("distil-theme-dark");
+    expect(container.querySelector(".lucide-sun")).toHaveClass("distil-theme-light");
+    expect(container.querySelector(".lucide-moon")).toHaveClass("distil-theme-dark");
 
-  it("offers light mode while the dark theme is active", () => {
     mockUseTheme.mockReturnValue({ theme: "dark", toggle: mockToggle });
+    rerender(<ThemeToggle />);
 
-    const { container } = render(<ThemeToggle />);
-
-    expect(screen.getByRole("button", { name: "Toggle theme" })).toHaveTextContent("Light mode");
-    expect(container.querySelector(".lucide-sun")).toBeInTheDocument();
+    expect(container.innerHTML).toBe(serverShape);
   });
 
   it("keeps an accessible name when collapsed and invokes the provider toggle", () => {

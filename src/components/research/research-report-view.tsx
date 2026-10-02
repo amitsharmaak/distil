@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/format";
 import { useMemo } from "react";
 import { ReportBody } from "./report-body";
 import { linkCitationMarkers, prepareReport, SUMMARY_ANCHOR_ID } from "./report-markdown";
@@ -22,17 +24,9 @@ function plural(count: number, singular: string, pluralForm = `${singular}s`): s
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
-function formatDate(value: string): string | null {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
 /**
  * The completed report: a single reading column in the item reader's typography with the question,
- * reading stats and actions on top, a TL;DR, the cleaned body, and collapsed sources. A table of
- * contents sits in a sticky right rail on wide screens and in an "On this page" disclosure on
- * phones.
+ * reading stats and actions on top, a TL;DR, the cleaned body, and collapsed sources. The table of contents stays in an "On this page" disclosure at every width.
  */
 export function ResearchReportView({ report }: { report: CompletedResearchReport }) {
   const numbered = useMemo(() => hasNumberedSources(report.sources), [report.sources]);
@@ -62,47 +56,44 @@ export function ResearchReportView({ report }: { report: CompletedResearchReport
   ].filter((part): part is string => part !== null);
 
   return (
-    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_13rem] lg:gap-12">
-      <article className="mx-auto w-full max-w-2xl min-w-0 space-y-6">
-        <header className="space-y-3">
-          <p className="text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
-            Deep research
-          </p>
-          <h1 className="font-serif text-display leading-tight font-semibold tracking-tight text-balance">
-            {report.query}
-          </h1>
-          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
-            {date && (
-              <>
-                <time dateTime={report.completedAt ?? report.createdAt}>
-                  {report.completedAt ? `Completed ${date}` : date}
-                </time>
-                <span aria-hidden="true" className="text-border">
-                  ·
-                </span>
-              </>
-            )}
-            <span data-testid="report-stats">{stats.join(" · ")}</span>
-          </p>
-          <div className="-ml-2.5">
-            <ReportToolbar markdown={report.report} query={report.query} itemId={report.itemId} />
-          </div>
-        </header>
+    <div>
+      <article className="mx-auto w-full max-w-none min-w-0 space-y-6">
+        <PageHeader
+          title={report.query}
+          eyebrow="Deep research"
+          meta={
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+              {date && (
+                <>
+                  <time dateTime={report.completedAt ?? report.createdAt}>
+                    {report.completedAt ? `Completed ${date}` : date}
+                  </time>
+                  <span aria-hidden="true" className="text-border">
+                    ·
+                  </span>
+                </>
+              )}
+              <span data-testid="report-stats">{stats.join(" · ")}</span>
+            </p>
+          }
+        />
+        <div className="-ml-2.5">
+          <ReportToolbar markdown={report.report} query={report.query} itemId={report.itemId} />
+        </div>
 
         <ReportToc
           headings={prepared.headings}
           hasSummary={prepared.summary !== null}
           variant="collapsible"
-          className="lg:hidden"
         />
 
         {prepared.summary && (
           <section
             id={SUMMARY_ANCHOR_ID}
             aria-label="TL;DR"
-            className="scroll-mt-20 rounded-xl border-l-2 border-primary bg-muted/50 px-4 py-4 sm:px-5"
+            className="scroll-mt-20 rounded-xl border-l-2 border-border bg-muted/30 px-4 py-4 sm:px-5"
           >
-            <p className="mb-2 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
+            <p className="mb-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
               TL;DR
             </p>
             <ReportBody markdown={prepared.summary} headings={[]} sources={citationSources} />
@@ -117,16 +108,6 @@ export function ResearchReportView({ report }: { report: CompletedResearchReport
 
         <ResearchSourcesList cited={cited} other={other} numbered={numbered} />
       </article>
-
-      <aside className="hidden lg:block">
-        <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto pb-6">
-          <ReportToc
-            headings={prepared.headings}
-            hasSummary={prepared.summary !== null}
-            variant="rail"
-          />
-        </div>
-      </aside>
     </div>
   );
 }

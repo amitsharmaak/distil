@@ -71,17 +71,23 @@ jest.mock("@/components/phase2/reader-annotations", () => ({
     initialAnnotations,
     initialUpdatedAt,
     children,
+    header,
+    notes,
   }: {
     initialAnnotations?: unknown[];
     initialUpdatedAt?: number;
     children: React.ReactNode;
+    header: React.ReactNode;
+    notes: React.ReactNode;
   }) => (
     <div
       data-testid="reader-annotations"
       data-initial-count={initialAnnotations?.length ?? -1}
       data-initial-updated-at={initialUpdatedAt}
     >
+      {header}
       {children}
+      {notes}
     </div>
   ),
 }));
@@ -91,17 +97,10 @@ jest.mock("@/components/phase2/reader-knowledge-controls", () => ({
     initial,
   }: {
     itemId: string;
-    initial?: {
-      state: { archived: boolean; readingProgress: number; manualPriority: string | null };
-      note: { body: string } | null;
-      updatedAt?: number;
-    };
+    initial?: { note: { body: string } | null; updatedAt?: number };
   }) => (
     <div
       data-testid="knowledge-controls"
-      data-archived={String(initial?.state.archived)}
-      data-progress={String(initial?.state.readingProgress)}
-      data-priority={initial?.state.manualPriority ?? ""}
       data-note={initial?.note?.body ?? ""}
       data-initial-updated-at={initial?.updatedAt}
     >
@@ -114,15 +113,33 @@ jest.mock("@/components/feed/detail-action-bar", () => ({
     title,
     prevId,
     nextId,
+    initialReaderState,
   }: {
     title: string;
     prevId: string | null;
     nextId: string | null;
+    initialReaderState?: {
+      state: { archived: boolean; readingProgress: number; manualPriority: string | null };
+      updatedAt?: number;
+    };
   }) => (
-    <div data-testid="actions" data-prev={prevId ?? ""} data-next={nextId ?? ""}>
+    <div
+      data-testid="actions"
+      data-prev={prevId ?? ""}
+      data-next={nextId ?? ""}
+      data-has-state={String(Boolean(initialReaderState))}
+      data-archived={String(initialReaderState?.state.archived)}
+      data-progress={String(initialReaderState?.state.readingProgress)}
+      data-priority={initialReaderState?.state.manualPriority ?? ""}
+      data-initial-updated-at={initialReaderState?.updatedAt}
+    >
       {title}
     </div>
   ),
+}));
+jest.mock("@/components/feed/reader-experience", () => ({
+  ReaderExperience: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ReaderDisplaySettings: () => <button> Aa </button>,
 }));
 jest.mock("@/components/feed/reader-area-badge", () => ({
   ReaderAreaBadge: () => <span data-testid="area-badge" />,
@@ -133,7 +150,7 @@ jest.mock("@/components/feed/article-navigation", () => ({
   ),
 }));
 jest.mock("@/components/feed/video-embed", () => ({
-  VideoEmbed: () => <div data-testid="video">video</div>,
+  VideoDisclosure: () => <div data-testid="video">video control</div>,
 }));
 jest.mock("@/components/feed/lazy-article-extract", () => ({
   LazyArticleExtract: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -218,6 +235,7 @@ describe("feed item detail page", () => {
     const current = item({
       id: "current",
       title: "https://example.test/raw",
+      thumbnailUrl: "https://example.test/unused-hero.jpg",
       archivedAt: "2026-01-02T00:00:00.000Z",
       readingProgress: 0.5,
       manualPriority: "medium",
@@ -255,19 +273,21 @@ describe("feed item detail page", () => {
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("A useful summary.");
     expect(screen.getByTestId("reader-annotations")).toHaveAttribute("data-initial-count", "1");
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
     const annotations = screen.getByTestId("reader-annotations");
-    expect(Number(annotations.getAttribute("data-initial-updated-at"))).toBeGreaterThan(0);
+    const readAt = annotations.getAttribute("data-initial-updated-at");
+    expect(Number(readAt)).toBeGreaterThan(0);
+    // The note panel and the overflow menu are seeded from the same server read.
     const controls = screen.getByTestId("knowledge-controls");
     expect(controls).toHaveTextContent("current");
-    expect(controls).toHaveAttribute("data-archived", "true");
-    expect(controls).toHaveAttribute("data-progress", "0.5");
-    expect(controls).toHaveAttribute("data-priority", "medium");
     expect(controls).toHaveAttribute("data-note", "Server-loaded note");
-    expect(controls).toHaveAttribute(
-      "data-initial-updated-at",
-      annotations.getAttribute("data-initial-updated-at")
-    );
-    expect(screen.getByTestId("actions")).toHaveTextContent("https://example.test/raw");
+    expect(controls).toHaveAttribute("data-initial-updated-at", readAt);
+    const actions = screen.getByTestId("actions");
+    expect(actions).toHaveTextContent("https://example.test/raw");
+    expect(actions).toHaveAttribute("data-archived", "true");
+    expect(actions).toHaveAttribute("data-progress", "0.5");
+    expect(actions).toHaveAttribute("data-priority", "medium");
+    expect(actions).toHaveAttribute("data-initial-updated-at", readAt);
     // The whole read runs inside one tenant transaction; neighbours come from a
     // keyset lookup that ignores read state when the reader shows everything.
     expect(withTenantRepositories).toHaveBeenCalledTimes(1);
@@ -340,7 +360,7 @@ describe("feed item detail page", () => {
     }
     expect(screen.getByText("@reader")).toBeInTheDocument();
     expect(screen.getByTestId("video")).toBeInTheDocument();
-    expect(screen.getByText("Listen to Podcast")).toBeInTheDocument();
+    expect(screen.getByText("Listen to this episode")).toBeInTheDocument();
     expect(screen.queryByTestId("knowledge-controls")).not.toBeInTheDocument();
     expect(repositories.itemNotes.find).not.toHaveBeenCalled();
     expect(repositories.annotations.listForItem).not.toHaveBeenCalled();

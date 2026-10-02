@@ -12,6 +12,7 @@ import { createTenantAIRouter } from "./router";
 import { aiLogger } from "@/lib/logger";
 import { prioritizePrompt } from "@/lib/prompts/prioritize";
 import { getPreferences } from "./preferences";
+import { storedTriageOf } from "@/lib/contracts/capture-triage";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
 import type { RepositorySet } from "@/lib/repositories/ports";
 import type { ContentItem, Priority } from "@/lib/types";
@@ -29,7 +30,7 @@ async function loadAgentConfig(repositories: RepositorySet): Promise<AgentConfig
   return JSON.parse(raw) as AgentConfig;
 }
 
-function scoreToPriority(score: number): Priority {
+export function scoreToPriority(score: number): Priority {
   if (score >= 70) return "high";
   if (score >= 40) return "medium";
   return "low";
@@ -100,8 +101,13 @@ export async function reprioritize(
   ]);
 
   const scored: ScoredItem[] = items.map((item) => {
-    const score = heuristicScore(item, preferences, agentConfig);
-    return { itemId: item.id, score, priority: scoreToPriority(score) };
+    const h = heuristicScore(item, preferences, agentConfig);
+    // Feedback triggers this for the newest items and overwrites ai_priority_score and
+    // priority. Blend in the one-off capture triage score so a thumbs-up or thumbs-down
+    // elsewhere does not wipe it; items without a valid triage keep the pure heuristic.
+    const t = storedTriageOf(item.contentClassification)?.priorityScore;
+    const base = t === undefined ? h : Math.round(0.6 * t + 0.4 * h);
+    return { itemId: item.id, score: base, priority: scoreToPriority(base) };
   });
 
   if (useAI && items.length > 0) {

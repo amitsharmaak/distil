@@ -15,12 +15,25 @@ import {
   Check,
   Link2,
   Undo2,
+  MoreHorizontal,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  ReaderLibraryMenuItems,
+  type ReaderLibraryInitial,
+} from "@/components/phase2/reader-knowledge-controls";
+import { useReaderExperience } from "@/components/feed/reader-experience";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeepResearch } from "@/components/feed/deep-research";
-import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { useShortcut, useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
 import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
 import { useContentCache } from "@/lib/client-cache/content-cache";
@@ -56,6 +69,9 @@ export interface DetailActionBarProps {
   prevId: string | null;
   nextId: string | null;
   filter?: string;
+  knowledgeUiEnabled?: boolean;
+  /** Server-read archive/priority state; lets the overflow menu open without a GET. */
+  initialReaderState?: ReaderLibraryInitial;
   initialFeedback?: { rating: number; reason: string | null } | null;
 }
 
@@ -68,11 +84,16 @@ export function DetailActionBar({
   nextId,
   filter,
   initialFeedback,
+  knowledgeUiEnabled = false,
+  initialReaderState,
 }: DetailActionBarProps) {
   const router = useRouter();
   const cache = useContentCache();
   const { updateItem } = useItemMutation();
   const overrides = useItemOverrides(itemId);
+  const reader = useReaderExperience();
+  const [menuOpen, setMenuOpen] = useState(false);
+  useShortcutsSuspended(menuOpen);
   const suffix = filter ? `?filter=${filter}` : "";
 
   const [rating, setRating] = useState<number | null>(initialFeedback?.rating ?? null);
@@ -129,7 +150,7 @@ export function DetailActionBar({
         router.push(`/feed${suffix}`);
       }
     } catch {
-      // The shared cache restores the previous state on failure.
+      // The shared cache restores the previous state on failure; the story stays unread.
     } finally {
       setMarkingRead(false);
     }
@@ -170,221 +191,184 @@ export function DetailActionBar({
   useShortcut(DEEP_RESEARCH, () => setResearchOpen(true));
   useShortcut(COPY_LINK, () => void handleCopyLink());
 
-  const iconBtn =
-    "h-11 w-11 md:h-9 md:w-9 text-muted-foreground hover:text-foreground transition-colors";
+  const iconBtn = "h-11 w-11 shrink-0 text-muted-foreground hover:text-foreground";
 
   return (
     <TooltipProvider>
-      <div className="distil-action-bar fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background/80 backdrop-blur-xl md:left-16 lg:left-64 transition-[left] duration-300 pb-safe">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-2">
-          {/* ── Navigation ── */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            {prevId ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                    <Link
-                      href={`/feed/${prevId}${suffix}`}
-                      aria-label="Previous item"
-                      aria-keyshortcuts="ArrowLeft k"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Previous item · K</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 md:h-9 md:w-9"
+      <div className="distil-action-bar fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur-xl pb-safe">
+        <div
+          className="mx-auto flex w-full max-w-2xl items-center justify-center gap-0.5 px-1 py-2 sm:gap-2 sm:px-4"
+          role="group"
+          aria-label="Reader actions"
+        >
+          {prevId ? (
+            <Button variant="ghost" size="icon" className={iconBtn} asChild>
+              <Link
+                href={`/feed/${prevId}${suffix}`}
                 aria-label="Previous item"
-                disabled
+                aria-keyshortcuts="ArrowLeft k"
+                title="Previous item · K"
               >
                 <ChevronLeft className="h-4 w-4" />
-              </Button>
-            )}
-
-            {nextId ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                    <Link
-                      href={`/feed/${nextId}${suffix}`}
-                      aria-label="Next item"
-                      aria-keyshortcuts="ArrowRight j"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Next item · J</TooltipContent>
-              </Tooltip>
-            ) : (
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={iconBtn}
+              aria-label="Previous item"
+              disabled
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
+          {nextId ? (
+            <Button variant="ghost" size="icon" className={iconBtn} asChild>
+              <Link
+                href={`/feed/${nextId}${suffix}`}
+                aria-label="Next item"
+                aria-keyshortcuts="ArrowRight j"
+                title="Next item · J"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" size="icon" className={iconBtn} aria-label="Next item" disabled>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            className="h-11 min-w-24 shrink-0 gap-1.5 px-3"
+            onClick={() => void handleMarkRead()}
+            aria-label={read ? "Read" : "Mark as read"}
+            aria-keyshortcuts="r"
+            disabled={read || markingRead}
+            title={read ? "Read" : "Mark as read · R"}
+          >
+            <Check className="h-4 w-4" />
+            {read ? "Read" : "Mark read"}
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-11 w-11 md:h-9 md:w-9"
-                aria-label="Next item"
-                disabled
+                className={`${iconBtn} ${rating === 1 ? "text-success" : ""}`}
+                onClick={() => void handleRate(1)}
+                aria-label={rating === 1 ? "Liked" : "Like"}
+                aria-keyshortcuts="+"
+                disabled={submitting}
               >
-                <ChevronRight className="h-4 w-4" />
+                <ThumbsUp className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`} />
               </Button>
-            )}
-          </div>
-
-          {/* ── Actions ── */}
-          <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className={iconBtn} asChild>
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="View original"
-                    aria-keyshortcuts="o"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">View original · O</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={iconBtn}
-                  ref={researchBtn}
-                  aria-label="Deep research"
-                  aria-keyshortcuts="Shift+D"
-                  onClick={() => setResearchOpen(true)}
+            </TooltipTrigger>
+            <TooltipContent side="top">{rating === 1 ? "Liked" : "Like"} · +</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${iconBtn} ${rating === -1 ? "text-danger" : ""}`}
+                onClick={() => void handleRate(-1)}
+                aria-label={rating === -1 ? "Disliked" : "Dislike"}
+                aria-keyshortcuts="-"
+                disabled={submitting}
+              >
+                <ThumbsDown className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{rating === -1 ? "Disliked" : "Dislike"} · -</TooltipContent>
+          </Tooltip>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={researchBtn}
+                variant="ghost"
+                size="icon"
+                className={iconBtn}
+                aria-label="More reader actions"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="w-64">
+              {reader?.summaryAction && (
+                <DropdownMenuItem
+                  className="min-h-11"
+                  aria-keyshortcuts="Shift+S"
+                  disabled={reader.summaryAction.disabled}
+                  onSelect={() => reader.summaryAction?.regenerate()}
                 >
-                  <FlaskConical className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Deep research · Shift+D</TooltipContent>
-            </Tooltip>
-            <DeepResearch
-              itemId={itemId}
-              defaultQuery={title}
-              open={researchOpen}
-              onOpenChange={handleResearchOpenChange}
-            >
-              {null}
-            </DeepResearch>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`${iconBtn} ${copied ? "text-green-500" : ""}`}
-                  onClick={() => void handleCopyLink()}
-                  aria-label="Copy link"
-                  aria-keyshortcuts="Shift+C"
+                  <RefreshCw />
+                  Regenerate summary
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                className="min-h-11"
+                aria-label="Copy link"
+                aria-keyshortcuts="Shift+C"
+                onSelect={() => void handleCopyLink()}
+              >
+                <Link2 />
+                Copy link
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="min-h-11">
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="View original"
+                  aria-keyshortcuts="o"
                 >
-                  {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {copied ? "Copied" : "Copy link · Shift+C"}
-              </TooltipContent>
-            </Tooltip>
-            <span role="status" className="sr-only">
-              {copied ? "Copied" : ""}
-            </span>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-11 w-11 md:h-9 md:w-9 transition-colors ${
-                    rating === 1
-                      ? "text-green-500 hover:text-green-600"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  onClick={() => handleRate(1)}
-                  aria-label={rating === 1 ? "Liked" : "Like"}
-                  aria-keyshortcuts="+"
-                  disabled={submitting}
-                >
-                  <ThumbsUp className={`h-4 w-4 ${rating === 1 ? "fill-current" : ""}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">{rating === 1 ? "Liked" : "Like"} · +</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-11 w-11 md:h-9 md:w-9 transition-colors ${
-                    rating === -1
-                      ? "text-red-500 hover:text-red-600"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  onClick={() => handleRate(-1)}
-                  aria-label={rating === -1 ? "Disliked" : "Dislike"}
-                  aria-keyshortcuts="-"
-                  disabled={submitting}
-                >
-                  <ThumbsDown className={`h-4 w-4 ${rating === -1 ? "fill-current" : ""}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {rating === -1 ? "Disliked" : "Dislike"} · -
-              </TooltipContent>
-            </Tooltip>
-
-            <Separator orientation="vertical" className="mx-1.5 h-4" />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-11 w-11 md:h-9 md:w-9 transition-colors ${
-                    read ? "text-green-500" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  onClick={handleMarkRead}
-                  aria-label={read ? "Read" : "Mark as read"}
-                  aria-keyshortcuts="r"
-                  disabled={read || markingRead}
-                >
-                  <Check className={`h-4 w-4 ${read ? "stroke-[2.5]" : ""}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">{read ? "Read" : "Mark as read · R"}</TooltipContent>
-            </Tooltip>
-
-            {read && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={iconBtn}
-                    onClick={() => void handleMarkUnread()}
+                  <ExternalLink />
+                  Open original
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="min-h-11"
+                aria-label="Deep research"
+                aria-keyshortcuts="Shift+D"
+                onSelect={() => setResearchOpen(true)}
+              >
+                <FlaskConical />
+                Deep research
+              </DropdownMenuItem>
+              {read && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="min-h-11"
                     aria-label="Mark as unread"
                     aria-keyshortcuts="Shift+U"
                     disabled={markingRead}
+                    onSelect={() => void handleMarkUnread()}
                   >
-                    <Undo2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Mark as unread · Shift+U</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+                    <Undo2 />
+                    Mark as unread
+                  </DropdownMenuItem>
+                </>
+              )}
+              {knowledgeUiEnabled && (
+                <ReaderLibraryMenuItems itemId={itemId} initial={initialReaderState} />
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span role="status" className="sr-only">
+            {copied ? "Copied" : ""}
+          </span>
         </div>
       </div>
+      <DeepResearch
+        itemId={itemId}
+        defaultQuery={title}
+        open={researchOpen}
+        onOpenChange={handleResearchOpenChange}
+      >
+        {null}
+      </DeepResearch>
     </TooltipProvider>
   );
 }

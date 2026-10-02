@@ -175,28 +175,35 @@ it("Deep research returns focus to its button on close", async () => {
   press({ key: "D", shiftKey: true });
   await screen.findByRole("dialog");
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Deep research" })).toHaveFocus());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "More reader actions" })).toHaveFocus()
+  );
 });
 
-it("tooltips and aria-keyshortcuts match the registered keys", async () => {
+it("overflow actions preserve accessible names and registered shortcuts", async () => {
   setup({ isRead: true });
-  const expected: Array<[string, string]> = [
+  for (const [name, keys] of [
     ["Previous item", "ArrowLeft k"],
     ["Next item", "ArrowRight j"],
+  ]) {
+    expect(screen.getByRole("link", { name })).toHaveAttribute("aria-keyshortcuts", keys);
+  }
+  for (const [name, keys] of [
+    ["Like", "+"],
+    ["Dislike", "-"],
+  ]) {
+    expect(screen.getByRole("button", { name })).toHaveAttribute("aria-keyshortcuts", keys);
+  }
+  fireEvent.keyDown(screen.getByRole("button", { name: "More reader actions" }), { key: "Enter" });
+  await screen.findByRole("menu");
+  for (const [name, keys] of [
     ["View original", "o"],
     ["Deep research", "Shift+D"],
     ["Copy link", "Shift+C"],
-    ["Like", "+"],
-    ["Dislike", "-"],
     ["Mark as unread", "Shift+U"],
-  ];
-  for (const [name, keys] of expected) {
-    expect(
-      screen.getByRole(name.includes("item") || name === "View original" ? "link" : "button", {
-        name,
-      })
-    ).toHaveAttribute("aria-keyshortcuts", keys);
+  ]) {
+    expect(screen.getByRole("menuitem", { name })).toHaveAttribute("aria-keyshortcuts", keys);
   }
-  fireEvent.focus(screen.getByRole("button", { name: "Mark as unread" }));
-  expect((await screen.findAllByText("Mark as unread · Shift+U")).length).toBeGreaterThan(0);
+  press({ key: "j" });
+  expect(mockPush).not.toHaveBeenCalled();
 });

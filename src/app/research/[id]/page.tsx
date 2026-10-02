@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { apiBaseUrl } from "@/lib/public-config";
@@ -309,29 +311,41 @@ export default function ResearchPage() {
 
   if (reportQuery.error && !report) {
     return (
-      <div className="mx-auto max-w-4xl py-12 text-center">
+      <PageContainer size="reading" className="py-12 text-center">
         <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-3" />
-        <h2 className="text-lg font-semibold">Error</h2>
+        <PageHeader title="Error" />
         <p className="text-sm text-muted-foreground">
           {reportQuery.error instanceof Error ? reportQuery.error.message : "Failed to load report"}
         </p>
-        <Button className="mt-4" variant="outline" onClick={() => void refetchReport()}>
-          Try again
-        </Button>
-        <Link href="/feed" className="text-sm hover:underline mt-2 inline-block">
+        <div>
+          <Button
+            className="mt-4 min-h-11 min-w-11"
+            variant="outline"
+            onClick={() => void refetchReport()}
+          >
+            Try again
+          </Button>
+        </div>
+        <Link
+          href="/feed"
+          className="text-sm hover:underline mt-2 inline-flex min-h-11 items-center"
+        >
           Back to feed
         </Link>
-      </div>
+      </PageContainer>
     );
   }
 
   if (!report) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-96" />
-        <Skeleton className="h-64 w-full" />
-      </div>
+      <PageContainer size="reading" className="space-y-6">
+        <PageHeader title="Research report" />
+        <div role="status" aria-label="Loading research report" className="space-y-6">
+          <Skeleton className="h-8 w-64 max-w-full" />
+          <Skeleton className="h-4 w-full max-w-96" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </PageContainer>
     );
   }
 
@@ -350,7 +364,7 @@ export default function ResearchPage() {
       href={backHref}
       aria-keyshortcuts="u"
       title="Back (u)"
-      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" /> Back
     </Link>
@@ -362,12 +376,14 @@ export default function ResearchPage() {
         type="button"
         variant="ghost"
         size="sm"
-        className="gap-2"
+        className="min-h-11 gap-2"
         disabled={reportQuery.isFetching}
         onClick={() => void refetchReport()}
         aria-label="Refresh report"
       >
-        <RefreshCw className={`h-4 w-4 ${reportQuery.isFetching ? "animate-spin" : ""}`} />
+        <RefreshCw
+          className={`h-4 w-4 ${reportQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+        />
         Refresh
       </Button>
       <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -386,19 +402,19 @@ export default function ResearchPage() {
   // Completed: the readable report page (reading column, TL;DR, contents, collapsed sources).
   if (report.status === "completed") {
     return (
-      <div className="mx-auto max-w-5xl space-y-6 pb-16">
+      <PageContainer size="reading" className="space-y-6 pb-16">
         <div className="flex items-start justify-between gap-4">
           {backLink}
           {refreshControl}
         </div>
         {refreshError}
         <ResearchReportView report={report} />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <PageContainer size="reading" className="space-y-6">
       {/* Back navigation */}
       <div className="flex items-start justify-between gap-4">
         {backLink}
@@ -406,29 +422,16 @@ export default function ResearchPage() {
       </div>
       {refreshError}
 
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <Badge variant="secondary">Research Report</Badge>
-          <Badge
-            variant="outline"
-            className={
-              report.status === "completed"
-                ? "text-green-600 border-green-200"
-                : report.status === "failed"
-                  ? "text-red-600 border-red-200"
-                  : "text-amber-600 border-amber-200"
-            }
-          >
-            {report.status}
-          </Badge>
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">{report.query}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Started {new Date(report.createdAt).toLocaleString()}
-          {report.completedAt && ` · Completed ${new Date(report.completedAt).toLocaleString()}`}
-        </p>
-      </div>
+      <PageHeader
+        title={report.query}
+        eyebrow="Research report"
+        meta={<>Started {formatDate(report.createdAt)}</>}
+        actions={
+          <StatusBadge tone={report.status === "failed" ? "danger" : "warning"}>
+            {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+          </StatusBadge>
+        }
+      />
 
       <Separator />
 
@@ -450,14 +453,14 @@ export default function ResearchPage() {
                 return (
                   <div key={stage} className="flex items-start gap-3">
                     <div className="mt-0.5 shrink-0">
-                      {isCompleted && <CheckCircle2 className="h-5 w-5 text-green-600" />}
-                      {isCurrent && <Loader2 className="h-5 w-5 text-primary animate-spin" />}
+                      {isCompleted && <CheckCircle2 className="h-5 w-5 text-success" />}
+                      {isCurrent && <Loader2 className="h-5 w-5 text-foreground animate-spin" />}
                       {isPending && <Circle className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div
                       className={
                         isCompleted
-                          ? "text-green-600"
+                          ? "text-success"
                           : isCurrent
                             ? "text-foreground font-medium"
                             : "text-muted-foreground"
@@ -485,6 +488,6 @@ export default function ResearchPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

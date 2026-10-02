@@ -9,7 +9,7 @@ import {
 import { validateManifest } from "../tenant-migration/verifier";
 
 describe("Phase 3 tenant migration manifest", () => {
-  it("classifies every Drizzle application table as tenant-bearing", () => {
+  it("classifies every Drizzle application table as tenant or control data", () => {
     const schemaTables = Object.values(schema)
       .map((table) => `public.${getTableName(table)}`)
       .sort();
@@ -20,13 +20,17 @@ describe("Phase 3 tenant migration manifest", () => {
     );
     const schemaControlTables = tenantMigrationManifest.controlTables
       .filter(({ table }) =>
-        ["account_deletion_tombstones", "operator_audit_events"].includes(table)
+        [
+          "account_deletion_tombstones",
+          "operator_audit_events",
+          "shortcut_pairing_rate_limits",
+        ].includes(table)
       )
       .map(({ schema, table }) => `${schema}.${table}`);
     expect(
       [...tenantBearingTableNames, ...supplementalTableNames, ...schemaControlTables].sort()
     ).toEqual(schemaTables);
-    expect(schemaTables).toHaveLength(47);
+    expect(schemaTables).toHaveLength(49);
   });
 
   it("classifies the migration ledger explicitly as non-tenant control data", () => {
@@ -34,20 +38,29 @@ describe("Phase 3 tenant migration manifest", () => {
       expect.arrayContaining([
         expect.objectContaining({ table: "distil_migrations", tenantBearing: false }),
         expect.objectContaining({ table: "distil_tenant_migrations", tenantBearing: false }),
+        expect.objectContaining({
+          table: "shortcut_pairing_rate_limits",
+          tenantBearing: false,
+          introducedIn: "phone-pairing",
+        }),
       ])
     );
   });
 
   it("enumerates every RLS-protected legacy, identity, account, and normalized-link table", () => {
-    expect(tenantProtectedTables).toHaveLength(44);
+    expect(tenantProtectedTables).toHaveLength(45);
     expect(tenantProtectedTables).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ table: "users", ownerColumn: "id" }),
         expect.objectContaining({ table: "auth_identities", ownerColumn: "user_id" }),
+        expect.objectContaining({ table: "shortcut_pairings", ownerColumn: "user_id" }),
         expect.objectContaining({ table: "research_suggestion_sources", ownerColumn: "user_id" }),
       ])
     );
     expect(tenantProtectedTables.some(({ table }) => table === "invitations")).toBe(false);
+    expect(
+      tenantProtectedTables.some(({ table }) => table === "shortcut_pairing_rate_limits")
+    ).toBe(false);
   });
 
   it("uses one explicit immutable UUID ownership contract", () => {

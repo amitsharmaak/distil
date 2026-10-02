@@ -73,7 +73,7 @@ describe("DigestExperience", () => {
   it("shows an accessible loading state", () => {
     fetchMock.mockReturnValue(new Promise<Response>(() => {}) as Promise<Response>);
     render(<DigestExperience />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading digests");
+    expect(screen.getByRole("status", { name: "Loading digests" })).toBeInTheDocument();
   });
 
   it("shows disabled opt-in state and saves enablement", async () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/format";
 import { useEffect, useState } from "react";
 import { Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,6 @@ interface BrowserConnection {
   createdAt: string;
   lastUsedAt?: string;
 }
-
-const formatDate = (value: string) => new Date(value).toLocaleDateString();
 
 /** Lists browsers connected through the extension's sign-in flow and disconnects them one by one. */
 export function ConnectedBrowsers() {
@@ -51,8 +50,8 @@ export function ConnectedBrowsers() {
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex gap-3">
-        <Globe className="mt-0.5 h-5 w-5 text-primary" />
-        <div>
+        <Globe className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold">Connected browsers</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Browsers where you signed in through the Distil extension. Disconnecting one stops it
@@ -82,6 +81,7 @@ export function ConnectedBrowsers() {
                 </p>
               </div>
               <Button
+                className="min-h-11 min-w-11"
                 variant="outline"
                 size="sm"
                 disabled={busyId === connection.id}

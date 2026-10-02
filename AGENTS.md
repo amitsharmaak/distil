@@ -52,11 +52,12 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
-  `src/lib/postgres/tenant-migrations/0005–0014` (Phase 3 expand/backfill/contract/lifecycle/
-  returning-auth, the P7 perf-indexes stage, the summary-structure and feed-search stages, the life-areas stage, then drop-collections) run through `npm run db:tenant:migrate` and are
-  checked by
-  `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
-  the restricted runtime role in `DATABASE_URL`. Row-level security is forced.
+  `src/lib/postgres/tenant-migrations/0005–0016` (Phase 3 expand/backfill/contract/lifecycle/
+  returning-auth, the P7 perf-indexes stage, summary-structure, feed-search, life-areas,
+  drop-collections, browser-connections and phone-pairing) run through `npm run db:tenant:migrate`
+  and are checked by `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
+  the restricted runtime role in `DATABASE_URL`. Row-level security is forced. The
+  `phone-pairing` stage (`0016_phone_pairing.sql`) requires `browser-connections` (`0015`).
 - **Legacy SQLite:** `src/lib/db.ts` (better-sqlite3) is a compatibility island. `database.ts`
   falls back to it only when `DATABASE_URL` is unset; `src/lib/notifications.ts` and
   `src/lib/sync-scheduler.ts` still import it directly. `scripts/import-sqlite.ts` migrates old
@@ -76,9 +77,11 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `/api/v1/account` reports `isAdmin`; the capture diagnostics panel lives in the admin-only
   Settings → Troubleshooting tab.
   Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
-  `/reset-password` page, and the account-center password section. Capture clients share one
-  hashed capture token per account, shown once at generation; regenerating revokes every earlier
-  token (`src/lib/auth/capture-tokens.ts`).
+  `/reset-password` page, and the account-center password section. Capture tokens have `manual`,
+  `browser` and `phone` kinds and are stored hash-only. Regenerating the visible manual token
+  revokes only earlier manual tokens (scripts and legacy clients); browser sign-in and iPhone
+  pairing issue separate credentials that last until disconnected (`src/lib/auth/capture-tokens.ts`,
+  `shortcut-pairing.ts`). Each Disconnect revokes only its selected connection.
 - **Tenancy:** `src/lib/contracts/tenant-context.ts` defines `AuthContext` (`userId`,
   `actorKind`, `actorId`, `sessionId?`, `requestId`) and `SystemContext`. Every repository call,
   queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`, `ResearchRunMessageV1`), search,
@@ -97,16 +100,21 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `src/lib/queue/research-consumer.ts` → `runResearchStage` in `src/lib/ai/research.ts`, state in
   `research_reports.progress`). All three are registered in `vercel.json`;
   `DISTIL_CAPTURE_DISPATCH=inline` runs the capture and research consumers in-process locally.
-- **AI:** `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
-  assignment; `router.ts` adds cost accounting, daily/30-day budgets, retries and a circuit
-  breaker. Gemini is the default for every task and the only required key; Anthropic is an
+- **AI:** `docs/intelligence-layer.md` maps every intelligence stage (prompt, model, storage,
+  measurement) and holds the evaluation framework and model policy; update it with any change to
+  a stage. `src/lib/ai/ai-config.ts` is the single source of truth for task→provider/model
+  assignment; `router.ts` adds cost accounting, daily/30-day budgets and the same-provider summary
+  fallback (Gemini calls retry in `providers.ts`; there is no circuit breaker). Gemini is the default for every task and the only required key; Anthropic is an
   optional upgrade for `summarize-complex` and `research-synthesize` (Gemini fallback when the
   key is absent); OpenAI is assigned to nothing. `npm run audit:ai-models` checks that every
   configured id is callable (Anthropic ids are undated aliases, resolved via GetModel). Summaries use Gemini with a budget-admitted same-provider fallback
-  model and 15-second per-attempt timeouts. The brief is shaped per piece and stored with its
+  model and 15-second per-attempt timeouts (40 seconds for `summarize-complex`). The brief is shaped per piece and stored with its
   structured JSON; the detailed summary is a delta over the stored brief, always on
   `summarize-complex`, and is rebuilt when the brief it was built from is regenerated
-  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
+  (`src/lib/ai/summarize.ts`, `summary-freshness.ts`). Generic article captures are triaged once
+  before the summary (`src/lib/ai/triage-capture.ts`, task `triage-capture`): a priority score
+  and a junk-page verdict that rejects only confident, short, unannotated pages and fails open.
+  Prompts live in `src/lib/prompts/`. Search is PostgreSQL full-text;
   item embeddings are optional JSONB (no pgvector) and no search path reads them.
 - **Search:** there is one search surface, the Feed/Today header search, served by
   `GET /api/v1/feed` (`q` plus the filter parameters; `src/lib/feed/`). Inline search F7 retired
@@ -131,9 +139,14 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   thirty minutes, independently of the shorter data freshness windows. Summary/extraction/feedback
   changes refresh reader RSC output. `IntentLink` warms routes on hover, focus
   or touch instead of prefetching every visible card. Account/session/token reads remain fresh.
-- **Capture clients:** `browser-extension/` (Chrome MV3, posts to `/api/v1/captures`, offline
-  replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`. Gmail, Slack and the
-  authenticated-publisher framework still exist in code but are disabled in hosted deployments
+- **Capture clients:** `browser-extension/` (Chrome MV3, browser sign-in, posts to
+  `/api/v1/captures`, offline replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`
+  (one public iCloud installer, one-time code pairing through `/api/v1/shortcut-pairings/exchange`,
+  then bearer captures). Settings → Capture shows manual token / Connected browsers / iPhone.
+  `NEXT_PUBLIC_IOS_SHORTCUT_URL` supplies the installer link, hidden when unset. The Shortcut's
+  `Shortcuts/Distil/token.txt` uses iCloud Drive, so devices on one Apple Account can share a pairing.
+  Gmail, Slack and the authenticated-publisher framework still exist in code but are disabled in
+  hosted deployments
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
   `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`,
@@ -141,7 +154,9 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   on and read `!== "false"`: `FEATURE_CAPTURE_SUMMARY` (per-capture brief summary),
   `FEATURE_AREA_CLASSIFICATION` (per-capture life-area classification) and
   `FEATURE_SERVER_RENDER` (`/` and `/feed` render their first page of data on the server; `false`
-  restores the client-fetch pages).
+  restores the client-fetch pages). `FEATURE_CAPTURE_TRIAGE` is tri-state and defaults on:
+  `"shadow"` records the triage verdict and score but never rejects, `"false"` turns triage off
+  (`docs/runbooks/capture-triage.md`).
 - **Deployment:** `docs/vercel-deployment.md` (topology and variable mapping) and
   `docs/runbooks/` (auth activation, backup/restore, account export/deletion, tenant-isolation
   incidents). `npm run build` runs the Phase 3 activation preflight, which requires
@@ -171,7 +186,7 @@ npm run test:extension       # Playwright extension
 npm run test:coverage        # coverage gate on changed code
 npm run build                # activation preflight + next build
 npm run db:migrate | db:tenant:migrate | db:tenant:verify
-npm run eval                 # offline AI quality evals (evals/)
+npm run eval                 # scores recorded fixtures only, not the product (docs/intelligence-layer.md §4)
 ```
 
 `npm run setup` and `scripts/setup.sh` are stale (they assume SQLite); do not rely on them. For

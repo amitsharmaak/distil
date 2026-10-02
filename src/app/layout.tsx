@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Newsreader, Outfit } from "next/font/google";
+import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
+import "./reader.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { AppShell } from "@/components/layout/lazy-app-shell";
 import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
@@ -13,8 +14,14 @@ const newsreader = Newsreader({
   style: ["normal", "italic"],
 });
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const geist = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -56,7 +63,9 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className={`${newsreader.variable} ${outfit.variable} font-sans antialiased`}>
+      <body
+        className={`${newsreader.variable} ${geist.variable} ${geistMono.variable} font-sans antialiased`}
+      >
         <ThemeProvider>
           <ContentCacheProvider accountKey={accountKey}>
             <AppShell>{children}</AppShell>

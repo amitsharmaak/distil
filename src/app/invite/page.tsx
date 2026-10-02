@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -33,26 +34,24 @@ function InvitationAcceptanceCard() {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-semibold">Accept your invitation</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Enter the email address your invitation was sent to.
-        </p>
-      </div>
+      <PageHeader
+        title="Accept your invitation"
+        description={<>Enter the email address your invitation was sent to.</>}
+      />
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <label className="text-sm font-medium" htmlFor="email">
           Email
         </label>
         <input
           autoComplete="email"
-          className="rounded-md border px-3 py-2"
+          className="min-h-11 rounded-md border px-3 py-2"
           id="email"
           name="email"
           required
           type="email"
         />
         <button
-          className="rounded-md bg-foreground px-3 py-2 text-background disabled:opacity-50"
+          className="min-h-11 rounded-md bg-foreground px-3 py-2 text-background disabled:opacity-50"
           type="submit"
         >
           Email me a magic link
@@ -86,9 +85,12 @@ export default function InvitePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
+    <PageContainer
+      size="reading"
+      className="flex min-h-screen flex-col justify-center gap-6 px-6 py-10"
+    >
       <meta content="no-referrer" name="referrer" />
       <InvitationAcceptanceCard />
-    </main>
+    </PageContainer>
   );
 }

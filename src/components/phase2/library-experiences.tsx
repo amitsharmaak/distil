@@ -4,6 +4,10 @@ import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { useState } from "react";
 import { ArchiveRestore, RefreshCw } from "lucide-react";
 
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cardExcerpt, displayTitle, publisherLabel } from "@/lib/display";
 import { Button } from "@/components/ui/button";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
 import { useItemMutation } from "@/lib/client-cache/item-mutations";
@@ -14,13 +18,11 @@ function ItemLink({ item }: { item: FeedItem }) {
   return (
     <Link
       href={`/feed/${item.id}`}
-      className="block rounded-lg border bg-card p-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="block border-b border-border py-4 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <p className="text-xs text-muted-foreground">{item.publication || item.sourceType}</p>
-      <h2 className="mt-1 font-serif text-lg font-semibold">{item.title || "Untitled"}</h2>
-      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-        {item.aiSummary || item.summary || "No summary is available yet."}
-      </p>
+      <p className="text-xs text-muted-foreground">{publisherLabel(item)}</p>
+      <h2 className="mt-1 font-serif text-lg font-semibold">{displayTitle(item)}</h2>
+      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{cardExcerpt(item)}</p>
     </Link>
   );
 }
@@ -65,30 +67,32 @@ export function ArchiveExperience() {
     }
   }
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-3xl font-semibold">Archive</h1>
-          <p className="mt-1 text-muted-foreground">Items kept out of your active reading queue.</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+    <PageContainer size="list" className="space-y-6">
+      <PageHeader
+        title="Archive"
+        description="Items kept out of your active reading queue."
+        meta={
+          <span aria-live="polite" className="text-xs">
+            {updatedLabel(archiveQuery.dataUpdatedAt)}
+          </span>
+        }
+        actions={
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="gap-2"
+            className="min-h-11 gap-2"
             disabled={archiveQuery.isFetching}
             onClick={() => void archiveQuery.refetch()}
             aria-label="Refresh archive"
           >
-            <RefreshCw className={`h-4 w-4 ${archiveQuery.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${archiveQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+            />
             Refresh
           </Button>
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            {updatedLabel(archiveQuery.dataUpdatedAt)}
-          </p>
-        </div>
-      </header>
+        }
+      />
       {(mutationError || archiveQuery.error) && (
         <p
           role="alert"
@@ -103,9 +107,11 @@ export function ArchiveExperience() {
         </p>
       )}
       {loading ? (
-        <p role="status" className="py-12 text-center text-muted-foreground">
-          Loading archive…
-        </p>
+        <div role="status" aria-label="Loading archive" className="space-y-4">
+          {[0, 1, 2].map((row) => (
+            <Skeleton key={row} className="h-24 w-full" />
+          ))}
+        </div>
       ) : items.length ? (
         <ul className="space-y-3">
           {items.map((item) => (
@@ -127,10 +133,11 @@ export function ArchiveExperience() {
           ))}
         </ul>
       ) : (
-        <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-          Nothing is archived. Archived items will stay here until you restore them.
-        </div>
+        <EmptyState
+          title="Nothing is archived."
+          description="Archived items will stay here until you restore them."
+        />
       )}
-    </div>
+    </PageContainer>
   );
 }

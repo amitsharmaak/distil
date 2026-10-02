@@ -60,7 +60,13 @@ async function legacyTokenMatches(request: NextRequest, expected?: string): Prom
 
 export async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
-  if (pathname === "/login" || hasSpecializedAuth(pathname)) return null;
+  if (
+    pathname === "/login" ||
+    hasSpecializedAuth(pathname) ||
+    (pathname === "/api/v1/shortcut-pairings/exchange" && request.method === "POST")
+  ) {
+    return null;
+  }
 
   // Production-mode E2E exercises the built application without provisioning
   // user credentials. This flag is set only by the isolated test workflow.

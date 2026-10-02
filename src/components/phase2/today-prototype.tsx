@@ -1,105 +1,53 @@
 "use client";
 
-import { useRef } from "react";
-import { Bookmark, Clock3 } from "lucide-react";
+import { useRef, useState } from "react";
+import { StoryCard } from "@/components/feed/story-card";
+import { useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
-import { toSummaryDigest } from "@/lib/format";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/format";
+import { readingMinutes } from "@/lib/display";
 import type { KnowledgeItem } from "./types";
 import { IntentLink } from "@/components/navigation/intent-link";
-
-/** Lead paragraph plus key points, in reading type, for a card that links onward. */
-function SummaryDigest({ summary }: { summary: string }) {
-  const digest = toSummaryDigest(summary, 4);
-  if (!digest.lead && digest.points.length === 0) {
-    return <p className="mt-3 text-sm text-muted-foreground">No summary is available yet.</p>;
-  }
-  return (
-    <div className="distil-card-digest mt-3">
-      {digest.lead && <p>{digest.lead}</p>}
-      {digest.points.length > 0 && (
-        <ul>
-          {digest.points.map((point) => (
-            <li key={point}>{point}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 type TodayPrototypeProps = {
   priority: KnowledgeItem[];
   revisiting: KnowledgeItem[];
 };
 
-function TodayItem({ item }: { item: KnowledgeItem }) {
-  return (
-    <li data-row data-item-id={item.id}>
-      <IntentLink
-        href={item.href}
-        className="block rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">{item.source}</p>
-            <h3 className="mt-1 font-serif text-xl font-semibold leading-snug">{item.title}</h3>
-          </div>
-          {!item.isRead && (
-            <span
-              className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
-              aria-label="Unread"
-            />
-          )}
-        </div>
-        <SummaryDigest summary={item.summary} />
-        <p className="mt-4 text-xs text-muted-foreground">Why now: {item.reason}</p>
-      </IntentLink>
-    </li>
-  );
-}
+type AreaControls = {
+  areaOpenId?: string | null;
+  onAreaOpenChange?: (id: string, open: boolean) => void;
+};
 
-function TodaySection({
-  title,
-  icon,
-  items,
-  empty,
+/** The edition masthead stays in the server-rendered first page. */
+export function TodayHeading({
+  items = [],
+  status,
 }: {
-  title: string;
-  icon: React.ReactNode;
-  items: KnowledgeItem[];
-  empty: string;
+  items?: KnowledgeItem[];
+  /** Cache freshness and the refresh control, shown beside the edition count. */
+  status?: React.ReactNode;
 }) {
+  const minutes = items.reduce((sum, item) => sum + readingMinutes(item), 0);
+  const count = `${items.length} ${items.length === 1 ? "story" : "stories"} · ${minutes} min`;
   return (
-    <section aria-labelledby={`${title.toLowerCase().replaceAll(" ", "-")}-heading`}>
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-primary">{icon}</span>
-        <h2
-          id={`${title.toLowerCase().replaceAll(" ", "-")}-heading`}
-          className="font-serif text-xl font-semibold"
-        >
-          {title}
-        </h2>
-      </div>
-      {items.length ? (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <TodayItem key={item.id} item={item} />
-          ))}
-        </ul>
-      ) : (
-        <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">{empty}</p>
-      )}
-    </section>
-  );
-}
-
-/** Today's title block; the filter bar places it beside the search. */
-export function TodayHeading() {
-  return (
-    <div>
-      <p className="text-sm text-muted-foreground">Your reading habit</p>
-      <h1 className="font-serif text-3xl font-bold">Today</h1>
-    </div>
+    <PageHeader
+      title="Today"
+      eyebrow={formatDate(new Date(), { weekday: "long", month: "long", day: "numeric" })}
+      meta={
+        status ? (
+          <span className="flex flex-wrap items-center gap-x-3">
+            <span>{count}</span>
+            {status}
+          </span>
+        ) : (
+          count
+        )
+      }
+      className="mb-0"
+    />
   );
 }
 
@@ -113,18 +61,20 @@ export interface TodayResultsProps {
   searchEverythingHref: string;
 }
 
-/** Filtered Today: one list of unread matches in place of the two sections. */
+/** Filtered Today: one list of unread matches in place of the edition. */
 export function TodayResults({
   items,
   hasMore,
   emptyMessage,
   searchEverythingHref,
-}: TodayResultsProps) {
+  areaOpenId,
+  onAreaOpenChange,
+}: TodayResultsProps & AreaControls) {
   return (
     <section aria-labelledby="today-results-heading">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex items-baseline gap-2">
-          <h2 id="today-results-heading" className="font-serif text-xl font-semibold">
+          <h2 id="today-results-heading" className="font-serif text-xl font-medium">
             Unread matches
           </h2>
           {items.length > 0 && (
@@ -135,34 +85,33 @@ export function TodayResults({
         </div>
         <IntentLink
           href={searchEverythingHref}
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
           Search everything →
         </IntentLink>
       </div>
       {items.length ? (
-        <ul className="space-y-3">
+        <ul>
           {items.map((item) => (
-            <TodayItem key={item.id} item={item} />
+            <li key={item.id}>
+              <StoryCard
+                item={item}
+                areaOpen={areaOpenId === item.id}
+                onAreaOpenChange={(open) => onAreaOpenChange?.(item.id, open)}
+              />
+            </li>
           ))}
         </ul>
       ) : (
-        <p
-          className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground"
-          role="status"
-        >
-          {emptyMessage}
-        </p>
+        <div role="status">
+          <EmptyState title={emptyMessage} className="py-8" />
+        </div>
       )}
     </section>
   );
 }
 
-/**
- * Today's page body. `header` replaces the plain title (the page passes the
- * filter bar); `results` replaces the two sections with the filtered list, and
- * `children` (a loading or error state) replaces both.
- */
+/** The same selection and URL-driven results, expressed as a daily edition. */
 export function TodayPrototype({
   priority,
   revisiting,
@@ -173,17 +122,25 @@ export function TodayPrototype({
 }: TodayPrototypeProps & {
   header?: React.ReactNode;
   results?: TodayResultsProps;
-  /** A navigation is pending; the current content stays visible, dimmed. */
   busy?: boolean;
   children?: React.ReactNode;
 }) {
-  // One navigation order across both sections (or the filtered list). Today has
-  // no per-row mark-read or area control, so only j/k/o are registered here.
   const rowsRef = useRef<HTMLDivElement>(null);
-  useRowNavigation(rowsRef);
+  const [areaOpenId, setAreaOpenId] = useState<string | null>(null);
+  useShortcutsSuspended(areaOpenId !== null);
+  useRowNavigation(rowsRef, { onOpenArea: setAreaOpenId });
+  const areaControls = {
+    areaOpenId,
+    onAreaOpenChange: (id: string, open: boolean) => setAreaOpenId(open ? id : null),
+  };
+  const editionItems = [
+    ...new Map([...priority, ...revisiting].map((item) => [item.id, item])).values(),
+  ];
   return (
-    <section className="mx-auto w-full max-w-3xl space-y-8 px-4 py-6 sm:px-6">
-      <header>{header ?? <TodayHeading />}</header>
+    <PageContainer size="wide" className="space-y-3 sm:space-y-6">
+      <div className="border-b border-foreground/30 pb-3 sm:pb-4">
+        {header ?? <TodayHeading items={results?.items ?? editionItems} />}
+      </div>
       <div
         ref={rowsRef}
         className={busy ? "space-y-8 opacity-60 transition-opacity" : "space-y-8"}
@@ -191,30 +148,86 @@ export function TodayPrototype({
       >
         {children ??
           (results ? (
-            <TodayResults {...results} />
+            <TodayResults {...results} {...areaControls} />
           ) : (
-            <TodayDefaultSections priority={priority} revisiting={revisiting} />
+            <TodayDefaultSections priority={priority} revisiting={revisiting} {...areaControls} />
           ))}
       </div>
-    </section>
+      {!children && (
+        <p className="border-t border-border pt-6 text-center text-sm text-muted-foreground">
+          You’ve reached the end of this edition.
+        </p>
+      )}
+    </PageContainer>
   );
 }
 
-function TodayDefaultSections({ priority, revisiting }: TodayPrototypeProps) {
+function TodayDefaultSections({
+  priority,
+  revisiting,
+  areaOpenId,
+  onAreaOpenChange,
+}: TodayPrototypeProps & AreaControls) {
+  const story = (item: KnowledgeItem, variant: "lead" | "standard" | "compact") => (
+    <StoryCard
+      item={item}
+      variant={variant}
+      areaOpen={areaOpenId === item.id}
+      onAreaOpenChange={(open) => onAreaOpenChange?.(item.id, open)}
+    />
+  );
   return (
     <>
-      <TodaySection
-        title="Priority Reading"
-        icon={<Bookmark className="h-5 w-5" />}
-        items={priority}
-        empty="Nothing urgent is waiting for you."
-      />
-      <TodaySection
-        title="Worth Revisiting"
-        icon={<Clock3 className="h-5 w-5" />}
-        items={revisiting}
-        empty="Saved ideas will return here when the timing is useful."
-      />
+      <section aria-labelledby="priority-reading-heading">
+        <h2 id="priority-reading-heading" className="sr-only">
+          Priority Reading
+        </h2>
+        {priority.length ? (
+          <>
+            <ul className="lg:grid lg:grid-cols-2 lg:gap-x-8">
+              <li className="lg:row-span-4 lg:border-r lg:border-border lg:pr-8">
+                {story(priority[0], "lead")}
+              </li>
+              {priority.slice(1, 5).map((item) => (
+                <li key={item.id}>{story(item, "standard")}</li>
+              ))}
+            </ul>
+            {priority.length > 5 && (
+              <ul>
+                {priority.slice(5).map((item) => (
+                  <li key={item.id}>{story(item, "compact")}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <EmptyState
+            title="Nothing urgent is waiting for you."
+            description="Your next edition will take shape as you save more stories."
+          />
+        )}
+      </section>
+      <section aria-labelledby="worth-revisiting-heading" className="border-t border-border pt-5">
+        <h2 id="worth-revisiting-heading" className="mb-2 font-serif text-xl font-medium">
+          Worth Revisiting
+        </h2>
+        {revisiting.length ? (
+          <ul className="grid gap-x-8 md:grid-cols-2 xl:grid-cols-3">
+            {revisiting.map((item) => (
+              <li key={item.id}>
+                {story(item, "compact")}
+                {item.reason && !/^(?:Item priority|Why now):/i.test(item.reason) && (
+                  <p className="mt-2 text-xs text-muted-foreground">{item.reason}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-3 text-sm text-muted-foreground">
+            Saved ideas will return here when the timing is useful.
+          </p>
+        )}
+      </section>
     </>
   );
 }

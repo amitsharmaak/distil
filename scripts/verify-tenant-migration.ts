@@ -56,7 +56,7 @@ async function main(): Promise<void> {
       ownerId: options.ownerId,
       stage: options.stage!,
       // The documented before/after gate runs before contract and lifecycle.
-      // Operators can opt into the stronger post-lifecycle schema inventory.
+      // Use --through phone-pairing for the complete current schema inventory.
       through: options.through ?? "expand",
     });
     if (options.baseline) {

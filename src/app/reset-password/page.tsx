@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -33,18 +34,18 @@ function RequestResetForm({ invalidLink }: { invalidLink: boolean }) {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-semibold">Reset your password</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {invalidLink ? INVALID_LINK_MESSAGE : "Enter your email to receive a password link."}
-        </p>
-      </div>
+      <PageHeader
+        title="Reset your password"
+        description={
+          <>{invalidLink ? INVALID_LINK_MESSAGE : "Enter your email to receive a password link."}</>
+        }
+      />
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <label className="text-sm font-medium" htmlFor="email">
           Email
         </label>
         <Input autoComplete="email" id="email" name="email" required type="email" />
-        <Button disabled={submitting} type="submit">
+        <Button className="min-h-11 min-w-11" disabled={submitting} type="submit">
           Email me a password link
         </Button>
       </form>
@@ -96,10 +97,7 @@ function SetPasswordForm({ token }: { token: string }) {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-semibold">Choose a new password</h1>
-        <p className="mt-2 text-sm text-muted-foreground">At least 12 characters</p>
-      </div>
+      <PageHeader title="Choose a new password" description={<> At least 12 characters </>} />
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <label className="text-sm font-medium" htmlFor="newPassword">
           New password
@@ -128,7 +126,7 @@ function SetPasswordForm({ token }: { token: string }) {
             Passwords do not match.
           </p>
         ) : null}
-        <Button disabled={submitting} type="submit">
+        <Button className="min-h-11 min-w-11" disabled={submitting} type="submit">
           {submitting ? "Saving…" : "Save new password"}
         </Button>
       </form>
@@ -161,13 +159,16 @@ export default function ResetPasswordPage() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6">
+    <PageContainer
+      size="reading"
+      className="flex min-h-screen flex-col justify-center gap-6 px-6 py-10"
+    >
       <meta content="no-referrer" name="referrer" />
       {hydrated && token && !invalidLink ? (
         <SetPasswordForm token={token} />
       ) : (
         <RequestResetForm invalidLink={invalidLink} />
       )}
-    </main>
+    </PageContainer>
   );
 }

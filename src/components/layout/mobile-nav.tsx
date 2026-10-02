@@ -28,8 +28,8 @@ export function MobileNav() {
             href={tab.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors",
-              isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <tab.icon className="h-5 w-5" />

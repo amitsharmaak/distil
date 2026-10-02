@@ -21,11 +21,9 @@ function getServerThemeSnapshot(): Theme {
 }
 
 function subscribeToTheme(onStoreChange: () => void): () => void {
-  function syncStoredTheme() {
-    document.documentElement.classList.toggle(
-      "dark",
-      localStorage.getItem(THEME_STORAGE_KEY) === "dark"
-    );
+  function syncStoredTheme(event: StorageEvent) {
+    if (event.key !== THEME_STORAGE_KEY && event.key !== null) return;
+    document.documentElement.classList.toggle("dark", event.newValue === "dark");
     onStoreChange();
   }
 
@@ -45,8 +43,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, getServerThemeSnapshot);
 
   function toggle() {
-    const next = theme === "light" ? "dark" : "light";
-    localStorage.setItem(THEME_STORAGE_KEY, next);
+    const next = getThemeSnapshot() === "light" ? "dark" : "light";
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // The theme still works for this visit when the browser blocks storage.
+    }
     document.documentElement.classList.toggle("dark", next === "dark");
     window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }

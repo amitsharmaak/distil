@@ -15,6 +15,9 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/components/capture/connected-browsers", () => ({
   ConnectedBrowsers: () => <div>Connected browsers</div>,
 }));
+jest.mock("@/components/capture/iphone-shortcut-card", () => ({
+  IphoneShortcutCard: () => <div>iPhone Shortcut</div>,
+}));
 jest.mock("@/components/capture/token-settings", () => ({
   TokenSettings: () => <div>Token settings</div>,
 }));
@@ -61,6 +64,19 @@ function mockAccount(isAdmin: boolean, failures = 0) {
 beforeEach(() => fetchMock.mockReset());
 
 describe("SettingsPage", () => {
+  it("orders Capture cards as manual token, browsers, then iPhone", () => {
+    render(<SettingsPage />, { wrapper: TestProvider });
+    const manual = screen.getByText("Token settings");
+    const browsers = screen.getByText("Connected browsers");
+    const iphone = screen.getByText("iPhone Shortcut");
+    expect(
+      manual.compareDocumentPosition(browsers) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      browsers.compareDocumentPosition(iphone) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it("keeps Archive while omitting the retired library surface", () => {
     render(<SettingsPage />, { wrapper: TestProvider });
 

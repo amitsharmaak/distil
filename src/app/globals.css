@@ -8,13 +8,23 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 
-  /* Fluid typography tokens */
-  --text-display: clamp(1.5rem, 4vw + 0.5rem, 2.25rem); /* h1: 24px → 36px */
-  --text-title: clamp(1.125rem, 2.5vw + 0.5rem, 1.5rem); /* h2: 18px → 24px */
+  /* One editorial scale shared by the edition, library and reading surfaces. */
+  --text-display: clamp(2rem, 1.45rem + 2.2vw, 3rem);
+  --text-page-title: clamp(1.875rem, 1.45rem + 1.7vw, 2.5rem);
+  --text-title: 1.5rem;
+  --sidebar-width: 13.75rem;
+  --sidebar-collapsed-width: 4rem;
 }
 
 .text-display {
   font-size: var(--text-display);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+.text-page-title {
+  font-size: var(--text-page-title);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
 }
 .text-title {
   font-size: var(--text-title);
@@ -38,7 +48,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-outfit);
+  --font-sans: var(--font-geist-sans);
   --font-serif: var(--font-newsreader);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -58,6 +68,18 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-muted: var(--danger-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -110,15 +132,28 @@
   --chart-4: oklch(0.627 0.265 303);
   --chart-5: oklch(0.577 0.245 27);
 
-  /* Sidebar — warm dark */
-  --sidebar: oklch(0.15 0.005 60);
-  --sidebar-foreground: oklch(0.92 0.003 75);
-  --sidebar-primary: oklch(0.62 0.2 260);
-  --sidebar-primary-foreground: oklch(0.993 0 0);
-  --sidebar-accent: oklch(0.22 0.006 60);
-  --sidebar-accent-foreground: oklch(0.92 0.003 75);
-  --sidebar-border: oklch(0.22 0.006 60);
-  --sidebar-ring: oklch(0.62 0.2 260);
+  --success: #226244;
+  --success-foreground: #226244;
+  --success-muted: #e9f4ed;
+  --warning: #80541b;
+  --warning-foreground: #80541b;
+  --warning-muted: #faf0d8;
+  --danger: #a43838;
+  --danger-foreground: #a43838;
+  --danger-muted: #fbecec;
+  --info: #4b5567;
+  --info-foreground: #4b5567;
+  --info-muted: #eef0f3;
+
+  /* Navigation lives on the same paper as the edition. */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
@@ -145,19 +180,29 @@
   --chart-3: oklch(0.769 0.188 70);
   --chart-4: oklch(0.627 0.265 303);
   --chart-5: oklch(0.645 0.246 16);
-  --sidebar: oklch(0.13 0.004 60);
-  --sidebar-foreground: oklch(0.95 0.003 75);
-  --sidebar-primary: oklch(0.68 0.17 260);
-  --sidebar-primary-foreground: oklch(0.95 0.003 75);
-  --sidebar-accent: oklch(0.23 0.006 60);
-  --sidebar-accent-foreground: oklch(0.95 0.003 75);
-  --sidebar-border: oklch(0.26 0.006 60);
-  --sidebar-ring: oklch(0.68 0.17 260);
+  --success: #9dd5b1;
+  --success-foreground: #9dd5b1;
+  --success-muted: #1b3227;
+  --warning: #e6c483;
+  --warning-foreground: #e6c483;
+  --warning-muted: #392f20;
+  --danger: #f0aaaa;
+  --danger-foreground: #f0aaaa;
+  --danger-muted: #3f2527;
+  --info: #c0cbd8;
+  --info-foreground: #c0cbd8;
+  --info-muted: #282f39;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
   }
   body {
     @apply bg-background text-foreground;
@@ -179,30 +224,64 @@
   }
 }
 
+/* All page surfaces share one of these three centered columns. */
+.distil-container-reading,
+.distil-container-list,
+.distil-container-wide {
+  width: 100%;
+  margin-inline: auto;
+}
+
+.distil-container-reading {
+  max-width: 68ch;
+}
+
+.distil-container-list {
+  max-width: 60rem;
+}
+
+.distil-container-wide {
+  max-width: 75rem;
+}
+
+.distil-sidebar {
+  width: var(--sidebar-width);
+}
+
+.distil-sidebar[data-collapsed="true"] {
+  width: var(--sidebar-collapsed-width);
+}
+
+@media (min-width: 768px) {
+  .distil-shell-content {
+    padding-left: var(--sidebar-width);
+  }
+
+  .distil-shell-content[data-sidebar-collapsed="true"] {
+    padding-left: var(--sidebar-collapsed-width);
+  }
+}
+
+/* Render both theme affordances in SSR markup; the pre-paint html class selects one. */
+.distil-theme-light {
+  display: none;
+}
+
+.dark .distil-theme-light {
+  display: inline-flex;
+}
+
+.dark .distil-theme-dark {
+  display: none;
+}
+
 /* Section labels — small-caps editorial dividers */
 .distil-section-label {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted-foreground);
-}
-
-/* Reader view — editorial typography for article content */
-.distil-reader {
-  font-family: var(--font-newsreader), Georgia, serif;
-  font-size: 1.1875rem;
-  line-height: 1.75;
-  color: var(--foreground);
-  font-feature-settings:
-    "liga" 1,
-    "kern" 1;
-}
-
-@media (max-width: 640px) {
-  .distil-reader {
-    font-size: 1.125rem;
-  }
 }
 
 /* Card digest — a summary lead plus key points inside Today/feed cards */
@@ -224,184 +303,7 @@
 }
 
 .distil-card-digest li::marker {
-  color: var(--primary);
-}
-
-.distil-reader p + p {
-  margin-top: 1.15em;
-}
-
-.distil-reader h2,
-.distil-reader h3 {
-  font-family: var(--font-newsreader), Georgia, serif;
-  line-height: 1.3;
-  margin-top: 1.5em;
-  margin-bottom: 0.75em;
-}
-
-.distil-reader h2 {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.distil-reader h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.distil-reader h4 {
-  font-size: 1.0625rem;
-  font-weight: 600;
-  margin-top: 1.25em;
-  margin-bottom: 0.5em;
-}
-
-.distil-reader ul,
-.distil-reader ol {
-  margin-top: 1em;
-  margin-bottom: 1em;
-  padding-left: 1.5em;
-}
-
-.distil-reader ul {
-  list-style-type: disc;
-}
-
-.distil-reader ol {
-  list-style-type: decimal;
-}
-
-.distil-reader li + li {
-  margin-top: 0.4em;
-}
-
-.distil-reader blockquote {
-  margin: 1.25em 0;
-  padding-left: 1em;
-  border-left: 3px solid var(--border);
   color: var(--muted-foreground);
-  font-style: italic;
-}
-
-.distil-reader a {
-  color: var(--primary);
-  text-decoration-line: underline;
-  text-decoration-color: color-mix(in oklab, var(--primary) 35%, transparent);
-  text-underline-offset: 0.15em;
-}
-
-.distil-reader a:hover {
-  text-decoration-color: var(--primary);
-}
-
-.distil-reader code {
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.875em;
-}
-
-.distil-reader :not(pre) > code {
-  padding: 0.1em 0.35em;
-  border-radius: 0.3em;
-  background: var(--muted);
-}
-
-.distil-reader pre {
-  margin: 1.25em 0;
-  padding: 1em 1.125em;
-  border-radius: 0.6rem;
-  border: 1px solid var(--border);
-  background: var(--muted);
-  overflow-x: auto;
-  line-height: 1.55;
-}
-
-.distil-reader pre code {
-  font-size: 0.8125rem;
-  background: none;
-  padding: 0;
-}
-
-.distil-reader img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 0.6rem;
-}
-
-.distil-reader hr {
-  margin: 2em 0;
-  border-color: var(--border);
-}
-
-.distil-reader figure {
-  margin-top: 2em;
-  margin-bottom: 2em;
-}
-
-.distil-reader figcaption {
-  font-size: 0.875rem;
-  color: var(--muted-foreground);
-  margin-top: 0.5em;
-  text-align: center;
-}
-
-/* AI summary — polished reading experience */
-.distil-ai-summary {
-  font-size: 1.0625rem;
-  line-height: 1.65;
-}
-
-.distil-ai-summary > :first-child {
-  margin-top: 0;
-}
-
-.distil-ai-summary ul {
-  list-style-type: disc;
-  padding-left: 1.25em;
-}
-
-.distil-ai-summary ol {
-  list-style-type: decimal;
-  padding-left: 1.25em;
-}
-
-/* ── Reader page ── immersive environment for /feed/[id] */
-
-@keyframes reader-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.distil-reader-page header {
-  animation: reader-fade-in 0.45s ease-out both;
-}
-
-.distil-reader-page section {
-  animation: reader-fade-in 0.45s ease-out 0.12s both;
-}
-
-.distil-ornament {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.distil-ornament::before,
-.distil-ornament::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-  opacity: 0.55;
-}
-
-.distil-action-bar {
-  box-shadow: 0 -1px 4px 0 rgb(0 0 0 / 0.04);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -413,4 +315,16 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Reader navigation is opt-in with the sidebar shortcut; the article stays centered when it is closed. */
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-sidebar {
+  display: none;
+}
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-shell-content {
+  padding-left: 0;
+}
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-action-bar,
+.distil-shell[data-reader="true"][data-reader-navigation="false"] .distil-reader-progress {
+  left: 0;
 }

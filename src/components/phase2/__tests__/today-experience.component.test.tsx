@@ -146,9 +146,7 @@ describe("TodayExperience", () => {
 
     render(<TodayExperience />);
 
-    expect(
-      await screen.findByText("Why it matters Durable capture beats connectors.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Durable capture beats connectors.")).toBeInTheDocument();
   });
 
   it("reuses a fresh Today view across a remount without another GET", async () => {

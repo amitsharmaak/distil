@@ -2,8 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Save, Trash2 } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   CACHE_FRESHNESS,
   useContentCache,
@@ -20,11 +27,11 @@ export type ReaderState = {
   manualPriority: Priority | null;
 };
 
-export type ReaderKnowledgeInitial = {
-  state: ReaderState;
-  note: { body: string } | null;
-  updatedAt?: number;
-};
+/** Server-read item state for the overflow menu; `updatedAt` is when the server read it. */
+export type ReaderLibraryInitial = { state: ReaderState; updatedAt?: number };
+/** Server-read note for the notes panel; `updatedAt` is when the server read it. */
+export type ReaderKnowledgeInitial = { note: { body: string } | null; updatedAt?: number };
+
 type ReaderStateResponse = { state: ReaderState };
 type ReaderNoteResponse = { note: { body: string } | null };
 
@@ -37,30 +44,27 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-export function ReaderKnowledgeControls({
+/**
+ * Library actions live in the reader overflow; the note stays alongside highlights.
+ *
+ * State reads through the account cache (seeded by the server page, so opening the menu does
+ * not fetch) and writes through the shared item mutation, which updates Feed, Today and Archive.
+ */
+export function ReaderLibraryMenuItems({
   itemId,
   initial,
 }: {
   itemId: string;
-  initial?: ReaderKnowledgeInitial;
+  initial?: ReaderLibraryInitial;
 }) {
-  const cache = useContentCache();
   const { updateItem } = useItemMutation();
   const overrides = useItemOverrides(itemId);
   const stateKey = useMemo(() => ["item", itemId, "state"] as const, [itemId]);
-  const noteKey = useMemo(() => ["item", itemId, "note"] as const, [itemId]);
   const stateQuery = useContentQuery<ReaderStateResponse>({
     key: stateKey,
     url: `/api/v1/items/${itemId}/state`,
     staleTime: CACHE_FRESHNESS.detail,
     initialData: initial ? { state: initial.state } : undefined,
-    initialDataUpdatedAt: initial?.updatedAt,
-  });
-  const noteQuery = useContentQuery<ReaderNoteResponse>({
-    key: noteKey,
-    url: `/api/v1/items/${itemId}/note`,
-    staleTime: CACHE_FRESHNESS.detail,
-    initialData: initial ? { note: initial.note } : undefined,
     initialDataUpdatedAt: initial?.updatedAt,
   });
   const baseState = stateQuery.data?.state ?? null;
@@ -77,6 +81,120 @@ export function ReaderKnowledgeControls({
           : {}),
       }
     : null;
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const error =
+    mutationError ||
+    (stateQuery.error
+      ? state
+        ? "Could not refresh. Showing the last loaded state."
+        : stateQuery.error instanceof Error
+          ? stateQuery.error.message
+          : "Reader controls are unavailable."
+      : null);
+
+  async function updateState(patch: Partial<ReaderState>, label: string) {
+    if (!state || saving) return;
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await updateItem(itemId, patch);
+      setMessage(label);
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : "This change could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenuSeparator />
+      {!state && !error && (
+        <div role="status" aria-label="Loading library actions" className="p-2">
+          <Skeleton className="h-8 w-full" />
+        </div>
+      )}
+      {state && (
+        <>
+          <DropdownMenuItem
+            className="min-h-11"
+            disabled={saving}
+            onSelect={(event) => {
+              event.preventDefault();
+              void updateState(
+                { archived: !state.archived },
+                state.archived ? "Item restored" : "Item archived"
+              );
+            }}
+          >
+            {state.archived ? <ArchiveRestore /> : <Archive />}
+            {state.archived ? "Restore item" : "Archive item"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Priority</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            aria-label="Manual priority"
+            value={state.manualPriority ?? "auto"}
+            onValueChange={(value) =>
+              void updateState(
+                { manualPriority: value === "auto" ? null : (value as Priority) },
+                "Priority updated"
+              )
+            }
+          >
+            {[
+              { value: "auto", label: "Feed ranking" },
+              { value: "high", label: "High" },
+              { value: "medium", label: "Medium" },
+              { value: "low", label: "Low" },
+            ].map((option) => (
+              <DropdownMenuRadioItem
+                key={option.value}
+                className="min-h-11"
+                value={option.value}
+                disabled={saving}
+                onSelect={(event) => event.preventDefault()}
+              >
+                {option.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </>
+      )}
+      {(error || message) && (
+        <p
+          className={`px-2 py-2 text-sm ${error ? "text-danger" : "text-muted-foreground"}`}
+          role={error ? "alert" : "status"}
+        >
+          {error || message}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * The reader's note. It reads through the account cache (seeded by the server page) and
+ * writes its exact detail key behind the cache write barrier, with rollback on failure.
+ */
+export function ReaderKnowledgeControls({
+  itemId,
+  initial,
+}: {
+  itemId: string;
+  initial?: ReaderKnowledgeInitial;
+}) {
+  const cache = useContentCache();
+  const noteKey = useMemo(() => ["item", itemId, "note"] as const, [itemId]);
+  const noteQuery = useContentQuery<ReaderNoteResponse>({
+    key: noteKey,
+    url: `/api/v1/items/${itemId}/note`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initial ? { note: initial.note } : undefined,
+    initialDataUpdatedAt: initial?.updatedAt,
+  });
   const serverNote = noteQuery.data?.note?.body ?? "";
   const [draft, setDraft] = useState<{
     itemId: string;
@@ -86,39 +204,22 @@ export function ReaderKnowledgeControls({
   const currentDraft = draft?.itemId === itemId ? draft : null;
   const note = currentDraft?.body ?? serverNote;
   const savedNote = currentDraft?.baseline ?? serverNote;
-  const loading =
-    (stateQuery.isPending && !stateQuery.data) || (noteQuery.isPending && !noteQuery.data);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const loading = noteQuery.isPending && !noteQuery.data;
+  const [saving, setSaving] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const queryError = stateQuery.error ?? noteQuery.error;
-  const visibleError =
-    error ||
-    (queryError instanceof Error
-      ? queryError.message
-      : queryError
-        ? "Unable to load reader controls."
-        : null);
-
+  const error =
+    mutationError ||
+    (noteQuery.error
+      ? noteQuery.error instanceof Error
+        ? noteQuery.error.message
+        : "Unable to load your note."
+      : null);
   const dirty = note !== savedNote;
 
-  async function updateState(patch: Partial<ReaderState>, label: string) {
-    if (!state || saving) return;
-    setSaving(label);
-    setError(null);
-    try {
-      await updateItem(itemId, patch);
-      setNotice(label);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "This change could not be saved.");
-    } finally {
-      setSaving(null);
-    }
-  }
-
   async function saveNote() {
-    setSaving("Saving note…");
-    setError(null);
+    setSaving(true);
+    setMutationError(null);
     const release = cache.beginWrite();
     let previous: ReaderNoteResponse | undefined;
     let optimisticUpdateApplied = false;
@@ -137,17 +238,17 @@ export function ReaderKnowledgeControls({
       setNotice("Note saved");
     } catch (cause) {
       if (optimisticUpdateApplied) cache.set(noteKey, previous);
-      setError(cause instanceof Error ? cause.message : "Note could not be saved.");
+      setMutationError(cause instanceof Error ? cause.message : "Note could not be saved.");
     } finally {
       release();
-      setSaving(null);
+      setSaving(false);
     }
   }
 
   async function deleteNote() {
     const previousDraft = currentDraft;
-    setSaving("Deleting note…");
-    setError(null);
+    setSaving(true);
+    setMutationError(null);
     const release = cache.beginWrite();
     let previous: ReaderNoteResponse | undefined;
     let optimisticUpdateApplied = false;
@@ -164,131 +265,77 @@ export function ReaderKnowledgeControls({
         cache.set(noteKey, previous);
         setDraft(previousDraft);
       }
-      setError(cause instanceof Error ? cause.message : "Note could not be deleted.");
+      setMutationError(cause instanceof Error ? cause.message : "Note could not be deleted.");
     } finally {
       release();
-      setSaving(null);
+      setSaving(false);
     }
   }
 
-  if (loading)
-    return (
-      <aside className="mt-10 border-t pt-4 text-sm text-muted-foreground" role="status">
-        Loading your reader controls…
-      </aside>
-    );
-  if (!state)
-    return (
-      <aside className="mt-10 border-t pt-4 text-sm text-destructive" role="alert">
-        {visibleError || "Reader controls are unavailable."}
-      </aside>
-    );
-
-  const labelClass = "text-[11px] font-medium uppercase tracking-widest text-muted-foreground";
-  const showNoteActions = dirty || Boolean(savedNote);
-
   return (
-    <aside className="mt-10 space-y-6 border-t pt-6" aria-label="Reader knowledge controls">
-      {/* Note — one quiet field; actions appear only once there is something to save or delete. */}
-      <section aria-labelledby="reader-note-heading">
-        <h2 id="reader-note-heading" className={labelClass}>
-          Your note
-        </h2>
-        <textarea
-          aria-label="Item note"
-          value={note}
-          onChange={(event) => setDraft({ itemId, body: event.target.value, baseline: savedNote })}
-          rows={dirty || savedNote ? 3 : 1}
-          className="mt-2 w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 font-serif text-base leading-relaxed placeholder:text-muted-foreground/70 focus:border-border focus:bg-background focus:px-2 focus:outline-none"
-          placeholder="Add a thought you want to remember…"
-          disabled={Boolean(saving)}
-        />
-        {showNoteActions && (
-          <div className="mt-1 flex items-center gap-3">
-            <Button
-              type="button"
-              size="sm"
-              onClick={saveNote}
-              disabled={!dirty || Boolean(saving)}
-              className="h-8 gap-1.5"
-            >
-              <Save className="h-3.5 w-3.5" />
-              Save note
-            </Button>
-            {savedNote && (
+    <section
+      className="space-y-3 border-t pt-6"
+      aria-label="Reader knowledge controls"
+      aria-labelledby="reader-note-heading"
+    >
+      <h2
+        id="reader-note-heading"
+        className="text-xs font-medium uppercase tracking-widest text-muted-foreground"
+      >
+        Your note
+      </h2>
+      {loading ? (
+        <div role="status" aria-label="Loading your note">
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : (
+        <>
+          <textarea
+            aria-label="Item note"
+            value={note}
+            onChange={(event) =>
+              setDraft({ itemId, body: event.target.value, baseline: savedNote })
+            }
+            rows={dirty || savedNote ? 4 : 3}
+            className="min-h-24 w-full resize-y rounded-md border border-border bg-transparent p-3 text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Add a thought you want to remember…"
+            disabled={saving}
+          />
+          {(dirty || Boolean(savedNote)) && (
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                size="sm"
-                variant="ghost"
-                onClick={deleteNote}
-                disabled={Boolean(saving)}
-                className="h-8 gap-1.5 text-muted-foreground"
+                onClick={() => void saveNote()}
+                disabled={!dirty || saving}
+                className="min-h-11 gap-2"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
+                <Save className="h-4 w-4" />
+                Save note
               </Button>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Archive and priority: the action bar already covers read/unread. */}
-      <section
-        className="flex flex-wrap items-center gap-x-5 gap-y-2"
-        aria-labelledby="reader-library-heading"
-      >
-        <h2 id="reader-library-heading" className="sr-only">
-          Reading controls
-        </h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
-          disabled={Boolean(saving)}
-          onClick={() =>
-            void updateState(
-              { archived: !state.archived },
-              state.archived ? "Item restored" : "Item archived"
-            )
-          }
-        >
-          {state.archived ? (
-            <ArchiveRestore className="h-3.5 w-3.5" />
-          ) : (
-            <Archive className="h-3.5 w-3.5" />
+              {savedNote && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void deleteNote()}
+                  disabled={saving}
+                  className="min-h-11 gap-2 text-muted-foreground"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              )}
+            </div>
           )}
-          {state.archived ? "Restore item" : "Archive item"}
-        </Button>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Priority
-          <select
-            aria-label="Manual priority"
-            value={state.manualPriority ?? ""}
-            onChange={(event) =>
-              void updateState(
-                { manualPriority: (event.target.value || null) as Priority | null },
-                "Priority updated"
-              )
-            }
-            disabled={Boolean(saving)}
-            className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
-          >
-            <option value="">Feed ranking</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </label>
-        {(visibleError || notice || saving) && (
-          <p
-            className={visibleError ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
-            role={visibleError ? "alert" : "status"}
-          >
-            {visibleError || saving || notice}
-          </p>
-        )}
-      </section>
-    </aside>
+        </>
+      )}
+      {(error || notice) && (
+        <p
+          className={`text-sm ${error ? "text-danger" : "text-muted-foreground"}`}
+          role={error ? "alert" : "status"}
+        >
+          {error || notice}
+        </p>
+      )}
+    </section>
   );
 }

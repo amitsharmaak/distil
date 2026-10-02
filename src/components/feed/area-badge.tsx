@@ -90,11 +90,11 @@ export function AreaBadge({
             aria-label={current ? `Area: ${label}. Change area` : "Set area"}
             aria-busy={saving}
             className={cn(
-              "inline-flex h-6 items-center gap-0.5 rounded-full border px-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              "inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               current
-                ? "border-border bg-secondary text-secondary-foreground hover:bg-accent"
-                : "border-dashed border-border text-muted-foreground hover:bg-accent",
-              error && "border-destructive/60 text-destructive"
+                ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              error && "text-danger"
             )}
           >
             {label}
@@ -107,14 +107,18 @@ export function AreaBadge({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {LIFE_AREAS.map((option) => (
-            <DropdownMenuItem key={option} onSelect={() => void choose(option)} className="gap-2">
+            <DropdownMenuItem
+              key={option}
+              onSelect={() => void choose(option)}
+              className="min-h-11 gap-2"
+            >
               <Check
                 className={cn("h-3.5 w-3.5", option === current ? "opacity-100" : "opacity-0")}
                 aria-hidden="true"
               />
               {AREA_LABELS[option]}
               {option === aiArea && (
-                <span className="ml-auto text-[10px] text-muted-foreground">AI pick</span>
+                <span className="ml-auto text-xs text-muted-foreground">AI pick</span>
               )}
             </DropdownMenuItem>
           ))}

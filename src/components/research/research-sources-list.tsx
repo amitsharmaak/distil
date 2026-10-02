@@ -134,7 +134,7 @@ export function ResearchSourcesList({
         <div className="mt-3 space-y-5 pl-1">
           {cited.length > 0 && (
             <div>
-              <h3 className="mb-2 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
+              <h3 className="mb-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
                 Cited in this report ({cited.length})
               </h3>
               <ol className="space-y-1.5">
@@ -163,7 +163,7 @@ export function ResearchSourcesList({
               </details>
             ) : (
               <div>
-                <h3 className="mb-2 text-[11px] font-medium tracking-widest text-muted-foreground uppercase">
+                <h3 className="mb-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
                   Links the research touched ({other.length})
                 </h3>
                 <ul className="space-y-1.5">
