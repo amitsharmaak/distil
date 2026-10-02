@@ -16,6 +16,9 @@ let tenantAccessPromise:
 let captureTokenIdentityResolverPromise:
   | Promise<import("@/lib/auth/capture-token-identity").CaptureTokenIdentityResolver>
   | undefined;
+let shortcutPairingIdentityResolverPromise:
+  | Promise<import("@/lib/auth/shortcut-pairing-identity").ShortcutPairingIdentityResolver>
+  | undefined;
 let controlPlaneAccessPromise:
   | Promise<import("@/lib/postgres/tenant-repositories").PostgresRepositoryAccess>
   | undefined;
@@ -89,6 +92,16 @@ export async function getCaptureTokenIdentityResolver() {
     import("@/lib/auth/capture-token-identity"),
   ]).then(([sql, identity]) => new identity.PostgresCaptureTokenIdentityResolver(sql));
   return captureTokenIdentityResolverPromise;
+}
+
+/** Exact-key pre-context lookup for a short-lived iPhone pairing code. */
+export async function getShortcutPairingIdentityResolver() {
+  if (!usesPostgres()) throw new Error("DATABASE_URL is required for iPhone pairing");
+  shortcutPairingIdentityResolverPromise ??= Promise.all([
+    getPostgresClient(),
+    import("@/lib/auth/shortcut-pairing-identity"),
+  ]).then(([sql, identity]) => new identity.PostgresShortcutPairingIdentityResolver(sql));
+  return shortcutPairingIdentityResolverPromise;
 }
 
 /** Control-plane composition root. Its client is never reused for tenant content reads. */

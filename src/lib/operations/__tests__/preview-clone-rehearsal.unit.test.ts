@@ -74,6 +74,7 @@ describe("Preview clone rehearsal contract", () => {
         VERCEL_ENV: "preview",
       },
     });
+    expect(plan.migrationStages.slice(-2)).toEqual(["browser-connections", "phone-pairing"]);
     expect(plan.steps).toHaveLength(7);
     expect(plan.steps.every((step) => step.requiresOperatorCheckpoint)).toBe(true);
     expect(JSON.stringify(plan)).not.toContain("postgres://");

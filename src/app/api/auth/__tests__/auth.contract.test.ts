@@ -69,7 +69,9 @@ beforeEach(() => {
     list: jest.fn().mockResolvedValue([
       {
         id: "token-id",
-        name: "iPhone",
+        name: "Capture token",
+        kind: "manual",
+        label: "Manual capture",
         tokenPrefix: "dst_cap_abcdefgh",
         createdAt: "2026-03-01T00:00:00Z",
       },
@@ -246,11 +248,37 @@ describe("/api/v1/capture-tokens", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    // Browser connections have their own route; this list is the manual token only.
-    expect(captureTokens.list).toHaveBeenCalledWith("manual");
+    expect(captureTokens.list).toHaveBeenCalledWith();
     const body = await response.json();
     expect(body.tokens).toHaveLength(1);
+    expect(body.tokens[0]).toMatchObject({ kind: "manual", label: "Manual capture" });
     expect(JSON.stringify(body)).not.toContain("tokenHash");
+  });
+
+  it("GET includes manual, browser and phone summaries with their labels", async () => {
+    captureTokens.list.mockResolvedValue(
+      (["manual", "browser", "phone"] as const).map((kind) => ({
+        id: `${kind}-token`,
+        userId: authContext.userId,
+        name: `${kind} connection`,
+        kind,
+        label: `${kind} label`,
+        tokenPrefix: "dst_cap_test",
+        createdAt: "2026-10-01T00:00:00Z",
+      }))
+    );
+    const response = await tokensGet(
+      request("/api/v1/capture-tokens", { headers: { cookie: await sessionCookie() } })
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.tokens.map((token: { kind: string }) => token.kind)).toEqual([
+      "manual",
+      "browser",
+      "phone",
+    ]);
+    expect(body.tokens[2]).toMatchObject({ kind: "phone", label: "phone label" });
+    expect(captureTokens.list).toHaveBeenCalledWith();
   });
 
   it("POST enforces origin", async () => {

@@ -54,7 +54,16 @@ describe("tenant migration evidence", () => {
     const specs = tenantManifestInvariantSpecs(tenantMigrationManifest);
     const chunks = specs.find(({ tableName }) => tableName === "content_chunks")!;
 
-    expect(specs).toHaveLength(tenantMigrationManifest.tables.length);
+    expect(specs).toHaveLength(tenantMigrationManifest.tables.length + 1);
+    expect(
+      specs.find(({ tableName }) => tableName === "shortcut_pairings")?.ownershipReferences
+    ).toEqual([
+      expect.objectContaining({
+        sourceColumns: ["token_id"],
+        targetTable: "capture_tokens",
+        targetColumns: ["id"],
+      }),
+    ]);
     expect(specs.every((spec) => spec.tenantReferences?.tableName === "users")).toBe(true);
     expect(chunks.ownershipReferences).toEqual(
       expect.arrayContaining([
@@ -321,5 +330,60 @@ describe("Browser connections X1 migration", () => {
     ]) {
       expect(migration).not.toContain(forbidden);
     }
+  });
+});
+
+describe("phone pairing migration", () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), "src/lib/postgres/tenant-migrations/0016_phone_pairing.sql"),
+    "utf8"
+  );
+  it("preserves existing credential kinds and binds the pairing token to its tenant", () => {
+    expect(migration).toContain("CHECK (kind IN ('manual','browser','phone'))");
+    expect(migration).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS capture_tokens_user_id_id_idx ON capture_tokens(user_id, id)"
+    );
+    expect(migration).toContain("FOREIGN KEY (user_id, token_id)");
+    expect(migration).toContain("REFERENCES capture_tokens(user_id, id) ON DELETE CASCADE");
+    expect(migration).toContain("ON shortcut_pairings(user_id) WHERE consumed_at IS NULL");
+    expect(migration).toContain("ALTER TABLE shortcut_pairings FORCE ROW LEVEL SECURITY");
+    expect(migration).toContain("REVOKE ALL ON shortcut_pairings FROM PUBLIC, distil_runtime");
+    expect(migration).toContain("WITH CASCADED CHECK OPTION");
+    expect(migration).not.toMatch(/(?:DELETE FROM|UPDATE) capture_tokens/);
+  });
+  it("exposes only exact active pairing identities to the runtime", () => {
+    const resolver = migration
+      .split("AS $resolve_shortcut_pairing$")[1]
+      .split("$resolve_shortcut_pairing$")[0];
+    expect(resolver).toContain("pairing.code_hash = requested_code_hash");
+    expect(resolver).toContain("pairing.consumed_at IS NULL");
+    expect(resolver).toContain("pairing.expires_at > now()");
+    expect(resolver).toContain("pairing.attempts < 5");
+    expect(resolver).toContain("account.status = 'active'");
+    expect(resolver).toContain("LIMIT 1");
+    expect(migration).toContain(
+      "REVOKE ALL ON FUNCTION distil_resolve_shortcut_pairing(text) FROM PUBLIC"
+    );
+    expect(migration).toContain(
+      "GRANT EXECUTE ON FUNCTION distil_resolve_shortcut_pairing(text) TO distil_runtime"
+    );
+    expect(migration).toContain("SET search_path = pg_catalog, public");
+  });
+  it("keeps anonymous rate limiting durable and inaccessible as a runtime table", () => {
+    expect(migration).toContain(
+      "REVOKE ALL ON shortcut_pairing_rate_limits FROM PUBLIC, distil_runtime"
+    );
+    expect(migration).toContain("RETURNS boolean");
+    expect(migration).toContain("clock_timestamp()");
+    expect(migration).toContain("interval '15 minutes'");
+    expect(migration).toContain("LIMIT 100");
+    expect(migration).toContain("FOR UPDATE SKIP LOCKED");
+    expect(migration).toContain("RETURN attempt_count <= 10");
+    expect(migration).toContain(
+      "REVOKE ALL ON FUNCTION distil_consume_shortcut_pairing_rate_limit(text) FROM PUBLIC"
+    );
+    expect(migration).toContain(
+      "GRANT EXECUTE ON FUNCTION distil_consume_shortcut_pairing_rate_limit(text) TO distil_runtime"
+    );
   });
 });

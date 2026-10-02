@@ -115,6 +115,8 @@
   "POST /api/v1/items/:id/annotations",
   "POST /api/v1/items/:id/transcript",
   "POST /api/v1/preferences/reset",
+  "POST /api/v1/shortcut-pairings",
+  "POST /api/v1/shortcut-pairings/exchange",
   "PUT /api/ai/preferences",
   "PUT /api/notifications/preferences",
   "PUT /api/v1/items/:id/note",
