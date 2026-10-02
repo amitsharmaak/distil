@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/layout/theme-provider";
 import { AppShell } from "@/components/layout/lazy-app-shell";
 import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 import { loadClientCacheScope } from "@/lib/server-render/cache-scope";
+import { ICON_VERSION } from "@/components/brand/icon-version";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -40,10 +41,12 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Distil" },
   icons: {
     icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: `/icons/icon-192.png?v=${ICON_VERSION}`, sizes: "192x192", type: "image/png" },
+      { url: `/icons/icon-512.png?v=${ICON_VERSION}`, sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [
+      { url: `/icons/apple-touch-icon.png?v=${ICON_VERSION}`, sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 

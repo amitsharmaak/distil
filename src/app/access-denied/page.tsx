@@ -1,3 +1,4 @@
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import Link from "next/link";
 
@@ -7,6 +8,7 @@ export default function AccessDeniedPage() {
       size="reading"
       className="flex min-h-screen flex-col justify-center gap-6 px-6 py-10"
     >
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <PageHeader
         title="Unable to continue"
         description={
