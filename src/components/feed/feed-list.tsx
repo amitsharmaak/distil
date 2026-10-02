@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedTime } from "@/components/ui/updated-time";
 import { useShortcut, useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
 import {
@@ -99,14 +100,6 @@ function feedCacheData(raw: unknown): FeedCacheData {
 function uniqueItems(items: ContentItemSummary[]): ContentItemSummary[] {
   const seen = new Set<string>();
   return items.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
-}
-
-function updatedLabel(updatedAt: number): string {
-  if (!updatedAt) return "Not updated yet";
-  return `Updated ${new Date(updatedAt).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
 }
 
 export function nextFeedUrl(current: URLSearchParams, updates: FilterUpdates): string {
@@ -385,7 +378,7 @@ export function FeedList({
                       Archive
                     </Link>
                   </nav>
-                  <span className="text-xs">{updatedLabel(feedQuery.dataUpdatedAt)}</span>
+                  <UpdatedTime at={feedQuery.dataUpdatedAt} className="text-xs" />
                   <Button
                     type="button"
                     variant="ghost"

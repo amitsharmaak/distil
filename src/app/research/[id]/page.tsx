@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedTime } from "@/components/ui/updated-time";
 import { Separator } from "@/components/ui/separator";
 import { apiBaseUrl } from "@/lib/public-config";
 import { useParams, useRouter } from "next/navigation";
@@ -54,14 +55,6 @@ interface ResearchReportResponse {
 
 function isTerminalStatus(status: string): boolean {
   return status === "completed" || status === "failed";
-}
-
-function updatedLabel(updatedAt: number): string {
-  if (!updatedAt) return "Not updated yet";
-  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
 }
 
 const STAGES: ResearchProgress["stage"][] = [
@@ -387,7 +380,7 @@ export default function ResearchPage() {
         Refresh
       </Button>
       <p className="text-xs text-muted-foreground" aria-live="polite">
-        {updatedLabel(reportQuery.dataUpdatedAt)}
+        <UpdatedTime at={reportQuery.dataUpdatedAt} label="Last updated" />
       </p>
     </div>
   );

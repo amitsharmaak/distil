@@ -466,7 +466,7 @@ describe("FeedList with a server-rendered page", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
-    expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+    expect(screen.getByText("Updated").querySelector("time")).toBeInTheDocument();
   });
 
   it("keeps a fresh fetched page in the account cache across a remount", async () => {

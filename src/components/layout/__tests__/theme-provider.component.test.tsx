@@ -101,4 +101,54 @@ describe("ThemeProvider", () => {
     expect(document.documentElement).toHaveClass("dark");
     expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
   });
+
+  it("puts the stored theme back when the root element is reset before it mounts", () => {
+    // What React leaves behind when it re-creates the root after a hydration error: the
+    // class set by the pre-hydration script is gone, the stored preference is not.
+    localStorage.setItem("theme", "dark");
+    document.documentElement.removeAttribute("class");
+
+    render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
+  });
+
+  it("puts the stored theme back when the class is removed after mount", async () => {
+    localStorage.setItem("theme", "dark");
+    document.documentElement.classList.add("dark");
+    render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    await act(async () => {
+      document.documentElement.removeAttribute("class");
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
+  });
+
+  it("leaves the class alone when storage cannot be read", () => {
+    document.documentElement.classList.add("dark");
+    jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+
+    render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
+  });
 });

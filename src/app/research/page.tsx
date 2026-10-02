@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedTime } from "@/components/ui/updated-time";
 import { DeepResearch } from "@/components/feed/deep-research";
 import { apiBaseUrl } from "@/lib/public-config";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
@@ -72,14 +73,6 @@ const SUGGESTIONS_KEY = ["research", "suggestions"] as const;
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function updatedLabel(updatedAt: number): string {
-  if (!updatedAt) return "Not updated yet";
-  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
 }
 
 export default function ResearchListPage() {
@@ -226,7 +219,10 @@ export default function ResearchListPage() {
         description="Suggested topics, your reports, and ad-hoc deep research"
         meta={
           <span aria-live="polite" className="text-xs">
-            {updatedLabel(Math.max(reportsQuery.dataUpdatedAt, suggestionsQuery.dataUpdatedAt))}
+            <UpdatedTime
+              at={Math.max(reportsQuery.dataUpdatedAt, suggestionsQuery.dataUpdatedAt)}
+              label="Last updated"
+            />
           </span>
         }
         actions={
