@@ -75,6 +75,27 @@ describe("account export request route", () => {
     expect(JSON.stringify(payload)).not.toContain("private-object-ref");
   });
 
+  it("returns an already unfinished export with the same 202 shape and created=false", async () => {
+    jest.mocked(requestAccountExport).mockResolvedValueOnce({
+      export: { ...record, status: "running" },
+      jobId: record.id,
+      created: false,
+    } as never);
+    const response = await POST(
+      new Request("https://distil.example/api/v1/account/export", {
+        method: "POST",
+        headers: { origin: "https://distil.example", "idempotency-key": "second-click-key" },
+      })
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      export: { id: record.id, status: "running" },
+      job: { id: record.id },
+      created: false,
+    });
+  });
+
   it("returns typed request and feature-disabled failures before dispatch", async () => {
     jest
       .mocked(requestAccountExport)

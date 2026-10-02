@@ -7,6 +7,7 @@ import { requireLifecycleRoute } from "@/lib/lifecycle/route-auth";
 const id = "55555555-5555-4555-8555-555555555555";
 const ownerId = "11111111-1111-4111-8111-111111111111";
 const findExport = jest.fn();
+const failStaleExports = jest.fn();
 const record = {
   id,
   userId: ownerId,
@@ -25,7 +26,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   findExport.mockResolvedValue(record);
   jest.mocked(requireLifecycleRoute).mockResolvedValue({
-    repositories: { lifecycle: { findExport } },
+    repositories: { lifecycle: { findExport, failStaleExports } },
   } as never);
 });
 
@@ -42,6 +43,33 @@ describe("account export status route", () => {
     expect(payload.export).toMatchObject({ id, status: "ready" });
     expect(JSON.stringify(payload)).not.toContain(ownerId);
     expect(JSON.stringify(payload)).not.toContain("private-object-ref");
+  });
+
+  it("fails stalled exports before reading and returns only safe failure text", async () => {
+    findExport.mockResolvedValueOnce({
+      ...record,
+      status: "failed",
+      failureCode: "EXPORT_STORAGE_UNAVAILABLE",
+      objectRef: undefined,
+    });
+    const response = await GET(new Request(`https://distil.example/api/v1/account/exports/${id}`), {
+      params: Promise.resolve({ id }),
+    });
+
+    expect(failStaleExports).toHaveBeenCalledWith({
+      staleBefore: expect.any(String),
+      at: expect.any(String),
+    });
+    expect(failStaleExports.mock.invocationCallOrder[0]).toBeLessThan(
+      findExport.mock.invocationCallOrder[0]
+    );
+    const payload = await response.json();
+    expect(payload.export).toMatchObject({
+      status: "failed",
+      failureCode: "EXPORT_STORAGE_UNAVAILABLE",
+      failureMessage: "Export storage is not available right now. Please try again later.",
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/configured|BLOB|token/iu);
   });
 
   it("rejects malformed IDs before auth and conceals missing owner records", async () => {

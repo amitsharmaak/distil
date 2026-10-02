@@ -19,6 +19,7 @@ import {
   createAccountDeletionJobHandler,
   createAccountExportJobHandler,
   createAccountExportRetentionJobHandler,
+  failAccountExportJobWithoutStorage,
 } from "./workers";
 
 export const ACCOUNT_LIFECYCLE_WORKER_ID = "account-lifecycle-worker";
@@ -46,7 +47,9 @@ async function defaultTenantJobDispatcher(): Promise<TenantJobDispatcher> {
 /**
  * Exact lifecycle allowlist used by the queue callback. Dependency resolution
  * stays lazy so unavailable production integrations fail a claimed job before
- * any handler has a chance to mutate tenant data.
+ * any handler has a chance to mutate tenant data. The one exception is an
+ * export without object storage: its row is marked failed, so it does not stay
+ * pending for ever.
  */
 export function createLifecycleTenantJobHandlers(
   dependencies: LifecycleQueueRuntimeDependencies = {}
@@ -66,7 +69,14 @@ export function createLifecycleTenantJobHandlers(
 
   const handlers = new Map<string, TenantJobHandler>();
   handlers.set(ACCOUNT_EXPORT_JOB_TYPE, async (context, payload, repositories) => {
-    await createAccountExportJobHandler(getObjectStore())(context, payload, repositories);
+    let objectStore: TenantObjectStore;
+    try {
+      objectStore = getObjectStore();
+    } catch (error) {
+      await failAccountExportJobWithoutStorage(context, payload, repositories);
+      throw error;
+    }
+    await createAccountExportJobHandler(objectStore)(context, payload, repositories);
   });
   handlers.set(ACCOUNT_EXPORT_RETENTION_JOB_TYPE, async (context, payload, repositories) => {
     await createAccountExportRetentionJobHandler(getObjectStore())(context, payload, repositories);

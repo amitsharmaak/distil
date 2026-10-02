@@ -80,7 +80,16 @@ export interface TenantLifecycleRepository {
     requestedAt: string;
     downloadExpiresAt: string;
     purgeAfter: string;
-  }): Promise<{ record: AccountExportRecord; created: boolean }>;
+    /** Unfinished exports last touched before this instant are failed first. */
+    staleBefore?: string;
+  }): Promise<{
+    record: AccountExportRecord;
+    created: boolean;
+    /** Why no row was created: a replay of the same key, or another unfinished export. */
+    existing?: "idempotency-key" | "active";
+  }>;
+  /** Marks unfinished exports last touched before `staleBefore` as failed. */
+  failStaleExports(input: { staleBefore: string; at: string }): Promise<number>;
   listExports(input: { limit: number }): Promise<AccountExportRecord[]>;
   findExport(id: string): Promise<AccountExportRecord | undefined>;
   claimExport(id: string, at: string): Promise<AccountExportRecord | undefined>;

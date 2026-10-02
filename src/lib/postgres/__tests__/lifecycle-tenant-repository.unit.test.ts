@@ -77,6 +77,7 @@ describe("PostgresTenantLifecycleRepository", () => {
       })
     ).resolves.toMatchObject({
       created: false,
+      existing: "idempotency-key",
       record: {
         id: exportId,
         userId,
@@ -86,13 +87,60 @@ describe("PostgresTenantLifecycleRepository", () => {
         failureCode: "RETRIED",
       },
     });
-    expect(database.queries[0].values).toContain(`export:${userId}:export-key-1`);
+    // One lock per account, not per key: requests with different keys must queue up too.
+    expect(database.queries[0].values).toEqual([`export:${userId}`]);
+    database.assertExhausted();
+  });
+
+  it("returns the account's unfinished export instead of inserting a second one", async () => {
+    const database = createLifecycleSqlDouble();
+    database.respond(
+      [],
+      [],
+      [],
+      [exportRow({ status: "running", object_ref: null, content_hash: null })]
+    );
+    const repository = new PostgresTenantLifecycleRepository(database.sql, context);
+
+    await expect(
+      repository.createExport({
+        id: "21000000-0000-4000-8000-000000000021",
+        idempotencyKey: "export-key-3",
+        requestedAt: at,
+        downloadExpiresAt: "2026-09-09T12:00:00.000Z",
+        purgeAfter: "2026-09-15T12:00:00.000Z",
+        staleBefore: "2026-09-08T11:45:00.000Z",
+      })
+    ).resolves.toMatchObject({
+      created: false,
+      existing: "active",
+      record: { id: exportId, status: "running" },
+    });
+    expect(database.queries[2]).toMatchObject({
+      text: expect.stringContaining("failure_code='EXPORT_STALLED'"),
+      values: [at, "2026-09-08T11:45:00.000Z"],
+    });
+    expect(database.queries[2].text).toContain("status IN ('pending','running')");
+    expect(database.queries[3].text).toContain("WHERE status IN ('pending','running')");
+    expect(database.queries.some(({ text }) => text.includes("INSERT INTO"))).toBe(false);
+    database.assertExhausted();
+  });
+
+  it("counts the stalled exports it fails", async () => {
+    const database = createLifecycleSqlDouble();
+    database.respond([{ id: exportId }, { id: "21000000-0000-4000-8000-000000000021" }]);
+    const repository = new PostgresTenantLifecycleRepository(database.sql, context);
+
+    await expect(
+      repository.failStaleExports({ staleBefore: "2026-09-08T11:45:00.000Z", at })
+    ).resolves.toBe(2);
     database.assertExhausted();
   });
 
   it("inserts a new export after the owner-scoped idempotency lookup misses", async () => {
     const database = createLifecycleSqlDouble();
     database.respond(
+      [],
       [],
       [],
       [exportRow({ status: "pending", object_ref: null, content_hash: null })]
@@ -108,7 +156,7 @@ describe("PostgresTenantLifecycleRepository", () => {
         purgeAfter: "2026-09-15T12:00:00.000Z",
       })
     ).resolves.toMatchObject({ created: true, record: { status: "pending" } });
-    expect(database.queries[2]).toMatchObject({
+    expect(database.queries[3]).toMatchObject({
       text: expect.stringContaining("INSERT INTO account_exports"),
       values: expect.arrayContaining([exportId, userId, "export-key-2"]),
     });
