@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 /** GET /api/ai/research/suggestions — Pending topic suggestions from proactive scan. */
-export async function GET(req: Request) {
+export const GET = withRequestMetrics(async (req: Request): Promise<Response> => {
   try {
     const { repositories } = await requireTenantRoute(req);
     const suggestions = await repositories.research.listPendingSuggestions();
@@ -19,4 +20,4 @@ export async function GET(req: Request) {
   } catch (error) {
     return tenantRouteFailureResponse(error);
   }
-}
+});

@@ -17,7 +17,7 @@ jest.mock("@/components/feed/feed-list", () => ({
 
 import FeedPage from "../page";
 
-type IslandElement = ReactElement<{ initialPage: unknown }>;
+type IslandElement = ReactElement<{ initialPage: unknown; initialDataUpdatedAt?: number }>;
 
 function fakeRepositories(items: Array<{ id: string; title: string }>) {
   return {
@@ -60,6 +60,7 @@ describe("server-rendered /feed page", () => {
       items: [{ id: "item-1", title: "First" }],
       nextCursor: "cursor-2",
     });
+    expect(element.props.initialDataUpdatedAt).toEqual(expect.any(Number));
   });
 
   it("server-renders a search with its area and site filters, ordered by relevance", async () => {
@@ -91,6 +92,7 @@ describe("server-rendered /feed page", () => {
     loadPageData.mockResolvedValue(null);
     const fallback = (await FeedPage({ searchParams: Promise.resolve({}) })) as IslandElement;
     expect(fallback.props.initialPage).toBeNull();
+    expect(fallback.props.initialDataUpdatedAt).toBeUndefined();
     expect(loadPageData).toHaveBeenCalledTimes(1);
   });
 

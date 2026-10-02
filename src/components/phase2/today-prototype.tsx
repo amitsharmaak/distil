@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { StoryCard } from "@/components/feed/story-card";
 import { useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
@@ -10,6 +9,7 @@ import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/format";
 import { readingMinutes } from "@/lib/display";
 import type { KnowledgeItem } from "./types";
+import { IntentLink } from "@/components/navigation/intent-link";
 
 type TodayPrototypeProps = {
   priority: KnowledgeItem[];
@@ -22,13 +22,30 @@ type AreaControls = {
 };
 
 /** The edition masthead stays in the server-rendered first page. */
-export function TodayHeading({ items = [] }: { items?: KnowledgeItem[] }) {
+export function TodayHeading({
+  items = [],
+  status,
+}: {
+  items?: KnowledgeItem[];
+  /** Cache freshness and the refresh control, shown beside the edition count. */
+  status?: React.ReactNode;
+}) {
   const minutes = items.reduce((sum, item) => sum + readingMinutes(item), 0);
+  const count = `${items.length} ${items.length === 1 ? "story" : "stories"} · ${minutes} min`;
   return (
     <PageHeader
       title="Today"
       eyebrow={formatDate(new Date(), { weekday: "long", month: "long", day: "numeric" })}
-      meta={`${items.length} ${items.length === 1 ? "story" : "stories"} · ${minutes} min`}
+      meta={
+        status ? (
+          <span className="flex flex-wrap items-center gap-x-3">
+            <span>{count}</span>
+            {status}
+          </span>
+        ) : (
+          count
+        )
+      }
       className="mb-0"
     />
   );
@@ -66,12 +83,12 @@ export function TodayResults({
             </span>
           )}
         </div>
-        <Link
+        <IntentLink
           href={searchEverythingHref}
           className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
           Search everything →
-        </Link>
+        </IntentLink>
       </div>
       {items.length ? (
         <ul>

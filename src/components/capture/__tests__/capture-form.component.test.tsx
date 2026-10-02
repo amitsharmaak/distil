@@ -1,7 +1,10 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { CaptureForm } from "@/components/capture/capture-form";
+
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
 
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status: number) =>

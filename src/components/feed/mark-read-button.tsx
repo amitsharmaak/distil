@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -13,8 +13,10 @@ interface MarkReadButtonProps {
 }
 
 export function MarkReadButton({ itemId, isRead, onRead, showLabel = false }: MarkReadButtonProps) {
-  const router = useRouter();
-  const [read, setRead] = useState(isRead);
+  const { updateItem } = useItemMutation();
+  const overrides = useItemOverrides(itemId);
+  const [localRead, setRead] = useState<boolean>();
+  const read = localRead ?? overrides?.isRead ?? isRead;
   const [loading, setLoading] = useState(false);
 
   async function handleClick(e: React.MouseEvent) {
@@ -27,20 +29,11 @@ export function MarkReadButton({ itemId, isRead, onRead, showLabel = false }: Ma
     onRead?.(true);
     setLoading(true);
     try {
-      const res = await fetch(`/api/items/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: true }),
-      });
-      if (!res.ok) {
-        setRead(false);
-        onRead?.(false);
-        router.refresh();
-      }
+      await updateItem(itemId, { isRead: true });
+      setRead(undefined);
     } catch {
       setRead(false);
       onRead?.(false);
-      router.refresh();
     } finally {
       setLoading(false);
     }

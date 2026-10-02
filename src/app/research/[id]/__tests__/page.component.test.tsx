@@ -6,7 +6,8 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import ResearchPage from "../page";
-import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+import { ShortcutsProvider as ShortcutContextProvider } from "@/components/shortcuts/shortcuts-provider";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 const mockUseParams = jest.fn();
 const mockPush = jest.fn();
@@ -26,9 +27,7 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("@/lib/config", () => ({
-  config: { apiBaseUrl: "https://distil.test" },
-}));
+jest.mock("@/lib/public-config", () => ({ apiBaseUrl: "https://distil.test" }));
 
 // The page loads the markdown renderer lazily via next/dynamic; mock the
 // module it resolves so the tests do not pull in react-markdown.
@@ -84,6 +83,7 @@ function makeReport(overrides: ReportOverrides = {}) {
 function responseFor(report: ReturnType<typeof makeReport>, ok = true): Response {
   return {
     ok,
+    status: ok ? 200 : 404,
     json: jest.fn().mockResolvedValue({ report }),
   } as unknown as Response;
 }
@@ -116,9 +116,20 @@ class MockEventSource {
 
 const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>();
 const writeTextMock = jest.fn<Promise<void>, [string]>().mockResolvedValue(undefined);
+let accountNumber = 0;
+let accountKey = "test-account-0";
+
+function ShortcutsProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <ContentCacheProvider accountKey={accountKey}>
+      <ShortcutContextProvider>{children}</ShortcutContextProvider>
+    </ContentCacheProvider>
+  );
+}
 
 describe("ResearchPage", () => {
   beforeEach(() => {
+    accountKey = `test-account-${++accountNumber}`;
     jest.clearAllMocks();
     fetchMock.mockReset();
     writeTextMock.mockReset().mockResolvedValue(undefined);
@@ -138,6 +149,14 @@ describe("ResearchPage", () => {
       configurable: true,
       value: { writeText: writeTextMock },
     });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
   });
 
   afterEach(() => {
@@ -150,7 +169,10 @@ describe("ResearchPage", () => {
     const { container } = render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(container.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
-    expect(fetchMock).toHaveBeenCalledWith("https://distil.test/api/ai/research/research-1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://distil.test/api/ai/research/research-1",
+      expect.objectContaining({ signal: expect.anything() })
+    );
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
@@ -169,7 +191,7 @@ describe("ResearchPage", () => {
     render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByRole("heading", { name: "Error" })).toBeInTheDocument();
-    expect(screen.getByText("Report not found")).toBeInTheDocument();
+    expect(screen.getByText("Unable to refresh (404)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to feed" })).toHaveAttribute("href", "/feed");
     expect(MockEventSource.instances).toHaveLength(0);
   });
@@ -215,6 +237,32 @@ describe("ResearchPage", () => {
     expect(screen.getByTestId("deep-research")).toHaveAttribute("data-item-id", "item-1");
     expect(screen.getByRole("button", { name: /Research further/ })).toBeInTheDocument();
     expect(screen.queryByText("completed")).not.toBeInTheDocument();
+    expect(MockEventSource.instances).toHaveLength(0);
+  });
+
+  it("reuses a fresh completed report when the route remounts", async () => {
+    fetchMock.mockResolvedValue(responseFor(makeReport({ report: "Cached detail" })));
+    const view = render(
+      <ShortcutsProvider>
+        <ResearchPage />
+      </ShortcutsProvider>
+    );
+    expect(await screen.findByText("Cached detail")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ShortcutsProvider>
+        <div>Elsewhere</div>
+      </ShortcutsProvider>
+    );
+    view.rerender(
+      <ShortcutsProvider>
+        <ResearchPage />
+      </ShortcutsProvider>
+    );
+
+    expect(await screen.findByText("Cached detail")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
@@ -347,6 +395,24 @@ describe("ResearchPage", () => {
     render(<ResearchPage />, { wrapper: ShortcutsProvider });
 
     expect(await screen.findByText("Research failed. Please try again.")).toBeInTheDocument();
+  });
+
+  it("fetches the stored failure message once when an active stream fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(responseFor(makeReport({ status: "pending", report: "" })))
+      .mockResolvedValueOnce(
+        responseFor(makeReport({ status: "failed", report: "The research budget was reached." }))
+      );
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByText("Research in progress");
+    const stream = MockEventSource.instances[0];
+    await act(async () => {
+      stream.emit("status", JSON.stringify({ status: "failed" }));
+      stream.emit("complete", "{}");
+    });
+    expect(await screen.findByText("The research budget was reached.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stream.close).toHaveBeenCalled();
   });
 
   it("opens one stream for an active report and applies valid progress and status events", async () => {
@@ -575,6 +641,39 @@ describe("ResearchPage", () => {
 
     unmount();
     await waitFor(() => expect(stream.close).toHaveBeenCalledTimes(1));
+  });
+
+  it("only streams while the page is visible and online", async () => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fetchMock.mockResolvedValue(responseFor(makeReport({ status: "running" })));
+    render(<ResearchPage />, { wrapper: ShortcutsProvider });
+    await screen.findByText("Research in progress");
+    expect(MockEventSource.instances).toHaveLength(0);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(MockEventSource.instances).toHaveLength(1);
+    const stream = MockEventSource.instances[0];
+
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    act(() => window.dispatchEvent(new Event("offline")));
+    expect(stream.close).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
+    act(() => window.dispatchEvent(new Event("online")));
+    expect(MockEventSource.instances).toHaveLength(2);
   });
 
   it("does not update state or create a stream when the initial request settles after unmount", async () => {

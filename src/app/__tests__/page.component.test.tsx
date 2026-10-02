@@ -17,7 +17,7 @@ jest.mock("@/components/phase2/today-experience", () => ({
 
 import TodayPage from "../page";
 
-type Element = ReactElement<{ initial: unknown }>;
+type Element = ReactElement<{ initial: unknown; initialDataUpdatedAt?: number }>;
 
 const feedItem = {
   id: "priority-1",
@@ -90,6 +90,7 @@ describe("server-rendered Today page", () => {
         ],
       },
     });
+    expect(element.props.initialDataUpdatedAt).toEqual(expect.any(Number));
   });
 
   it("keeps the default selection for a sort alone and for Today-ignored read/archive parameters", async () => {
@@ -165,5 +166,6 @@ describe("server-rendered Today page", () => {
     loadPageData.mockResolvedValue(null);
     const element = (await TodayPage({ searchParams: Promise.resolve({}) })) as Element;
     expect(element.props.initial).toBeNull();
+    expect(element.props.initialDataUpdatedAt).toBeUndefined();
   });
 });

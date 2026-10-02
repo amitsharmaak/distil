@@ -73,6 +73,7 @@
     "@neondatabase/auth-ui": "file:vendor/neon-auth-ui-disabled",
     "@neondatabase/serverless": "^1.1.0",
     "@slack/web-api": "^7.19.0",
+    "@tanstack/react-query": "^5.104.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/queue": "^0.5.1",
     "better-sqlite3": "^12.6.2",

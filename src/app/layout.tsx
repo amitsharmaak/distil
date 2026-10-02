@@ -4,6 +4,8 @@ import "./globals.css";
 import "./reader.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { AppShell } from "@/components/layout/lazy-app-shell";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
+import { loadClientCacheScope } from "@/lib/server-render/cache-scope";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -45,11 +47,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const accountKey = await loadClientCacheScope();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -64,7 +67,9 @@ export default function RootLayout({
         className={`${newsreader.variable} ${geist.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          <ContentCacheProvider accountKey={accountKey}>
+            <AppShell>{children}</AppShell>
+          </ContentCacheProvider>
         </ThemeProvider>
       </body>
     </html>

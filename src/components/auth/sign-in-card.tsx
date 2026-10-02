@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { navigateFullPage } from "@/lib/browser-navigation";
+import { announceAccountChange } from "@/lib/client-cache/auth-events";
 import { Input } from "@/components/ui/input";
 import { DistilLogo } from "@/components/brand/distil-logo";
 
@@ -55,6 +56,9 @@ export function SignInCard({ next }: { next?: string } = {}) {
       }
       // Full navigation: see navigateFullPage for why a client-side replace()
       // would resolve from the stale prefetch cache and stay on this page.
+      // Clear this tab's cache and tell other tabs, without swapping this page for the
+      // session notice while the new document loads.
+      announceAccountChange({ leaving: true });
       navigateFullPage(destination ?? "/", window.location);
     } finally {
       setSubmitting(false);

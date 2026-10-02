@@ -1,5 +1,7 @@
 "use client";
 
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
+
 import { useEffect, useState } from "react";
 import { BookmarkPlus } from "lucide-react";
 import type { CaptureReceipt, CreateCaptureResponse } from "@/lib/contracts/capture";
@@ -7,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CaptureReceiptCard } from "@/components/capture/capture-receipt";
+import { useContentCache } from "@/lib/client-cache/content-cache";
 
 interface ErrorEnvelope {
   error?: { message?: string };
 }
 
 export function CaptureForm() {
+  const cache = useContentCache();
   const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<CaptureReceipt>();
   const [duplicate, setDuplicate] = useState(false);
@@ -27,7 +31,7 @@ export function CaptureForm() {
     setSubmitting(true);
     setError(undefined);
     try {
-      const response = await fetch("/api/v1/captures", {
+      const response = await contentMutationRequest("/api/v1/captures", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
@@ -44,6 +48,8 @@ export function CaptureForm() {
       }
       setReceipt(payload.receipt);
       setDuplicate(payload.duplicate);
+      void cache.invalidate(["feed"]);
+      void cache.invalidate(["today"]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save this article.");
     } finally {

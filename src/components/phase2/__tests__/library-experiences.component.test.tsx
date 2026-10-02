@@ -3,7 +3,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { ArchiveExperience } from "../library-experiences";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 import type { FeedItem } from "@/lib/feed/feed-query";
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ prefetch: jest.fn() }),
+}));
+
 function response(payload: unknown, ok = true): Response {
   return {
     ok,
@@ -32,12 +38,17 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
   } as FeedItem;
 }
 
+function TestProvider({ children }: { children: React.ReactNode }) {
+  return <ContentCacheProvider accountKey="test-account">{children}</ContentCacheProvider>;
+}
+
 describe("library experiences", () => {
   let fetchMock: jest.MockedFunction<typeof fetch>;
 
   beforeEach(() => {
     fetchMock = jest.mocked(global.fetch);
     fetchMock.mockReset();
+    window.scrollTo = jest.fn();
   });
 
   afterEach(() => {
@@ -50,11 +61,11 @@ describe("library experiences", () => {
         return Promise.resolve(response({ error: { message: "Offline" } }, false));
       return Promise.resolve(response({ items: [item()] }));
     });
-    render(<ArchiveExperience />);
+    render(<ArchiveExperience />, { wrapper: TestProvider });
     expect(screen.getByRole("status", { name: "Loading archive" })).toBeInTheDocument();
     expect(await screen.findByText("A saved article")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Offline");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this change.");
     expect(screen.getByText("A saved article")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/items/item-1/state",
@@ -64,12 +75,28 @@ describe("library experiences", () => {
 
   it("shows archive empty and load-error states", async () => {
     fetchMock.mockResolvedValueOnce(response({ items: [] }));
-    render(<ArchiveExperience />);
+    render(<ArchiveExperience />, { wrapper: TestProvider });
     expect(await screen.findByText(/Nothing is archived/)).toBeInTheDocument();
 
     fetchMock.mockReset();
     fetchMock.mockRejectedValueOnce(new Error("Archive unavailable"));
-    render(<ArchiveExperience />);
+    render(<ArchiveExperience />, { wrapper: TestProvider });
     expect(await screen.findByRole("alert")).toHaveTextContent("Archive unavailable");
+  });
+
+  it("keeps cached archive content visible when an explicit refresh fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({ items: [item()] }))
+      .mockRejectedValueOnce(new Error("Offline"));
+
+    render(<ArchiveExperience />, { wrapper: TestProvider });
+    expect(await screen.findByText("A saved article")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh archive" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Refresh failed. Cached archive is still shown."
+    );
+    expect(screen.getByText("A saved article")).toBeInTheDocument();
   });
 });

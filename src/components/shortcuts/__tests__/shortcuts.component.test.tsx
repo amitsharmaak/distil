@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ShortcutDef, ShortcutKey } from "@/lib/shortcuts/types";
 import { useGlobalShortcuts } from "../use-global-shortcuts";
 import { DetailActionBar } from "@/components/feed/detail-action-bar-content";

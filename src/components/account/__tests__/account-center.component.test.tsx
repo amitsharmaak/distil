@@ -12,8 +12,12 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/components/capture/token-settings", () => ({
   TokenSettings: () => <div>Capture token management</div>,
 }));
+jest.mock("@/lib/browser-navigation", () => ({ replaceFullPage: jest.fn() }));
 
 import { AccountCenter } from "@/components/account/account-center";
+import { replaceFullPage } from "@/lib/browser-navigation";
+import { CONTENT_AUTH_EVENT } from "@/lib/client-cache/auth-events";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status = 200) =>
@@ -69,6 +73,7 @@ describe("AccountCenter lifecycle recovery", () => {
     fetchMock.mockReset();
     mockReplace.mockReset();
     mockRefresh.mockReset();
+    jest.mocked(replaceFullPage).mockReset();
   });
 
   it("requires an explicit typed confirmation before requesting deletion", async () => {
@@ -344,10 +349,20 @@ describe("AccountCenter lifecycle recovery", () => {
     expect(screen.getByText("Other browser")).toBeInTheDocument();
   });
 
-  it("signs out through the hosted-auth route and returns to the sign-in page", async () => {
+  it("signs out through the hosted-auth route and leaves by a full document load", async () => {
     mockActiveHydration({ sessions: [currentSession] });
-    render(<AccountCenter />);
+    render(
+      <ContentCacheProvider accountKey={account.userId}>
+        <AccountCenter />
+      </ContentCacheProvider>
+    );
     expect(await screen.findByText("This device")).toBeInTheDocument();
+    const order: string[] = [];
+    const announced = () => order.push("announced");
+    window.addEventListener(CONTENT_AUTH_EVENT, announced);
+    jest.mocked(replaceFullPage).mockImplementation(() => {
+      order.push("left");
+    });
 
     fetchMock.mockResolvedValueOnce(response({ success: true }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
@@ -359,8 +374,16 @@ describe("AccountCenter lifecycle recovery", () => {
         body: "{}",
       })
     );
-    expect(mockReplace).toHaveBeenCalledWith("/sign-in");
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(replaceFullPage).toHaveBeenCalledWith("/sign-in", window.location));
+    window.removeEventListener(CONTENT_AUTH_EVENT, announced);
+    // The data cache and other tabs are cleared first; then the document, and with it the
+    // router cache of every route this account visited, is discarded.
+    expect(order).toEqual(["announced", "left"]);
+    // This tab goes straight to /sign-in; the session notice is for other tabs.
+    expect(screen.queryByText("Your session changed.")).not.toBeInTheDocument();
+    // A client-side replace or refresh would keep the previous account's cached routes.
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("keeps the account page available when sign-out fails", async () => {
@@ -375,6 +398,7 @@ describe("AccountCenter lifecycle recovery", () => {
 
     expect(await screen.findByText("Provider rejected sign-out")).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+    expect(replaceFullPage).not.toHaveBeenCalled();
   });
 
   it("saves an onboarding profile and reports profile save failures", async () => {
