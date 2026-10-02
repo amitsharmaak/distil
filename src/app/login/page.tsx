@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrandMark } from "@/components/layout/brand-mark";
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
@@ -47,7 +47,7 @@ export default function LoginPage() {
       className="flex min-h-[100dvh] items-center justify-center px-4 py-[calc(2rem+env(safe-area-inset-top,0px))]"
     >
       <div className="w-full max-w-sm space-y-7 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <BrandMark className="mx-auto size-10" />
+        <DistilLogo className="mx-auto h-10 w-auto text-foreground" />
         <PageHeader
           title="Welcome to Distil"
           description="Sign in to your private knowledge space."

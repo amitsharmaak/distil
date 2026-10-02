@@ -50,6 +50,8 @@
     "eval:nightly": "tsx evals/nightly-eval.ts",
     "eval:triage": "tsx evals/triage-eval.ts",
     "extension:pack": "tsx scripts/pack-extension.ts",
+    "brand:generate": "tsx scripts/generate-brand-assets.ts",
+    "brand:check": "tsx scripts/generate-brand-assets.ts --check",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:import:sqlite": "tsx scripts/import-sqlite.ts",
     "db:tenant:verify": "tsx scripts/verify-tenant-migration.ts",
@@ -93,6 +95,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sanitize-html": "^2.17.7",
+    "sharp": "0.35.4",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.5.4"
   },
