@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Newspaper, Rss, BookmarkPlus, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IntentLink } from "@/components/navigation/intent-link";
 
 const tabs = [
   { href: "/", label: "Today", icon: Newspaper },
@@ -23,7 +23,7 @@ export function MobileNav() {
       {tabs.map((tab) => {
         const isActive = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
         return (
-          <Link
+          <IntentLink
             key={tab.href}
             href={tab.href}
             aria-current={isActive ? "page" : undefined}
@@ -34,7 +34,7 @@ export function MobileNav() {
           >
             <tab.icon className="h-5 w-5" />
             {tab.label}
-          </Link>
+          </IntentLink>
         );
       })}
     </nav>

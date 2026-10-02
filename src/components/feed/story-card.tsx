@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { AreaBadge } from "@/components/feed/area-badge";
 import { MarkReadButton } from "@/components/feed/mark-read-button";
+import { IntentLink } from "@/components/navigation/intent-link";
 import type { KnowledgeItem } from "@/components/phase2/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -96,12 +96,12 @@ export function StoryCard({
           {processing ? (
             headline
           ) : (
-            <Link
+            <IntentLink
               href={href}
               className="block rounded-sm after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {headline}
-            </Link>
+            </IntentLink>
           )}
           {!compact &&
             (processing ? (

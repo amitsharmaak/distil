@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Archive, ArchiveRestore, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,66 +11,98 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
+import { useItemMutation, useItemOverrides } from "@/lib/client-cache/item-mutations";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 import type { Priority } from "@/lib/types";
 
-type ReaderState = {
+export type ReaderState = {
   isRead: boolean;
   archived: boolean;
   readingProgress: number;
   manualPriority: Priority | null;
 };
+
+/** Server-read item state for the overflow menu; `updatedAt` is when the server read it. */
+export type ReaderLibraryInitial = { state: ReaderState; updatedAt?: number };
+/** Server-read note for the notes panel; `updatedAt` is when the server read it. */
+export type ReaderKnowledgeInitial = { note: { body: string } | null; updatedAt?: number };
+
+type ReaderStateResponse = { state: ReaderState };
+type ReaderNoteResponse = { note: { body: string } | null };
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } };
+  const response = await contentMutationRequest(path, init ?? {});
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: { message?: string };
+  };
   if (!response.ok) throw new Error(payload.error?.message || "This change could not be saved.");
   return payload;
 }
 
-/** Library actions live in the reader overflow; the note stays alongside highlights. */
-export function ReaderLibraryMenuItems({ itemId }: { itemId: string }) {
-  const [state, setState] = useState<ReaderState | null>(null);
+/**
+ * Library actions live in the reader overflow; the note stays alongside highlights.
+ *
+ * State reads through the account cache (seeded by the server page, so opening the menu does
+ * not fetch) and writes through the shared item mutation, which updates Feed, Today and Archive.
+ */
+export function ReaderLibraryMenuItems({
+  itemId,
+  initial,
+}: {
+  itemId: string;
+  initial?: ReaderLibraryInitial;
+}) {
+  const { updateItem } = useItemMutation();
+  const overrides = useItemOverrides(itemId);
+  const stateKey = useMemo(() => ["item", itemId, "state"] as const, [itemId]);
+  const stateQuery = useContentQuery<ReaderStateResponse>({
+    key: stateKey,
+    url: `/api/v1/items/${itemId}/state`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initial ? { state: initial.state } : undefined,
+    initialDataUpdatedAt: initial?.updatedAt,
+  });
+  const baseState = stateQuery.data?.state ?? null;
+  const state = baseState
+    ? {
+        ...baseState,
+        ...(overrides?.isRead !== undefined ? { isRead: overrides.isRead } : {}),
+        ...(overrides?.archived !== undefined ? { archived: overrides.archived } : {}),
+        ...(overrides?.readingProgress !== undefined
+          ? { readingProgress: overrides.readingProgress }
+          : {}),
+        ...(overrides?.manualPriority !== undefined
+          ? { manualPriority: overrides.manualPriority }
+          : {}),
+      }
+    : null;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void requestJson<{ state: ReaderState }>(`/api/v1/items/${itemId}/state`)
-      .then((payload) => {
-        if (!cancelled) setState(payload.state);
-      })
-      .catch((cause) => {
-        if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Reader controls are unavailable.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId]);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const error =
+    mutationError ||
+    (stateQuery.error
+      ? state
+        ? "Could not refresh. Showing the last loaded state."
+        : stateQuery.error instanceof Error
+          ? stateQuery.error.message
+          : "Reader controls are unavailable."
+      : null);
 
   async function updateState(patch: Partial<ReaderState>, label: string) {
     if (!state || saving) return;
-    const previous = state;
-    setState({ ...state, ...patch });
     setSaving(true);
-    setError(null);
+    setMutationError(null);
     try {
-      const payload = await requestJson<{ item: ReaderState & { archivedAt?: string } }>(
-        `/api/v1/items/${itemId}/state`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
-        }
-      );
-      setState((current) =>
-        current
-          ? { ...current, ...payload.item, archived: Boolean(payload.item.archivedAt) }
-          : current
-      );
+      await updateItem(itemId, patch);
       setMessage(label);
     } catch (cause) {
-      setState(previous);
-      setError(cause instanceof Error ? cause.message : "This change could not be saved.");
+      setMutationError(cause instanceof Error ? cause.message : "This change could not be saved.");
     } finally {
       setSaving(false);
     }
@@ -143,66 +175,99 @@ export function ReaderLibraryMenuItems({ itemId }: { itemId: string }) {
   );
 }
 
-export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
-  const [note, setNote] = useState("");
-  const [savedNote, setSavedNote] = useState("");
-  const [loading, setLoading] = useState(true);
+/**
+ * The reader's note. It reads through the account cache (seeded by the server page) and
+ * writes its exact detail key behind the cache write barrier, with rollback on failure.
+ */
+export function ReaderKnowledgeControls({
+  itemId,
+  initial,
+}: {
+  itemId: string;
+  initial?: ReaderKnowledgeInitial;
+}) {
+  const cache = useContentCache();
+  const noteKey = useMemo(() => ["item", itemId, "note"] as const, [itemId]);
+  const noteQuery = useContentQuery<ReaderNoteResponse>({
+    key: noteKey,
+    url: `/api/v1/items/${itemId}/note`,
+    staleTime: CACHE_FRESHNESS.detail,
+    initialData: initial ? { note: initial.note } : undefined,
+    initialDataUpdatedAt: initial?.updatedAt,
+  });
+  const serverNote = noteQuery.data?.note?.body ?? "";
+  const [draft, setDraft] = useState<{
+    itemId: string;
+    body: string;
+    baseline: string;
+  } | null>(null);
+  const currentDraft = draft?.itemId === itemId ? draft : null;
+  const note = currentDraft?.body ?? serverNote;
+  const savedNote = currentDraft?.baseline ?? serverNote;
+  const loading = noteQuery.isPending && !noteQuery.data;
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void requestJson<{ note: { body: string } | null }>(`/api/v1/items/${itemId}/note`)
-      .then((payload) => {
-        if (cancelled) return;
-        const body = payload.note?.body ?? "";
-        setNote(body);
-        setSavedNote(body);
-      })
-      .catch((cause) => {
-        if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Unable to load your note.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId]);
+  const error =
+    mutationError ||
+    (noteQuery.error
+      ? noteQuery.error instanceof Error
+        ? noteQuery.error.message
+        : "Unable to load your note."
+      : null);
   const dirty = note !== savedNote;
 
   async function saveNote() {
     setSaving(true);
-    setError(null);
+    setMutationError(null);
+    const release = cache.beginWrite();
+    let previous: ReaderNoteResponse | undefined;
+    let optimisticUpdateApplied = false;
     try {
-      await requestJson(`/api/v1/items/${itemId}/note`, {
+      await cache.cancel(noteKey);
+      previous = cache.get<ReaderNoteResponse>(noteKey);
+      cache.set<ReaderNoteResponse>(noteKey, { note: { body: note } });
+      optimisticUpdateApplied = true;
+      const payload = await requestJson<ReaderNoteResponse>(`/api/v1/items/${itemId}/note`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: note }),
       });
-      setSavedNote(note);
+      cache.set(noteKey, payload);
+      setDraft(null);
       setNotice("Note saved");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Note could not be saved.");
+      if (optimisticUpdateApplied) cache.set(noteKey, previous);
+      setMutationError(cause instanceof Error ? cause.message : "Note could not be saved.");
     } finally {
+      release();
       setSaving(false);
     }
   }
+
   async function deleteNote() {
-    const previous = note;
-    setNote("");
-    setSavedNote("");
+    const previousDraft = currentDraft;
     setSaving(true);
-    setError(null);
+    setMutationError(null);
+    const release = cache.beginWrite();
+    let previous: ReaderNoteResponse | undefined;
+    let optimisticUpdateApplied = false;
     try {
+      await cache.cancel(noteKey);
+      previous = cache.get<ReaderNoteResponse>(noteKey);
+      cache.set<ReaderNoteResponse>(noteKey, { note: null });
+      optimisticUpdateApplied = true;
+      setDraft(null);
       await requestJson(`/api/v1/items/${itemId}/note`, { method: "DELETE" });
       setNotice("Note deleted");
     } catch (cause) {
-      setNote(previous);
-      setSavedNote(previous);
-      setError(cause instanceof Error ? cause.message : "Note could not be deleted.");
+      if (optimisticUpdateApplied) {
+        cache.set(noteKey, previous);
+        setDraft(previousDraft);
+      }
+      setMutationError(cause instanceof Error ? cause.message : "Note could not be deleted.");
     } finally {
+      release();
       setSaving(false);
     }
   }
@@ -228,7 +293,9 @@ export function ReaderKnowledgeControls({ itemId }: { itemId: string }) {
           <textarea
             aria-label="Item note"
             value={note}
-            onChange={(event) => setNote(event.target.value)}
+            onChange={(event) =>
+              setDraft({ itemId, body: event.target.value, baseline: savedNote })
+            }
             rows={dirty || savedNote ? 4 : 3}
             className="min-h-24 w-full resize-y rounded-md border border-border bg-transparent p-3 text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             placeholder="Add a thought you want to remember…"

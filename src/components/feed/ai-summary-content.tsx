@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +10,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useReaderExperience } from "@/components/feed/reader-experience";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
+import { useContentCache } from "@/lib/client-cache/content-cache";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
 
 const TOGGLE_VIEW: ShortcutDef = {
@@ -252,6 +255,8 @@ export function AISummary({
   initialDetailedSummary,
   emptyOriginalMessage,
 }: AISummaryProps) {
+  const router = useRouter();
+  const cache = useContentCache();
   const [briefSummary, setBriefSummary] = useState<string | null>(initialBriefSummary ?? null);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(
     initialDetailedSummary ?? null
@@ -276,7 +281,7 @@ export function AISummary({
       setRetryRequest({ length, force });
       setError(null);
       try {
-        const res = await fetch("/api/ai/summarize", {
+        const res = await contentMutationRequest("/api/ai/summarize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ itemId, length, force }),
@@ -300,13 +305,16 @@ export function AISummary({
         }
         setSummaryLength(length);
         setViewMode("ai");
+        // Cards show the summary too, and it is part of the server-rendered reader props.
+        void Promise.allSettled([cache.invalidate(["feed"]), cache.invalidate(["today"])]);
+        router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
         setLoading(false);
       }
     },
-    [itemId]
+    [cache, itemId, router]
   );
 
   async function handleLengthChange(length: SummaryLength) {

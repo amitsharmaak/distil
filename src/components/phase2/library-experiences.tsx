@@ -1,23 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArchiveRestore } from "lucide-react";
+import { IntentLink as Link } from "@/components/navigation/intent-link";
+import { useState } from "react";
+import { ArchiveRestore, RefreshCw } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cardExcerpt, displayTitle, publisherLabel } from "@/lib/display";
 import { Button } from "@/components/ui/button";
+import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
+import { useItemMutation } from "@/lib/client-cache/item-mutations";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } };
-  if (!response.ok)
-    throw new Error(payload.error?.message || "The request could not be completed.");
-  return payload;
-}
 
 function ItemLink({ item }: { item: FeedItem }) {
   return (
@@ -32,55 +27,83 @@ function ItemLink({ item }: { item: FeedItem }) {
   );
 }
 
+interface ArchiveResponse {
+  items: FeedItem[];
+}
+
+const ARCHIVE_KEY = ["library", "archive"] as const;
+
+function updatedLabel(updatedAt: number): string {
+  if (!updatedAt) return "Not updated yet";
+  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
 export function ArchiveExperience() {
-  const [items, setItems] = useState<FeedItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { updateItem } = useItemMutation();
+  const archiveQuery = useContentQuery<ArchiveResponse>({
+    key: ARCHIVE_KEY,
+    url: "/api/v1/feed?archive=only&sort=recent&limit=100",
+    staleTime: CACHE_FRESHNESS.library,
+  });
+  const items = (archiveQuery.data?.items ?? []).filter(
+    (item) => (item as FeedItem & { archived?: boolean }).archived !== false
+  );
+  const loading = archiveQuery.isPending && !archiveQuery.data;
+  useViewScroll("archive", Boolean(archiveQuery.data));
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void api<{ items: FeedItem[] }>("/api/v1/feed?archive=only&sort=recent&limit=100")
-      .then((payload) => {
-        if (!cancelled) setItems(payload.items);
-      })
-      .catch((cause) => {
-        if (!cancelled)
-          setError(cause instanceof Error ? cause.message : "Unable to load archived items.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
   async function restore(itemId: string) {
     setRestoring(itemId);
-    setError(null);
-    const previous = items;
-    setItems((current) => current.filter((item) => item.id !== itemId));
+    setMutationError(null);
     try {
-      await api(`/api/v1/items/${itemId}/state`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ archived: false }),
-      });
+      await updateItem(itemId, { archived: false });
     } catch (cause) {
-      setItems(previous);
-      setError(cause instanceof Error ? cause.message : "Item could not be restored.");
+      setMutationError(cause instanceof Error ? cause.message : "Item could not be restored.");
     } finally {
       setRestoring(null);
     }
   }
   return (
     <PageContainer size="list" className="space-y-6">
-      <PageHeader title="Archive" description="Items kept out of your active reading queue." />
-      {error && (
+      <PageHeader
+        title="Archive"
+        description="Items kept out of your active reading queue."
+        meta={
+          <span aria-live="polite" className="text-xs">
+            {updatedLabel(archiveQuery.dataUpdatedAt)}
+          </span>
+        }
+        actions={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-h-11 gap-2"
+            disabled={archiveQuery.isFetching}
+            onClick={() => void archiveQuery.refetch()}
+            aria-label="Refresh archive"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${archiveQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+            />
+            Refresh
+          </Button>
+        }
+      />
+      {(mutationError || archiveQuery.error) && (
         <p
           role="alert"
           className="rounded-lg border border-destructive/40 p-3 text-sm text-destructive"
         >
-          {error}
+          {mutationError ||
+            (archiveQuery.data
+              ? "Refresh failed. Cached archive is still shown."
+              : archiveQuery.error instanceof Error
+                ? archiveQuery.error.message
+                : "Unable to load archived items.")}
         </p>
       )}
       {loading ? (
@@ -100,7 +123,7 @@ export function ArchiveExperience() {
                 type="button"
                 variant="outline"
                 className="mt-2 min-h-11 shrink-0 gap-2"
-                disabled={restoring === item.id}
+                disabled={restoring !== null}
                 onClick={() => void restore(item.id)}
               >
                 <ArchiveRestore className="h-4 w-4" />

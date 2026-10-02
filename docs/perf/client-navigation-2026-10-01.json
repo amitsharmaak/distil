@@ -1,0 +1,435 @@
+{
+  "baselineCommit": "ec07a52894ac083fe44fc75fd2c358d5b6703fee",
+  "implementationCommit": "fe0c99f911588311dbc5a89e97035910c197ad99",
+  "conditions": "Local production builds; disposable PostgreSQL and synthetic 12-item library; three samples per route after one server warm-up; a fresh browser context per sample; desktop and mobile Chromium emulation; no network or CPU throttling. These are not Production timings or physical-iPhone load measurements.",
+  "before": {
+    "desktop": {
+      "generatedAt": "2026-10-01T07:32:58.881Z",
+      "buildId": "OfxsrUgUFF17-wrhw4ors",
+      "runs": 3,
+      "itemCount": 12,
+      "pages": {
+        "/": {
+          "medians": {
+            "ttfb": 18,
+            "fcp": 44,
+            "lcp": 44,
+            "domContentLoaded": 27,
+            "load": 54,
+            "requestCount": 27,
+            "transferredBytes": 432956,
+            "wallMs": 1109
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed": {
+          "medians": {
+            "ttfb": 16,
+            "fcp": 44,
+            "lcp": 44,
+            "domContentLoaded": 25,
+            "load": 68,
+            "requestCount": 37,
+            "transferredBytes": 486410,
+            "wallMs": 1124
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed/[id]": {
+          "medians": {
+            "ttfb": 22,
+            "fcp": 48,
+            "lcp": 48,
+            "domContentLoaded": 31,
+            "load": 71,
+            "requestCount": 30,
+            "transferredBytes": 477032,
+            "wallMs": 1110
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/settings": {
+          "medians": {
+            "ttfb": 7,
+            "fcp": 32,
+            "lcp": 32,
+            "domContentLoaded": 18,
+            "load": 62,
+            "requestCount": 24,
+            "transferredBytes": 437649,
+            "wallMs": 1102
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed (processing)": {
+          "medians": {
+            "ttfb": 22,
+            "fcp": 52,
+            "lcp": 52,
+            "domContentLoaded": 32,
+            "load": 81,
+            "requestCount": 37,
+            "transferredBytes": 486536,
+            "wallMs": 4133
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        }
+      }
+    },
+    "mobile": {
+      "generatedAt": "2026-10-01T07:37:04.966Z",
+      "buildId": "OfxsrUgUFF17-wrhw4ors",
+      "runs": 3,
+      "itemCount": 12,
+      "pages": {
+        "/": {
+          "medians": {
+            "ttfb": 16,
+            "fcp": 40,
+            "lcp": 40,
+            "domContentLoaded": 25,
+            "load": 63,
+            "requestCount": 32,
+            "transferredBytes": 490005,
+            "wallMs": 1121
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed": {
+          "medians": {
+            "ttfb": 16,
+            "fcp": 40,
+            "lcp": 40,
+            "domContentLoaded": 26,
+            "load": 69,
+            "requestCount": 42,
+            "transferredBytes": 524702,
+            "wallMs": 1128
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed/[id]": {
+          "medians": {
+            "ttfb": 28,
+            "fcp": 52,
+            "lcp": 52,
+            "domContentLoaded": 39,
+            "load": 78,
+            "requestCount": 27,
+            "transferredBytes": 472648,
+            "wallMs": 1118
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/settings": {
+          "medians": {
+            "ttfb": 6,
+            "fcp": 28,
+            "lcp": 28,
+            "domContentLoaded": 15,
+            "load": 57,
+            "requestCount": 29,
+            "transferredBytes": 472602,
+            "wallMs": 1100
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed (processing)": {
+          "medians": {
+            "ttfb": 22,
+            "fcp": 48,
+            "lcp": 48,
+            "domContentLoaded": 31,
+            "load": 73,
+            "requestCount": 40,
+            "transferredBytes": 523145,
+            "wallMs": 4131
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        }
+      }
+    }
+  },
+  "after": {
+    "desktop": {
+      "generatedAt": "2026-10-01T08:05:05.206Z",
+      "buildId": "6ZG8UvDm_ej89jZfnnak6",
+      "runs": 3,
+      "itemCount": 12,
+      "pages": {
+        "/": {
+          "medians": {
+            "ttfb": 22,
+            "fcp": 48,
+            "lcp": 48,
+            "domContentLoaded": 32,
+            "load": 59,
+            "requestCount": 17,
+            "transferredBytes": 437785,
+            "wallMs": 1061
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed": {
+          "medians": {
+            "ttfb": 25,
+            "fcp": 56,
+            "lcp": 56,
+            "domContentLoaded": 36,
+            "load": 78,
+            "requestCount": 19,
+            "transferredBytes": 464418,
+            "wallMs": 1072
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed/[id]": {
+          "medians": {
+            "ttfb": 10,
+            "fcp": 32,
+            "lcp": 32,
+            "domContentLoaded": 51,
+            "load": 60,
+            "requestCount": 23,
+            "transferredBytes": 486647,
+            "wallMs": 1075
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/settings": {
+          "medians": {
+            "ttfb": 9,
+            "fcp": 32,
+            "lcp": 32,
+            "domContentLoaded": 18,
+            "load": 58,
+            "requestCount": 21,
+            "transferredBytes": 449299,
+            "wallMs": 1106
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed (processing)": {
+          "medians": {
+            "ttfb": 21,
+            "fcp": 52,
+            "lcp": 52,
+            "domContentLoaded": 31,
+            "load": 60,
+            "requestCount": 20,
+            "transferredBytes": 465680,
+            "wallMs": 4060
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        }
+      }
+    },
+    "mobile": {
+      "generatedAt": "2026-10-01T08:06:23.802Z",
+      "buildId": "6ZG8UvDm_ej89jZfnnak6",
+      "runs": 3,
+      "itemCount": 12,
+      "pages": {
+        "/": {
+          "medians": {
+            "ttfb": 21,
+            "fcp": 44,
+            "lcp": 44,
+            "domContentLoaded": 30,
+            "load": 68,
+            "requestCount": 16,
+            "transferredBytes": 436296,
+            "wallMs": 1064
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed": {
+          "medians": {
+            "ttfb": 21,
+            "fcp": 44,
+            "lcp": 44,
+            "domContentLoaded": 31,
+            "load": 76,
+            "requestCount": 18,
+            "transferredBytes": 462930,
+            "wallMs": 1060
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed/[id]": {
+          "medians": {
+            "ttfb": 10,
+            "fcp": 28,
+            "lcp": 28,
+            "domContentLoaded": 30,
+            "load": 49,
+            "requestCount": 22,
+            "transferredBytes": 485160,
+            "wallMs": 1067
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/settings": {
+          "medians": {
+            "ttfb": 8,
+            "fcp": 28,
+            "lcp": 28,
+            "domContentLoaded": 18,
+            "load": 62,
+            "requestCount": 20,
+            "transferredBytes": 447810,
+            "wallMs": 1103
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        },
+        "/feed (processing)": {
+          "medians": {
+            "ttfb": 28,
+            "fcp": 56,
+            "lcp": 56,
+            "domContentLoaded": 39,
+            "load": 82,
+            "requestCount": 19,
+            "transferredBytes": 464190,
+            "wallMs": 4069
+          },
+          "documentStatus": 200,
+          "redirected": false,
+          "consoleErrors": 0
+        }
+      }
+    }
+  },
+  "gzipRouteBytes": {
+    "before": {
+      "/feed": 201140,
+      "/feed/[id]": 191521,
+      "/research/[id]": 182060,
+      "/": 178974,
+      "/research": 170444,
+      "/settings": 168365,
+      "/_not-found": 135970
+    },
+    "after": {
+      "/feed": 215634,
+      "/feed/[id]": 204546,
+      "/research/[id]": 194010,
+      "/": 192607,
+      "/research": 183346,
+      "/settings": 180901,
+      "/_not-found": 147449
+    }
+  },
+  "cachedNavigation": [
+    {
+      "project": "desktop-chromium",
+      "name": "cache-navigation.json",
+      "data": {
+        "requests": {
+          "list": 2,
+          "suggestions": 2,
+          "report": 1,
+          "rsc": 4
+        },
+        "returnSamplesMs": [10.700000047683716, 8.200000047683716],
+        "productionBuild": true
+      }
+    },
+    {
+      "project": "desktop-chromium",
+      "name": "feed-cache-navigation.json",
+      "data": {
+        "dataRequests": 4,
+        "filterRsc": 0,
+        "restoredScrollY": 800,
+        "loadedItems": 45
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "name": "cache-navigation.json",
+      "data": {
+        "requests": {
+          "list": 2,
+          "suggestions": 2,
+          "report": 1,
+          "rsc": 4
+        },
+        "returnSamplesMs": [9.299999952316284, 8.600000143051147],
+        "productionBuild": true
+      }
+    },
+    {
+      "project": "mobile-chromium",
+      "name": "feed-cache-navigation.json",
+      "data": {
+        "dataRequests": 4,
+        "filterRsc": 0,
+        "restoredScrollY": 800,
+        "loadedItems": 45
+      }
+    },
+    {
+      "project": "mobile-webkit",
+      "name": "cache-navigation.json",
+      "data": {
+        "requests": {
+          "list": 2,
+          "suggestions": 2,
+          "report": 1,
+          "rsc": 1
+        },
+        "returnSamplesMs": [6, 5],
+        "productionBuild": true
+      }
+    },
+    {
+      "project": "mobile-webkit",
+      "name": "feed-cache-navigation.json",
+      "data": {
+        "dataRequests": 4,
+        "filterRsc": 0,
+        "restoredScrollY": 800,
+        "loadedItems": 45
+      }
+    }
+  ]
+}

@@ -1,23 +1,19 @@
 /** @jest-environment jsdom */
-import {
-  fireEvent,
-  render as rtlRender,
-  screen,
-  waitFor,
-  type RenderOptions,
-} from "@testing-library/react";
+import { fireEvent, screen, waitFor, type RenderOptions } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { renderWithContentCache } from "../../../../tests/support/content-cache";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 import { TodayPrototype } from "../today-prototype";
 import { todayFixture } from "../fixtures";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
 }));
 
+// Story rows carry the area control, which writes through the account cache.
 const render = (ui: ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: ShortcutsProvider, ...options });
+  renderWithContentCache(ui, { wrapper: ShortcutsProvider, ...options });
 
 describe("TodayPrototype", () => {
   it("separates the edition from resurfacing without system-language explanations", () => {

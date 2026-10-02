@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { DistilLogo } from "@/components/brand/distil-logo";
 import { usePathname } from "next/navigation";
 import {
@@ -18,13 +17,14 @@ import { useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { useShortcutsHelp } from "@/components/shortcuts/shortcuts-provider";
 import { Kbd } from "@/components/ui/kbd";
+import { IntentLink, ResearchListIntentLink } from "@/components/navigation/intent-link";
 
 const navItems = [
   { href: "/", label: "Today", icon: Newspaper },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/research", label: "Research", icon: FlaskConical, prefetch: false },
-  { href: "/save", label: "Save", icon: BookmarkPlus, prefetch: false },
-  { href: "/settings", label: "Settings", icon: Settings, prefetch: false },
+  { href: "/research", label: "Research", icon: FlaskConical },
+  { href: "/save", label: "Save", icon: BookmarkPlus },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({
@@ -58,11 +58,11 @@ export function Sidebar({
       <nav aria-label="Sidebar" className="flex-1 space-y-1 px-2 py-2">
         {navItems.map((item) => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const NavLink = item.href === "/research" ? ResearchListIntentLink : IntentLink;
           return (
-            <Link
+            <NavLink
               key={item.href}
               href={item.href}
-              prefetch={item.prefetch}
               aria-current={isActive ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
               className={cn(
@@ -74,7 +74,7 @@ export function Sidebar({
             >
               <item.icon className="size-4 shrink-0" />
               {!collapsed && <span>{item.label}</span>}
-            </Link>
+            </NavLink>
           );
         })}
       </nav>

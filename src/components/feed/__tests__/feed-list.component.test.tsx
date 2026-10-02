@@ -11,20 +11,30 @@ import {
   waitFor,
   type RenderOptions,
 } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   ShortcutsProvider,
   useRegisteredShortcuts,
 } from "@/components/shortcuts/shortcuts-provider";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 import { FeedList } from "../feed-list";
 import type { ContentItem } from "@/lib/types";
 
+function TestProviders({ children }: { children: ReactNode }) {
+  return (
+    <ContentCacheProvider accountKey="feed-test-account">
+      <ShortcutsProvider>{children}</ShortcutsProvider>
+    </ContentCacheProvider>
+  );
+}
+
 const render = (ui: ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: ShortcutsProvider, ...options });
+  rtlRender(ui, { wrapper: TestProviders, ...options });
 const press = (key: string) => fireEvent.keyDown(window, { key });
 
 let mockSearch = "";
 const mockReplace = jest.fn();
+const mockHistoryReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/feed",
@@ -159,13 +169,22 @@ async function settleInitialFetch() {
   });
 }
 
+function feedRequestCalls(fetchMock: jest.MockedFunction<typeof fetch>) {
+  return fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/feed?"));
+}
+
 describe("FeedList without a server page (client fetch)", () => {
   let fetchMock: jest.MockedFunction<typeof fetch>;
 
   beforeEach(() => {
     cleanup();
     mockSearch = "";
+    Object.defineProperty(window.history, "replaceState", {
+      configurable: true,
+      value: mockHistoryReplace,
+    });
     fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockReset();
   });
 
   afterEach(() => {
@@ -189,15 +208,18 @@ describe("FeedList without a server page (client fetch)", () => {
     expect(screen.getByText("Read video")).toBeInTheDocument();
     expect(screen.queryByText("Rejected")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false"
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mark Unread article read" }));
-    expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-read", "true");
+    await waitFor(() =>
+      expect(screen.getByTestId("item-item-1")).toHaveAttribute("data-read", "true")
+    );
     expect(screen.getByText("Read video")).toBeInTheDocument();
   });
 
-  it("turns every filter change into a scroll-preserving router.replace of the URL", async () => {
+  it("updates same-page filters through native history and fetches each cached view", async () => {
     fetchMock.mockResolvedValue(
       itemsResponse([
         makeItem({ id: "manual", title: "Manual high article" }),
@@ -211,31 +233,36 @@ describe("FeedList without a server page (client fetch)", () => {
     expect(feedFetches()).toBe(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?source=gmail");
     fireEvent.click(screen.getByRole("button", { name: "Videos only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail&contentType=video", {
-      scroll: false,
-    });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/feed?source=gmail&contentType=video"
+    );
     fireEvent.click(screen.getByRole("button", { name: "High only" }));
-    expect(mockReplace).toHaveBeenLastCalledWith(
-      "/feed?source=gmail&contentType=video&priority=high",
-      { scroll: false }
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/feed?source=gmail&contentType=video&priority=high"
     );
     // The Unread quick filter lives in the Filters sheet and is on by default.
     const unread = screen.getByRole("button", { name: "Unread only" });
     expect(unread).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(unread);
-    expect(mockReplace).toHaveBeenLastCalledWith(
-      "/feed?source=gmail&contentType=video&priority=high&read=true",
-      { scroll: false }
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/feed?source=gmail&contentType=video&priority=high&read=true"
     );
     fireEvent.click(screen.getByRole("button", { name: "All sources" }));
-    expect(mockReplace).toHaveBeenLastCalledWith(
-      "/feed?contentType=video&priority=high&read=true",
-      { scroll: false }
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/feed?contentType=video&priority=high&read=true"
     );
-    // The server renders the next page; the island itself refetches nothing.
-    expect(feedFetches()).toBe(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(feedFetches()).toBeGreaterThan(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Compact view" }));
     expect(screen.getByTestId("item-manual")).toHaveAttribute("data-compact", "true");
@@ -247,7 +274,8 @@ describe("FeedList without a server page (client fetch)", () => {
     render(<FeedList initialPage={null} />);
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=recent&limit=100&source=gmail&contentType=video&priority=high"
+      "/api/v1/feed?archive=exclude&sort=recent&limit=100&source=gmail&contentType=video&priority=high",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     expect(screen.getByTestId("item-read")).toHaveAttribute("data-filter", "all");
   });
@@ -263,7 +291,8 @@ describe("FeedList without a server page (client fetch)", () => {
     );
     expect(await screen.findByText("Unread article")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=relevance&limit=100&q=durable+queues&read=false&site=x.com&area=work"
+      "/api/v1/feed?archive=exclude&sort=relevance&limit=100&q=durable+queues&read=false&site=x.com&area=work",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/items"))).toBe(
       false
@@ -271,7 +300,6 @@ describe("FeedList without a server page (client fetch)", () => {
   });
 
   it("narrows loaded items at once while typing, then commits the search to the URL", async () => {
-    jest.useFakeTimers();
     fetchMock.mockResolvedValue(
       itemsResponse([
         makeItem({ id: "a", title: "Durable queues in practice" }),
@@ -279,19 +307,19 @@ describe("FeedList without a server page (client fetch)", () => {
       ])
     );
     render(<FeedList initialPage={null} />);
-    await settleInitialFetch();
-    expect(screen.getByText("Gardening notes")).toBeInTheDocument();
+    expect(await screen.findByText("Gardening notes")).toBeInTheDocument();
+    jest.useFakeTimers();
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "durable" } });
     expect(screen.getByText("Durable queues in practice")).toBeInTheDocument();
     expect(screen.queryByText("Gardening notes")).not.toBeInTheDocument();
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockHistoryReplace).not.toHaveBeenCalled();
 
     act(() => {
       jest.advanceTimersByTime(250);
     });
-    expect(mockReplace).toHaveBeenCalledTimes(1);
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?q=durable", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenCalledTimes(1);
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?q=durable");
   });
 
   it("initializes the read filter from the URL", async () => {
@@ -332,9 +360,14 @@ describe("FeedList without a server page (client fetch)", () => {
         itemsResponse([makeItem({ processingStatus: "processing", title: "Processing item" })])
       );
     });
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval");
-    const { unmount } = render(<FeedList initialPage={null} />);
-    await settleInitialFetch();
+    const { unmount } = render(
+      <FeedList
+        initialPage={{
+          key: "archive=exclude&sort=for_you&limit=100&read=false",
+          items: [makeItem({ processingStatus: "processing", title: "Processing item" })],
+        }}
+      />
+    );
     expect(screen.getByText("Processing item")).toBeInTheDocument();
     const initialFeedCalls = fetchMock.mock.calls.filter(([input]) =>
       String(input).startsWith("/api/v1/feed?")
@@ -346,24 +379,33 @@ describe("FeedList without a server page (client fetch)", () => {
       await Promise.resolve();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/items/status?ids=item-1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/items/status?ids=item-1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(
       fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/feed?")).length
-    ).toBe(initialFeedCalls);
+    ).toBe(initialFeedCalls + 1);
+    const statusCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).startsWith("/api/v1/items/status")
+    ).length;
     unmount();
-    expect(clearIntervalSpy).toHaveBeenCalled();
-    clearIntervalSpy.mockRestore();
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+    });
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/v1/items/status"))
+    ).toHaveLength(statusCalls);
   });
 
-  it("shows an error card instead of crashing when the API rejects the request", async () => {
+  it("expires the account cache when the API rejects the request as unauthorized", async () => {
     fetchMock.mockResolvedValue(errorResponse("Sign in to load your feed."));
 
     render(<FeedList initialPage={null} />);
     await settleInitialFetch();
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Feed is unavailable");
-    expect(screen.getByRole("alert")).toHaveTextContent("Sign in to load your feed.");
-    expect(screen.queryByRole("status", { name: "Loading feed" })).not.toBeInTheDocument();
+    expect(screen.getByText("Your session changed.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Continue" })).toBeInTheDocument();
   });
 
   it("falls back to an empty list when a successful response carries no items", async () => {
@@ -373,9 +415,7 @@ describe("FeedList without a server page (client fetch)", () => {
     } as unknown as Response);
 
     render(<FeedList initialPage={null} />);
-    await settleInitialFetch();
-
-    expect(screen.getByText("No items match your filters.")).toBeInTheDocument();
+    expect(await screen.findByText("No items match your filters.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -385,7 +425,7 @@ describe("FeedList without a server page (client fetch)", () => {
     render(<FeedList initialPage={null} />);
     await settleInitialFetch();
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?contentType=video", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?contentType=video");
   });
 });
 
@@ -395,7 +435,12 @@ describe("FeedList with a server-rendered page", () => {
   beforeEach(() => {
     cleanup();
     mockSearch = "";
+    Object.defineProperty(window.history, "replaceState", {
+      configurable: true,
+      value: mockHistoryReplace,
+    });
     fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockReset();
   });
 
   afterEach(() => {
@@ -420,6 +465,84 @@ describe("FeedList with a server-rendered page", () => {
     await settleInitialFetch();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+  });
+
+  it("keeps a fresh fetched page in the account cache across a remount", async () => {
+    fetchMock.mockResolvedValue(itemsResponse([makeItem({ title: "Cached item" })]));
+    const shell = (show: boolean) => (
+      <ContentCacheProvider accountKey="persistent-feed-account">
+        <ShortcutsProvider>{show ? <FeedList initialPage={null} /> : null}</ShortcutsProvider>
+      </ContentCacheProvider>
+    );
+    const view = rtlRender(shell(true));
+
+    expect(await screen.findByText("Cached item")).toBeInTheDocument();
+    expect(feedRequestCalls(fetchMock)).toHaveLength(1);
+
+    view.rerender(shell(false));
+    view.rerender(shell(true));
+
+    expect(screen.getByText("Cached item")).toBeInTheDocument();
+    expect(feedRequestCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it("retains and deduplicates later pages through refresh and remount", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        itemsResponse([
+          makeItem({ id: "page-1", title: "First page" }),
+          makeItem({ id: "page-2", title: "Second page" }),
+        ])
+      )
+      .mockResolvedValueOnce(itemsResponse([makeItem({ id: "page-1", title: "First refreshed" })]));
+    const initialPage = {
+      key: "archive=exclude&sort=for_you&limit=100&read=false",
+      items: [makeItem({ id: "page-1", title: "First page" })],
+      nextCursor: "cursor-2",
+    };
+    const shell = (show: boolean) => (
+      <ContentCacheProvider accountKey="paginated-feed-account">
+        <ShortcutsProvider>
+          {show ? <FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} /> : null}
+        </ShortcutsProvider>
+      </ContentCacheProvider>
+    );
+    const view = rtlRender(shell(true));
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("Second page")).toBeInTheDocument();
+    expect(screen.getAllByText("First page")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("First refreshed")).toBeInTheDocument();
+    expect(screen.getByText("Second page")).toBeInTheDocument();
+
+    view.rerender(shell(false));
+    view.rerender(shell(true));
+    expect(screen.getByText("First refreshed")).toBeInTheDocument();
+    expect(screen.getByText("Second page")).toBeInTheDocument();
+    expect(feedRequestCalls(fetchMock)).toHaveLength(2);
+  });
+
+  it("keeps stale server data visible when its background refresh fails", async () => {
+    fetchMock.mockRejectedValue(new Error("offline"));
+    render(
+      <FeedList
+        initialPage={{
+          key: "archive=exclude&sort=for_you&limit=100&read=false",
+          items: [makeItem({ title: "Still readable" })],
+        }}
+        initialDataUpdatedAt={Date.now() - 120_001}
+      />
+    );
+
+    expect(screen.getByText("Still readable")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not refresh Feed. Showing the last loaded items."
+    );
+    expect(screen.getByText("Still readable")).toBeInTheDocument();
   });
 
   it("selects filters optimistically and dims the current list until the URL commits", async () => {
@@ -427,7 +550,10 @@ describe("FeedList with a server-rendered page", () => {
       key: "archive=exclude&sort=for_you&limit=100&read=false",
       items: [makeItem({ id: "server-1", title: "Server item" })],
     };
-    const { rerender } = render(<FeedList initialPage={initialPage} />);
+    fetchMock.mockResolvedValue(
+      itemsResponse([makeItem({ id: "gmail", title: "Gmail item", sourceType: "gmail" })])
+    );
+    render(<FeedList initialPage={initialPage} />);
     const list = screen.getByTestId("item-server-1").parentElement;
 
     expect(screen.getByTestId("sheet-state")).toHaveTextContent("card||||0");
@@ -435,27 +561,46 @@ describe("FeedList with a server-rendered page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
 
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?source=gmail", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?source=gmail");
     expect(screen.getByTestId("sheet-state")).toHaveTextContent("card|gmail|||1");
     expect(list).toHaveAttribute("aria-busy", "true");
     expect(list).toHaveClass("opacity-60");
 
-    mockSearch = "source=gmail";
-    rerender(
-      <FeedList
-        initialPage={{
-          key: "archive=exclude&sort=for_you&limit=100&read=false&source=gmail",
-          items: [makeItem({ id: "gmail", title: "Gmail item", sourceType: "gmail" })],
-        }}
-      />
+    expect(await screen.findByText("Gmail item")).toBeInTheDocument();
+    expect(screen.getByTestId("item-gmail").parentElement).toHaveAttribute("aria-busy", "false");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&source=gmail",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+
+  it("releases an acknowledged filter target when browser history returns to the prior URL", async () => {
+    const initialPage = {
+      key: "archive=exclude&sort=for_you&limit=100&read=false",
+      items: [makeItem({ id: "original", title: "Original page" })],
+    };
+    fetchMock.mockResolvedValue(
+      itemsResponse([makeItem({ id: "gmail", title: "Gmail page", sourceType: "gmail" })])
+    );
+    const view = render(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Gmail only" }));
+    expect(await screen.findByText("Gmail page")).toBeInTheDocument();
+
+    mockSearch = "source=gmail";
+    view.rerender(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
     await act(async () => {
+      await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(screen.getByText("Gmail item")).toBeInTheDocument();
-    expect(screen.getByTestId("item-gmail").parentElement).toHaveAttribute("aria-busy", "false");
-    expect(fetchMock).not.toHaveBeenCalled();
+    mockSearch = "";
+    view.rerender(<FeedList initialPage={initialPage} initialDataUpdatedAt={Date.now()} />);
+
+    expect(screen.getByText("Original page")).toBeInTheDocument();
+    expect(screen.queryByText("Gmail page")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("card||||0");
+    expect(feedRequestCalls(fetchMock)).toHaveLength(1);
   });
 
   it("ignores a server page rendered for different filters and fetches instead", async () => {
@@ -472,7 +617,8 @@ describe("FeedList with a server-rendered page", () => {
     expect(screen.queryByText("Stale item")).not.toBeInTheDocument();
     expect(await screen.findByText("Fresh item")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=recent&limit=100&read=false"
+      "/api/v1/feed?archive=exclude&sort=recent&limit=100&read=false",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -491,7 +637,8 @@ describe("FeedList with a server-rendered page", () => {
     expect(await screen.findByText("Second page")).toBeInTheDocument();
     expect(screen.getByText("First page")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2"
+      "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2",
+      expect.objectContaining({ signal: expect.anything() })
     );
   });
 });
@@ -511,7 +658,12 @@ describe("FeedList keyboard shortcuts", () => {
   beforeEach(() => {
     cleanup();
     mockSearch = "";
+    Object.defineProperty(window.history, "replaceState", {
+      configurable: true,
+      value: mockHistoryReplace,
+    });
     window.localStorage.clear();
+    jest.mocked(global.fetch).mockReset();
   });
   afterEach(() => jest.clearAllMocks());
 
@@ -530,31 +682,47 @@ describe("FeedList keyboard shortcuts", () => {
     expect(opened).toHaveBeenCalledTimes(1);
   });
 
-  it("r marks the focused row read", () => {
+  it("r marks the focused row read", async () => {
+    jest
+      .mocked(global.fetch)
+      .mockImplementation((input) =>
+        String(input).includes("/state")
+          ? Promise.resolve({ ok: true, status: 200 } as Response)
+          : Promise.resolve(
+              itemsResponse(
+                page().items.map((entry) => (entry.id === "b" ? { ...entry, isRead: true } : entry))
+              )
+            )
+      );
     render(<FeedList initialPage={page()} />);
     press("j");
     press("j");
     press("r");
-    expect(screen.getByTestId("item-b")).toHaveAttribute("data-read", "true");
+    await waitFor(() => expect(screen.getByTestId("item-b")).toHaveAttribute("data-read", "true"));
     expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "false");
   });
 
-  it("r persists the read state with a PATCH", () => {
+  it("r persists the read state with a PATCH", async () => {
     const fetchMock = jest.mocked(global.fetch);
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+    fetchMock.mockImplementation((input) =>
+      String(input).includes("/state")
+        ? Promise.resolve({ ok: true, status: 200 } as Response)
+        : Promise.resolve(itemsResponse(page().items))
+    );
     render(<FeedList initialPage={page()} />);
     press("j");
     press("r");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/items/a",
-      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: true }) })
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/items/a/state",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: true }) })
+      )
     );
-    expect(screen.getByTestId("item-a")).toHaveAttribute("data-read", "true");
   });
 
   it("r reverts the row when the PATCH fails", async () => {
     const fetchMock = jest.mocked(global.fetch);
-    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) } as Response);
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as Response);
     render(<FeedList initialPage={page()} />);
     press("j");
     press("r");
@@ -590,7 +758,10 @@ describe("FeedList keyboard shortcuts", () => {
     press("j");
     press("j");
     expect(await screen.findByText("Delta")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("cursor=cursor-2"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("cursor=cursor-2"),
+      expect.objectContaining({ signal: expect.anything() })
+    );
   });
 
   it("f opens the Filters sheet", () => {
@@ -603,7 +774,7 @@ describe("FeedList keyboard shortcuts", () => {
   it("u toggles read items through the URL and c toggles the layout", () => {
     render(<FeedList initialPage={page()} />);
     press("u");
-    expect(mockReplace).toHaveBeenLastCalledWith("/feed?read=true", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?read=true");
     expect(screen.getByTestId("item-a")).toHaveAttribute("data-compact", "false");
     press("c");
     expect(screen.getByTestId("item-a")).toHaveAttribute("data-compact", "true");

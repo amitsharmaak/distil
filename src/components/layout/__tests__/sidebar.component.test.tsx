@@ -4,11 +4,13 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Sidebar } from "../sidebar";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 const mockUsePathname = jest.fn<string, []>();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
+  useRouter: () => ({ prefetch: jest.fn() }),
 }));
 
 jest.mock("next/link", () => ({
@@ -39,8 +41,15 @@ describe("Sidebar", () => {
     jest.clearAllMocks();
   });
 
+  const renderSidebar = () =>
+    render(
+      <ContentCacheProvider accountKey="sidebar-test">
+        <Sidebar />
+      </ContentCacheProvider>
+    );
+
   it("renders the expanded brand and all navigation destinations", () => {
-    render(<Sidebar />);
+    renderSidebar();
 
     const logo = screen.getByRole("img", { name: "Distil logo" });
     expect(logo.tagName.toLowerCase()).toBe("svg");
@@ -56,7 +65,7 @@ describe("Sidebar", () => {
   });
 
   it("keeps legacy and library surfaces out of primary navigation", () => {
-    render(<Sidebar />);
+    renderSidebar();
 
     for (const name of [
       "Search",
@@ -71,19 +80,16 @@ describe("Sidebar", () => {
     }
   });
 
-  it("prefetches primary routes but not rarely used destinations", () => {
-    render(<Sidebar />);
+  it("disables viewport prefetch for every destination", () => {
+    renderSidebar();
 
-    for (const name of ["Today", "Feed"]) {
-      expect(screen.getByRole("link", { name })).toHaveAttribute("data-prefetch", "default");
-    }
-    for (const name of ["Research", "Save", "Settings"]) {
+    for (const name of ["Today", "Feed", "Research", "Save", "Settings"]) {
       expect(screen.getByRole("link", { name })).toHaveAttribute("data-prefetch", "false");
     }
   });
 
   it("marks only the exact home route active", () => {
-    render(<Sidebar />);
+    renderSidebar();
 
     expect(screen.getByRole("link", { name: "Today" })).toHaveClass("bg-sidebar-accent");
     expect(screen.getByRole("link", { name: "Feed" })).not.toHaveClass("bg-sidebar-accent");
@@ -92,14 +98,14 @@ describe("Sidebar", () => {
   it("marks nested section routes active", () => {
     mockUsePathname.mockReturnValue("/feed/article-1");
 
-    render(<Sidebar />);
+    renderSidebar();
 
     expect(screen.getByRole("link", { name: "Feed" })).toHaveClass("bg-sidebar-accent");
     expect(screen.getByRole("link", { name: "Today" })).not.toHaveClass("bg-sidebar-accent");
   });
 
   it("collapses and expands while keeping an accessible toggle", () => {
-    render(<Sidebar />);
+    renderSidebar();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 

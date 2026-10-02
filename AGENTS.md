@@ -129,6 +129,18 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were deleted in
   P4; Ask Distil (`/ask`, `/api/v1/answers`) was deleted on 2026-09-30. Phase 2 surfaces sit
   behind `FEATURE_*` flags.
+- **Client navigation/cache:** `src/lib/client-cache/` provides a verified-account, memory-only
+  TanStack Query cache above route navigation. Feed/Today are fresh for two minutes; Research lists,
+  suggestions and Archive for five; report and reader metadata for thirty. Stale content stays
+  visible during refresh. Scope reset cancels/clears on sign-out, account change and authorization
+  failures, including across tabs. Sign-out, and a server render for a different account, leave by
+  a full document load (`replaceFullPage`) so the router cache is discarded too; do not replace
+  that with `router.replace`/`router.refresh()`. Item mutations share optimistic updates and rollback through
+  `useItemMutation`; keep reads abortable and use the shared invalidation paths. Server rendering
+  still supplies initial Feed/Today and reader metadata. Next browser route output is retained for
+  thirty minutes, independently of the shorter data freshness windows. Summary/extraction/feedback
+  changes refresh reader RSC output. `IntentLink` warms routes on hover, focus
+  or touch instead of prefetching every visible card. Account/session/token reads remain fresh.
 - **Capture clients:** `browser-extension/` (Chrome MV3, browser sign-in, posts to
   `/api/v1/captures`, offline replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`
   (one public iCloud installer, one-time code pairing through `/api/v1/shortcut-pairings/exchange`,

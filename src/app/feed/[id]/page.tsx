@@ -31,6 +31,11 @@ import { isLongFormXPost } from "@/lib/utils";
 import { hasTranscript, linkedYouTubeId } from "@/lib/phase2/video-transcript";
 import { VideoTranscriptButton } from "@/components/feed/video-transcript-button";
 
+/** When the server read finished; the client cache dates its seeded reader data from this. */
+function currentEpochMilliseconds(): number {
+  return Date.now();
+}
+
 /** Tokenise tweet text into clickable @mentions, #hashtags, and URLs. */
 function renderTweetText(text: string): React.ReactNode[] {
   const tokenPattern = /(https?:\/\/[^\s]+)|(@\w+)|(#\w+)/g;
@@ -105,17 +110,19 @@ export default async function ItemDetailPage({
   const auth = await resolveRequestAuthContext(
     new Request("http://distil.local/feed/reader", { headers: requestHeaders })
   );
-  // One tenant transaction for the whole read: the item, its summaries and
-  // feedback, and the keyset neighbours the prev/next controls need.
+  // One tenant transaction for the whole read: the item, its summaries,
+  // feedback, reader knowledge, and the keyset neighbours the controls need.
   const loaded = await withTenantRepositories(auth, async (repositories) => {
     const item = await repositories.items.findById(id);
     if (!item) return null;
-    const [aiSummaries, existingFeedback, neighbours] = await Promise.all([
+    const [aiSummaries, existingFeedback, neighbours, note, annotations] = await Promise.all([
       repositories.summaries.findAll(item.id),
       repositories.feedback.findForItem(item.id),
       repositories.items.findNeighbours(item.id, { unreadOnly: filter !== "all" }),
+      knowledgeUiEnabled ? repositories.itemNotes.find(item.id) : Promise.resolve(undefined),
+      knowledgeUiEnabled ? repositories.annotations.listForItem(item.id) : Promise.resolve([]),
     ]);
-    return { item, aiSummaries, existingFeedback, neighbours };
+    return { item, aiSummaries, existingFeedback, neighbours, note, annotations };
   });
 
   if (!loaded) {
@@ -137,7 +144,8 @@ export default async function ItemDetailPage({
     );
   }
 
-  const { item, aiSummaries, existingFeedback, neighbours } = loaded;
+  const { item, aiSummaries, existingFeedback, neighbours, note, annotations } = loaded;
+  const readerDataUpdatedAt = currentEpochMilliseconds();
   const baseStrategy = detectStrategy(item.url);
   // X Articles have substantial fullContent extracted from fxtwitter — treat as article.
   const isXArticle =
@@ -273,7 +281,17 @@ export default async function ItemDetailPage({
           <ReaderAnnotations
             itemId={item.id}
             header={header}
-            notes={<ReaderKnowledgeControls itemId={item.id} />}
+            initialAnnotations={annotations}
+            initialUpdatedAt={readerDataUpdatedAt}
+            notes={
+              <ReaderKnowledgeControls
+                itemId={item.id}
+                initial={{
+                  note: note ? { body: note.body } : null,
+                  updatedAt: readerDataUpdatedAt,
+                }}
+              />
+            }
           >
             {content}
           </ReaderAnnotations>
@@ -292,6 +310,19 @@ export default async function ItemDetailPage({
           nextId={neighbours.nextId}
           filter={filter}
           knowledgeUiEnabled={knowledgeUiEnabled}
+          initialReaderState={
+            knowledgeUiEnabled
+              ? {
+                  state: {
+                    isRead: item.isRead,
+                    archived: Boolean(item.archivedAt),
+                    readingProgress: item.readingProgress ?? 0,
+                    manualPriority: item.manualPriority ?? null,
+                  },
+                  updatedAt: readerDataUpdatedAt,
+                }
+              : undefined
+          }
           initialFeedback={
             existingFeedback
               ? { rating: existingFeedback.rating, reason: existingFeedback.reason ?? null }

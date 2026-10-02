@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useContentCache } from "@/lib/client-cache/content-cache";
+import { contentMutationRequest } from "@/lib/client-cache/mutation-request";
 
 interface LazyArticleExtractProps {
   itemId: string;
@@ -27,6 +29,7 @@ export function LazyArticleExtract({
   children,
 }: LazyArticleExtractProps) {
   const router = useRouter();
+  const cache = useContentCache();
   const alreadyDone = hasFullContent || !!contentExtractedAt;
   const shouldExtract = !alreadyDone && !!url;
   const [status, setStatus] = useState<"idle" | "loading" | "done">(
@@ -40,12 +43,16 @@ export function LazyArticleExtract({
     async function run() {
       setStatus("loading");
       try {
-        const res = await fetch(`/api/items/${itemId}/extract`, {
+        const res = await contentMutationRequest(`/api/items/${itemId}/extract`, {
           method: "POST",
         });
         if (cancelled) return;
         if (res.ok) {
           setStatus("done");
+          void Promise.all([cache.invalidate(["feed"]), cache.invalidate(["today"])]).catch(
+            () => undefined
+          );
+          router.refresh();
         } else {
           setStatus("done");
           router.refresh();
@@ -62,7 +69,7 @@ export function LazyArticleExtract({
     return () => {
       cancelled = true;
     };
-  }, [itemId, url, shouldExtract, router]);
+  }, [cache, itemId, url, shouldExtract, router]);
 
   if (shouldExtract && status === "loading") {
     return (

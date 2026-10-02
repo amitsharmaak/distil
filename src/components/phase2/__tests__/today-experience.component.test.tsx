@@ -9,24 +9,39 @@ import {
   screen,
   type RenderOptions,
 } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
+import { ContentCacheProvider } from "@/lib/client-cache/content-cache";
 
 import { TodayExperience, type TodayInitial } from "../today-experience";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { todayFilterState, todayView } from "@/lib/feed/today-selection";
 
+function TestProviders({ children }: { children: ReactNode }) {
+  return (
+    <ContentCacheProvider accountKey="today-test-account">
+      <ShortcutsProvider>{children}</ShortcutsProvider>
+    </ContentCacheProvider>
+  );
+}
+
 const render = (ui: ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: ShortcutsProvider, ...options });
+  rtlRender(ui, { wrapper: TestProviders, ...options });
 
 let mockSearch = "";
 const mockReplace = jest.fn();
+const mockHistoryReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/feed",
   useSearchParams: () => new URLSearchParams(mockSearch),
-  useRouter: () => ({ replace: mockReplace, push: jest.fn(), refresh: jest.fn() }),
+  useRouter: () => ({
+    replace: mockReplace,
+    push: jest.fn(),
+    refresh: jest.fn(),
+    prefetch: jest.fn(),
+  }),
 }));
 
 function item(overrides: Partial<FeedItem> = {}): FeedItem {
@@ -82,6 +97,11 @@ function feedCalls(): string[] {
 beforeEach(() => {
   mockSearch = "";
   mockReplace.mockReset();
+  mockHistoryReplace.mockReset();
+  Object.defineProperty(window.history, "replaceState", {
+    configurable: true,
+    value: mockHistoryReplace,
+  });
   jest.mocked(global.fetch).mockClear();
 });
 
@@ -129,13 +149,33 @@ describe("TodayExperience", () => {
     expect(await screen.findByText("Durable capture beats connectors.")).toBeInTheDocument();
   });
 
+  it("reuses a fresh Today view across a remount without another GET", async () => {
+    jest.mocked(global.fetch).mockResolvedValue(response([item({ title: "Cached today" })]));
+    const shell = (show: boolean) => (
+      <ContentCacheProvider accountKey="persistent-today-account">
+        <ShortcutsProvider>{show ? <TodayExperience /> : null}</ShortcutsProvider>
+      </ContentCacheProvider>
+    );
+    const view = rtlRender(shell(true));
+
+    expect(await screen.findByText("Cached today")).toBeInTheDocument();
+    expect(feedCalls()).toHaveLength(1);
+
+    view.rerender(shell(false));
+    view.rerender(shell(true));
+
+    expect(screen.getByText("Cached today")).toBeInTheDocument();
+    expect(feedCalls()).toHaveLength(1);
+  });
+
   it("surfaces an API failure instead of silently showing fixtures", async () => {
     jest.mocked(global.fetch).mockResolvedValue({
       ok: false,
+      status: 503,
       json: jest.fn().mockResolvedValue({ error: { message: "PostgreSQL is required" } }),
     } as unknown as Response);
     render(<TodayExperience />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("PostgreSQL is required");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to refresh (503)");
   });
 
   it("shows the default sections with the search and Filters, and no fetch, from server data", () => {
@@ -243,13 +283,13 @@ describe("TodayExperience", () => {
       expect(screen.getByRole("heading", { name: "Unread matches" })).toBeInTheDocument();
       expect(screen.getByText("Gardening notes")).toBeInTheDocument();
       expect(screen.queryByText("Important reading")).not.toBeInTheDocument();
-      expect(mockReplace).not.toHaveBeenCalled();
+      expect(mockHistoryReplace).not.toHaveBeenCalled();
 
       act(() => {
         jest.advanceTimersByTime(250);
       });
-      expect(mockReplace).toHaveBeenCalledTimes(1);
-      expect(mockReplace).toHaveBeenCalledWith("/?q=garden", { scroll: false });
+      expect(mockHistoryReplace).toHaveBeenCalledTimes(1);
+      expect(mockHistoryReplace).toHaveBeenCalledWith(null, "", "/?q=garden");
     } finally {
       jest.useRealTimers();
     }
@@ -259,6 +299,33 @@ describe("TodayExperience", () => {
     mockSearch = "q=durable&area=work";
     render(<TodayExperience initial={serverInitial({ items: [] })} />);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(mockReplace).toHaveBeenLastCalledWith("/", { scroll: false });
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/");
+  });
+
+  it("honors browser history after the pending Today URL has been observed", async () => {
+    mockSearch = "q=alpha";
+    const initial = serverInitial({ items: [item({ id: "alpha", title: "Alpha result" })] });
+    jest
+      .mocked(global.fetch)
+      .mockResolvedValue(response([item({ id: "today", title: "Today default" })]));
+    const view = render(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(await screen.findByText("Today default")).toBeInTheDocument();
+
+    mockSearch = "";
+    view.rerender(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    mockSearch = "q=alpha";
+    view.rerender(<TodayExperience initial={initial} initialDataUpdatedAt={Date.now()} />);
+
+    expect(screen.getByText("Alpha result")).toBeInTheDocument();
+    expect(screen.queryByText("Today default")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search your items" })).toHaveValue("alpha");
+    expect(feedCalls()).toHaveLength(1);
   });
 });

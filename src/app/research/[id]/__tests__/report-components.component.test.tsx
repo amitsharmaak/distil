@@ -2,8 +2,9 @@
  * @jest-environment jsdom
  */
 
+import { renderWithContentCache as baseRender } from "../../../../../tests/support/content-cache";
 import React from "react";
-import { fireEvent, render as baseRender, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { ShortcutsProvider } from "@/components/shortcuts/shortcuts-provider";
 import type { Components, ExtraProps } from "react-markdown";
 

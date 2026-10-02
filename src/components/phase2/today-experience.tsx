@@ -1,11 +1,15 @@
 "use client";
 
-import { startTransition, useEffect, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { normalizeSearchQuery } from "@/lib/feed/feed-url";
 import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
@@ -31,12 +35,25 @@ type FeedResponse = {
 
 /** What the server page hands over for its URL. */
 export type TodayInitial = TodayView;
+type PendingTodayNavigation = {
+  url: string;
+  key: string;
+  originKey: string;
+  acknowledged: boolean;
+  previousView: TodayView | null;
+};
 
-async function getFeed(query: URLSearchParams): Promise<FeedResponse> {
-  const response = await fetch(`/api/v1/feed?${query.toString()}`);
-  const payload = (await response.json().catch(() => ({}))) as FeedResponse;
-  if (!response.ok) throw new Error(payload.error?.message || "Unable to load your reading queue.");
-  return payload;
+function searchParamsForUrl(url: string): URLSearchParams {
+  const queryStart = url.indexOf("?");
+  return new URLSearchParams(queryStart === -1 ? "" : url.slice(queryStart + 1));
+}
+
+function updatedLabel(updatedAt: number): string {
+  if (!updatedAt) return "Not updated yet";
+  return `Updated ${new Date(updatedAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
 }
 
 /** Case-insensitive match on what a card shows, for the instant local narrowing. */
@@ -57,87 +74,139 @@ function viewItems(view: TodayView): KnowledgeItem[] {
  * selection (priority reading and the resurfacing strip). A search, an area
  * or any other filter replaces both sections with one list of unread matches
  * and a "Search everything →" link to the Feed. The URL is the only state:
- * the filter bar and sheet navigate with `router.replace`, and the server
- * page renders the view for the new URL.
+ * the filter bar and sheet update native history. Next synchronizes
+ * `useSearchParams`, while the account cache supplies or refreshes that view
+ * without another server-component request.
  *
  * With `initial` for the current URL this is purely presentational. Without
  * it (no server-side user, the legacy SQLite path, or
  * `FEATURE_SERVER_RENDER=false`) it fetches the same read from the API.
  */
-export function TodayExperience({ initial }: { initial?: TodayInitial | null } = {}) {
-  const router = useRouter();
+export function TodayExperience({
+  initial,
+  initialDataUpdatedAt,
+}: { initial?: TodayInitial | null; initialDataUpdatedAt?: number } = {}) {
   const searchParams = useSearchParams();
-  const filters = todayFilterState(searchParams);
+  const urlFilters = todayFilterState(searchParams);
+  const urlViewKey = todayViewKey(urlFilters);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingTodayNavigation | null>(null);
+  const pendingUrl =
+    pendingNavigation &&
+    !pendingNavigation.acknowledged &&
+    urlViewKey === pendingNavigation.originKey &&
+    pendingNavigation.key !== urlViewKey
+      ? pendingNavigation.url
+      : null;
+  const effectiveSearchParams = pendingUrl ? searchParamsForUrl(pendingUrl) : searchParams;
+  const filters = pendingUrl ? todayFilterState(effectiveSearchParams) : urlFilters;
   const filtered = isTodayFiltered(filters);
   const viewKey = todayViewKey(filters);
   const serverView = initial && initial.key === viewKey ? initial : null;
-
-  const [view, setView] = useState<TodayView | null>(serverView);
-  const [error, setError] = useState<string | null>(null);
+  const requestQuery = filtered
+    ? todayResultsSearch(filters)
+    : new URLSearchParams(TODAY_FEED_QUERY);
+  const todayQuery = useContentQuery<TodayView>({
+    key: ["today", viewKey],
+    url: `/api/v1/feed?${requestQuery.toString()}`,
+    staleTime: CACHE_FRESHNESS.feed,
+    initialData: serverView ?? undefined,
+    initialDataUpdatedAt: serverView ? initialDataUpdatedAt : undefined,
+    transform: (raw) => todayView(filters, (raw ?? {}) as FeedResponse),
+  });
+  const previousView = pendingNavigation?.key === viewKey ? pendingNavigation.previousView : null;
+  const view = todayQuery.data ?? previousView ?? serverView;
+  const error = todayQuery.error instanceof Error ? todayQuery.error.message : null;
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
-  const [isPending, startNavigation] = useTransition();
+  useViewScroll(`today:${viewKey}`, Boolean(todayQuery.data));
 
-  // A new server view (after router.replace) replaces what is shown in one step.
+  // A history update is pending only until Next reports its target key. Later
+  // popstate/external URL changes must not be overwritten by an old target.
   useEffect(() => {
-    if (!serverView) return;
-    startTransition(() => {
-      setView(serverView);
-      setError(null);
+    if (
+      !pendingNavigation ||
+      pendingNavigation.acknowledged ||
+      urlViewKey !== pendingNavigation.key
+    ) {
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPendingNavigation((current) =>
+        current?.url === pendingNavigation.url ? { ...current, acknowledged: true } : current
+      );
     });
-  }, [serverView]);
-
-  // Client fetch only when the server did not render this exact view.
-  const needsFetch = !serverView && view?.key !== viewKey;
-  useEffect(() => {
-    if (!needsFetch) return;
-    let cancelled = false;
-    const state = todayFilterState(searchParams);
-    const query = isTodayFiltered(state)
-      ? todayResultsSearch(state)
-      : new URLSearchParams(TODAY_FEED_QUERY);
-    getFeed(query)
-      .then((payload) => {
-        if (cancelled) return;
-        setView(todayView(state, payload));
-        setError(null);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Unable to load Today.");
-      });
     return () => {
-      cancelled = true;
+      active = false;
     };
-    // `searchParams` is read through `viewKey`, its stable identity for Today.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsFetch, viewKey]);
+  }, [pendingNavigation, urlViewKey]);
 
   const replaceFilters = (updates: FilterUpdates) => {
-    startNavigation(() => {
-      router.replace(filtersUrl("/", searchParams, updates), { scroll: false });
+    const current = pendingUrl
+      ? searchParamsForUrl(pendingUrl)
+      : new URLSearchParams(searchParams.toString());
+    const nextUrl = filtersUrl("/", current, updates);
+    const nextKey = todayViewKey(todayFilterState(searchParamsForUrl(nextUrl)));
+    setPendingNavigation({
+      url: nextUrl,
+      key: nextKey,
+      originKey: urlViewKey,
+      acknowledged: nextKey === urlViewKey,
+      previousView: view,
     });
+    window.history.replaceState(null, "", nextUrl);
   };
 
   const filterBar = (
-    <FilterBar
-      filters={filters}
-      onChange={replaceFilters}
-      onSearchDraftChange={setSearchDraft}
-      placeholder="Search unread"
-      leading={<TodayHeading items={view ? viewItems(view) : []} />}
-      sheet={
-        <FeedFilterSheet
-          filters={filters}
-          onChange={replaceFilters}
-          activeCount={activeFilterChips(filters).length}
-          topicOptions={view?.topics ?? []}
-          unreadQueue
-          showSort={filtered}
-        />
-      }
-    />
+    <>
+      <FilterBar
+        filters={filters}
+        onChange={replaceFilters}
+        onSearchDraftChange={setSearchDraft}
+        placeholder="Search unread"
+        leading={
+          <TodayHeading
+            items={view ? viewItems(view) : []}
+            status={
+              <>
+                <span className="text-xs">{updatedLabel(todayQuery.dataUpdatedAt)}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 gap-1.5"
+                  onClick={() => void todayQuery.refetch()}
+                  disabled={todayQuery.isFetching}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${todayQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+                  />
+                  Refresh
+                </Button>
+              </>
+            }
+          />
+        }
+        sheet={
+          <FeedFilterSheet
+            filters={filters}
+            onChange={replaceFilters}
+            activeCount={activeFilterChips(filters).length}
+            topicOptions={view?.topics ?? []}
+            unreadQueue
+            showSort={filtered}
+          />
+        }
+      />
+      {error && view && (
+        <p className="text-sm text-danger" role="alert">
+          Could not refresh Today. Showing the last loaded view.
+        </p>
+      )}
+    </>
   );
 
-  if (error) {
+  if (error && !view) {
     return (
       <TodayPrototype priority={[]} revisiting={[]} header={filterBar}>
         <div className="rounded-xl border border-danger/40 p-5 text-sm" role="alert">
@@ -176,7 +245,9 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
       items: viewItems(view).filter((item) => matchesDraft(item, draftNeedle)),
       hasMore: false,
       emptyMessage: `Nothing on screen matches “${searchDraft.trim()}”.`,
-      searchEverythingHref: todaySearchEverythingHref(withQuery(searchParams, searchDraft.trim())),
+      searchEverythingHref: todaySearchEverythingHref(
+        withQuery(effectiveSearchParams, searchDraft.trim())
+      ),
     };
   } else if (view.mode === "results") {
     const withFilters = activeFilterChips(filters).length > 0 ? " with these filters" : "";
@@ -186,7 +257,7 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
       emptyMessage: filters.searchQuery
         ? `Nothing unread matches “${filters.searchQuery}”${withFilters}.`
         : "No unread items match these filters.",
-      searchEverythingHref: todaySearchEverythingHref(searchParams),
+      searchEverythingHref: todaySearchEverythingHref(effectiveSearchParams),
     };
   }
 
@@ -196,7 +267,7 @@ export function TodayExperience({ initial }: { initial?: TodayInitial | null } =
       revisiting={view.mode === "sections" ? view.sections.revisiting : []}
       header={filterBar}
       results={results}
-      busy={isPending || stale}
+      busy={(todayQuery.isFetching && !todayQuery.data) || stale}
     />
   );
 }

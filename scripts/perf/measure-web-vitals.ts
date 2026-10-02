@@ -22,7 +22,7 @@
  *
  * `DISTIL_E2E_HOST` / `DISTIL_E2E_PORT` change the origin (default
  * 127.0.0.1:3100, never the dev server's port 3000). Options: `--runs=N`,
- * `--items=N`, `--keep-server`.
+ * `--items=N`, `--device=desktop|mobile` (Chromium phone emulation), `--keep-server`.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -107,6 +107,9 @@ const option = (name: string, fallback: string): string => {
 };
 const runs = Number(option("runs", "5"));
 const itemCount = Number(option("items", "12"));
+const device = option("device", "desktop");
+if (device !== "desktop" && device !== "mobile")
+  throw new Error("device must be desktop or mobile");
 const keepServer = args.includes("--keep-server");
 /** `--dump-html` also writes each route's first document to `.perf/<label>.html`. */
 const dumpHtml = args.includes("--dump-html");
@@ -211,6 +214,7 @@ async function prepareDatabase() {
   await stage("summary-structure");
   await stage("feed-search");
   await stage("life-areas");
+  await stage("drop-collections");
   await stage("browser-connections");
   await stage("phone-pairing");
   await owner.sql`UPDATE users SET status='active' WHERE id=${userId}::uuid`;
@@ -270,7 +274,16 @@ async function measurePage(
   path: string,
   settleMs = 500
 ): Promise<Sample> {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext(
+    device === "mobile"
+      ? {
+          viewport: { width: 393, height: 851 },
+          isMobile: true,
+          hasTouch: true,
+          deviceScaleFactor: 3,
+        }
+      : { viewport: { width: 1440, height: 900 } }
+  );
   await context.addCookies([cookie]);
   const page = await context.newPage();
   await page.addInitScript(() => {
@@ -434,6 +447,7 @@ async function main(): Promise<void> {
       buildId: readFileSync(resolve(root, ".next/BUILD_ID"), "utf8").trim(),
       baseUrl,
       itemCount,
+      device,
       runs,
       pages: results,
     };

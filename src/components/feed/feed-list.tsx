@@ -4,10 +4,10 @@
  * Feed client island.
  *
  * The URL is the single source of truth for the filters and the search: the
- * server page parses it, renders the first page of items and passes them in
- * as `initialPage`; every filter change (including a committed search) is a
- * `router.replace` (scroll kept) that makes the server render the new page.
- * Only load-more and the processing-status poll talk to the API from here.
+ * server page parses it, renders the first page of items and seeds the shared
+ * account cache. Same-page filter changes use the native history API (which
+ * Next keeps in sync with `useSearchParams`) and read through that cache, so
+ * they do not wait for another server-component response.
  *
  * While a search is being typed, the items already on screen are narrowed
  * locally at once; the debounced URL change then brings the server's answer.
@@ -16,18 +16,31 @@
  * server-side user) the island fetches the page itself.
  */
 
-import { startTransition, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IntentLink as Link } from "@/components/navigation/intent-link";
+import { useSearchParams } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
+import { Button } from "@/components/ui/button";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShortcut, useShortcutsSuspended } from "@/components/shortcuts/shortcuts-provider";
 import { useRowNavigation } from "@/components/shortcuts/use-row-navigation";
+import {
+  CACHE_FRESHNESS,
+  useContentCache,
+  useContentQuery,
+} from "@/lib/client-cache/content-cache";
+import { useItemMutation } from "@/lib/client-cache/item-mutations";
+import { useViewScroll } from "@/lib/client-cache/view-scroll";
+import {
+  type ProcessingItemStatus,
+  useProcessingStatusPoll,
+} from "@/lib/client-cache/processing-status-poll";
 import {
   feedFilterKey,
   feedFilterState,
@@ -52,8 +65,48 @@ type FeedResponse = {
   error?: { message?: string };
 };
 
+export interface FeedCacheData {
+  items: ContentItemSummary[];
+  nextCursor?: string;
+  /** Ids belonging to the refreshable first page; later pages stay cached. */
+  firstPageIds: string[];
+  loadedMore: boolean;
+}
+
+type PendingFeedNavigation = {
+  url: string;
+  key: string;
+  originKey: string;
+  acknowledged: boolean;
+  previousPage: FeedCacheData | null;
+};
+
 function requestPath(state: FeedFilterState, cursor?: string): string {
   return `/api/v1/feed?${feedRequestSearch(state, cursor).toString()}`;
+}
+
+function feedCacheData(raw: unknown): FeedCacheData {
+  const response = (raw ?? {}) as FeedResponse;
+  const items = response.items ?? [];
+  return {
+    items,
+    nextCursor: response.nextCursor,
+    firstPageIds: items.map((item) => item.id),
+    loadedMore: false,
+  };
+}
+
+function uniqueItems(items: ContentItemSummary[]): ContentItemSummary[] {
+  const seen = new Set<string>();
+  return items.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+}
+
+function updatedLabel(updatedAt: number): string {
+  if (!updatedAt) return "Not updated yet";
+  return `Updated ${new Date(updatedAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
 }
 
 export function nextFeedUrl(current: URLSearchParams, updates: FilterUpdates): string {
@@ -92,126 +145,159 @@ const LAYOUT_SHORTCUT: ShortcutDef = {
   ...listShortcut,
 };
 
-export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null }) {
-  const router = useRouter();
+export function FeedList({
+  initialPage,
+  initialDataUpdatedAt,
+}: {
+  initialPage: FeedInitialPage | null;
+  initialDataUpdatedAt?: number;
+}) {
   const searchParams = useSearchParams();
-  const filters = feedFilterState(searchParams);
+  const urlFilters = feedFilterState(searchParams);
+  const urlFilterKey = feedFilterKey(urlFilters);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingFeedNavigation | null>(null);
+  const pendingUrl =
+    pendingNavigation &&
+    !pendingNavigation.acknowledged &&
+    urlFilterKey === pendingNavigation.originKey &&
+    pendingNavigation.key !== urlFilterKey
+      ? pendingNavigation.url
+      : null;
+  const filters = pendingUrl ? feedFilterState(searchParamsForFeedUrl(pendingUrl)) : urlFilters;
   const filterKey = feedFilterKey(filters);
   const serverPage = initialPage && initialPage.key === filterKey ? initialPage : null;
-
-  const [items, setItems] = useState<ContentItemSummary[]>(serverPage?.items ?? []);
-  /** Filter key represented by `items`; null until the first load settles. */
-  const [loadedKey, setLoadedKey] = useState<string | null>(serverPage ? filterKey : null);
-  const [nextCursor, setNextCursor] = useState<string | undefined>(serverPage?.nextCursor);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const cache = useContentCache();
+  const { updateItem } = useItemMutation();
+  const cacheKey = ["feed", filterKey] as const;
+  const initialData = serverPage
+    ? {
+        items: serverPage.items,
+        nextCursor: serverPage.nextCursor,
+        firstPageIds: serverPage.items.map((item) => item.id),
+        loadedMore: false,
+      }
+    : undefined;
+  const feedQuery = useContentQuery<FeedCacheData>({
+    key: cacheKey,
+    url: requestPath(filters, filters.cursor),
+    staleTime: CACHE_FRESHNESS.feed,
+    initialData,
+    initialDataUpdatedAt: serverPage ? initialDataUpdatedAt : undefined,
+    transform: (raw) => {
+      const incoming = feedCacheData(raw);
+      const previous = cache.get<FeedCacheData>(cacheKey);
+      if (!previous?.loadedMore) return incoming;
+      const previousFirstPage = new Set(previous.firstPageIds);
+      const retainedPages = previous.items.filter(
+        (item) =>
+          !previousFirstPage.has(item.id) &&
+          (filters.showRead || !item.isRead) &&
+          (filters.archive === "include" ||
+            (filters.archive === "only" ? Boolean(item.archivedAt) : !item.archivedAt)) &&
+          (!filters.areas.length || (item.area && filters.areas.includes(item.area)))
+      );
+      return {
+        ...incoming,
+        items: uniqueItems([...incoming.items, ...retainedPages]),
+        nextCursor: previous.nextCursor,
+        loadedMore: true,
+      };
+    },
+  });
+  const previousPage = pendingNavigation?.key === filterKey ? pendingNavigation.previousPage : null;
+  const page = feedQuery.data ?? previousPage ?? initialData ?? null;
+  const items = page?.items ?? [];
+  const nextCursor = page?.nextCursor;
+  const loadError = feedQuery.error instanceof Error ? feedQuery.error.message : null;
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"card" | "compact">("card");
   const [searchDraft, setSearchDraft] = useState(filters.searchQuery);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [areaOpenId, setAreaOpenId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [isPending, startNavigation] = useTransition();
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-  const optimisticFilters = pendingUrl
-    ? feedFilterState(searchParamsForFeedUrl(pendingUrl))
-    : filters;
 
-  // Keep optimistic controls selected until the server commits the matching URL.
+  // Once Next has observed our history update, later browser/external history
+  // changes own the URL. Keep only the previous page as a query placeholder.
   useEffect(() => {
-    if (!pendingUrl) return;
-    const pendingKey = feedFilterKey(feedFilterState(searchParamsForFeedUrl(pendingUrl)));
-    if (pendingKey === filterKey) setPendingUrl(null);
-  }, [filterKey, pendingUrl]);
-
-  // A new server page (after router.replace) replaces the list in one step.
-  useEffect(() => {
-    if (!serverPage) return;
-    startTransition(() => {
-      setItems(serverPage.items);
-      setNextCursor(serverPage.nextCursor);
-      setLoadedKey(serverPage.key);
-      setLoadError(null);
+    if (
+      !pendingNavigation ||
+      pendingNavigation.acknowledged ||
+      urlFilterKey !== pendingNavigation.key
+    ) {
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPendingNavigation((current) =>
+        current?.url === pendingNavigation.url ? { ...current, acknowledged: true } : current
+      );
     });
-  }, [serverPage]);
+    return () => {
+      active = false;
+    };
+  }, [pendingNavigation, urlFilterKey]);
 
-  const fetchItems = useCallback(
-    (cursor?: string, append = false) =>
-      fetch(requestPath(filters, cursor))
-        .then(async (res) => {
-          const data = (await res.json().catch(() => ({}))) as FeedResponse;
-          if (!res.ok) throw new Error(data.error?.message || "Unable to load your feed.");
-          const nextItems = data.items ?? [];
-          setItems((current) => (append ? [...current, ...nextItems] : nextItems));
-          setNextCursor(data.nextCursor);
-          setLoadError(null);
-          setLoadedKey(filterKey);
-          return nextItems;
-        })
-        .catch((cause: unknown) => {
-          setLoadError(cause instanceof Error ? cause.message : "Unable to load your feed.");
-          if (!append) {
-            setItems([]);
-            setLoadedKey(filterKey);
-          }
-          return [] as ContentItemSummary[];
-        }),
-    // `filters` is derived from the URL; `filterKey` is its stable identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterKey]
-  );
+  const loading = !page && !loadError;
+  useViewScroll(`feed:${filterKey}`, Boolean(feedQuery.data));
 
-  // Client fetch only when the server did not render this exact page.
-  useEffect(() => {
-    if (serverPage || loadedKey === filterKey) return;
-    void fetchItems(filters.cursor);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverPage, loadedKey, filterKey, fetchItems]);
-
-  const loading = loadedKey !== filterKey;
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const raw = await cache.fetch<FeedResponse>({
+        key: [...cacheKey, "page", nextCursor],
+        url: requestPath(filters, nextCursor),
+        staleTime: CACHE_FRESHNESS.feed,
+      });
+      const nextPage = feedCacheData(raw);
+      cache.set<FeedCacheData>(cacheKey, (current) => {
+        const base = current ?? feedCacheData({ items: [] });
+        return {
+          items: uniqueItems([...base.items, ...nextPage.items]),
+          nextCursor: nextPage.nextCursor,
+          firstPageIds: base.firstPageIds,
+          loadedMore: true,
+        };
+      });
+    } catch (cause) {
+      setLoadMoreError(cause instanceof Error ? cause.message : "Unable to load more items.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   /**
    * Poll every 3 seconds while any items are in processing state.
    * Stops polling once all items are ready (or rejected).
    */
-  const processingKey = items
+  const processingIds = items
     .filter((item) => item.processingStatus === "processing")
     .slice(0, 50)
-    .map((item) => item.id)
-    .join(",");
-
-  useEffect(() => {
-    if (!processingKey) return;
-    let cancelled = false;
-    const pollStatuses = async () => {
-      try {
-        const response = await fetch(
-          `/api/v1/items/status?ids=${encodeURIComponent(processingKey)}`
-        );
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          items?: Array<{
-            id: string;
-            processingStatus: NonNullable<ContentItemSummary["processingStatus"]>;
-          }>;
-        };
-        if (cancelled || !payload.items?.length) return;
-        const statuses = new Map(payload.items.map((item) => [item.id, item.processingStatus]));
-        setItems((current) =>
-          current.map((item) => {
-            const processingStatus = statuses.get(item.id);
-            return processingStatus ? { ...item, processingStatus } : item;
-          })
-        );
-      } catch {
-        // A transient poll failure leaves the current cards intact; the next
-        // interval retries while an item is still processing.
-      }
-    };
-    const interval = setInterval(() => void pollStatuses(), 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [processingKey]);
+    .map((item) => item.id);
+  const applyStatuses = useCallback(
+    (statuses: ProcessingItemStatus[]) => {
+      const byId = new Map(statuses.map((item) => [item.id, item.processingStatus]));
+      cache.set<FeedCacheData>(["feed", filterKey], (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) => {
+                const processingStatus = byId.get(item.id);
+                return processingStatus ? { ...item, processingStatus } : item;
+              }),
+            }
+          : current
+      );
+    },
+    [cache, filterKey]
+  );
+  const finishProcessing = useCallback(() => {
+    void Promise.all([cache.invalidate(["feed"]), cache.invalidate(["today"])]);
+  }, [cache]);
+  useProcessingStatusPoll(processingIds, applyStatuses, finishProcessing);
 
   /** Rejected items remain confined to Settings even if an API regresses. */
   const filteredItems = items.filter((item) => item.processingStatus !== "rejected");
@@ -228,35 +314,35 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
       ? searchParamsForFeedUrl(pendingUrl)
       : new URLSearchParams(searchParams.toString());
     const nextUrl = nextFeedUrl(currentParams, updates);
-    setPendingUrl(nextUrl);
-    startNavigation(() => {
-      router.replace(nextUrl, { scroll: false });
+    const nextKey = feedFilterKey(feedFilterState(searchParamsForFeedUrl(nextUrl)));
+    setPendingNavigation({
+      url: nextUrl,
+      key: nextKey,
+      originKey: urlFilterKey,
+      acknowledged: nextKey === urlFilterKey,
+      previousPage: page,
     });
+    window.history.replaceState(null, "", nextUrl);
   };
 
   /** Optimistically mark an item as read in local state. */
   function handleMarkRead(id: string, read: boolean) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, isRead: read } : item))
+    cache.set<FeedCacheData>(cacheKey, (current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) => (item.id === id ? { ...item, isRead: read } : item)),
+          }
+        : current
     );
   }
 
-  /** Keyboard `r`: optimistic local update, then persist like MarkReadButton. */
+  /** Keyboard `r`: use the shared cross-view optimistic mutation. */
   async function persistRead(id: string) {
-    handleMarkRead(id, true);
     try {
-      const res = await fetch(`/api/items/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: true }),
-      });
-      if (!res.ok) {
-        handleMarkRead(id, false);
-        router.refresh();
-      }
+      await updateItem(id, { isRead: true });
     } catch {
-      handleMarkRead(id, false);
-      router.refresh();
+      // The shared mutation restores only this item's fields on failure.
     }
   }
 
@@ -268,9 +354,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
     onOpenArea: (id) => setAreaOpenId(id),
   });
   useShortcut(FILTERS_SHORTCUT, () => setFiltersOpen(true));
-  useShortcut(UNREAD_SHORTCUT, () =>
-    replaceFilters({ read: optimisticFilters.showRead ? "false" : "true" })
-  );
+  useShortcut(UNREAD_SHORTCUT, () => replaceFilters({ read: filters.showRead ? "false" : "true" }));
   useShortcut(LAYOUT_SHORTCUT, () => setViewMode((mode) => (mode === "card" ? "compact" : "card")));
 
   const emptyMessage = filters.searchQuery
@@ -284,7 +368,7 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
       <div ref={listRef} className="space-y-5">
         {/* Page header: title and links, with the search and Filters on the right. */}
         <FilterBar
-          filters={optimisticFilters}
+          filters={filters}
           onChange={replaceFilters}
           onSearchDraftChange={setSearchDraft}
           leading={
@@ -292,22 +376,38 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
               title="Feed"
               className="mb-0"
               meta={
-                <nav aria-label="Feed views">
-                  <Link
-                    href="/archive"
-                    className="inline-flex min-h-11 items-center hover:text-foreground"
+                <div className="flex flex-wrap items-center gap-x-3">
+                  <nav aria-label="Feed views">
+                    <Link
+                      href="/archive"
+                      className="inline-flex min-h-11 items-center hover:text-foreground"
+                    >
+                      Archive
+                    </Link>
+                  </nav>
+                  <span className="text-xs">{updatedLabel(feedQuery.dataUpdatedAt)}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11 gap-1.5"
+                    onClick={() => void feedQuery.refetch()}
+                    disabled={feedQuery.isFetching}
                   >
-                    Archive
-                  </Link>
-                </nav>
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${feedQuery.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
               }
             />
           }
           sheet={
             <FeedFilterSheet
-              filters={optimisticFilters}
+              filters={filters}
               onChange={replaceFilters}
-              activeCount={activeFilterChips(optimisticFilters).length}
+              activeCount={activeFilterChips(filters).length}
               topicOptions={topicOptions}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
@@ -317,10 +417,16 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
           }
         />
 
-        {/* Item list; a pending navigation keeps the current page visible, dimmed. */}
+        {loadError && page && (
+          <p className="text-sm text-danger" role="alert">
+            Could not refresh Feed. Showing the last loaded items.
+          </p>
+        )}
+
+        {/* A cache miss keeps the previous page visible while the next key loads. */}
         <div
-          className={`border-t border-foreground/30${pendingUrl || isPending ? " opacity-60 transition-opacity" : ""}`}
-          aria-busy={Boolean(pendingUrl) || isPending || loading}
+          className={`border-t border-foreground/30${feedQuery.isFetching && !feedQuery.data ? " opacity-60 transition-opacity" : ""}`}
+          aria-busy={feedQuery.isFetching || loading}
         >
           {loading ? (
             // Loading state shown while the first API fetch is in flight.
@@ -359,15 +465,21 @@ export function FeedList({ initialPage }: { initialPage: FeedInitialPage | null 
             ))
           )}
         </div>
+        {loadMoreError && (
+          <p className="text-center text-sm text-danger" role="alert">
+            {loadMoreError}
+          </p>
+        )}
         {nextCursor && !loading && !narrowing && (
           <div className="flex justify-center">
             <button
               type="button"
               data-load-more
               className="min-h-11 rounded-md border px-4 text-sm font-medium hover:bg-accent"
-              onClick={() => void fetchItems(nextCursor, true)}
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
             >
-              Load more
+              {loadingMore ? "Loading…" : "Load more"}
             </button>
           </div>
         )}

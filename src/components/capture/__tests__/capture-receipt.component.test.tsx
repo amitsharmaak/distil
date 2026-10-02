@@ -1,8 +1,12 @@
 /** @jest-environment jsdom */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { CaptureReceiptCard } from "@/components/capture/capture-receipt";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
+
+const mockRefresh = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
 
 const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
 const response = (body: unknown, status: number) =>
@@ -22,8 +26,10 @@ describe("CaptureReceiptCard", () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-03-01T00:00:00Z"));
     fetchMock.mockReset();
+    mockRefresh.mockReset();
     jest.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
   });
 
   afterEach(() => {
@@ -50,6 +56,7 @@ describe("CaptureReceiptCard", () => {
       jest.advanceTimersByTime(4_000);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not poll while the document is hidden", async () => {
@@ -73,6 +80,60 @@ describe("CaptureReceiptCard", () => {
       jest.advanceTimersByTime(4_000);
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("pauses offline and resumes online without overlapping a manual check", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    let finish!: (value: Response) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    render(<CaptureReceiptCard initialReceipt={base} />);
+    await act(async () => jest.advanceTimersByTime(10_000));
+    expect(fetchMock).not.toHaveBeenCalled();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      jest.advanceTimersByTime(2000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    await act(async () => jest.advanceTimersByTime(6000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      finish(response({ receipt: { ...base, status: "ready", itemId: "item-1" } }, 200))
+    );
+    await act(async () => jest.advanceTimersByTime(6000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("backs off failed status requests and aborts a hidden tab's in-flight request", async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({}, 503))
+      .mockImplementation(() => new Promise(() => {}));
+    render(<CaptureReceiptCard initialReceipt={base} />);
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => jest.advanceTimersByTime(3999));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const signal = fetchMock.mock.calls[1][1]?.signal;
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("clears account-scoped content when a status refresh is unauthorized", async () => {
+    fetchMock.mockResolvedValue(response({}, 401));
+    render(<CaptureReceiptCard initialReceipt={base} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+
+    expect(await screen.findByText("Your session changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
   });
 
   it("offers retry only for failed retryable receipts", async () => {

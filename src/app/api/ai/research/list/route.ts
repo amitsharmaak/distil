@@ -1,22 +1,28 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoute, tenantRouteFailureResponse } from "@/lib/auth/tenant-route";
-import { failStaleReport, publicResearchProgress } from "@/lib/ai/research";
+import { failStaleReport } from "@/lib/ai/research";
+import { withRequestMetrics } from "@/lib/observability/request-metrics";
 
 /** GET /api/ai/research/list — List recent research reports. */
-export async function GET(req: Request) {
+export const GET = withRequestMetrics(async (req: Request): Promise<Response> => {
   try {
     const { repositories } = await requireTenantRoute(req);
     const reports = await Promise.all(
-      (await repositories.research.listReports(50)).map((r) => failStaleReport(repositories, r))
+      (await repositories.research.listReportSummaries(50)).map((report) =>
+        failStaleReport(repositories, report)
+      )
     );
     return NextResponse.json({
-      reports: reports.map((r) => ({
-        ...r,
-        sources: JSON.parse(r.sources),
-        progress: publicResearchProgress(r.progress),
+      reports: reports.map((report) => ({
+        id: report.id,
+        itemId: report.itemId,
+        query: report.query,
+        status: report.status,
+        createdAt: report.createdAt,
+        completedAt: report.completedAt,
       })),
     });
   } catch (error) {
     return tenantRouteFailureResponse(error);
   }
-}
+});

@@ -1,11 +1,20 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { StoryCard } from "../story-card";
 import type { ContentItem } from "@/lib/types";
 import type { KnowledgeItem } from "@/components/phase2/types";
 
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+const mockPrefetch = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: jest.fn(), prefetch: mockPrefetch }),
+}));
+
+beforeEach(() => {
+  mockPrefetch.mockClear();
+  jest.mocked(global.fetch).mockReset();
+});
 
 const item: ContentItem = {
   id: "story-1",
@@ -95,4 +104,31 @@ it("keeps processing items non-navigable and rejected items out of the list", ()
   expect(screen.getByText("Analyzing…")).toBeInTheDocument();
   rerender(<StoryCard item={{ ...item, processingStatus: "rejected" as const }} />);
   expect(container.querySelector("[data-row]")).toBeNull();
+});
+
+it("does not prefetch on render and warms the reader route only after intent", () => {
+  render(<StoryCard item={{ ...item, id: "story-intent" }} filter="unread" />);
+  const link = screen.getByRole("link");
+  // Viewport prefetch is off: a list of cards must not fan out route requests.
+  expect(mockPrefetch).not.toHaveBeenCalled();
+  fireEvent.focus(link);
+  expect(mockPrefetch).toHaveBeenCalledTimes(1);
+  expect(mockPrefetch).toHaveBeenCalledWith("/feed/story-intent?filter=unread");
+});
+
+it("marks a story read through the shared item mutation", async () => {
+  jest.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
+  const onMarkRead = jest.fn();
+  render(<StoryCard item={{ ...item, id: "story-2" }} onMarkRead={onMarkRead} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
+
+  expect(onMarkRead).toHaveBeenCalledWith("story-2", true);
+  await waitFor(() =>
+    expect(global.fetch).toHaveBeenCalledWith("/api/v1/items/story-2/state", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: true }),
+    })
+  );
 });

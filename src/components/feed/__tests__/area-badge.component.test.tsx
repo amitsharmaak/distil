@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  */
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithContentCache as render } from "../../../../tests/support/content-cache";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { AreaBadge } from "../area-badge";
 
