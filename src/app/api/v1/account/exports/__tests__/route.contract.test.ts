@@ -7,6 +7,7 @@ import { GET } from "../route";
 
 const ownerId = "11111111-1111-4111-8111-111111111111";
 const listExports = jest.fn();
+const failStaleExports = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -25,7 +26,7 @@ beforeEach(() => {
     },
   ]);
   jest.mocked(requireLifecycleRoute).mockResolvedValue({
-    repositories: { lifecycle: { listExports } },
+    repositories: { lifecycle: { listExports, failStaleExports } },
   } as never);
 });
 
@@ -37,6 +38,9 @@ describe("account export list route", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(requireLifecycleRoute).toHaveBeenCalledWith(request);
     expect(listExports).toHaveBeenCalledWith({ limit: 20 });
+    expect(failStaleExports.mock.invocationCallOrder[0]).toBeLessThan(
+      listExports.mock.invocationCallOrder[0]
+    );
     const payload = await response.json();
     expect(payload).toEqual({
       exports: [

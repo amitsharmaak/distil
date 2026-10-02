@@ -4,6 +4,7 @@ import {
   areaBackfillJobId,
   emptyAreaTotals,
 } from "@/lib/jobs/area-backfill";
+import { LifecycleError } from "@/lib/lifecycle/errors";
 import { objectContentHash, type TenantObjectStore } from "@/lib/storage/object-store";
 
 import {
@@ -70,6 +71,7 @@ function repositories(jobType = "account.export", payload: Record<string, unknow
       claimExport: jest.fn().mockResolvedValue(running),
       readExportDatasets: jest.fn().mockResolvedValue([]),
       completeExport: jest.fn().mockResolvedValue(ready),
+      failExport: jest.fn(),
     },
   };
 }
@@ -168,6 +170,61 @@ describe("account lifecycle queue runtime", () => {
       expect.objectContaining({ id: exportId, objectRef: `exports:${exportId}:1` })
     );
     expect(repos.jobs.complete).toHaveBeenCalledWith(jobId);
+  });
+
+  it("marks the export failed, and fails the job for a retry, when object storage is unavailable", async () => {
+    const repos = repositories("account.export", { exportId, jobId });
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId,
+      jobType: "account.export",
+      traceId,
+    });
+
+    await expect(
+      consumeLifecycleTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        getObjectStore: () => {
+          throw new LifecycleError(
+            "UNAVAILABLE",
+            503,
+            "Account export storage has not been configured"
+          );
+        },
+      })
+    ).resolves.toBe("failed");
+
+    expect(repos.lifecycle.failExport).toHaveBeenCalledWith(
+      exportId,
+      "EXPORT_STORAGE_UNAVAILABLE",
+      expect.any(String)
+    );
+    // The export was never claimed, and the durable job keeps its retry budget.
+    expect(repos.lifecycle.claimExport).not.toHaveBeenCalled();
+    expect(repos.jobs.complete).toHaveBeenCalledWith(
+      jobId,
+      "Account export storage has not been configured"
+    );
+  });
+
+  it("does not touch an export when a storage failure arrives with a malformed payload", async () => {
+    const repos = repositories("account.export", { exportId: "not-a-uuid", jobId });
+    const envelope = createTenantJobEnvelopeV1({
+      userId,
+      jobId,
+      jobType: "account.export",
+      traceId,
+    });
+
+    await expect(
+      consumeLifecycleTenantJobEnvelope(envelope, {
+        getTenantRepositories: jest.fn().mockResolvedValue(repos),
+        getObjectStore: () => {
+          throw new Error("storage unavailable");
+        },
+      })
+    ).resolves.toBe("failed");
+    expect(repos.lifecycle.failExport).not.toHaveBeenCalled();
   });
 
   it("acknowledges unsupported jobs without resolving lifecycle dependencies", async () => {
