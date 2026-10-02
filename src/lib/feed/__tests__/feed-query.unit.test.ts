@@ -491,7 +491,9 @@ describe("feed ranking with a capture triage priority", () => {
     const bucket = explainFeedRank({ ...base }, "for_you", now);
     expect(scored.score - bucket.score).toBeCloseTo(80 - 50, 5);
     expect(scored.reasons[0]).toBe("Current baseline priority score");
-    expect(bucket.reasons[0]).toBe("Item priority: medium");
+    // The edition no longer prints the priority bucket as a reason; the bucket
+    // path is identified by the absence of the stored-score reason.
+    expect(bucket.reasons).toEqual(["Recent items receive a small tie-break"]);
   });
 
   it("reads the bucket under priority and the stored score under for_you in PostgreSQL", async () => {
