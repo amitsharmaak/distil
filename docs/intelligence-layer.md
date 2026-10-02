@@ -53,12 +53,33 @@ reader
 
 ### Stages other stages expect, but that do not run in the hosted product
 
-| Missing stage                    | Who expects it                                                                                                         | Where the code is                                                             |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Topic assignment                 | Preference weights, feed affinity, topic filter, research suggestions, the `Topics` line in the brief and area prompts | Only in the connector pipeline (`src/lib/intelligence/enricher.ts`), disabled |
-| Capture priority score           | Today's order, `for_you` order                                                                                         | Not built (backlog item of 2026-10-01)                                        |
-| Junk-page check                  | Everything after extraction                                                                                            | Not built (same backlog item)                                                 |
-| Open and reading-progress events | "Worth revisiting", feed affinity (`completed`), any measure of whether Today was useful                               | Event types exist; no code writes them                                        |
+| Missing stage                    | Who expects it                                                                                                         | Where the code is                                                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Topic assignment                 | Preference weights, feed affinity, topic filter, research suggestions, the `Topics` line in the brief and area prompts | Only in the connector pipeline (`src/lib/intelligence/enricher.ts`), disabled                                       |
+| Capture priority score           | Today's order, `for_you` order                                                                                         | Delivered by #130 (capture triage, see the note below): `src/lib/ai/triage-capture.ts`, `src/lib/capture/worker.ts` |
+| Junk-page check                  | Everything after extraction                                                                                            | Delivered by #130 (same call): the gate is in `src/lib/contracts/capture-triage.ts`                                 |
+| Open and reading-progress events | "Worth revisiting", feed affinity (`completed`), any measure of whether Today was useful                               | Event types exist; no code writes them                                                                              |
+
+**Capture triage (#130), added after the audit.** One model call (task `triage-capture`,
+`gemini-3.5-flash-lite`, 8-second timeout, one attempt, prompt `triage-v1`) runs for each generic
+article capture after extraction and before the brief; Granola, Wispr, YouTube, X and dedupe
+re-saves are not triaged, and any triage error lets the capture continue.
+
+- **Junk check:** a junk verdict rejects the capture with `CONTENT_JUNK` only under guards: a junk
+  kind, confidence of at least 0.9, under 3,000 readable characters, no notes, not explicit high
+  priority, and not a second save of the same URL.
+- **Priority score:** a 0–100 score is written to `content_classification.triage`. For captures
+  with the default `medium` priority it is also written to `ai_priority_score` and sets the
+  `priority` bucket; an explicit high or low is kept.
+- **Feedback:** `reprioritize` blends 60% triage score with 40% heuristic for items that have a
+  triage score, and still overwrites `priority`.
+- **Flag:** `FEATURE_CAPTURE_TRIAGE`: unset enforces, `shadow` scores without rejecting, `false`
+  turns the call off. Runbook: `docs/runbooks/capture-triage.md`.
+- **Not delivered:** topics, the score as Today's sort key, a "why now" reason, and an evaluation
+  on real pages (the evidence is 27 hand-written fixtures).
+
+Sections 2, 3.1, 3.4, 3.5 and findings 1 and 3 still describe the audited commit `5fe4369`, before
+triage; read them with this note.
 
 ### Code that exists but is unreachable or inert in the hosted product
 
@@ -569,11 +590,11 @@ with the provider catalogue before acting.
 
 ### 6.3 Tiers and the swap rule
 
-| Tier     | Stages                                                | Rule                                                            |
-| -------- | ----------------------------------------------------- | --------------------------------------------------------------- |
-| Quality  | Brief, detailed, research outline and sections        | The best model that fits the latency limit, proven on the suite |
-| Balanced | Chunk notes, research plan and gaps                   | Mid tier; revisit when the long-document brief score is low     |
-| Economy  | Life area, preference profile, any future triage call | The cheapest model that clears the bar on the suite             |
+| Tier     | Stages                                               | Rule                                                            |
+| -------- | ---------------------------------------------------- | --------------------------------------------------------------- |
+| Quality  | Brief, detailed, research outline and sections       | The best model that fits the latency limit, proven on the suite |
+| Balanced | Chunk notes, research plan and gaps                  | Mid tier; revisit when the long-document brief score is low     |
+| Economy  | Life area, preference profile, capture triage (#130) | The cheapest model that clears the bar on the suite             |
 
 The eval judge is fixed at `claude-sonnet-5-5` (§5.8).
 
