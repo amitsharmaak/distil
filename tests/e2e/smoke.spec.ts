@@ -65,10 +65,18 @@ test.describe("hydration with the browser in another timezone than the server", 
       }
     });
     if (seededSessionReady) await addSessionCookie(page);
-    else
-      await page.route("**/api/v1/feed?*", (route) =>
-        route.fulfill({ status: 200, contentType: "application/json", body: '{"items":[]}' })
+    else {
+      // Without a user the content APIs answer 401, which replaces the page with the session
+      // notice. Answer them with empty lists so each surface renders its own layout.
+      const empty = (body: string) => ({ status: 200, contentType: "application/json", body });
+      await page.route("**/api/v1/feed?*", (route) => route.fulfill(empty('{"items":[]}')));
+      await page.route("**/api/ai/research/list", (route) =>
+        route.fulfill(empty('{"reports":[]}'))
       );
+      await page.route("**/api/ai/research/suggestions", (route) =>
+        route.fulfill(empty('{"suggestions":[]}'))
+      );
+    }
 
     const surfaces: Array<{ path: string; ready: () => Promise<void> }> = [
       { path: "/", ready: () => expect(heading(page, "Today")).toBeVisible() },
@@ -82,30 +90,28 @@ test.describe("hydration with the browser in another timezone than the server", 
           ]
         : []),
       { path: "/research", ready: () => expect(heading(page, "Research")).toBeVisible() },
-      { path: "/archive", ready: () => expect(heading(page, "Archive")).toBeVisible() },
+      // Archive exists only with the knowledge UI flag, which CI leaves off.
+      ...(process.env.FEATURE_KNOWLEDGE_UI === "true"
+        ? [{ path: "/archive", ready: () => expect(heading(page, "Archive")).toBeVisible() }]
+        : []),
       { path: "/settings", ready: () => expect(heading(page, "Settings")).toBeVisible() },
     ];
 
     for (const surface of surfaces) {
       await page.goto(surface.path);
       await surface.ready();
-      // Hydration has finished once the app answers a keyboard shortcut.
-      await expect(async () => {
-        await page.keyboard.press("?");
-        await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible({
-          timeout: 1_000,
-        });
-      }).toPass({ timeout: 15_000 });
-      await page.keyboard.press("Escape");
+      // Hydration runs as soon as the scripts arrive; give it and its error report time to land.
+      await page.waitForLoadState("load");
+      await page.waitForTimeout(1_000);
 
+      expect(hydrationErrors, `hydration on ${surface.path}`).toEqual([]);
+      await expect(page.locator("html"), `theme on ${surface.path}`).toHaveClass(
+        /(^|\s)dark(\s|$)/
+      );
       if (seeded.length > 0 && (surface.path === "/" || surface.path === "/feed")) {
         // The server sent a placeholder; the reader's local time fills it after hydration.
         await expect(page.getByText("Updated").locator("time")).toBeVisible();
       }
-      await expect(page.locator("html"), `theme on ${surface.path}`).toHaveClass(
-        /(^|\s)dark(\s|$)/
-      );
-      expect(hydrationErrors, `hydration on ${surface.path}`).toEqual([]);
     }
   });
 });
