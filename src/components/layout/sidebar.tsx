@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandMark } from "@/components/layout/brand-mark";
+import { DistilLogo } from "@/components/brand/distil-logo";
 import { usePathname } from "next/navigation";
 import {
   Newspaper,
@@ -51,12 +51,7 @@ export function Sidebar({
     >
       {/* Brand */}
       <div className="flex h-20 shrink-0 items-center gap-2.5 px-4">
-        <BrandMark className="size-7 shrink-0" />
-        {!collapsed && (
-          <span className="font-serif text-2xl font-semibold tracking-tight text-sidebar-foreground">
-            distil
-          </span>
-        )}
+        <DistilLogo compact={collapsed} className="h-7 w-auto shrink-0 text-sidebar-foreground" />
       </div>
 
       {/* Navigation */}

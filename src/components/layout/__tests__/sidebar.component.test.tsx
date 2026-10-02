@@ -13,13 +13,6 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ prefetch: jest.fn() }),
 }));
 
-jest.mock("next/image", () => ({
-  __esModule: true,
-  default: ({ alt, src }: { alt: string; src: string }) => (
-    <span role="img" aria-label={alt} data-src={src} />
-  ),
-}));
-
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({
@@ -60,9 +53,8 @@ describe("Sidebar", () => {
 
     const logo = screen.getByRole("img", { name: "Distil logo" });
     expect(logo.tagName.toLowerCase()).toBe("svg");
-    expect(logo).toHaveAttribute("width", "28");
     expect(logo).toHaveAttribute("height", "28");
-    expect(screen.getByText("distil")).toBeInTheDocument();
+    expect(logo.querySelectorAll("path")).toHaveLength(2);
     expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
@@ -117,14 +109,14 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
-    expect(screen.queryByText("distil")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Distil logo" })).toBeInTheDocument();
     expect(screen.queryByText("Today")).not.toBeInTheDocument();
     expect(screen.getByTestId("theme-toggle")).toHaveAttribute("data-collapsed", "true");
     expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
 
-    expect(screen.getByText("distil")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Distil logo" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Today" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeInTheDocument();
   });

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { navigateFullPage } from "@/lib/browser-navigation";
 import { announceAccountChange } from "@/lib/client-cache/auth-events";
 import { Input } from "@/components/ui/input";
+import { DistilLogo } from "@/components/brand/distil-logo";
 
 /** A same-origin page path, never a protocol-relative or backslash form. */
 function isSafeNext(value: string | undefined): value is string {
@@ -81,6 +82,7 @@ export function SignInCard({ next }: { next?: string } = {}) {
 
   return (
     <>
+      <DistilLogo className="h-10 w-auto self-start text-foreground" />
       <PageHeader
         title="Sign in to Distil"
         description={<>Enter your email and password, or request a magic link instead.</>}
