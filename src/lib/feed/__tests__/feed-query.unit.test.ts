@@ -436,6 +436,73 @@ describe("feed ranking contracts", () => {
   });
 });
 
+describe("feed ranking with a capture triage priority", () => {
+  const daysBefore = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+
+  it("ranks a high item above a newer medium one under the priority sort", () => {
+    // The priority buckets are 40 points apart and the recency tie-break is at most 10,
+    // so a high item outranks any medium one regardless of age.
+    for (const ageDays of [1, 5, 10, 30]) {
+      const high = explainFeedRank(
+        { priority: "high", createdAt: daysBefore(ageDays) },
+        "priority",
+        now
+      );
+      const newerMedium = explainFeedRank(
+        { priority: "medium", createdAt: now.toISOString() },
+        "priority",
+        now
+      );
+      expect(high.score).toBeGreaterThan(newerMedium.score);
+    }
+  });
+
+  it("ignores the learned score under the priority sort", () => {
+    const withScore = explainFeedRank({ ...base, aiPriorityScore: 99 }, "priority", now);
+    expect(withScore.score).toBe(explainFeedRank({ ...base }, "priority", now).score);
+  });
+
+  it("lets a manual low priority sink a high item", () => {
+    const sunk = explainFeedRank(
+      { ...base, priority: "high", manualPriority: "low" },
+      "priority",
+      now
+    );
+    const oldLow = explainFeedRank({ priority: "low", createdAt: daysBefore(60) }, "priority", now);
+    expect(sunk.score).toBeLessThan(oldLow.score);
+    expect(sunk.reasons[0]).toBe("Manual priority: low");
+    const sunkForYou = explainFeedRank(
+      { ...base, priority: "high", aiPriorityScore: 95, manualPriority: "low" },
+      "for_you",
+      now
+    );
+    expect(sunkForYou.score).toBeLessThan(
+      explainFeedRank({ priority: "low", createdAt: daysBefore(60) }, "for_you", now).score
+    );
+  });
+
+  it("uses the stored priority score for for_you when present and the bucket otherwise", () => {
+    const scored = explainFeedRank({ ...base, aiPriorityScore: 80 }, "for_you", now);
+    const bucket = explainFeedRank({ ...base }, "for_you", now);
+    expect(scored.score - bucket.score).toBeCloseTo(80 - 50, 5);
+    expect(scored.reasons[0]).toBe("Current baseline priority score");
+    expect(bucket.reasons[0]).toBe("Item priority: medium");
+  });
+
+  it("reads the bucket under priority and the stored score under for_you in PostgreSQL", async () => {
+    const bucketCase = "CASE i.priority WHEN 'high' THEN 90 WHEN 'medium' THEN 50 ELSE 20 END";
+    const prioritySql = fakeFeedSql([feedRow("priority")]);
+    await new PostgresFeedQuery(prioritySql as never, context).list({ sort: "priority", now });
+    expect(prioritySql.statements[0]).toContain(bucketCase);
+    expect(prioritySql.statements[0]).not.toContain("COALESCE(i.ai_priority_score");
+    expect(prioritySql.statements[0]).toContain("WHEN i.manual_priority='low' THEN -100");
+
+    const forYouSql = fakeFeedSql([feedRow("for-you")]);
+    await new PostgresFeedQuery(forYouSql as never, context).list({ sort: "for_you", now });
+    expect(forYouSql.statements[0]).toContain(`COALESCE(i.ai_priority_score, ${bucketCase})`);
+  });
+});
+
 describe("feed search input", () => {
   it("turns typed text into an all-terms tsquery whose last term is a prefix", () => {
     expect(feedSearchTsQuery("Machine learni")).toBe("'machine' & 'learni':*");
