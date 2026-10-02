@@ -142,19 +142,24 @@ function containsColumns(actual: readonly string[], expected: readonly string[])
 
 /** Generate catalog checks from the immutable Phase 2 / Wave 0 manifest. */
 export function tenantManifestInvariantSpecs(
-  manifest: Pick<TenantMigrationManifest, "tables">
+  manifest: Pick<TenantMigrationManifest, "tables" | "supplementalTables">
 ): TenantTableInvariantSpec[] {
-  return manifest.tables.map((table) => ({
+  return [
+    ...manifest.tables,
+    ...manifest.supplementalTables.filter((table) => table.references?.length),
+  ].map((table) => ({
     tableName: table.table,
     tenantReferences: { tableName: "users" },
     policySetting: "app.user_id",
-    ownershipReferences: table.references.map((reference) => ({
+    ownershipReferences: (table.references ?? []).map((reference) => ({
       name: reference.name,
       sourceColumns: reference.columns,
       targetTable: reference.targetTable,
       targetColumns: reference.targetColumns,
     })),
-    tenantScopedUniqueKeys: table.uniqueness.map((uniqueness) => [...uniqueness.columns]),
+    tenantScopedUniqueKeys: ("uniqueness" in table ? table.uniqueness : []).map((uniqueness) => [
+      ...uniqueness.columns,
+    ]),
   }));
 }
 

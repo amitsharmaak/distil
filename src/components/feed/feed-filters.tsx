@@ -15,6 +15,7 @@ import { Check, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   Sheet,
   SheetContent,
@@ -104,7 +105,7 @@ function Section({
   return (
     <section aria-labelledby={id} className="space-y-2.5">
       <div className="flex min-h-7 items-center justify-between gap-3">
-        <h3 id={id} className="text-[13px] font-medium text-foreground">
+        <h3 id={id} className="text-sm font-medium text-foreground">
           {title}
         </h3>
         {action}
@@ -126,32 +127,13 @@ function Segmented<T extends string>({
   onSelect: (value: T) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-lg bg-muted p-0.5">
-      {options.map((option) => {
-        const checked = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            onClick={() => {
-              if (!checked) onSelect(option.value);
-            }}
-            className={cn(
-              // Content-sized segments sharing the spare width: equal columns cut
-              // "Personal" and "Learning" at phone width.
-              "h-8 min-w-0 flex-auto truncate rounded-md px-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              checked
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      aria-label={label}
+      options={options}
+      value={value}
+      onValueChange={onSelect}
+      className="flex w-full [&_button]:min-w-0 [&_button]:flex-auto [&_button]:px-1.5"
+    />
   );
 }
 
@@ -170,9 +152,9 @@ function Chip({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "inline-flex min-h-11 items-center gap-1 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         pressed
-          ? "border-primary/40 bg-primary/10 text-primary"
+          ? "border-foreground/30 bg-muted text-foreground"
           : "border-border bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground"
       )}
     >
@@ -206,7 +188,7 @@ function ChipGroup<T extends string>({
 }
 
 const dateFieldClass =
-  "mt-1.5 h-9 w-full rounded-md border bg-card px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
+  "mt-1.5 min-h-11 w-full rounded-md border bg-card px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 interface FeedFilterSheetProps {
   filters: FeedFilterState;
@@ -269,7 +251,7 @@ export function FeedFilterSheet({
             aria-pressed={viewMode === mode}
             onClick={() => onViewModeChange(mode)}
             className={cn(
-              "inline-flex h-7 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              "inline-flex h-11 w-11 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               viewMode === mode
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -284,7 +266,7 @@ export function FeedFilterSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" className="h-9 shrink-0 gap-2 rounded-full">
+        <Button variant="outline" className="min-h-11 shrink-0 gap-2 rounded-full">
           <SlidersHorizontal className="h-4 w-4" />
           <span className="hidden sm:inline">Filters</span>
           <span className="sr-only sm:hidden">Filters</span>
@@ -307,7 +289,7 @@ export function FeedFilterSheet({
         )}
         <SheetHeader className="gap-0.5 border-b px-5 pt-4 pb-3.5">
           <SheetTitle className="text-base">Filters</SheetTitle>
-          <SheetDescription className="text-[13px]">
+          <SheetDescription className="text-sm">
             {activeCount > 0
               ? `${activeCount} active · changes apply as you go`
               : "Changes apply as you go"}
@@ -343,7 +325,7 @@ export function FeedFilterSheet({
           {!unreadQueue && (
             <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-3.5 py-3">
               <div>
-                <p id="filter-unread-label" className="text-[13px] font-medium text-foreground">
+                <p id="filter-unread-label" className="text-sm font-medium text-foreground">
                   Unread only
                 </p>
                 <p className="text-xs text-muted-foreground">Hide items you have read</p>
@@ -354,17 +336,22 @@ export function FeedFilterSheet({
                 aria-checked={unreadOnly}
                 aria-labelledby="filter-unread-label"
                 onClick={() => onChange(UNREAD.toggle(filters))}
-                className={cn(
-                  "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                  unreadOnly ? "bg-primary" : "bg-muted-foreground/30"
-                )}
+                className="relative inline-flex h-11 w-11 shrink-0 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-                    unreadOnly ? "translate-x-[18px]" : "translate-x-0.5"
+                    "flex h-6 w-10 items-center rounded-full transition-colors",
+                    unreadOnly ? "bg-foreground" : "bg-muted-foreground/30"
                   )}
-                />
+                >
+                  <span
+                    className={cn(
+                      "h-5 w-5 rounded-full bg-background shadow-sm transition-transform",
+                      unreadOnly ? "translate-x-[18px]" : "translate-x-0.5"
+                    )}
+                  />
+                </span>
               </button>
             </div>
           )}
@@ -461,13 +448,13 @@ export function FeedFilterSheet({
         <SheetFooter className="mt-0 flex-row items-center justify-between gap-3 border-t px-5 py-3">
           <Button
             variant="ghost"
-            className="h-9 px-3 text-muted-foreground"
+            className="min-h-11 px-3 text-muted-foreground"
             disabled={activeCount === 0}
             onClick={() => onChange(RESET_SHEET_FILTERS)}
           >
             Reset
           </Button>
-          <Button className="h-9 min-w-24 rounded-full" onClick={() => setOpen(false)}>
+          <Button className="min-h-11 min-w-24 rounded-full" onClick={() => setOpen(false)}>
             Done
           </Button>
         </SheetFooter>

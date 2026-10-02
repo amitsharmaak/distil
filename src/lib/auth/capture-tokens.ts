@@ -1,7 +1,11 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { CAPTURE_TOKEN_PREFIX } from "@/lib/auth/constants";
 import type { AuthContext } from "@/lib/contracts/tenant-context";
-import type { CaptureTokenRepository } from "@/lib/repositories/ports";
+import type {
+  CaptureTokenKind,
+  CaptureTokenRecord,
+  CaptureTokenRepository,
+} from "@/lib/repositories/ports";
 
 export interface IssuedCaptureToken {
   id: string;
@@ -24,7 +28,9 @@ export const BROWSER_CONNECTION_NAME = "Browser connection";
 /** Labels are user-agent derived text; keep them short and single-line. */
 export const BROWSER_CONNECTION_LABEL_MAX = 80;
 
-interface IssueOptions {
+export interface IssueOptions {
+  kind?: CaptureTokenKind;
+  label?: string;
   now?: Date;
   id?: string;
   random?: Uint8Array;
@@ -41,33 +47,57 @@ function mintToken(options: IssueOptions) {
   };
 }
 
+/** Prepare a secret and its hash-only record for an atomic repository operation. */
+export function prepareCaptureToken(context: AuthContext, options: IssueOptions = {}) {
+  const minted = mintToken(options);
+  const kind = options.kind ?? "manual";
+  const name =
+    kind === "phone"
+      ? "iPhone Shortcut"
+      : kind === "browser"
+        ? BROWSER_CONNECTION_NAME
+        : CAPTURE_TOKEN_NAME;
+  const label =
+    kind === "phone"
+      ? normalizeDeviceLabel(options.label, "iPhone")
+      : kind === "browser"
+        ? normalizeBrowserLabel(options.label)
+        : options.label;
+  const record: CaptureTokenRecord = {
+    userId: context.userId,
+    id: minted.id,
+    name,
+    tokenHash: minted.tokenHash,
+    tokenPrefix: minted.tokenPrefix,
+    kind,
+    ...(label === undefined ? {} : { label }),
+    createdAt: minted.createdAt,
+  };
+  return {
+    record,
+    issued: {
+      id: minted.id,
+      name,
+      token: minted.token,
+      tokenPrefix: minted.tokenPrefix,
+      createdAt: minted.createdAt,
+    } satisfies IssuedCaptureToken,
+  };
+}
+
 /**
- * Issues the account's manual capture token (iPhone Shortcut, scripts), revoking every manual
- * token issued before it, including legacy per-client tokens. Browser connections are untouched.
- * The plaintext is returned exactly once.
+ * Manual issuance replaces only manual tokens. Device credentials are independent and revoke
+ * nothing. The plaintext is returned exactly once and never passed to a repository.
  */
 export async function issueCaptureToken(
   context: AuthContext,
   repository: CaptureTokenRepository,
   options: IssueOptions = {}
 ): Promise<IssuedCaptureToken> {
-  const minted = mintToken(options);
-  await repository.replaceActive({
-    userId: context.userId,
-    id: minted.id,
-    name: CAPTURE_TOKEN_NAME,
-    tokenHash: minted.tokenHash,
-    tokenPrefix: minted.tokenPrefix,
-    kind: "manual",
-    createdAt: minted.createdAt,
-  });
-  return {
-    id: minted.id,
-    name: CAPTURE_TOKEN_NAME,
-    token: minted.token,
-    tokenPrefix: minted.tokenPrefix,
-    createdAt: minted.createdAt,
-  };
+  const { record, issued } = prepareCaptureToken(context, options);
+  if (record.kind === "manual") await repository.replaceActive(record);
+  else await repository.create(record);
+  return issued;
 }
 
 export interface IssuedBrowserConnection {
@@ -76,7 +106,7 @@ export interface IssuedBrowserConnection {
 }
 
 /** Reduces a client-supplied label to short, single-line, printable text. */
-export function normalizeBrowserLabel(value: unknown): string {
+function normalizeDeviceLabel(value: unknown, fallback: string): string {
   const text = typeof value === "string" ? value : "";
   const cleaned = Array.from(text, (char) => {
     const code = char.charCodeAt(0);
@@ -85,7 +115,15 @@ export function normalizeBrowserLabel(value: unknown): string {
     .join("")
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned.slice(0, BROWSER_CONNECTION_LABEL_MAX) || "Browser";
+  return cleaned.slice(0, BROWSER_CONNECTION_LABEL_MAX) || fallback;
+}
+
+export function normalizeBrowserLabel(value: unknown): string {
+  return normalizeDeviceLabel(value, "Browser");
+}
+
+export function normalizePhoneLabel(value: unknown): string {
+  return normalizeDeviceLabel(value, "iPhone");
 }
 
 /**

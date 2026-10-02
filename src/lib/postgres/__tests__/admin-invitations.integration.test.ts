@@ -50,6 +50,9 @@ beforeAll(async () => {
     "summary-structure",
     "feed-search",
     "life-areas",
+    "drop-collections",
+    "browser-connections",
+    "phone-pairing",
   ] as const) {
     await applyTenantMigrationStage({ ...common, stage });
   }

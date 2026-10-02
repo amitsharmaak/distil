@@ -1,4 +1,8 @@
-import type { CaptureRecord, CaptureTokenRecord } from "@/lib/repositories/ports";
+import type {
+  CaptureRecord,
+  CaptureTokenRecord,
+  ShortcutPairingRecord,
+} from "@/lib/repositories/ports";
 import { userIdSchema } from "@/lib/contracts/tenant-context";
 import {
   LIFE_AREAS,
@@ -120,7 +124,7 @@ export function mapCaptureTokenSummary(row: Row): Omit<CaptureTokenRecord, "toke
     id: String(row.id),
     name: String(row.name),
     tokenPrefix: String(row.token_prefix),
-    kind: row.kind === "browser" ? "browser" : "manual",
+    kind: row.kind === "browser" || row.kind === "phone" ? row.kind : "manual",
     ...(row.label == null ? {} : { label: String(row.label) }),
     createdAt: iso(row.created_at),
     lastUsedAt: row.last_used_at == null ? undefined : iso(row.last_used_at),
@@ -130,4 +134,17 @@ export function mapCaptureTokenSummary(row: Row): Omit<CaptureTokenRecord, "toke
 
 export function mapCaptureToken(row: Row): CaptureTokenRecord {
   return { ...mapCaptureTokenSummary(row), tokenHash: String(row.token_hash) };
+}
+
+export function mapShortcutPairing(row: Row): ShortcutPairingRecord {
+  return {
+    userId: userIdSchema.parse(row.user_id),
+    id: String(row.id),
+    codeHash: String(row.code_hash),
+    createdAt: iso(row.created_at),
+    expiresAt: iso(row.expires_at),
+    attempts: Number(row.attempts),
+    consumedAt: row.consumed_at == null ? undefined : iso(row.consumed_at),
+    tokenId: row.token_id == null ? undefined : String(row.token_id),
+  };
 }

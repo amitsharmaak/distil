@@ -173,7 +173,7 @@ it("drops the detailed summary when the brief is regenerated, and takes a new br
       initialDetailedSummary={detailedMarkdown}
     />
   );
-  fireEvent.click(screen.getByText("Regenerate"));
+  fireEvent.keyDown(window, { key: "S", shiftKey: true });
   await screen.findByText("New brief.");
 
   // The old detailed summary was built from the old brief, so Detailed asks the server again.
@@ -199,26 +199,19 @@ it("s, d and Shift+S drive the summary controls and expose their keys", async ()
       initialDetailedSummary="Detailed text"
     />
   );
-  const aiBtn = await screen.findByRole("button", { name: /AI Summary/ });
+  const aiBtn = await screen.findByRole("tab", { name: "Summary" });
   expect(aiBtn).toHaveAttribute("type", "button");
-  expect(aiBtn).toHaveAttribute("aria-pressed", "true");
+  expect(aiBtn).toHaveAttribute("aria-selected", "true");
   expect(aiBtn).toHaveAttribute("aria-keyshortcuts", "s");
-  expect(screen.getByRole("button", { name: /Regenerate/ })).toHaveAttribute(
-    "aria-keyshortcuts",
-    "Shift+S"
-  );
 
   fireEvent.keyDown(window, { key: "d" });
   expect(await screen.findByText("Detailed text")).toBeVisible();
-  expect(screen.getByRole("button", { name: /Detailed/ })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("radio", { name: "Detailed" })).toHaveAttribute("aria-checked", "true");
 
   fireEvent.keyDown(window, { key: "s" });
-  expect(screen.getByRole("button", { name: /Original/ })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("tab", { name: "Original" })).toHaveAttribute("aria-selected", "true");
   fireEvent.keyDown(window, { key: "s" });
-  expect(screen.getByRole("button", { name: /AI Summary/ })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
 
   fireEvent.keyDown(window, { key: "S", shiftKey: true });
   await waitFor(() =>
@@ -229,4 +222,19 @@ it("s, d and Shift+S drive the summary controls and expose their keys", async ()
       })
     )
   );
+});
+
+it("preserves inline images in the original article while keeping the summary text-first", () => {
+  render(
+    <AISummary
+      itemId="one"
+      ogSummary="An article"
+      initialBriefSummary="Brief text"
+      fullContent='<p>Original article with a meaningful diagram.</p><img src="https://example.test/diagram.png" alt="System diagram" />'
+      fullContentIsHtml
+    />
+  );
+  expect(screen.queryByRole("img", { name: "System diagram" })).not.toBeInTheDocument();
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Original" }), { button: 0, ctrlKey: false });
+  expect(screen.getByRole("img", { name: "System diagram" })).toBeVisible();
 });

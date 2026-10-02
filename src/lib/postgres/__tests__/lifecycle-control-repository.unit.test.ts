@@ -226,6 +226,7 @@ describe("PostgresControlPlaneLifecycleRepository", () => {
       [],
       [],
       [],
+      [],
       []
     );
     const repository = new PostgresControlPlaneLifecycleRepository(database.sql);
@@ -237,6 +238,7 @@ describe("PostgresControlPlaneLifecycleRepository", () => {
     const texts = database.queries.map(({ text }) => text);
     expect(texts).toEqual(
       expect.arrayContaining([
+        expect.stringContaining("UPDATE public.shortcut_pairings"),
         expect.stringContaining("UPDATE public.capture_tokens"),
         expect.stringContaining("UPDATE public.session_metadata"),
         expect.stringContaining("DELETE FROM public.oauth_tokens WHERE user_id=$1::uuid"),
@@ -246,20 +248,20 @@ describe("PostgresControlPlaneLifecycleRepository", () => {
         expect.stringContaining("INSERT INTO public.operator_audit_events"),
       ])
     );
-    expect(database.queries[5].values).toEqual([
+    expect(database.queries[6].values).toEqual([
       actorId,
       "security incident",
       at,
       "amit@example.com",
     ]);
-    expect(database.queries[7].values).not.toContain(userId);
-    expect(database.queries[7].values).toContain(createHash("sha256").update(userId).digest("hex"));
+    expect(database.queries[8].values).not.toContain(userId);
+    expect(database.queries[8].values).toContain(createHash("sha256").update(userId).digest("hex"));
     database.assertExhausted();
   });
 
   it("does not revoke invitations by email when the account has no primary email", async () => {
     const database = createLifecycleSqlDouble();
-    database.respond([{ id: userId, primary_email: null }], [], [], [], [], [], []);
+    database.respond([{ id: userId, primary_email: null }], [], [], [], [], [], [], []);
     const repository = new PostgresControlPlaneLifecycleRepository(database.sql);
 
     await expect(

@@ -48,6 +48,7 @@
     "eval": "tsx evals/run-evals.ts",
     "eval:live": "tsx evals/run-evals.ts --live",
     "eval:nightly": "tsx evals/nightly-eval.ts",
+    "eval:triage": "tsx evals/triage-eval.ts",
     "extension:pack": "tsx scripts/pack-extension.ts",
     "brand:generate": "tsx scripts/generate-brand-assets.ts",
     "brand:check": "tsx scripts/generate-brand-assets.ts --check",

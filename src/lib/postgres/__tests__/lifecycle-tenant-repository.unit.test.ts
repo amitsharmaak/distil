@@ -173,14 +173,20 @@ describe("PostgresTenantLifecycleRepository", () => {
 
     const datasets = await repository.readExportDatasets();
 
-    expect(datasets).toHaveLength(25);
+    expect(datasets).toHaveLength(26);
     expect(datasets[0]).toEqual({
       name: "profile",
       rows: [{ id: userId, displayName: "Amit" }],
     });
     expect(datasets.at(-1)).toEqual({ name: "usage", rows: [] });
-    expect(database.unsafeQueries).toHaveLength(25);
+    expect(database.unsafeQueries).toHaveLength(26);
     expect(database.unsafeQueries[0].text).toContain("primaryEmail");
+    const pairingQuery = database.unsafeQueries.find(({ text }) =>
+      text.includes("FROM shortcut_pairings")
+    );
+    expect(pairingQuery?.text).toContain("jsonb_build_object");
+    expect(pairingQuery?.text).toContain("'consumedAt'");
+    expect(pairingQuery?.text).not.toMatch(/code_hash|token_hash|SELECT \*/u);
     expect(database.unsafeQueries.at(-1)?.text).toContain("usage_counters");
     database.assertExhausted();
   });
@@ -200,7 +206,7 @@ describe("PostgresTenantLifecycleRepository", () => {
 
   it("atomically revokes tenant credentials, OAuth state, and queued work before inserting deletion", async () => {
     const database = createLifecycleSqlDouble();
-    database.respond([], [], [{ id: userId }], [], [], [], [], [], [], [deletionRow()]);
+    database.respond([], [], [{ id: userId }], [], [], [], [], [], [], [], [deletionRow()]);
     const repository = new PostgresTenantLifecycleRepository(database.sql, context);
 
     await expect(
@@ -208,6 +214,7 @@ describe("PostgresTenantLifecycleRepository", () => {
     ).resolves.toMatchObject({ created: true, record: { checkpoint: { phase: "queued" } } });
     expect(database.queries.map(({ text }) => text)).toEqual(
       expect.arrayContaining([
+        expect.stringContaining("UPDATE shortcut_pairings"),
         expect.stringContaining("UPDATE capture_tokens"),
         expect.stringContaining("UPDATE session_metadata"),
         "DELETE FROM oauth_tokens",

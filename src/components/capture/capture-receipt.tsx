@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, Clock3, LoaderCircle, RefreshCw, XCircle } from "lucide-react";
 import type { CaptureReceipt } from "@/lib/contracts/capture";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -112,12 +112,12 @@ export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: Capture
   return (
     <Card aria-live="polite" className="overflow-hidden">
       <CardHeader className="grid-cols-[auto_1fr] items-center">
-        <div className="row-span-2 rounded-full bg-primary/10 p-2.5 text-primary">
+        <div className="row-span-2 rounded-full bg-muted p-2.5 text-muted-foreground">
           <Icon className={`h-5 w-5 ${receipt.status === "processing" ? "animate-spin" : ""}`} />
         </div>
         <CardTitle className="flex flex-wrap items-center gap-2 font-serif text-xl">
           {label}
-          {isActive && <Badge variant="secondary">Updates automatically</Badge>}
+          {isActive && <StatusBadge>Updates automatically</StatusBadge>}
         </CardTitle>
         <CardDescription>{detail}</CardDescription>
       </CardHeader>
@@ -138,18 +138,19 @@ export function CaptureReceiptCard({ initialReceipt }: { initialReceipt: Capture
         )}
         <div className="flex flex-wrap gap-2">
           {receipt.status === "ready" && receipt.itemId && (
-            <Button asChild>
+            <Button className="min-h-11 min-w-11" asChild>
               <Link href={`/feed/${receipt.itemId}`}>Read article</Link>
             </Button>
           )}
           {receipt.status === "failed" && receipt.retryable && (
-            <Button onClick={retry} disabled={retrying}>
+            <Button className="min-h-11 min-w-11" onClick={retry} disabled={retrying}>
               <RefreshCw className={`h-4 w-4 ${retrying ? "animate-spin" : ""}`} />
               {retrying ? "Retrying…" : "Try again"}
             </Button>
           )}
           {isActive && (
             <Button
+              className="min-h-11 min-w-11"
               variant="outline"
               onClick={() =>
                 void refresh().catch((error) =>

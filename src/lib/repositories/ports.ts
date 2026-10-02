@@ -282,8 +282,8 @@ export interface CaptureRepository {
   ): Promise<CaptureRecord | undefined>;
 }
 
-/** `manual` is the account's pasted token; `browser` is one per connected browser extension. */
-export type CaptureTokenKind = "manual" | "browser";
+/** Manual tokens are pasted credentials; browser and phone tokens belong to one device. */
+export type CaptureTokenKind = "manual" | "browser" | "phone";
 
 export interface CaptureTokenRecord {
   userId: UserId;
@@ -292,7 +292,7 @@ export interface CaptureTokenRecord {
   tokenHash: string;
   tokenPrefix: string;
   kind: CaptureTokenKind;
-  /** Human label for a browser connection, for example "Chrome on macOS". */
+  /** Human label for a device, for example "Chrome on macOS" or "iPhone". */
   label?: string;
   createdAt: string;
   lastUsedAt?: string;
@@ -303,7 +303,7 @@ export interface CaptureTokenRepository {
   create(record: CaptureTokenRecord): Promise<void>;
   /**
    * Revokes every active token of the same kind for the tenant and inserts `record` in one
-   * statement. Tokens of the other kind are untouched.
+   * statement. Tokens of other kinds are untouched.
    */
   replaceActive(record: CaptureTokenRecord): Promise<void>;
   findActiveByHash(tokenHash: string): Promise<CaptureTokenRecord | undefined>;
@@ -312,6 +312,35 @@ export interface CaptureTokenRepository {
   /** Revokes one active token; `kind` stops a route from revoking the other kind. */
   revoke(id: string, revokedAt: string, kind?: CaptureTokenKind): Promise<boolean>;
   touchLastUsed(id: string, usedAt: string): Promise<void>;
+}
+
+/** A short-lived pairing secret. Only its SHA-256 hash is persisted. */
+export interface ShortcutPairingRecord {
+  userId: UserId;
+  id: string;
+  codeHash: string;
+  createdAt: string;
+  expiresAt: string;
+  attempts: number;
+  consumedAt?: string;
+  tokenId?: string;
+}
+
+export interface ShortcutPairingRepository {
+  /** Serialize per tenant; invalidate the previous pending code before inserting this one. */
+  replacePending(record: ShortcutPairingRecord): Promise<void>;
+  findById(id: string): Promise<ShortcutPairingRecord | undefined>;
+  /**
+   * Atomically recheck the secret, expiry, attempts and unconsumed state, insert a phone token,
+   * then consume the pairing. A mismatched hash on a resolved row increments attempts and
+   * consumes the row at five. Failure returns false; a token is never inserted on failure.
+   */
+  exchange(input: {
+    id: string;
+    codeHash: string;
+    now: string;
+    token: CaptureTokenRecord;
+  }): Promise<boolean>;
 }
 
 export interface RateLimitRepository {
@@ -719,6 +748,7 @@ export interface RepositorySet {
   digests: DigestRepository;
   captures: CaptureRepository;
   captureTokens: CaptureTokenRepository;
+  shortcutPairings: ShortcutPairingRepository;
   rateLimits: RateLimitRepository;
   oauthTokens: OAuthTokenRepository;
   connectorOAuthStates: ConnectorOAuthStateRepository;

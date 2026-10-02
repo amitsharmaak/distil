@@ -376,3 +376,83 @@ describe("reprioritize — AI-assisted ranking (useAI=true)", () => {
     expect(mockGenerateText).not.toHaveBeenCalled();
   });
 });
+
+// ── Capture triage score ──────────────────────────────────────────────────────
+
+describe("reprioritize — capture triage score", () => {
+  function triaged(priorityScore: number, overrides: Partial<ContentItem> = {}): ContentItem {
+    return makeItem({
+      contentClassification: {
+        triage: {
+          kind: "content",
+          readable: true,
+          confidence: 0.95,
+          priorityScore,
+          reason: "Matches the reader's interests.",
+          model: "test-model",
+          promptVersion: "triage-v1",
+          triagedAt: new Date().toISOString(),
+          enforced: true,
+        },
+      },
+      ...overrides,
+    });
+  }
+
+  async function scoreOf(item: ContentItem, useAI = false): Promise<number> {
+    mockGetItems.mockReturnValue([item]);
+    const result = await reprioritize(context, repositories, useAI);
+    return result.find((r) => r.itemId === item.id)!.score;
+  }
+
+  it("blends the triage score 60/40 with the heuristic instead of overwriting it", async () => {
+    const createdAt = new Date().toISOString();
+    const heuristic = await scoreOf(makeItem({ id: "plain", createdAt }));
+    const blended = await scoreOf(triaged(95, { id: "triaged", createdAt }));
+
+    expect(blended).toBe(Math.round(0.6 * 95 + 0.4 * heuristic));
+    expect(blended).toBeGreaterThan(heuristic);
+    expect(mockUpdateItemPriorityScore).toHaveBeenLastCalledWith("triaged", blended, "high");
+  });
+
+  it("lets a low triage score pull an item down", async () => {
+    const createdAt = new Date().toISOString();
+    const heuristic = await scoreOf(makeItem({ id: "plain", createdAt }));
+    const blended = await scoreOf(triaged(5, { id: "triaged", createdAt }));
+
+    expect(blended).toBe(Math.round(0.6 * 5 + 0.4 * heuristic));
+    expect(blended).toBeLessThan(heuristic);
+  });
+
+  it("scores items without triage exactly as before", async () => {
+    const createdAt = new Date().toISOString();
+    const plain = await scoreOf(makeItem({ id: "plain", createdAt }));
+    const otherClassification = await scoreOf(
+      makeItem({ id: "classified", createdAt, contentClassification: { kind: "article" } })
+    );
+    expect(otherClassification).toBe(plain);
+  });
+
+  it.each([
+    ["a string", "triage"],
+    ["a non-numeric score", { triage: { kind: "content", confidence: 0.9, priorityScore: "90" } }],
+    ["an unknown kind", { triage: { kind: "spam", confidence: 0.9, priorityScore: 90 } }],
+    ["a missing confidence", { triage: { kind: "content", priorityScore: 90 } }],
+    ["a null triage", { triage: null }],
+  ])("ignores a malformed content classification (%s)", async (_label, contentClassification) => {
+    const createdAt = new Date().toISOString();
+    const plain = await scoreOf(makeItem({ id: "plain", createdAt }));
+    const garbage = await scoreOf(makeItem({ id: "garbage", createdAt, contentClassification }));
+    expect(garbage).toBe(plain);
+  });
+
+  it("applies the AI blend on top of the triage-blended base", async () => {
+    const item = triaged(90, { id: "ai-triaged" });
+    const base = await scoreOf(item);
+    mockGenerateText.mockResolvedValue(JSON.stringify([{ id: item.id, score: 30 }]));
+
+    const withAI = await scoreOf(item, true);
+
+    expect(withAI).toBe(Math.round(30 * 0.6 + base * 0.4));
+  });
+});

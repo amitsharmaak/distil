@@ -72,7 +72,7 @@ export function ReportToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-8 gap-1.5 px-2.5"
+        className="min-h-11 min-w-11 h-8 gap-1.5 px-2.5"
         onClick={handleCopy}
         aria-keyshortcuts="Shift+C"
         title="Copy as Markdown (Shift+C)"
@@ -85,7 +85,7 @@ export function ReportToolbar({
           ref={furtherRef}
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 px-2.5"
+          className="min-h-11 min-w-11 h-8 gap-1.5 px-2.5"
           aria-keyshortcuts="Shift+D"
           title="Research further (Shift+D)"
         >

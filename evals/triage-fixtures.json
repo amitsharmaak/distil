@@ -1,0 +1,191 @@
+[
+  {
+    "name": "login-wall-generic",
+    "url": "https://news.example.com/2026/09/markets-outlook",
+    "title": "Sign in",
+    "text": "Sign in to continue\n\nYou need an account to read this story.\n\nEmail address\n\nPassword\n\nForgot your password?\n\nSign in\n\nDon't have an account? Create one for free.\n\nBy continuing you agree to our Terms of Service and Privacy Policy.",
+    "label": "junk"
+  },
+  {
+    "name": "login-wall-workspace",
+    "url": "https://docs.example-workspace.com/document/d/abc123/edit",
+    "title": "Example Docs - Sign in",
+    "text": "Sign in\n\nto continue to Example Docs\n\nEmail or phone\n\nForgot email?\n\nNot your computer? Use a private browsing window to sign in.\n\nCreate account\n\nNext",
+    "label": "junk"
+  },
+  {
+    "name": "login-wall-social",
+    "url": "https://social.example.net/someuser/status/1234567890",
+    "title": "Log in or sign up",
+    "text": "Don't miss what's happening\n\nPeople on Example Social are the first to know.\n\nLog in\n\nSign up\n\nSee new posts\n\nNew to Example Social? Sign up now to get your own personalized timeline!",
+    "label": "junk"
+  },
+  {
+    "name": "paywall-stub-subscribe",
+    "url": "https://www.dailyledger.example/business/2026/09/30/supply-chains-rethink",
+    "title": "Why supply chains are being rethought",
+    "text": "Why supply chains are being rethought\n\nBy Staff Reporter\n\nFor three decades, manufacturers optimised for the lowest possible cost. That calculation is changing.\n\nSubscribe to keep reading\n\nThis article is for subscribers only. Get unlimited access for $1 a week for the first year. Cancel anytime.\n\nAlready a subscriber? Sign in",
+    "label": "junk"
+  },
+  {
+    "name": "paywall-stub-metered",
+    "url": "https://www.weeklyreview.example/culture/the-quiet-return-of-letter-writing",
+    "title": "The quiet return of letter writing",
+    "text": "You've reached your limit of free articles this month.\n\nThe quiet return of letter writing\n\nSubscribe now to continue reading and get access to our full archive, the weekly print edition and our apps.\n\nSee subscription options\n\nAlready subscribed? Log in",
+    "label": "junk"
+  },
+  {
+    "name": "consent-wall-cookies",
+    "url": "https://www.citypaper.example/local/new-tram-line-approved",
+    "title": "Before you continue",
+    "text": "We value your privacy\n\nWe and our 847 partners store and access information on your device, such as cookies, and process personal data such as unique identifiers for personalised ads and content, ad and content measurement, audience insights and product development.\n\nYou can accept, reject or manage your choices below. Your choices will apply to this site only.\n\nAccept all\n\nReject all\n\nManage options",
+    "label": "junk"
+  },
+  {
+    "name": "consent-wall-gdpr",
+    "url": "https://www.portal.example.eu/article/9981",
+    "title": "Privacy settings",
+    "text": "Before you continue to Example Portal\n\nWe use cookies and data to deliver and maintain services, measure audience engagement and show personalised advertising.\n\nIf you choose \"Accept all\" we will also use cookies to develop new services and show personalised ads. If you choose \"Reject all\" we will not use cookies for these additional purposes.\n\nMore options\n\nReject all\n\nAccept all",
+    "label": "junk"
+  },
+  {
+    "name": "error-page-404",
+    "url": "https://blog.example.org/posts/an-old-post-that-moved",
+    "title": "Page not found",
+    "text": "404\n\nPage not found\n\nSorry, we couldn't find the page you were looking for. It may have been moved or deleted.\n\nGo back home\n\nSearch the blog",
+    "label": "junk"
+  },
+  {
+    "name": "error-page-500",
+    "url": "https://app.example.io/reports/weekly",
+    "title": "Something went wrong",
+    "text": "500 Internal Server Error\n\nSomething went wrong on our end. Our team has been notified.\n\nPlease try again in a few minutes.\n\nError reference: 7f3c2a",
+    "label": "junk"
+  },
+  {
+    "name": "error-page-gone",
+    "url": "https://shop.example.com/journal/spring-collection-story",
+    "title": "This page is no longer available",
+    "text": "This page is no longer available\n\nThe content you requested has been removed or has expired.\n\nContinue shopping",
+    "label": "junk"
+  },
+  {
+    "name": "bot-check-cloudflare-style",
+    "url": "https://forum.example.dev/t/build-times-doubled-after-upgrade/4412",
+    "title": "Just a moment...",
+    "text": "Checking your browser before accessing forum.example.dev.\n\nThis process is automatic. Your browser will redirect to your requested content shortly.\n\nPlease allow up to 5 seconds...\n\nVerify you are human by completing the action below.\n\nforum.example.dev needs to review the security of your connection before proceeding.",
+    "label": "junk"
+  },
+  {
+    "name": "bot-check-captcha",
+    "url": "https://www.marketplace.example/item/551",
+    "title": "Are you a robot?",
+    "text": "Are you a robot?\n\nWe've detected unusual activity from your network. Please complete the check below to continue.\n\nI'm not a robot\n\nWhy am I seeing this? Automated requests may violate our terms of use.",
+    "label": "junk"
+  },
+  {
+    "name": "empty-shell-js",
+    "url": "https://app.example.so/notes/shared/8f2e",
+    "title": "Example Notes",
+    "text": "You need to enable JavaScript to run this app.",
+    "label": "junk"
+  },
+  {
+    "name": "empty-shell-loading",
+    "url": "https://dashboard.example.app/share/q3-roadmap",
+    "title": "Loading...",
+    "text": "Loading...\n\nExample App\n\nSkip to content",
+    "label": "junk"
+  },
+  {
+    "name": "empty-shell-nav-only",
+    "url": "https://www.brand.example/stories/feature",
+    "title": "Stories | Brand",
+    "text": "Home\n\nProducts\n\nStories\n\nAbout\n\nContact\n\nFollow us\n\nCopyright 2026 Brand Inc. All rights reserved.",
+    "label": "junk"
+  },
+  {
+    "name": "ok-short-release-note",
+    "url": "https://github.example.com/acme/fastqueue/releases/tag/v2.4.0",
+    "title": "Release v2.4.0 - acme/fastqueue",
+    "text": "v2.4.0\n\nHighlights\n\n- Consumers can now set a per-message visibility timeout.\n- Dead-letter queues keep the original enqueue timestamp.\n- The Go client drops support for Go 1.21.\n\nFixes\n\n- Fixed a race where a cancelled consumer could acknowledge a message twice.\n\nUpgrade notes: no schema changes; restart workers after deploying.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-recipe",
+    "url": "https://www.homekitchen.example/recipes/weeknight-lentil-soup",
+    "title": "Weeknight lentil soup",
+    "text": "Weeknight lentil soup\n\nServes 4. Ready in 40 minutes.\n\nIngredients\n\n- 1 cup red lentils, rinsed\n- 1 onion, diced\n- 2 carrots, diced\n- 2 cloves garlic\n- 1 teaspoon cumin\n- 5 cups vegetable stock\n- Juice of half a lemon\n\nMethod\n\nSoften the onion and carrots in olive oil for eight minutes. Add the garlic and cumin and stir for one minute. Add the lentils and stock, bring to a simmer and cook for 20 minutes until the lentils collapse. Blend half the soup, stir it back in and finish with lemon juice and salt.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-poem",
+    "url": "https://smallpress.example/poems/morning-ferry",
+    "title": "Morning Ferry",
+    "text": "Morning Ferry\n\nThe harbour wakes in shades of tin,\ngulls stitch the fog with thread,\nand every bench along the rail\nholds someone half in bed.\n\nThe engine hums a patient note,\nthe far shore takes its time,\nand coffee steam and diesel smoke\nagree to share the climb.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-changelog",
+    "url": "https://tools.example.dev/changelog",
+    "title": "Changelog",
+    "text": "Changelog\n\n3.1.0 (2026-09-28)\n\n- Added: `--watch` flag for the build command.\n- Changed: config files are now validated on load.\n- Removed: the deprecated `legacyMode` option.\n\n3.0.2 (2026-09-12)\n\n- Fixed: Windows paths with spaces in the cache directory.\n\n3.0.1 (2026-09-03)\n\n- Fixed: a crash when the lockfile is empty.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-docs-page",
+    "url": "https://docs.example.dev/guides/retries",
+    "title": "Retries and backoff",
+    "text": "Retries and backoff\n\nEvery client call is retried up to three times on transient failures: connection resets, timeouts and HTTP 429 or 503 responses.\n\nBackoff\n\nThe delay doubles after each attempt, starting at 200 ms, with full jitter. Set `maxAttempts` to 1 to disable retries.\n\nIdempotency\n\nOnly idempotent requests are retried automatically. For POST requests, pass an idempotency key to opt in.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-news-brief",
+    "url": "https://www.regionalnews.example/2026/10/01/bridge-reopens",
+    "title": "River bridge reopens after repairs",
+    "text": "River bridge reopens after repairs\n\nThe Main Street bridge reopened to traffic on Wednesday morning after six weeks of repairs to its expansion joints, the city's transport department said.\n\nBuses return to their usual routes from Thursday. Cyclists will use a new protected lane on the north side.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-article-about-cookies",
+    "url": "https://www.privacyweekly.example/explainers/how-consent-banners-work",
+    "title": "How cookie consent banners actually work",
+    "text": "How cookie consent banners actually work\n\nMost visitors click \"Accept all\" without reading. But behind the banner sits a consent management platform that records your choice and passes it to advertising partners in a standard string.\n\nWhen you click \"Reject all\", the site should stop loading non-essential cookies. Audits regularly find sites that load trackers before any choice is made.\n\nRegulators have started to fine sites whose \"Reject\" button is harder to find than \"Accept\". The practical advice: look for a \"Manage options\" link and check that the choices persist on your next visit.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-article-about-login",
+    "url": "https://engineering.example.com/blog/passkeys-rollout",
+    "title": "What we learned rolling out passkeys",
+    "text": "What we learned rolling out passkeys\n\nSix months ago we added passkeys next to the password sign-in form. Today 41% of sign-ins use them.\n\nThe biggest surprise was account recovery. Users who lost a device needed a path back in that did not reintroduce passwords, so we added recovery codes at enrolment.\n\nThe login page itself changed little: one extra button, \"Sign in with a passkey\". Support tickets about forgotten passwords dropped by a third.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-newsletter-footer",
+    "url": "https://letters.example.com/p/the-sunday-note-142",
+    "title": "The Sunday Note #142",
+    "text": "The Sunday Note #142\n\nThis week I finally finished the garden shed, and it taught me more about planning than any project at work. I under-ordered timber twice, and both times the fix cost more than the original mistake.\n\nThree links worth your time: a short history of standard pallet sizes, a guide to reading lumber grades, and a long thread on why sheds always take a weekend longer than planned.\n\nSee you next Sunday.\n\nYou are receiving this because you subscribed. Unsubscribe | Manage preferences | Sign in to read in the app",
+    "label": "ok"
+  },
+  {
+    "name": "ok-paywall-explainer",
+    "url": "https://www.mediabusiness.example/analysis/metered-paywalls",
+    "title": "Are metered paywalls still working?",
+    "text": "Are metered paywalls still working?\n\nA metered paywall lets readers see a few free articles a month before the \"Subscribe to keep reading\" prompt appears. Publishers adopted the model widely in the 2010s.\n\nNew data from a group of regional publishers suggests the meter is losing ground to hard paywalls on premium sections combined with free general news. Conversion rates on the hard sections were roughly double.\n\nThe trade-off is reach: free articles drive search traffic, which feeds the subscription funnel.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-error-postmortem",
+    "url": "https://status.example.io/incidents/2026-09-22",
+    "title": "Incident: elevated 500 errors on the API",
+    "text": "Incident: elevated 500 errors on the API\n\nBetween 14:02 and 14:37 UTC, about 8% of API requests returned 500 Internal Server Error.\n\nCause: a configuration change reduced the database connection pool from 50 to 5 on one region's API servers.\n\nResolution: we reverted the change and added a check that blocks pool sizes below 20 in production configuration.\n\nNo data was lost.",
+    "label": "ok"
+  },
+  {
+    "name": "ok-short-quote-post",
+    "url": "https://notes.example.blog/2026/09/on-shipping",
+    "title": "On shipping",
+    "text": "On shipping\n\nA rule I keep relearning: the version you ship this week beats the perfect version you ship next quarter, because only the shipped one tells you what to fix.\n\nWrite it down, ship it small, measure, repeat.",
+    "label": "ok"
+  }
+]

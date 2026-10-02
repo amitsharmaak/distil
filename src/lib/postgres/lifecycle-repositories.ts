@@ -85,6 +85,10 @@ const EXPORT_DATASETS = [
   ],
   ["settings", `SELECT to_jsonb(t) - 'user_id' AS value FROM user_settings t ORDER BY key`],
   [
+    "shortcut-pairings",
+    `SELECT jsonb_build_object('id', id, 'createdAt', created_at, 'expiresAt', expires_at, 'attempts', attempts, 'consumedAt', consumed_at, 'tokenId', token_id) AS value FROM shortcut_pairings ORDER BY created_at, id`,
+  ],
+  [
     "notifications",
     `SELECT to_jsonb(t) - 'user_id' AS value FROM notifications t ORDER BY created_at, id`,
   ],
@@ -275,6 +279,9 @@ export class PostgresTenantLifecycleRepository implements TenantLifecycleReposit
       UPDATE users SET status='deletion_pending',updated_at=${input.requestedAt}::timestamptz
       WHERE id=${this.context.userId}::uuid AND status='active' RETURNING id`;
     if (!updated[0]) throw new Error("Account is not active");
+    await this.sql`
+      UPDATE shortcut_pairings SET consumed_at=${input.requestedAt}::timestamptz
+      WHERE consumed_at IS NULL`;
     await this.sql`
       UPDATE capture_tokens SET revoked_at=coalesce(revoked_at,${input.requestedAt}::timestamptz)
       WHERE revoked_at IS NULL`;
@@ -566,6 +573,9 @@ export class PostgresControlPlaneLifecycleRepository implements ControlPlaneLife
       UPDATE public.users SET status='suspended',updated_at=${input.at}::timestamptz
       WHERE id=${input.userId}::uuid AND status='active' RETURNING id,primary_email`;
     if (!rows[0]) return false;
+    await this.sql`
+      UPDATE public.shortcut_pairings SET consumed_at=${input.at}::timestamptz
+      WHERE user_id=${input.userId}::uuid AND consumed_at IS NULL`;
     await this
       .sql`UPDATE public.capture_tokens SET revoked_at=coalesce(revoked_at,${input.at}::timestamptz) WHERE user_id=${input.userId}::uuid`;
     await this

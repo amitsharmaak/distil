@@ -1,4 +1,23 @@
-import { htmlToReadableText, toPlainText, toSummaryDigest } from "../format";
+import { formatDate, htmlToReadableText, toPlainText, toSummaryDigest } from "../format";
+
+describe("formatDate", () => {
+  it("uses a deterministic locale and UTC default, accepting Date or ISO input", () => {
+    expect(formatDate("2026-10-01T00:15:00Z")).toBe("Oct 1, 2026");
+    expect(formatDate(new Date("2026-10-01T00:15:00Z"))).toBe("Oct 1, 2026");
+  });
+
+  it("accepts explicit date options and safely omits invalid dates", () => {
+    expect(formatDate("2026-10-01T00:15:00Z", { month: "long", day: "numeric" })).toBe("October 1");
+    expect(
+      formatDate("2026-10-01T00:15:00Z", {
+        month: "short",
+        day: "numeric",
+        timeZone: "America/Los_Angeles",
+      })
+    ).toBe("Sep 30");
+    expect(formatDate("not-a-date")).toBe("");
+  });
+});
 
 describe("toPlainText", () => {
   it("returns an empty string for missing values", () => {
@@ -69,6 +88,15 @@ describe("toSummaryDigest", () => {
 
   it("returns an empty digest for missing input", () => {
     expect(toSummaryDigest(undefined)).toEqual({ lead: "", points: [] });
+  });
+
+  it("omits heading names when an older brief has no TL;DR or bullet list", () => {
+    expect(toSummaryDigest("## Overview\nReadable lead.\n\n## Implications\nMore detail.")).toEqual(
+      {
+        lead: "Readable lead. More detail.",
+        points: [],
+      }
+    );
   });
 });
 

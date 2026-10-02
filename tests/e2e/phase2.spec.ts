@@ -1,3 +1,5 @@
+import { createSessionToken } from "../../src/lib/auth/session";
+import { SESSION_COOKIE_NAME } from "../../src/lib/auth/constants";
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/browser/test";
 
@@ -73,6 +75,17 @@ test("renders enabled Phase 2 navigation and deterministic core states", async (
   await expect(page.getByRole("heading", { name: "No digest yet" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Run now" })).toBeVisible();
 
+  // The reader resolves authentication on the server even when the proxy's test mode is on.
+  // Use the local session, as the real PostgreSQL keyboard flow does.
+  if (process.env.DISTIL_SESSION_SECRET && process.env.DISTIL_LEGACY_USER_ID) {
+    await page.context().addCookies([
+      {
+        name: SESSION_COOKIE_NAME,
+        value: await createSessionToken(process.env.DISTIL_SESSION_SECRET),
+        url: test.info().project.use.baseURL ?? "http://127.0.0.1:3100",
+      },
+    ]);
+  }
   const readerResponse = await page.goto("/feed/phase2-fixture");
   expect(readerResponse?.ok()).toBe(true);
   await expect(page.getByRole("heading", { name: "Item not found" })).toBeVisible();

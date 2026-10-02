@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-21",
+  "updatedAt": "2026-10-01",
   "baselineCommit": "428a0b023e2295b59fe864efeb2b26047b0ed6fa",
   "status": "wave-3-integration-in-progress",
   "tenantDefinition": "One user account is the Phase 3 tenant; workspace scope is reserved for later explicit sharing.",
@@ -31,7 +31,16 @@
       "replay_idempotent",
       "retry_preserves_tenant"
     ],
-    "platformAdmin": ["user_session_403", "admin_success", "reason_and_audit_required"]
+    "platformAdmin": ["user_session_403", "admin_success", "reason_and_audit_required"],
+    "pairingExchange": [
+      "missing_or_invalid_code_401",
+      "valid_code_success",
+      "expired_or_consumed_code_401",
+      "pre_context_ip_rate_limit",
+      "single_use_concurrent_exchange",
+      "no_session_required",
+      "no_secret_in_logs_or_error"
+    ]
   },
   "principals": [
     {
@@ -352,6 +361,22 @@
       "sensitive": true
     },
     {
+      "name": "shortcut_pairings",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "tenant-isolated",
+      "requiredScope": "direct-user",
+      "ownerVia": "user_id; token_id must reference the same tenant",
+      "sensitive": true
+    },
+    {
+      "name": "shortcut_pairing_rate_limits",
+      "source": "src/lib/postgres/schema.ts",
+      "currentScope": "bounded-pre-context-operation",
+      "requiredScope": "security-definer-only",
+      "ownerVia": "hashed pairing IP key; server-clock fixed window; no runtime table access",
+      "sensitive": true
+    },
+    {
       "name": "rate_limit_windows",
       "source": "src/lib/postgres/schema.ts",
       "currentScope": "global-key",
@@ -484,6 +509,11 @@
     {
       "name": "CaptureTokenRepository",
       "resources": ["capture_tokens"]
+    },
+    {
+      "name": "ShortcutPairingRepository",
+      "resources": ["shortcut_pairings", "capture_tokens"],
+      "methods": ["replacePending", "findById", "exchange"]
     },
     {
       "name": "RateLimitRepository",
@@ -1303,6 +1333,28 @@
       "testProfile": "owner"
     },
     {
+      "path": "/api/v1/shortcut-pairings",
+      "source": "src/app/api/v1/shortcut-pairings/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "route_session",
+      "requiredPrincipal": "user_session",
+      "scope": "owner",
+      "resources": ["shortcut_pairings"],
+      "testProfile": "owner",
+      "notes": "Requires Origin; replaces the tenant pending code; returns its plaintext once with no-store."
+    },
+    {
+      "path": "/api/v1/shortcut-pairings/exchange",
+      "source": "src/app/api/v1/shortcut-pairings/exchange/route.ts",
+      "methods": ["POST"],
+      "currentAuth": "single_use_pairing_code",
+      "requiredPrincipal": "single_use_pairing_code",
+      "scope": "pairing-exchange",
+      "resources": ["shortcut_pairings", "capture_tokens", "shortcut_pairing_rate_limits"],
+      "testProfile": "pairingExchange",
+      "notes": "No session required. Database-backed hashed-IP rate limit before body parsing or exact-hash identity lookup; all invalid/expired/consumed codes receive the same 401. The resolved tenant transaction atomically consumes the code and mints one phone token."
+    },
+    {
       "path": "/api/v1/extension/connections/:id",
       "source": "src/app/api/v1/extension/connections/[id]/route.ts",
       "methods": ["DELETE"],
@@ -1789,7 +1841,7 @@
       "source": "src/lib/repositories/ports.ts",
       "kind": "repository-contracts",
       "currentScope": "no TenantContext",
-      "requiredScope": "all 25 repository families accept TenantContext"
+      "requiredScope": "all personal repository families accept TenantContext"
     },
     {
       "source": "src/lib/postgres/repositories.ts",
@@ -2081,6 +2133,13 @@
       "entryPoints": ["classifyItemArea"],
       "currentScope": "tenant-scoped: called by the capture consumer with the queue envelope's system context; reads the owned item, its brief and the tenant's own area corrections, and writes only the AI area columns through the tenant repositories; provider calls go through the tenant AI router's budget and accounting",
       "requiredScope": "owned item and corrections only; never another tenant's items as examples; user-scoped AI budget/audit"
+    },
+    {
+      "id": "capture-triage",
+      "source": "src/lib/ai/triage-capture.ts",
+      "entryPoints": ["createTenantCaptureTriage", "triageCapture"],
+      "currentScope": "tenant-scoped: called by the capture processor inside the tenant capture job; only the capture's own extracted text and the tenant's preference summary reach the tenant AI router's budget and accounting; it writes only through the owned item insert",
+      "requiredScope": "capture's own extracted text and the owner's preference summary only; no other items or tenants in the prompt; user-scoped AI budget/audit; writes only through the owned item insert"
     },
     {
       "id": "area-backfill",
@@ -2410,8 +2469,8 @@
     }
   ],
   "inventoryCoverage": {
-    "expectedDrizzleTableCount": 47,
-    "expectedApiRouteFileCount": 90,
+    "expectedDrizzleTableCount": 49,
+    "expectedApiRouteFileCount": 92,
     "expectedPageFileCount": 19,
     "coverageRule": "The sets of Drizzle table names, API route source files and page source files extracted from the repository must exactly equal the corresponding matrix sets.",
     "methodRule": "For each API source file, exported GET/POST/PUT/PATCH/DELETE/OPTIONS methods must exactly equal the union of matrix methods for that source."

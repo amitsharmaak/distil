@@ -95,6 +95,7 @@ beforeAll(async () => {
     "life-areas",
     "drop-collections",
     "browser-connections",
+    "phone-pairing",
   ] as const) {
     await applyTenantMigrationStage({
       sql: harness.sql,

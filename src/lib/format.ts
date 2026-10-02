@@ -1,3 +1,13 @@
+/** Stable locale and timezone keep server and browser date labels identical. */
+export function formatDate(
+  value: string | Date,
+  options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" }
+): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...options }).format(date);
+}
+
 export function timeAgo(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -183,6 +193,9 @@ export function toSummaryDigest(value: string | null | undefined, maxPoints = 4)
     .map((line) => toPlainText(line))
     .filter(Boolean)
     .slice(0, maxPoints);
-  const lead = toPlainText(leadSource) || (points.length === 0 ? toPlainText(value) : "");
+  // Unknown section names still yield readable text, never heading labels.
+  const lead =
+    toPlainText(leadSource) ||
+    (points.length === 0 ? toPlainText([...sections.values()].join("\n")) : "");
   return { lead, points };
 }

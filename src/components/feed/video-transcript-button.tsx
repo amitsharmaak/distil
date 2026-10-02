@@ -45,7 +45,7 @@ export function VideoTranscriptButton({ itemId }: VideoTranscriptButtonProps) {
         size="sm"
         onClick={load}
         disabled={loading}
-        className="h-8 gap-1.5"
+        className="min-h-11 gap-1.5"
       >
         {loading ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />

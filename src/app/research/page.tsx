@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileQuestion, Scan, Search, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeepResearch } from "@/components/feed/deep-research";
@@ -159,69 +162,60 @@ export default function ResearchListPage() {
     !scanning && !loading
   );
 
-  function getStatusBadgeVariant(status: string) {
-    if (status === "completed") return "text-green-600 border-green-200";
-    if (status === "failed") return "text-red-600 border-red-200";
-    return "text-amber-600 border-amber-200";
-  }
-
   if (error) {
     return (
-      <div className="mx-auto max-w-3xl py-12 text-center">
-        <p className="text-sm text-destructive">{error}</p>
-      </div>
+      <PageContainer>
+        <PageHeader title="Research" />
+        <EmptyState title="Could not load research" description={error} />
+      </PageContainer>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Research</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Suggested topics, your reports, and ad-hoc deep research
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleScan}
-          disabled={scanning || loading}
-          className="gap-2 shrink-0"
-          aria-label="Scan for topics"
-          aria-keyshortcuts="Shift+S"
-          title="Scan for suggestions (Shift+S)"
-        >
-          <Scan className="h-4 w-4" />
-          {scanning ? "Scanning…" : "Scan for topics"}
-        </Button>
-      </div>
+    <PageContainer className="space-y-8">
+      <PageHeader
+        title="Research"
+        description="Suggested topics, your reports, and ad-hoc deep research"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleScan}
+            disabled={scanning || loading}
+            className="min-h-11 min-w-11 gap-2 shrink-0"
+            aria-label="Scan for topics"
+            aria-keyshortcuts="Shift+S"
+            title="Scan for suggestions (Shift+S)"
+          >
+            <Scan className="h-4 w-4" />
+            {scanning ? "Scanning…" : "Scan for topics"}
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Research a topic</h2>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Run deep research on anything—Distil will search the web and write a cited report.
-          </p>
-          <DeepResearch defaultQuery="">
-            <Button
-              ref={newResearchRef}
-              variant="default"
-              className="gap-2"
-              aria-keyshortcuts="n"
-              title="New research (n)"
-            >
-              <Search className="h-4 w-4" /> Deep Research
-              <Kbd className="hidden bg-primary-foreground/20 text-primary-foreground sm:inline-flex">
-                n
-              </Kbd>
-            </Button>
-          </DeepResearch>
-        </CardContent>
-      </Card>
+      <section className="border-y border-border py-6 space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Research a topic</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Run deep research on anything—Distil will search the web and write a cited report.
+        </p>
+        <DeepResearch defaultQuery="">
+          <Button
+            ref={newResearchRef}
+            variant="default"
+            className="min-h-11 min-w-11 gap-2"
+            aria-keyshortcuts="n"
+            title="New research (n)"
+          >
+            <Search className="h-4 w-4" /> Deep Research
+            <Kbd className="hidden bg-primary-foreground/20 text-primary-foreground sm:inline-flex">
+              n
+            </Kbd>
+          </Button>
+        </DeepResearch>
+      </section>
 
       {scanResult && (
         <div className="rounded-md border px-4 py-3 text-sm">
@@ -262,6 +256,7 @@ export default function ResearchListPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 justify-end">
                   <Button
+                    className="min-h-11 min-w-11"
                     variant="outline"
                     size="sm"
                     disabled={actionId === s.id}
@@ -270,6 +265,7 @@ export default function ResearchListPage() {
                     Dismiss
                   </Button>
                   <Button
+                    className="min-h-11 min-w-11"
                     size="sm"
                     disabled={actionId === s.id}
                     onClick={() => handleStartSuggestion(s.id)}
@@ -292,62 +288,50 @@ export default function ResearchListPage() {
             ))}
           </div>
         ) : reports.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <FileQuestion className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-sm font-medium">No research reports yet</p>
-              <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
-                Use <span className="font-medium">Research a topic</span> above, approve a
-                suggestion, or start from any feed item.
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No research reports yet"
+            icon={<FileQuestion className="h-6 w-6" />}
+            description="Use Research a topic above, approve a suggestion, or start from any feed item."
+          />
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y border-y border-border">
             {reports.map((report) => (
-              <Link key={report.id} href={`/research/${report.id}`}>
-                <Card className="transition-colors hover:bg-accent/50">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium line-clamp-2">{report.query}</p>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                          <span>
-                            {new Date(report.createdAt).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                          {report.completedAt && (
-                            <>
-                              <span>·</span>
-                              <span>
-                                Completed{" "}
-                                {new Date(report.completedAt).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`shrink-0 ${getStatusBadgeVariant(report.status)}`}
-                      >
-                        {report.status}
-                      </Badge>
+              <Link
+                key={report.id}
+                href={`/research/${report.id}`}
+                className="block py-5 transition-colors hover:bg-muted/40"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-serif text-xl font-medium line-clamp-2">{report.query}</p>
+                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                      <span>{formatDate(report.createdAt)}</span>
+                      {report.status === "completed" && report.completedAt && (
+                        <>
+                          <span>·</span>
+                          <span>Completed {formatDate(report.completedAt)}</span>
+                        </>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                  <StatusBadge
+                    tone={
+                      report.status === "completed"
+                        ? "success"
+                        : report.status === "failed"
+                          ? "danger"
+                          : "warning"
+                    }
+                    className="shrink-0"
+                  >
+                    {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                  </StatusBadge>
+                </div>
               </Link>
             ))}
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }
