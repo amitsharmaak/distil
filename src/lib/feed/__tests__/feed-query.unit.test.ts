@@ -319,13 +319,18 @@ describe("feed ranking contracts", () => {
     expect(sql.statements).toHaveLength(1);
     const statement = sql.statements[0];
     expect(statement).toContain("SELECT i.id,i.title,i.summary,");
-    expect(statement).toContain("s.summary AS ai_summary_text, i.ai_priority_score,");
+    expect(statement).toContain("s.summary AS ai_summary_text,");
     expect(statement).toContain("i.thumbnail_url");
     expect(statement).toContain(
-      "CEIL(char_length(COALESCE(NULLIF(i.full_content, ''), i.summary, '')) / 1200.0)::integer AS reading_minutes"
+      "CEIL(char_length(COALESCE(NULLIF(page.feed_body, ''), page.summary, '')) / 1200.0)::integer AS reading_minutes"
     );
-    // The body appears only inside the estimate, never as a returned column.
+    // The estimate runs in the outer SELECT, after the inner ORDER BY ... LIMIT.
+    expect(statement.indexOf("AS reading_minutes")).toBeLessThan(statement.indexOf("FROM ("));
+    expect(statement.indexOf("LIMIT")).toBeLessThan(statement.indexOf(") page"));
+    // The body is carried once as a reference and read only inside the estimate,
+    // never returned as a column.
     expect(statement.match(/i\.full_content/g)).toHaveLength(1);
+    expect(statement.match(/feed_body/g)).toHaveLength(2);
     expect(statement).not.toContain("i.*");
     for (const column of [
       "extracted_links",
