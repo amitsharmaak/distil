@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { QueryClient, QueryClientProvider, useQuery, type QueryKey } from "@tanstack/react-query";
+import { replaceFullPage } from "@/lib/browser-navigation";
 import { CONTENT_AUTH_EVENT, CONTENT_AUTH_STORAGE_KEY } from "./auth-events";
 
 export const CACHE_FRESHNESS = {
@@ -112,10 +113,34 @@ export function ContentCacheProvider({
   accountKey: string | null;
   children: React.ReactNode;
 }) {
+  // The signed-in account this document first rendered for. If a later server render (a
+  // `router.refresh()` after sign-out, or a session replaced from elsewhere) reports another
+  // account or none, the router cache may still hold route output rendered for the first one,
+  // for up to `experimental.staleTimes`. Re-keying the data cache is then not enough: reload
+  // the document so that cache is discarded and the server decides what this URL may show.
+  const [documentAccount, setDocumentAccount] = useState(accountKey);
+  if (documentAccount === null && accountKey !== null) setDocumentAccount(accountKey);
+  const accountChanged = documentAccount !== null && accountKey !== documentAccount;
+  useEffect(() => {
+    if (accountChanged) replaceFullPage(window.location.href, window.location);
+  }, [accountChanged]);
+  if (accountChanged) return <SessionChanged />;
   return (
     <AccountCache key={accountKey ?? "anonymous"} accountKey={accountKey}>
       {children}
     </AccountCache>
+  );
+}
+
+/** Shown in place of all content; its only exit is a document load, never a cached route. */
+function SessionChanged() {
+  return (
+    <main className="mx-auto max-w-md p-8">
+      <p>Your session changed.</p>
+      <a className="underline" href="/sign-in">
+        Continue to sign in
+      </a>
+    </main>
   );
 }
 
@@ -194,16 +219,7 @@ function AccountCache({
   return (
     <ScopeContext.Provider value={scope}>
       <QueryClientProvider client={scope.client}>
-        {expired ? (
-          <main className="mx-auto max-w-md p-8">
-            <p>Your session changed.</p>
-            <a className="underline" href="/sign-in">
-              Continue to sign in
-            </a>
-          </main>
-        ) : (
-          children
-        )}
+        {expired ? <SessionChanged /> : children}
       </QueryClientProvider>
     </ScopeContext.Provider>
   );

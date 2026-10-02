@@ -3,6 +3,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode } from "react";
 import { ContentCacheProvider, useContentCache, useContentQuery } from "../content-cache";
 import { announceAccountChange, CONTENT_AUTH_STORAGE_KEY } from "../auth-events";
+import { replaceFullPage } from "@/lib/browser-navigation";
+
+jest.mock("@/lib/browser-navigation", () => ({ replaceFullPage: jest.fn() }));
 
 type Payload = { title: string };
 function View({ initial, updatedAt }: { initial?: Payload; updatedAt?: number }) {
@@ -29,6 +32,7 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
+  jest.mocked(replaceFullPage).mockReset();
 });
 
 it("survives development Strict Mode's effect replay without expiring the account", async () => {
@@ -141,10 +145,64 @@ it("isolates account switches and ignores a previous account's late response", a
       <View />
     </ContentCacheProvider>
   );
-  await screen.findByText("Second account");
+  // The second account is never rendered inside the first account's document: route output
+  // cached for the first account may still be reachable, so the document is reloaded instead.
+  await screen.findByText("Your session changed.");
+  expect(replaceFullPage).toHaveBeenCalledWith(window.location.href, window.location);
   await act(async () => finish(response("First account private data")));
   expect(signal.aborted).toBe(true);
   expect(screen.queryByText("First account private data")).not.toBeInTheDocument();
+  expect(screen.queryByText("Second account")).not.toBeInTheDocument();
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+
+it("reloads the document when a later server render reports no account", async () => {
+  mockFetch.mockResolvedValue(response("Unexpected"));
+  const { rerender } = render(
+    <ContentCacheProvider accountKey="one">
+      <View initial={{ title: "Private report" }} updatedAt={Date.now()} />
+    </ContentCacheProvider>
+  );
+  expect(screen.getByText("Private report")).toBeInTheDocument();
+  expect(replaceFullPage).not.toHaveBeenCalled();
+
+  // What `router.refresh()` after a sign-out delivers: the same tree for nobody.
+  rerender(
+    <ContentCacheProvider accountKey={null}>
+      <View initial={{ title: "Private report" }} updatedAt={Date.now()} />
+    </ContentCacheProvider>
+  );
+
+  expect(screen.getByText("Your session changed.")).toBeInTheDocument();
+  expect(screen.queryByText("Private report")).not.toBeInTheDocument();
+  expect(replaceFullPage).toHaveBeenCalledTimes(1);
+  expect(replaceFullPage).toHaveBeenCalledWith(window.location.href, window.location);
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it("keeps the document when an anonymous page signs in, then guards that account", async () => {
+  const { rerender } = render(
+    <ContentCacheProvider accountKey={null}>
+      <p>Public page</p>
+    </ContentCacheProvider>
+  );
+  rerender(
+    <ContentCacheProvider accountKey="one">
+      <View initial={{ title: "Private report" }} updatedAt={Date.now()} />
+    </ContentCacheProvider>
+  );
+  expect(screen.getByText("Private report")).toBeInTheDocument();
+  expect(replaceFullPage).not.toHaveBeenCalled();
+
+  rerender(
+    <ContentCacheProvider accountKey="two">
+      <View initial={{ title: "Other account" }} updatedAt={Date.now()} />
+    </ContentCacheProvider>
+  );
+  expect(screen.getByText("Your session changed.")).toBeInTheDocument();
+  expect(screen.queryByText("Private report")).not.toBeInTheDocument();
+  expect(screen.queryByText("Other account")).not.toBeInTheDocument();
+  expect(replaceFullPage).toHaveBeenCalledTimes(1);
 });
 
 it.each(["local", "other-tab", "unauthorized"])(

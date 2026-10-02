@@ -1,5 +1,6 @@
 "use client";
 
+import { replaceFullPage } from "@/lib/browser-navigation";
 import { announceAccountChange } from "@/lib/client-cache/auth-events";
 import { formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -238,9 +239,11 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       setError(await messageFor(response, "Could not sign out. Please try again."));
       return;
     }
+    // Clears this tab's data cache and tells other tabs. Then leave by a document load, not
+    // `router.replace`: the router cache still holds this account's rendered pages, and a
+    // client-side navigation would keep them reachable through Back.
     announceAccountChange();
-    router.replace("/sign-in");
-    router.refresh();
+    replaceFullPage("/sign-in", window.location);
   }
 
   async function requestExport() {

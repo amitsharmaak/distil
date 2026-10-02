@@ -11,3 +11,17 @@
 export function navigateFullPage(path: string, location: Pick<Location, "assign">): void {
   location.assign(path);
 }
+
+/**
+ * Leave the current document for `path`, replacing this history entry.
+ *
+ * Use this when the account behind the tab has changed (sign-out, or a server
+ * render for a different account). The App Router keeps visited route output
+ * in a browser-memory cache for `experimental.staleTimes`, and
+ * `router.refresh()` is only documented to clear the current route, so a
+ * client-side navigation could leave the previous account's pages reachable
+ * through Back. A document load discards that cache.
+ */
+export function replaceFullPage(path: string, location: Pick<Location, "replace">): void {
+  location.replace(path);
+}
