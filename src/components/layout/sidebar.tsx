@@ -27,6 +27,20 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+/**
+ * One row layout for the navigation and the footer controls, so their icons and labels share a
+ * left edge when expanded and sit centred in the rail when collapsed.
+ */
+function rowClass(collapsed: boolean, active = false): string {
+  return cn(
+    "flex min-h-11 min-w-11 w-full items-center justify-start gap-3 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    collapsed && "justify-center px-0",
+    active
+      ? "bg-sidebar-accent text-sidebar-foreground"
+      : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
+  );
+}
+
 export function Sidebar({
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -65,12 +79,7 @@ export function Sidebar({
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               aria-label={collapsed ? item.label : undefined}
-              className={cn(
-                "flex min-h-11 min-w-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
-              )}
+              className={rowClass(collapsed, isActive)}
             >
               <item.icon className="size-4 shrink-0" />
               {!collapsed && <span>{item.label}</span>}
@@ -84,15 +93,17 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => help.setOpen(true)}
-          aria-label={collapsed ? "Keyboard shortcuts" : undefined}
+          // The full name does not fit the expanded width beside the key hint, so the visible
+          // label is the short form and the accessible name stays complete.
+          aria-label="Keyboard shortcuts"
           aria-keyshortcuts="?"
-          className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={rowClass(collapsed)}
         >
           <Keyboard className="size-4 shrink-0" />
           {!collapsed && (
             <>
-              <span>Keyboard shortcuts</span>
-              <Kbd className="ml-auto">?</Kbd>
+              <span className="min-w-0 truncate">Shortcuts</span>
+              <Kbd className="ml-auto shrink-0">?</Kbd>
             </>
           )}
         </button>
@@ -100,7 +111,7 @@ export function Sidebar({
 
       {/* Theme toggle */}
       <div className="px-2 pb-1">
-        <ThemeToggle collapsed={collapsed} />
+        <ThemeToggle collapsed={collapsed} className={rowClass(collapsed)} />
       </div>
 
       {/* Collapse toggle */}

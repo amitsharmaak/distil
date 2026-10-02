@@ -27,8 +27,12 @@ jest.mock("next/link", () => ({
 }));
 
 jest.mock("@/components/layout/theme-toggle", () => ({
-  ThemeToggle: ({ collapsed }: { collapsed?: boolean }) => (
-    <span data-testid="theme-toggle" data-collapsed={String(Boolean(collapsed))} />
+  ThemeToggle: ({ collapsed, className }: { collapsed?: boolean; className?: string }) => (
+    <span
+      data-testid="theme-toggle"
+      data-collapsed={String(Boolean(collapsed))}
+      className={className}
+    />
   ),
 }));
 
@@ -102,6 +106,41 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("link", { name: "Feed" })).toHaveClass("bg-sidebar-accent");
     expect(screen.getByRole("link", { name: "Today" })).not.toHaveClass("bg-sidebar-accent");
+  });
+
+  it("lays the footer controls out as navigation rows: left-aligned, one line, hint at the right", () => {
+    renderSidebar();
+
+    const row = ["flex", "min-h-11", "justify-start", "gap-3", "px-3", "text-sm", "font-medium"];
+    const nav = screen.getByRole("link", { name: "Feed" });
+    const shortcuts = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    const theme = screen.getByTestId("theme-toggle");
+    for (const control of [nav, shortcuts, theme]) {
+      expect(control).toHaveClass(...row, "whitespace-nowrap");
+      expect(control).not.toHaveClass("justify-center");
+    }
+    expect(theme.className).toBe(shortcuts.className);
+    expect(shortcuts.className).toBe(nav.className);
+    expect(shortcuts.querySelector("svg")).toHaveClass("size-4", "shrink-0");
+    expect(screen.getByText("Shortcuts")).toHaveClass("truncate");
+    expect(screen.getByText("?")).toHaveClass("ml-auto", "shrink-0");
+    expect(shortcuts).toHaveAttribute("aria-keyshortcuts", "?");
+  });
+
+  it("centres the icons in the collapsed rail and keeps the shortcuts name", () => {
+    renderSidebar();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    const shortcuts = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    for (const control of [
+      screen.getByRole("link", { name: "Feed" }),
+      shortcuts,
+      screen.getByTestId("theme-toggle"),
+    ]) {
+      expect(control).toHaveClass("justify-center", "px-0", "min-h-11");
+      expect(control).not.toHaveClass("justify-start");
+    }
+    expect(shortcuts).not.toHaveTextContent("?");
   });
 
   it("collapses and expands while keeping an accessible toggle", () => {

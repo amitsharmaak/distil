@@ -52,6 +52,24 @@ What changed:
 - Nothing added branches on the client: the logo is static inline SVG and the version is a
   build-time constant.
 
+Added to the same PR after a second report from Amit (a Production screenshot of the expanded
+desktop sidebar in dark theme, "Doesn't look aligned"):
+
+- Cause: the two footer controls did not use the navigation row layout. The shortcuts button
+  (`src/components/layout/sidebar.tsx`) used `gap-2` and let its label wrap; "Keyboard shortcuts"
+  plus the "?" hint is wider than the 220 px sidebar allows, so it broke into two centred lines.
+  The theme toggle (`src/components/layout/theme-toggle.tsx`) defaults to `justify-center`, so
+  its icon and label sat in the middle of the row.
+- Fix: one `rowClass` in `sidebar.tsx` now styles the navigation links, the shortcuts button and
+  the theme toggle (passed as `className`): left-aligned, `gap-3`, `px-3`, `text-sm font-medium`,
+  44 px minimum height, `whitespace-nowrap`, the same hover and focus styles. The "?" hint keeps
+  `ml-auto`. In the collapsed rail every row centres its icon; navigation icons were 4 px left
+  of centre before.
+- The visible label is now "Shortcuts", because the full name cannot fit on one line beside the
+  hint at that width. The button's accessible name stays "Keyboard shortcuts" in both states.
+- The theme label is unchanged: both "Light mode" and "Dark mode" are in the markup and CSS
+  picks one, so server and client render the same.
+
 ## Verification
 
 Local, on the branch:
@@ -66,6 +84,11 @@ Local, on the branch:
   in the console. The server was stopped afterwards.
 - Production was read with unauthenticated GETs of public static files only, on 2026-10-02 about
   14:30 UTC.
+- Sidebar footer: measured and seen on the same local server at 1280 px, expanded and
+  collapsed, light and dark. Icons of all seven rows share one left edge (20 px) and labels
+  start at 48 px; no label is clipped; collapsed icons are centred in the rail. No hydration
+  messages. After this change `npm run check` passes with 269 suites / 2407 tests (the count
+  includes tests merged from main) and `npm run build` passes.
 - Not verified: a real installed Chrome app, an iPhone or Android Home Screen icon, GitHub CI on
   the PR head and the Vercel Preview.
 
