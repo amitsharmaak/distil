@@ -7,6 +7,7 @@ import { ArchiveRestore, RefreshCw } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedTime } from "@/components/ui/updated-time";
 import { cardExcerpt, displayTitle, publisherLabel } from "@/lib/display";
 import { Button } from "@/components/ui/button";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
@@ -32,14 +33,6 @@ interface ArchiveResponse {
 }
 
 const ARCHIVE_KEY = ["library", "archive"] as const;
-
-function updatedLabel(updatedAt: number): string {
-  if (!updatedAt) return "Not updated yet";
-  return `Last updated ${new Date(updatedAt).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
-}
 
 export function ArchiveExperience() {
   const { updateItem } = useItemMutation();
@@ -73,7 +66,7 @@ export function ArchiveExperience() {
         description="Items kept out of your active reading queue."
         meta={
           <span aria-live="polite" className="text-xs">
-            {updatedLabel(archiveQuery.dataUpdatedAt)}
+            <UpdatedTime at={archiveQuery.dataUpdatedAt} label="Last updated" />
           </span>
         }
         actions={

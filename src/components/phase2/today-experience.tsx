@@ -8,6 +8,7 @@ import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedTime } from "@/components/ui/updated-time";
 import { CACHE_FRESHNESS, useContentQuery } from "@/lib/client-cache/content-cache";
 import { useViewScroll } from "@/lib/client-cache/view-scroll";
 import type { FeedItem } from "@/lib/feed/feed-query";
@@ -46,14 +47,6 @@ type PendingTodayNavigation = {
 function searchParamsForUrl(url: string): URLSearchParams {
   const queryStart = url.indexOf("?");
   return new URLSearchParams(queryStart === -1 ? "" : url.slice(queryStart + 1));
-}
-
-function updatedLabel(updatedAt: number): string {
-  if (!updatedAt) return "Not updated yet";
-  return `Updated ${new Date(updatedAt).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
 }
 
 /** Case-insensitive match on what a card shows, for the instant local narrowing. */
@@ -169,7 +162,7 @@ export function TodayExperience({
             items={view ? viewItems(view) : []}
             status={
               <>
-                <span className="text-xs">{updatedLabel(todayQuery.dataUpdatedAt)}</span>
+                <UpdatedTime at={todayQuery.dataUpdatedAt} className="text-xs" />
                 <Button
                   type="button"
                   variant="ghost"
