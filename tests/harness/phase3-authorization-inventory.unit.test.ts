@@ -18,15 +18,15 @@ describe("Phase 3 durable authorization inventory", () => {
   it("matches every frozen Wave 2 route, page, and Drizzle table in both directions", () => {
     const inventory = loadPhase3AuthorizationInventory(matrixPath);
     expect(inventory.baselineCommit).toBe("428a0b023e2295b59fe864efeb2b26047b0ed6fa");
-    expect(inventory.tables).toHaveLength(47);
-    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 90);
+    expect(inventory.tables).toHaveLength(49);
+    expect(new Set(inventory.apiRoutes.map(({ source }) => source))).toHaveProperty("size", 92);
     expect(inventory.pageLoaders).toHaveLength(19);
     expect(() => assertPhase3AuthorizationInventory(inventory)).not.toThrow();
   });
 
   it("turns every reviewed owner mutation into generated CSRF coverage", () => {
     const surfaces = reviewedOwnerMutationSurfaces(loadPhase3AuthorizationInventory(matrixPath));
-    expect(surfaces).toHaveLength(49);
+    expect(surfaces).toHaveLength(50);
     expect(surfaces).toEqual(
       expect.arrayContaining([
         "DELETE /api/auth/devices/:id",

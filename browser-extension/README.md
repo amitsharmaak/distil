@@ -19,6 +19,10 @@ Capture → Connected browsers, where it can be disconnected. Pending captures a
 opaque namespace derived from the origin and the connection, and a new connection adopts the old
 queue only when it belongs to the same account.
 
+The manual capture token in Settings is for scripts and legacy Shortcuts. The current iPhone
+Shortcut uses [code pairing](../docs/iphone-shortcut.md), and this extension uses browser sign-in;
+regenerating the manual token disconnects neither of them.
+
 ## Pack for the Chrome Web Store
 
 `npm run extension:pack` writes `dist/distil-extension-<version>.zip`. The store build drops the

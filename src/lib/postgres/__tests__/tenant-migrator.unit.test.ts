@@ -291,4 +291,40 @@ describe("staged tenant migrator", () => {
       alreadyApplied: false,
     });
   });
+  it("requires browser-connections before phone-pairing and verifies exact retries", async () => {
+    const fake = sqlDouble();
+    for (const stage of [
+      "expand",
+      "backfill",
+      "contract",
+      "lifecycle",
+      "returning-auth",
+      "perf-indexes",
+      "summary-structure",
+      "feed-search",
+      "life-areas",
+      "drop-collections",
+    ]) {
+      fake.applied.push({ stage, name: `${stage}.sql`, checksum: "accepted", owner_id: ownerId });
+    }
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "phone-pairing", ownerId })
+    ).rejects.toThrow("phone-pairing requires the browser-connections stage first");
+    fake.applied.push({
+      stage: "browser-connections",
+      name: "0015_browser_connections.sql",
+      checksum: "accepted",
+      owner_id: ownerId,
+    });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "phone-pairing", ownerId })
+    ).resolves.toMatchObject({ file: "0016_phone_pairing.sql", alreadyApplied: false });
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "phone-pairing", ownerId })
+    ).resolves.toMatchObject({ alreadyApplied: true });
+    fake.applied.find(({ stage }) => stage === "phone-pairing")!.checksum = "modified";
+    await expect(
+      applyTenantMigrationStage({ sql: fake.sql, stage: "phone-pairing", ownerId })
+    ).rejects.toThrow("differs from the file on disk");
+  });
 });

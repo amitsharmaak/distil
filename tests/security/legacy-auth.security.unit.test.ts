@@ -159,6 +159,25 @@ describe("single-user middleware authentication", () => {
     );
   });
 
+  it("passes only the exact POST pairing exchange to its code authentication", async () => {
+    const { checkAuth } = loadAuth({ configured: true });
+    await expect(
+      checkAuth(
+        new NextRequest("https://distil.test/api/v1/shortcut-pairings/exchange", { method: "POST" })
+      )
+    ).resolves.toBeNull();
+    for (const [method, pathname] of [
+      ["POST", "/api/v1/shortcut-pairings"],
+      ["GET", "/api/v1/shortcut-pairings/exchange"],
+      ["POST", "/api/v1/shortcut-pairings/exchange/extra"],
+    ]) {
+      const response = await checkAuth(
+        new NextRequest(`https://distil.test${pathname}`, { method })
+      );
+      expect(response?.status).toBe(401);
+    }
+  });
+
   it.each([
     "/login",
     "/api/auth/login",

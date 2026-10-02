@@ -10,6 +10,7 @@ const response = (body: unknown, status: number) =>
 const summary = {
   id: "token-1",
   name: "Capture token",
+  kind: "manual",
   tokenPrefix: "dst_cap_abcdefgh",
   createdAt: "2026-03-01T00:00:00Z",
 };
@@ -18,6 +19,26 @@ describe("TokenSettings", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     Object.assign(navigator, { clipboard: { writeText: jest.fn() } });
+  });
+
+  it("ignores phone and browser tokens in the manual card and replacement count", async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(
+        {
+          tokens: [
+            { ...summary, id: "phone", kind: "phone", tokenPrefix: "phone-prefix" },
+            { ...summary, id: "browser", kind: "browser", tokenPrefix: "browser-prefix" },
+            { ...summary, id: "revoked", revokedAt: "2026-10-01T00:00:00Z" },
+          ],
+        },
+        200
+      )
+    );
+    render(<TokenSettings />);
+    expect(await screen.findByRole("button", { name: "Generate token" })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/phone-prefix|browser-prefix|older token|iPhone Shortcut/)
+    ).not.toBeInTheDocument();
   });
 
   it("generates the first token and shows it once for copying", async () => {

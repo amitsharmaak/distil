@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { tenantMigrationManifest } from "./manifest";
+import { TENANT_VERIFICATION_STAGES, type TenantVerificationThrough } from "./types";
 import {
   assertIdentifier,
   buildHighValueChecksumSql,
@@ -169,13 +170,28 @@ function parseDiscovery(rows: readonly QueryRow[]): readonly DiscoveredColumn[] 
   }));
 }
 
-function requiredColumns(table: TenantTableClassification): Set<string> {
+function includedThrough(
+  introducedIn: TenantVerificationThrough | undefined,
+  through: TenantVerificationThrough
+): boolean {
+  return (
+    TENANT_VERIFICATION_STAGES.indexOf(introducedIn ?? "expand") <=
+    TENANT_VERIFICATION_STAGES.indexOf(through)
+  );
+}
+
+function requiredColumns(
+  table: TenantTableClassification,
+  through: TenantVerificationThrough
+): Set<string> {
   const columns = new Set([
     ...table.identityColumns,
     ...table.highValueColumns,
     ...table.references.flatMap(({ columns }) => columns),
     ...table.uniqueness.flatMap(({ columns }) => columns),
-    ...table.jsonColumns.map(({ column }) => column),
+    ...table.jsonColumns
+      .filter(({ introducedIn }) => includedThrough(introducedIn, through))
+      .map(({ column }) => column),
   ]);
   if (table.queue) {
     columns.add(table.queue.statusColumn);
@@ -188,9 +204,12 @@ export function verifyDiscoveredSchema(
   manifest: TenantMigrationManifest,
   columns: readonly DiscoveredColumn[],
   stage: TenantMigrationStage,
-  through: "expand" | "lifecycle" = "lifecycle"
+  through: TenantVerificationThrough = "lifecycle"
 ): VerificationFailure[] {
   const failures: VerificationFailure[] = [];
+  // Later --through values request a complete deployed schema, including for read-only rehearsal.
+  const requireMigratedSchema =
+    stage === "after" || through === "summary-structure" || through === "phone-pairing";
   const discoveredTables = new Set(columns.map(({ schema, table }) => `${schema}.${table}`));
   const classified = new Set(
     [
@@ -224,7 +243,7 @@ export function verifyDiscoveredSchema(
       continue;
     }
     const actualNames = new Set(actual.map(({ column }) => column));
-    for (const column of requiredColumns(table)) {
+    for (const column of requiredColumns(table, through)) {
       if (!actualNames.has(column)) {
         failures.push({
           code: "MISSING_CLASSIFIED_COLUMN",
@@ -252,7 +271,7 @@ export function verifyDiscoveredSchema(
         detail: `${name}.${table.ownerColumn} must use PostgreSQL uuid`,
       });
     }
-    if (stage === "after" && !owner) {
+    if (requireMigratedSchema && !owner) {
       failures.push({
         code: "MISSING_OWNER_COLUMN",
         table: name,
@@ -265,12 +284,12 @@ export function verifyDiscoveredSchema(
     const actual = columns.filter(
       (column) => column.schema === table.schema && column.table === table.table
     );
-    const requiredAtThisStage = table.introducedIn !== "lifecycle" || through === "lifecycle";
-    if (stage === "after" && requiredAtThisStage && actual.length === 0) {
+    const requiredAtThisStage = includedThrough(table.introducedIn, through);
+    if (requireMigratedSchema && requiredAtThisStage && actual.length === 0) {
       failures.push({
         code: "MISSING_SUPPLEMENTAL_TABLE",
         table: name,
-        detail: `${name} must exist after Phase 3 expand`,
+        detail: `${name} must exist through ${table.introducedIn ?? "expand"}`,
       });
       continue;
     }
@@ -284,6 +303,20 @@ export function verifyDiscoveredSchema(
           detail: `${name}.${column.column} lacks a JSON reference classification`,
         });
       }
+    }
+  }
+  for (const table of manifest.controlTables) {
+    if (
+      requireMigratedSchema &&
+      table.introducedIn &&
+      includedThrough(table.introducedIn, through) &&
+      !discoveredTables.has(`${table.schema}.${table.table}`)
+    ) {
+      failures.push({
+        code: "MISSING_CONTROL_TABLE",
+        table: `${table.schema}.${table.table}`,
+        detail: `${table.schema}.${table.table} must exist through ${table.introducedIn}`,
+      });
     }
   }
   return failures;
@@ -342,6 +375,7 @@ async function snapshotTable(
 
   const jsonReferences = [];
   for (const json of table.jsonColumns) {
+    if (!tableColumns.has(json.column)) continue;
     for (const reference of json.references ?? []) {
       const row = (await client.unsafe(buildJsonReferenceSql(table, reference)))[0];
       jsonReferences.push({
@@ -455,7 +489,7 @@ export interface BuildReportInput {
   readonly stage: TenantMigrationStage;
   readonly generatedAt?: Date;
   readonly manifest?: TenantMigrationManifest;
-  readonly through?: "expand" | "lifecycle";
+  readonly through?: TenantVerificationThrough;
 }
 
 export async function buildTenantMigrationReport(

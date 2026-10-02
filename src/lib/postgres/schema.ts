@@ -1282,7 +1282,7 @@ export const captureTokens = pgTable(
     name: text().notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     tokenPrefix: text("token_prefix").notNull(),
-    /** `manual`: the account's pasted token; `browser`: one per connected browser extension. */
+    /** Manual pasted credential, connected browser, or paired iPhone. */
     kind: text().notNull().default("manual"),
     label: text(),
     createdAt: time("created_at").notNull(),
@@ -1290,11 +1290,52 @@ export const captureTokens = pgTable(
     revokedAt: time("revoked_at"),
   },
   (t) => [
+    uniqueIndex("capture_tokens_user_id_id_idx").on(t.userId, t.id),
     uniqueIndex("capture_tokens_active_hash_idx")
       .on(t.tokenHash)
       .where(sql`${t.revokedAt} is null`),
-    check("capture_tokens_kind_check", sql`${t.kind} in ('manual', 'browser')`),
+    check("capture_tokens_kind_check", sql`${t.kind} in ('manual', 'browser', 'phone')`),
     check("capture_tokens_label_check", sql`${t.label} is null or char_length(${t.label}) <= 120`),
+  ]
+);
+export const shortcutPairings = pgTable(
+  "shortcut_pairings",
+  {
+    userId: tenantOwner(),
+    id: text().notNull(),
+    codeHash: text("code_hash").notNull().unique(),
+    createdAt: time("created_at").notNull().defaultNow(),
+    expiresAt: time("expires_at").notNull(),
+    attempts: integer().notNull().default(0),
+    consumedAt: time("consumed_at"),
+    tokenId: text("token_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.id] }),
+    uniqueIndex("shortcut_pairings_pending_user_idx")
+      .on(t.userId)
+      .where(sql`${t.consumedAt} is null`),
+    foreignKey({
+      name: "shortcut_pairings_token_fk",
+      columns: [t.userId, t.tokenId],
+      foreignColumns: [captureTokens.userId, captureTokens.id],
+    }).onDelete("cascade"),
+    check("shortcut_pairings_attempts_check", sql`${t.attempts} between 0 and 5`),
+    check("shortcut_pairings_expiry_check", sql`${t.expiresAt} > ${t.createdAt}`),
+  ]
+);
+export const shortcutPairingRateLimits = pgTable(
+  "shortcut_pairing_rate_limits",
+  {
+    keyHash: text("key_hash").notNull(),
+    windowStart: time("window_start").notNull(),
+    attempts: integer().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.keyHash, t.windowStart] }),
+    index("shortcut_pairing_rate_limits_expiry_idx").on(t.windowStart),
+    check("shortcut_pairing_rate_limits_key_check", sql`${t.keyHash} ~ '^[0-9a-f]{64}$'`),
+    check("shortcut_pairing_rate_limits_attempts_check", sql`${t.attempts} between 1 and 11`),
   ]
 );
 export const rateLimitWindows = pgTable(

@@ -2,6 +2,14 @@ export const TENANT_MIGRATION_CONTRACT_VERSION = 1 as const;
 
 export type TenantMigrationStage = "before" | "after" | "rehearsal";
 
+export const TENANT_VERIFICATION_STAGES = [
+  "expand",
+  "lifecycle",
+  "summary-structure",
+  "phone-pairing",
+] as const;
+export type TenantVerificationThrough = (typeof TENANT_VERIFICATION_STAGES)[number];
+
 export interface ReferenceClassification {
   readonly name: string;
   readonly columns: readonly string[];
@@ -30,6 +38,8 @@ export interface JsonReferenceClassification {
 
 export interface JsonColumnClassification {
   readonly column: string;
+  /** Later schema stages can classify new columns without invalidating pre-contract snapshots. */
+  readonly introducedIn?: TenantVerificationThrough;
   /** Explains why a JSON column with no declared references is safe to ignore. */
   readonly noTenantReferences?: string;
   readonly references?: readonly JsonReferenceClassification[];
@@ -55,7 +65,7 @@ export interface ControlTableClassification {
   readonly table: string;
   readonly tenantBearing: false;
   readonly reason: string;
-  readonly introducedIn?: "expand" | "lifecycle";
+  readonly introducedIn?: TenantVerificationThrough;
 }
 
 export interface SupplementalTableClassification {
@@ -64,9 +74,10 @@ export interface SupplementalTableClassification {
   readonly tenantBearing: boolean;
   readonly ownerColumn?: "id" | "user_id";
   readonly lifecycle: "identity" | "account" | "normalized-link";
+  readonly references?: readonly ReferenceClassification[];
   readonly jsonColumns: readonly JsonColumnClassification[];
   readonly reason: string;
-  readonly introducedIn?: "expand" | "lifecycle";
+  readonly introducedIn?: TenantVerificationThrough;
 }
 
 export interface TenantProtectedTableClassification {

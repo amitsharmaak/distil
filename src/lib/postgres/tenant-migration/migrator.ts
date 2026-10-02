@@ -23,6 +23,7 @@ export const TENANT_MIGRATION_STAGES = [
   "life-areas",
   "drop-collections",
   "browser-connections",
+  "phone-pairing",
 ] as const;
 export type TenantSchemaMigrationStage = (typeof TENANT_MIGRATION_STAGES)[number];
 
@@ -38,6 +39,7 @@ const STAGE_FILE: Record<TenantSchemaMigrationStage, string> = {
   "life-areas": "0013_life_areas.sql",
   "drop-collections": "0014_drop_collections.sql",
   "browser-connections": "0015_browser_connections.sql",
+  "phone-pairing": "0016_phone_pairing.sql",
 };
 
 interface AppliedMigrationRow {

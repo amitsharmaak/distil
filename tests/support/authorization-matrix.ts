@@ -212,6 +212,8 @@ const publicRouteSurfaces = new Set([
   "POST /api/auth/sign-in/password",
   "POST /api/auth/password/request-reset",
   "POST /api/auth/password/reset",
+  // Public to the session boundary; its own single-use pairing credential is mandatory.
+  "POST /api/v1/shortcut-pairings/exchange",
 ]);
 
 const workerSurfaces = ["worker:capture", "worker:durable-job"] as const;

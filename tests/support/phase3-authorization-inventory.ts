@@ -190,6 +190,7 @@ export function phase3AuthorizationInventoryIssues(
       public: ["public"],
       owner: ["owner"],
       captureCreate: ["capture-create"],
+      pairingExchange: ["pairing-exchange"],
       service: ["service", "service-fanout"],
       platformAdmin: ["platform"],
     };

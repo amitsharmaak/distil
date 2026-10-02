@@ -52,11 +52,12 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   workflow.
 - **Migrations:** hand-written SQL, ledger table `distil_migrations`.
   `src/lib/postgres/migrations/0001–0004` (Phases 1–2) run through `npm run db:migrate`;
-  `src/lib/postgres/tenant-migrations/0005–0014` (Phase 3 expand/backfill/contract/lifecycle/
-  returning-auth, the P7 perf-indexes stage, the summary-structure and feed-search stages, the life-areas stage, then drop-collections) run through `npm run db:tenant:migrate` and are
-  checked by
-  `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
-  the restricted runtime role in `DATABASE_URL`. Row-level security is forced.
+  `src/lib/postgres/tenant-migrations/0005–0016` (Phase 3 expand/backfill/contract/lifecycle/
+  returning-auth, the P7 perf-indexes stage, summary-structure, feed-search, life-areas,
+  drop-collections, browser-connections and phone-pairing) run through `npm run db:tenant:migrate`
+  and are checked by `npm run db:tenant:verify`. Migrations use `DATABASE_MIGRATION_URL` (owner role); the app uses
+  the restricted runtime role in `DATABASE_URL`. Row-level security is forced. The
+  `phone-pairing` stage (`0016_phone_pairing.sql`) requires `browser-connections` (`0015`).
 - **Legacy SQLite:** `src/lib/db.ts` (better-sqlite3) is a compatibility island. `database.ts`
   falls back to it only when `DATABASE_URL` is unset; `src/lib/notifications.ts` and
   `src/lib/sync-scheduler.ts` still import it directly. `scripts/import-sqlite.ts` migrates old
@@ -76,9 +77,11 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `/api/v1/account` reports `isAdmin`; the capture diagnostics panel lives in the admin-only
   Settings → Troubleshooting tab.
   Password sign-in, reset and change flows live in `src/lib/auth/password-login.ts`, the
-  `/reset-password` page, and the account-center password section. Capture clients share one
-  hashed capture token per account, shown once at generation; regenerating revokes every earlier
-  token (`src/lib/auth/capture-tokens.ts`).
+  `/reset-password` page, and the account-center password section. Capture tokens have `manual`,
+  `browser` and `phone` kinds and are stored hash-only. Regenerating the visible manual token
+  revokes only earlier manual tokens (scripts and legacy clients); browser sign-in and iPhone
+  pairing issue separate credentials that last until disconnected (`src/lib/auth/capture-tokens.ts`,
+  `shortcut-pairing.ts`). Each Disconnect revokes only its selected connection.
 - **Tenancy:** `src/lib/contracts/tenant-context.ts` defines `AuthContext` (`userId`,
   `actorKind`, `actorId`, `sessionId?`, `requestId`) and `SystemContext`. Every repository call,
   queue message (`CaptureQueueMessageV2`, `TenantJobEnvelopeV1`, `ResearchRunMessageV1`), search,
@@ -126,9 +129,14 @@ the roadmap in `docs/project-state.md` are complete; Phase 4 (mobile) onward is 
   `/api/ai/research/**`). `/topics`, `/sources` and the `/api/agent/**` routes were deleted in
   P4; Ask Distil (`/ask`, `/api/v1/answers`) was deleted on 2026-09-30. Phase 2 surfaces sit
   behind `FEATURE_*` flags.
-- **Capture clients:** `browser-extension/` (Chrome MV3, posts to `/api/v1/captures`, offline
-  replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`. Gmail, Slack and the
-  authenticated-publisher framework still exist in code but are disabled in hosted deployments
+- **Capture clients:** `browser-extension/` (Chrome MV3, browser sign-in, posts to
+  `/api/v1/captures`, offline replay) and the iPhone Shortcut described in `docs/iphone-shortcut.md`
+  (one public iCloud installer, one-time code pairing through `/api/v1/shortcut-pairings/exchange`,
+  then bearer captures). Settings → Capture shows manual token / Connected browsers / iPhone.
+  `NEXT_PUBLIC_IOS_SHORTCUT_URL` supplies the installer link, hidden when unset. The Shortcut's
+  `Shortcuts/Distil/token.txt` uses iCloud Drive, so devices on one Apple Account can share a pairing.
+  Gmail, Slack and the authenticated-publisher framework still exist in code but are disabled in
+  hosted deployments
   (`FEATURE_CONNECTORS=false` returns 404 for their routes).
 - **Feature flags** (`src/lib/phase2/feature-flags.ts`, exact string `"true"`, default off):
   `FEATURE_NEON_AUTH`, `FEATURE_CONNECTORS`, `FEATURE_KNOWLEDGE_UI`,

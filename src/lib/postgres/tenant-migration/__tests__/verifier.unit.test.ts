@@ -1,4 +1,5 @@
 import { buildStableChecksumSql } from "../sql";
+import { tenantMigrationManifest } from "../manifest";
 import type { TenantMigrationManifest, TenantMigrationReport } from "../types";
 import {
   buildTenantMigrationReport,
@@ -386,5 +387,86 @@ describe("tenant migration verifier", () => {
         "DATA_CHANGED",
       ])
     );
+  });
+  it("classifies structured summaries without requiring their later column during expand", async () => {
+    const structured = tenantMigrationManifest.tables.find(({ table }) => table === "ai_summaries")!
+      .jsonColumns[0];
+    expect(structured).toMatchObject({ column: "structured", introducedIn: "summary-structure" });
+    const value = manifest();
+    const current: TenantMigrationManifest = {
+      ...value,
+      tables: [
+        {
+          ...value.tables[0],
+          jsonColumns: [
+            ...value.tables[0].jsonColumns,
+            {
+              column: "structured",
+              introducedIn: "summary-structure",
+              noTenantReferences: "fixture output",
+            },
+          ],
+        },
+      ],
+    };
+    const discovered = columns().map(
+      ({
+        table_schema: schema,
+        table_name: table,
+        column_name: column,
+        data_type: dataType,
+        udt_name: udtName,
+      }) => ({ schema, table, column, dataType, udtName })
+    );
+    expect(verifyDiscoveredSchema(current, discovered, "after", "expand")).toEqual([]);
+    expect(verifyDiscoveredSchema(current, discovered, "after", "phone-pairing")).toEqual([
+      expect.objectContaining({ code: "MISSING_CLASSIFIED_COLUMN" }),
+    ]);
+    discovered.push({
+      schema: "public",
+      table: "things",
+      column: "structured",
+      dataType: "jsonb",
+      udtName: "jsonb",
+    });
+    expect(verifyDiscoveredSchema(current, discovered, "after", "phone-pairing")).toEqual([]);
+    await expect(
+      buildTenantMigrationReport({
+        client: reportClient() as never,
+        ownerId,
+        stage: "before",
+        through: "expand",
+        manifest: current,
+      })
+    ).resolves.toMatchObject({ verification: { passed: true } });
+  });
+
+  it("requires pairing tables only at the phone-pairing verification stage", () => {
+    const current = {
+      ...manifest(),
+      supplementalTables: tenantMigrationManifest.supplementalTables.filter(
+        ({ table }) => table === "shortcut_pairings"
+      ),
+      controlTables: tenantMigrationManifest.controlTables.filter(
+        ({ table }) => table === "shortcut_pairing_rate_limits"
+      ),
+    };
+    const discovered = columns()
+      .filter(({ table_name }) => table_name === "things")
+      .map(
+        ({
+          table_schema: schema,
+          table_name: table,
+          column_name: column,
+          data_type: dataType,
+          udt_name: udtName,
+        }) => ({ schema, table, column, dataType, udtName })
+      );
+    expect(verifyDiscoveredSchema(current, discovered, "after", "lifecycle")).toEqual([]);
+    expect(
+      verifyDiscoveredSchema(current, discovered, "rehearsal", "phone-pairing").map(
+        ({ code }) => code
+      )
+    ).toEqual(["MISSING_SUPPLEMENTAL_TABLE", "MISSING_CONTROL_TABLE"]);
   });
 });
