@@ -2135,6 +2135,13 @@
       "requiredScope": "owned item and corrections only; never another tenant's items as examples; user-scoped AI budget/audit"
     },
     {
+      "id": "capture-triage",
+      "source": "src/lib/ai/triage-capture.ts",
+      "entryPoints": ["createTenantCaptureTriage", "triageCapture"],
+      "currentScope": "tenant-scoped: called by the capture processor inside the tenant capture job; only the capture's own extracted text and the tenant's preference summary reach the tenant AI router's budget and accounting; it writes only through the owned item insert",
+      "requiredScope": "capture's own extracted text and the owner's preference summary only; no other items or tenants in the prompt; user-scoped AI budget/audit; writes only through the owned item insert"
+    },
+    {
       "id": "area-backfill",
       "source": "src/lib/jobs/area-backfill.ts",
       "entryPoints": ["startAreaBackfill", "runAreaBackfillBatch", "getAreaBackfillOverview"],
