@@ -4,7 +4,7 @@ import { replaceFullPage } from "@/lib/browser-navigation";
 import { announceAccountChange } from "@/lib/client-cache/auth-events";
 import { formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Download, LogOut, Monitor, ShieldAlert, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -37,6 +37,17 @@ interface ExportRequest {
   status: string;
   requestedAt: string;
   completedAt?: string;
+  failureMessage?: string;
+}
+
+// Status of an unfinished export is re-read at this interval, at most this many times
+// (three minutes). Not exported: the component's `exports` state would shadow the
+// CommonJS `exports` object that a transpiled reference to an exported constant uses.
+const EXPORT_POLL_INTERVAL_MS = 5_000;
+const EXPORT_POLL_MAX_ATTEMPTS = 36;
+
+function isUnfinishedExport(item: ExportRequest): boolean {
+  return item.status === "pending" || item.status === "running";
 }
 
 interface DeletionRequest {
@@ -90,6 +101,12 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [passwordNotice, setPasswordNotice] = useState<string>();
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordFormKey, setPasswordFormKey] = useState(0);
+  const [exportRequesting, setExportRequesting] = useState(false);
+  const exportRequestInFlight = useRef(false);
+  const [exportNotice, setExportNotice] = useState<string>();
+  const [exportError, setExportError] = useState<string>();
+  const [exportPollEndedFor, setExportPollEndedFor] = useState<string>();
+  const unfinishedExportId = exports.find(isUnfinishedExport)?.id;
 
   async function handleLifecycleFailure(
     response: Response,
@@ -157,6 +174,47 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
         setError(caught instanceof Error ? caught.message : "Could not load your account.")
       );
   }, []);
+
+  // Follows one unfinished export until it reaches a terminal state, the cap is
+  // reached, or the page goes away. Account reads are deliberately uncached.
+  useEffect(() => {
+    if (!unfinishedExportId) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch(
+          `/api/v1/account/exports/${encodeURIComponent(unfinishedExportId)}`,
+          { headers: { Accept: "application/json" }, signal: controller.signal }
+        );
+        if (cancelled) return;
+        if (response.ok) {
+          const payload = (await response.json()) as { export: ExportRequest };
+          if (cancelled) return;
+          setExports((current) =>
+            current.map((item) => (item.id === payload.export.id ? payload.export : item))
+          );
+          if (!isUnfinishedExport(payload.export)) return;
+        }
+      } catch {
+        if (cancelled) return;
+      }
+      if (attempts >= EXPORT_POLL_MAX_ATTEMPTS) {
+        setExportPollEndedFor(unfinishedExportId);
+        return;
+      }
+      timer = setTimeout(() => void poll(), EXPORT_POLL_INTERVAL_MS);
+    };
+    timer = setTimeout(() => void poll(), EXPORT_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      controller.abort();
+    };
+  }, [unfinishedExportId]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -247,26 +305,51 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   }
 
   async function requestExport() {
+    // The ref closes the gap before the disabled state renders, so a double
+    // click sends one request.
+    if (exportRequestInFlight.current) return;
+    exportRequestInFlight.current = true;
+    setExportRequesting(true);
     setError(undefined);
     setFreshAuthAction(undefined);
-    const response = await fetch("/api/v1/account/export", {
-      method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
-    });
-    if (!response.ok) {
-      await handleLifecycleFailure(
-        response,
-        "Could not request an export. Please authenticate again.",
-        "export"
+    setExportError(undefined);
+    setExportNotice(undefined);
+    try {
+      const response = await fetch("/api/v1/account/export", {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+      });
+      if (!response.ok) {
+        const failure = await failureFor(
+          response,
+          "Could not request an export. Please authenticate again."
+        );
+        setExportError(failure.message);
+        setFreshAuthAction(
+          failure.code === "FRESH_AUTH_REQUIRED" &&
+            failure.recovery?.kind === "CONTACT_OPERATOR_FOR_NEW_INVITATION"
+            ? "export"
+            : undefined
+        );
+        return;
+      }
+      const payload = (await response.json()) as { export: ExportRequest; created?: boolean };
+      setExports((current) => [
+        payload.export,
+        ...current.filter((item) => item.id !== payload.export.id),
+      ]);
+      setExportPollEndedFor(undefined);
+      setExportNotice(
+        payload.created === false && isUnfinishedExport(payload.export)
+          ? "An export is already in progress. It is shown below."
+          : "Your export has been requested. It will appear here when ready."
       );
-      return;
+    } catch {
+      setExportError("Could not request an export. Please try again.");
+    } finally {
+      exportRequestInFlight.current = false;
+      setExportRequesting(false);
     }
-    const payload = (await response.json()) as { export: ExportRequest };
-    setExports((current) => [
-      payload.export,
-      ...current.filter((item) => item.id !== payload.export.id),
-    ]);
-    setNotice("Your export has been requested. It will appear here when ready.");
   }
 
   async function refreshExport(id: string) {
@@ -274,9 +357,10 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
-      setError(await messageFor(response, "Could not refresh this export."));
+      setExportError(await messageFor(response, "Could not refresh this export."));
       return;
     }
+    setExportError(undefined);
     const payload = (await response.json()) as { export: ExportRequest };
     setExports((current) => [
       payload.export,
@@ -457,16 +541,59 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
     if (freshAuthAction === "cancellation") void cancelDeletion();
   }
 
+  function freshAuthRecovery(message: string) {
+    return (
+      <div
+        aria-live="polite"
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"
+        role="alert"
+      >
+        <p className="font-medium text-destructive">{message}</p>
+        <p className="mt-1 text-muted-foreground">
+          Send a new sign-in link to the verified email on this account. Opening it creates a new
+          provider session; then retry this action.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            className="min-h-11 min-w-11"
+            disabled={saving}
+            onClick={() => void requestFreshAuthentication()}
+            size="sm"
+            variant="outline"
+          >
+            Email verification link
+          </Button>
+          <Button
+            className="min-h-11 min-w-11"
+            disabled={saving}
+            onClick={retryFreshAuthAction}
+            size="sm"
+            variant="outline"
+          >
+            Retry action
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   async function requestFreshAuthentication() {
+    // Feedback stays next to the action that asked for fresh authentication.
+    const forExport = freshAuthAction === "export";
     setSaving(true);
     setNotice(undefined);
+    setExportNotice(undefined);
     try {
       const response = await fetch("/api/auth/reauthenticate", { method: "POST" });
       if (!response.ok) {
-        setError(await messageFor(response, "Could not send a verification link."));
+        (forExport ? setExportError : setError)(
+          await messageFor(response, "Could not send a verification link.")
+        );
         return;
       }
-      setNotice("Verification link sent. Open it in this browser, then retry the action.");
+      (forExport ? setExportNotice : setNotice)(
+        "Verification link sent. Open it in this browser, then retry the action."
+      );
     } finally {
       setSaving(false);
     }
@@ -629,11 +756,16 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
 
           <TokenSettings />
 
-          <section className="rounded-xl border border-border bg-card p-5">
+          <section
+            aria-labelledby="account-export-heading"
+            className="rounded-xl border border-border bg-card p-5"
+          >
             <div className="flex gap-3">
               <Download className="mt-0.5 h-5 w-5 text-muted-foreground" />
               <div>
-                <h2 className="text-base font-semibold">Your data export</h2>
+                <h2 className="text-base font-semibold" id="account-export-heading">
+                  Your data export
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Request a portable copy of your account data. Downloads are private and
                   short-lived.
@@ -642,20 +774,46 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
             </div>
             <Button
               className="min-h-11 min-w-11 mt-4"
+              disabled={exportRequesting || Boolean(unfinishedExportId)}
               onClick={() => void requestExport()}
               size="sm"
               variant="outline"
             >
-              Request export
+              {exportRequesting ? "Requesting export…" : "Request export"}
             </Button>
+            <div aria-live="polite" className="mt-3 space-y-2 empty:hidden">
+              {unfinishedExportId && !exportRequesting ? (
+                <p className="text-sm text-muted-foreground">
+                  {exportPollEndedFor === unfinishedExportId
+                    ? "This export is taking longer than usual. Use Refresh status to check again."
+                    : "An export is in progress. You can request another when it finishes."}
+                </p>
+              ) : null}
+              {exportNotice ? <p className="text-sm text-success">{exportNotice}</p> : null}
+              {exportError ? (
+                freshAuthAction === "export" ? (
+                  freshAuthRecovery(exportError)
+                ) : (
+                  <p className="text-sm text-destructive">{exportError}</p>
+                )
+              ) : null}
+            </div>
             {exports.length ? (
               <div className="mt-4 space-y-2">
                 {exports.map((item) => (
                   <div
-                    className="flex items-center justify-between rounded-lg border border-border p-3 text-sm"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm"
                     key={item.id}
                   >
-                    <span>{item.status}</span>
+                    <div className="min-w-0">
+                      <span>{item.status}</span>
+                      {item.status === "failed" ? (
+                        <p className="mt-1 text-muted-foreground">
+                          {item.failureMessage ??
+                            "This export could not be created. Please request a new one."}
+                        </p>
+                      ) : null}
+                    </div>
                     {item.status === "ready" ? (
                       <a
                         className="underline"
@@ -854,37 +1012,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
       ) : null}
       {error ? (
         freshAuthAction ? (
-          <div
-            aria-live="polite"
-            className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"
-            role="alert"
-          >
-            <p className="font-medium text-destructive">{error}</p>
-            <p className="mt-1 text-muted-foreground">
-              Send a new sign-in link to the verified email on this account. Opening it creates a
-              new provider session; then retry this action.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                className="min-h-11 min-w-11"
-                disabled={saving}
-                onClick={() => void requestFreshAuthentication()}
-                size="sm"
-                variant="outline"
-              >
-                Email verification link
-              </Button>
-              <Button
-                className="min-h-11 min-w-11"
-                disabled={saving}
-                onClick={retryFreshAuthAction}
-                size="sm"
-                variant="outline"
-              >
-                Retry action
-              </Button>
-            </div>
-          </div>
+          freshAuthRecovery(error)
         ) : (
           <p aria-live="polite" className="text-sm text-destructive">
             {error}
