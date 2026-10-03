@@ -119,6 +119,69 @@ describe("returning sign-in return path", () => {
     expect((await completion(hostile)).headers.get("location")).toBe(`${origin}/`);
   });
 
+  it("returns a reauthenticated subject to the Account page with the verified marker", async () => {
+    const sealed = sealSignInNext(
+      "/account?reauthenticated=1",
+      stateSecret,
+      new Date(),
+      "provider-subject"
+    );
+    const response = await completion(sealed);
+    expect(response.headers.get("location")).toBe(`${origin}/account?reauthenticated=1`);
+    expect(response.headers.getSetCookie().join("\n")).toMatch(
+      new RegExp(`${PENDING_SIGN_IN_NEXT_COOKIE}=;.*Max-Age=0`, "i")
+    );
+  });
+
+  it("sends a stale session that completed a reauthentication link to the plain fallback", async () => {
+    const sealed = sealSignInNext(
+      "/account?reauthenticated=1",
+      stateSecret,
+      new Date(),
+      "provider-subject"
+    );
+    const staleProvider = {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
+          session: { id: "old-session", createdAt: new Date(Date.now() - 11 * 60 * 1000) },
+        },
+        error: null,
+      }),
+      requestMagicLink: jest.fn(),
+    };
+    const response = await createReturningMagicLinkCompletionHandler({
+      provider: staleProvider,
+      repositories: repositories(),
+      appOrigin: origin,
+      stateSecret,
+    })(
+      new Request(`${origin}/api/auth/sign-in/complete`, {
+        headers: { cookie: `${PENDING_SIGN_IN_NEXT_COOKIE}=${sealed}` },
+      })
+    );
+    expect(response.headers.get("location")).toBe(`${origin}/account?reauthenticated=stale`);
+    expect(response.headers.getSetCookie().join("\n")).toMatch(
+      new RegExp(`${PENDING_SIGN_IN_NEXT_COOKIE}=;.*Max-Age=0`, "i")
+    );
+  });
+
+  it("sends a different identity completing a bound reauthentication link to the home page", async () => {
+    const sealed = sealSignInNext(
+      "/account?reauthenticated=1",
+      stateSecret,
+      new Date(),
+      "someone-else"
+    );
+    const response = await completion(sealed);
+    // The new session already belongs to the link's identity (the SDK exchange happened before
+    // this handler ran); only the "verified" landing is withheld.
+    expect(response.headers.get("location")).toBe(`${origin}/`);
+    expect(response.headers.getSetCookie().join("\n")).toMatch(
+      new RegExp(`${PENDING_SIGN_IN_NEXT_COOKIE}=;.*Max-Age=0`, "i")
+    );
+  });
+
   it("never follows the return path for an account that is not active", async () => {
     const inactive = repositories({
       findAccountByIdentity: jest
