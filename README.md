@@ -21,20 +21,18 @@ summaries, a good reading experience, and traceable answers.
 
 ## Running locally
 
-The fast path is a Docker PostgreSQL plus in-process capture, documented in
-`docs/runbooks/local-development.md`:
+One command takes a fresh clone to a running app (needs Node 22+ and Docker Desktop):
 
 ```bash
-npm install
-cp .env.local.example .env.local
-npm run local:secrets -- <local-password>   # paste the three lines into .env.local
-npm run db:local:reset                      # provision (or wipe) the local database
-npm run dev:local                           # http://localhost:3000
+npm run setup                               # deps, .env.local with local secrets, Postgres, migrations
+npm run dev:local                           # http://localhost:3000 — sign in with the password you chose
 ```
 
-Add one AI provider key to `.env.local`. To point at another PostgreSQL instead, set
-`DATABASE_URL` (restricted role) and `DATABASE_MIGRATION_URL` (owner role) and run
-`npm run db:migrate` and `npm run db:tenant:migrate` yourself.
+Setup asks for a local sign-in password and a Gemini API key; re-running it is safe. The
+step-by-step version, the manual path and the differences from Production are in
+`docs/runbooks/local-development.md`. To point at another PostgreSQL instead, run
+`npm run setup -- --skip-db`, set `DATABASE_URL` (restricted role) and `DATABASE_MIGRATION_URL`
+(owner role) in `.env.local`, and run `npm run db:migrate` and `npm run db:tenant:migrate`.
 
 If `DATABASE_URL` is unset, the app falls back to a legacy SQLite database (`src/lib/db.ts`).
 This path is **compatibility-only** — it exists to support old local data and is not how the
@@ -43,7 +41,9 @@ app is meant to run day to day. Do not build new features against it.
 ## Commands
 
 ```bash
-npm run dev                  # Next.js dev server
+npm run setup                # one-command local setup (safe to re-run)
+npm run dev:local            # Postgres + Next.js dev server
+npm run dev                  # Next.js dev server only
 npm run typecheck            # tsc --noEmit
 npm run lint                 # eslint + prettier check
 npm run format                # prettier --write .
@@ -79,7 +79,7 @@ disabled in hosted deployments (`FEATURE_CONNECTORS=false`), so their routes ret
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md): setup, local use, conventions and how to open a PR.
 
 ## License
 
