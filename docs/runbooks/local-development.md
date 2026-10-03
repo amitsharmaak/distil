@@ -6,6 +6,19 @@ ready by merging to `main`.
 
 ## One-time setup
 
+```bash
+npm run setup
+```
+
+Needs Node 22+ and a running Docker Desktop. The script installs dependencies, copies
+`.env.local.example` to `.env.local`, generates the auth values, asks for a local sign-in
+password and a `GEMINI_API_KEY`, starts the PostgreSQL container and provisions it. Re-running
+it keeps an existing `.env.local`, fills in only empty values, and asks before wiping a database
+that may already hold captures (`--reset-db` forces it, `--yes` never prompts, `--skip-db` leaves
+Docker alone). Non-interactive: `DISTIL_LOCAL_PASSWORD=... GEMINI_API_KEY=... npm run setup -- --yes`.
+
+The same steps by hand, if you want to see what it does:
+
 1. Install Docker Desktop and run `npm install`.
 2. Copy `.env.local.example` to `.env.local`.
 3. Generate the auth values and paste the three printed lines into `.env.local`:
@@ -15,7 +28,8 @@ ready by merging to `main`.
    ```
 
    The password hash is printed with `\$` escapes because Next's env loader expands `$name`
-   sequences, even inside quotes. Paste it exactly as printed.
+   sequences, even inside quotes. Paste it exactly as printed. Repeat the user id in
+   `DISTIL_ADMIN_USER_IDS` to see Settings → Invitations and Troubleshooting.
 
 4. Add `GEMINI_API_KEY` (the only required provider key). `ANTHROPIC_API_KEY` is optional and upgrades complex summaries and research synthesis; `OPENAI_API_KEY` is no longer assigned to any task. Run `npm run audit:ai-models` to confirm the configured ids are callable.
 5. Provision the database:
@@ -23,6 +37,10 @@ ready by merging to `main`.
    ```bash
    npm run db:local:reset
    ```
+
+A second checkout (for example a worktree) can run its own PostgreSQL next to the first by
+exporting `DISTIL_LOCAL_PROJECT`, `DISTIL_LOCAL_DB_CONTAINER` and `DISTIL_LOCAL_DB_PORT` before
+`npm run setup`, and using that port in its `.env.local` database URLs.
 
 ## Daily loop
 
