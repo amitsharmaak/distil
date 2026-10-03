@@ -834,7 +834,7 @@
       "scope": "public",
       "resources": ["users", "auth_identities"],
       "testProfile": "public",
-      "notes": "Provider session exchange redirects unmapped or inactive identities to access denied."
+      "notes": "Provider session exchange redirects unmapped or inactive identities to access denied; also completes reauthentication, following the sealed return path only for the subject it was bound to."
     },
     {
       "path": "/api/auth/sign-in/password",
@@ -900,7 +900,7 @@
       "scope": "owner",
       "resources": ["auth_identities", "provider_sessions"],
       "testProfile": "owner",
-      "notes": "The mapped provider identity selects the email; fixed same-origin callbacks create a new session authentication event."
+      "notes": "The mapped provider identity selects the email; the link completes through /api/auth/sign-in/complete, whose SDK middleware exchanges the one-time verifier (requires the session-challenge cookie set here) for a new provider session that replaces the current one; the sealed return path is bound to the requesting provider subject."
     },
     {
       "path": "/api/auth/gmail/callback",

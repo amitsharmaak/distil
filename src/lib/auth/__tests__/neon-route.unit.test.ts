@@ -158,21 +158,33 @@ describe("Neon Auth route gate", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("allows the fixed same-origin reauthentication callback", async () => {
+  it("allows the reauthentication callback through the exchanging completion route only", async () => {
     const requestUrl = new URL("https://distil.example/api/auth/magic-link/verify");
-    requestUrl.searchParams.set("callbackURL", "https://distil.example/account?reauthenticated=1");
+    requestUrl.searchParams.set("callbackURL", "https://distil.example/api/auth/sign-in/complete");
     requestUrl.searchParams.set("newUserCallbackURL", "https://distil.example/access-denied");
     requestUrl.searchParams.set("errorCallbackURL", "https://distil.example/access-denied");
     const handler = jest.fn(async () => new Response(null, { status: 204 }));
+    const dependencies = {
+      loadAllowedOrigins: () => new Set(["https://distil.example"]),
+      loadHandler: jest.fn(() => handler),
+    };
     const response = await dispatchGatedNeonAuth(
       new Request(requestUrl),
       { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
-      {
-        loadAllowedOrigins: () => new Set(["https://distil.example"]),
-        loadHandler: jest.fn(() => handler),
-      }
+      dependencies
     );
     expect(response.status).toBe(204);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    // A page cannot exchange the one-time verifier, so a page callback is not a valid target.
+    requestUrl.searchParams.set("callbackURL", "https://distil.example/account?reauthenticated=1");
+    await expect(
+      dispatchGatedNeonAuth(
+        new Request(requestUrl),
+        { params: Promise.resolve({ path: ["magic-link", "verify"] }) },
+        dependencies
+      )
+    ).rejects.toEqual(expect.objectContaining({ code: "ORIGIN_NOT_ALLOWED" }));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 

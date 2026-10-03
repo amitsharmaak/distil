@@ -36,7 +36,15 @@ export interface MagicLinkProvider extends ProviderIdentityPort {
 
 const returningEmailSchema = z.string().trim().email().max(320);
 
-function attachMagicLinkCookies(response: NextResponse, setCookieHeaders: string[] = []): void {
+/**
+ * Issues the application-domain CSRF marker the SDK middleware requires before it will exchange
+ * the one-time `neon_auth_session_verifier` on the callback for a session cookie, and forwards any
+ * provider cookies from the dispatch. Without the marker a magic-link callback never mints a session.
+ */
+export function attachMagicLinkCookies(
+  response: NextResponse,
+  setCookieHeaders: string[] = []
+): void {
   response.cookies.set(NEON_AUTH_SESSION_CHALLENGE_COOKIE, crypto.randomUUID(), {
     httpOnly: true,
     secure: true,
@@ -283,9 +291,16 @@ export function createReturningMagicLinkCompletionHandler(dependencies: {
         providerSubject: identity.subject,
       });
       if (account?.status === "active") {
+        // A reauthentication return path is bound to the subject that requested it; a link
+        // completed by a different provider identity signs that identity in at the home page.
         destination =
           (dependencies.stateSecret
-            ? openSignInNext(pending, dependencies.stateSecret, dependencies.now?.())
+            ? openSignInNext(
+                pending,
+                dependencies.stateSecret,
+                dependencies.now?.(),
+                identity.subject
+              )
             : undefined) ?? "/";
       }
     } catch {

@@ -571,6 +571,44 @@ describe("AccountCenter lifecycle recovery", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the verified landing once after a completed reauthentication link and drops the marker", async () => {
+    window.history.replaceState(null, "", "/account?reauthenticated=1&keep=1");
+    try {
+      mockActiveHydration();
+      render(<AccountCenter />);
+      expect(await screen.findByText(/You're verified for the next 10 minutes/)).toHaveAttribute(
+        "role",
+        "status"
+      );
+      expect(window.location.search).toBe("?keep=1");
+      expect(await screen.findByRole("button", { name: "Request export" })).toBeInTheDocument();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("shows the verified landing while deletion is pending so cancellation can be retried", async () => {
+    window.history.replaceState(null, "", "/account?reauthenticated=1");
+    try {
+      mockActiveHydration({
+        deletion: { id: "delete-1", status: "draining", purgeAfter: "2026-09-15T00:00:00.000Z" },
+      });
+      render(<AccountCenter />);
+      expect(await screen.findByText(/Deletion status: draining/)).toBeInTheDocument();
+      expect(screen.getByText(/You're verified for the next 10 minutes/)).toBeInTheDocument();
+      expect(window.location.search).toBe("");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("does not claim verification without the marker", async () => {
+    mockActiveHydration();
+    render(<AccountCenter />);
+    expect(await screen.findByRole("button", { name: "Request export" })).toBeInTheDocument();
+    expect(screen.queryByText(/You're verified/)).not.toBeInTheDocument();
+  });
+
   it("recovers cancellation after fresh authentication is renewed", async () => {
     mockActiveHydration({
       deletion: { id: "delete-1", status: "draining", purgeAfter: "2026-09-15T00:00:00.000Z" },
