@@ -8,6 +8,15 @@ import { safeNextPath } from "@/lib/auth/invite-state";
  * always re-validated through `safeNextPath`, so it can only ever name a same-origin page path.
  */
 export const PENDING_SIGN_IN_NEXT_COOKIE = "__Host-distil_pending_sign_in_next";
+
+/** Where a completed reauthentication returns when the exchange minted a fresh session. */
+export const REAUTHENTICATED_RETURN_PATH = "/account?reauthenticated=1";
+/**
+ * Where it returns when the callback was followed but the session the browser now holds is not
+ * fresh (the provider kept the old session instead of minting a new one). The Account page turns
+ * this into a plain "sign out and sign in again" notice; the server still enforces freshness.
+ */
+export const REAUTHENTICATION_STALE_RETURN_PATH = "/account?reauthenticated=stale";
 export const PENDING_SIGN_IN_NEXT_TTL_SECONDS = 15 * 60;
 
 const AAD = Buffer.from("distil-sign-in-next-v1", "utf8");

@@ -23,9 +23,7 @@ function handler() {
 }
 
 function cookieValue(response: Response, name: string): string | undefined {
-  const header = response.headers
-    .getSetCookie()
-    .find((cookie) => cookie.startsWith(`${name}=`));
+  const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`));
   return header?.slice(name.length + 1).split(";")[0];
 }
 

@@ -15,7 +15,7 @@ link", opened the emailed link, and "Retry action" showed the same notice again.
 
 **Cause.** `POST /api/v1/account/export` requires a provider session created within the last ten
 minutes (`requireLifecycleRoute(request, { fresh: true })`; freshness is `session.createdAt` from
-an uncached provider read). Only a *new* provider session satisfies it. The reauthentication
+an uncached provider read). Only a _new_ provider session satisfies it. The reauthentication
 request (`src/lib/auth/reauthentication.ts`) asked the provider for a magic link whose callback was
 the page `/account?reauthenticated=1`. The hosted verify step lands on that callback with a
 one-time `neon_auth_session_verifier` query parameter; a session cookie is minted only when the
@@ -39,6 +39,14 @@ reauthentication request now mirrors the returning sign-in flow instead of addin
   the newly minted session. A reauthentication link opened in a browser that meanwhile signed in
   as a different identity is therefore an ordinary sign-in as the link's identity that lands on
   `/`, without the "verified" landing. Unbound sign-in paths are unchanged.
+- Review finding, applied in the second commit: the SDK exchange forwards the existing session
+  cookie alongside the verifier and reports success on any 2xx, so the provider may keep the old
+  session. The completion handler therefore follows the reauthentication return path only when the
+  session it just read is fresh (`freshAuthMarker(identity.authenticatedAt).isFresh`); otherwise it
+  logs `reauthentication_session_not_renewed` (session age only, no identifiers) and redirects to
+  `/account?reauthenticated=stale`, which the Account page shows as "The link didn't start a new
+  session. Sign out and sign in again to continue." That log line is the Production signal for
+  the unverified provider behaviour below.
 - `src/lib/auth/neon-route.ts` no longer allows `/account` as a magic-link `callbackURL`; only the
   two completion routes may receive the verifier.
 - `src/components/account/account-center.tsx` reads `?reauthenticated=1` once on mount, shows
@@ -67,6 +75,15 @@ exchange response replaces the session cookie, but nobody has yet run the full "
 link → retry → export ready" sequence on `distilai.app`. A Playwright end-to-end test is not
 feasible without hosted auth and an inbox.
 
+**Follow-ups recorded from the review, not implemented here.**
+
+- (a) On a bound-subject mismatch the browser stays signed in as the link's identity; the safer
+  behaviour would be to clear the just-minted session rather than only withhold the landing.
+- (b) `?reauthenticated=1` is forgeable client-side. It is cosmetic only; the lifecycle routes
+  enforce the freshness window on every request.
+- (c) Reauthentication links emailed before this deploy point at `/account` and will be refused
+  with `ORIGIN_NOT_ALLOWED` for their 15-minute lifetime. Harmless; the user requests a new link.
+
 ## External resources
 
 None.
@@ -80,7 +97,7 @@ None.
    same browser, confirm the Account page shows "You're verified for the next 10 minutes", click
    "Request export" again and confirm one new export row appears. Export completion itself still
    depends on the object-store variables from the 2026-10-02 `account-export` entry.
-3. If the retry still fails after the link, record the exact notice and the `created_at` of the
-   current session (Account → Sessions) in a new entry; the next suspect is the provider honouring
-   the existing session cookie over the verifier, which would need the old session revoked before
-   the exchange.
+3. If the page instead says "The link didn't start a new session", the provider kept the old
+   session over the verifier (Vercel logs will show `reauthentication_session_not_renewed`). Record
+   it in a new entry; the fix is then to revoke the current session before the exchange, or to
+   sign out and in again as the notice says.

@@ -15,9 +15,16 @@ import {
   openSignInNext,
   pendingSignInNextCookieOptions,
   PENDING_SIGN_IN_NEXT_COOKIE,
+  REAUTHENTICATED_RETURN_PATH,
+  REAUTHENTICATION_STALE_RETURN_PATH,
   sealSignInNext,
 } from "@/lib/auth/sign-in-next";
-import { readProviderIdentity, type ProviderIdentityPort } from "@/lib/auth/request-context";
+import {
+  freshAuthMarker,
+  readProviderIdentity,
+  type ProviderIdentityPort,
+} from "@/lib/auth/request-context";
+import { apiLogger } from "@/lib/logger";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { AuthError } from "@/lib/auth/errors";
 
@@ -291,17 +298,31 @@ export function createReturningMagicLinkCompletionHandler(dependencies: {
         providerSubject: identity.subject,
       });
       if (account?.status === "active") {
+        const now = dependencies.now?.() ?? new Date();
         // A reauthentication return path is bound to the subject that requested it; a link
         // completed by a different provider identity signs that identity in at the home page.
-        destination =
-          (dependencies.stateSecret
-            ? openSignInNext(
-                pending,
-                dependencies.stateSecret,
-                dependencies.now?.(),
-                identity.subject
-              )
-            : undefined) ?? "/";
+        const next = dependencies.stateSecret
+          ? openSignInNext(pending, dependencies.stateSecret, now, identity.subject)
+          : undefined;
+        if (
+          next === REAUTHENTICATED_RETURN_PATH &&
+          !freshAuthMarker(identity.authenticatedAt, now).isFresh
+        ) {
+          // The SDK exchange forwards the existing session cookie alongside the verifier and
+          // reports success on any 2xx, so the provider may have kept the old session. Only a
+          // fresh session may claim the "verified" landing; the lifecycle routes enforce the
+          // same window on every request.
+          apiLogger.warn(
+            {
+              event: "reauthentication_session_not_renewed",
+              sessionAgeMs: now.getTime() - identity.authenticatedAt.getTime(),
+            },
+            "Reauthentication link completed without a fresh provider session"
+          );
+          destination = REAUTHENTICATION_STALE_RETURN_PATH;
+        } else {
+          destination = next ?? "/";
+        }
       }
     } catch {
       destination = "/access-denied";

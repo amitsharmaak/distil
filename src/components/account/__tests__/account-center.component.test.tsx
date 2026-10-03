@@ -602,6 +602,21 @@ describe("AccountCenter lifecycle recovery", () => {
     }
   });
 
+  it("explains a link that did not start a new session and drops the marker", async () => {
+    window.history.replaceState(null, "", "/account?reauthenticated=stale");
+    try {
+      mockActiveHydration();
+      render(<AccountCenter />);
+      expect(
+        await screen.findByText(/The link didn't start a new session\. Sign out and sign in again/)
+      ).toHaveAttribute("role", "status");
+      expect(screen.queryByText(/You're verified/)).not.toBeInTheDocument();
+      expect(window.location.search).toBe("");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("does not claim verification without the marker", async () => {
     mockActiveHydration();
     render(<AccountCenter />);

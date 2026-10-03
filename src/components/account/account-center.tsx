@@ -97,7 +97,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [freshAuthAction, setFreshAuthAction] = useState<FreshAuthAction>();
-  const [reauthenticated, setReauthenticated] = useState(false);
+  const [reauthenticated, setReauthenticated] = useState<"fresh" | "stale">();
   const [passwordError, setPasswordError] = useState<string>();
   const [passwordNotice, setPasswordNotice] = useState<string>();
   const [changingPassword, setChangingPassword] = useState(false);
@@ -181,22 +181,32 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   // bar so a refresh or a shared link does not claim a verification that may have expired.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get("reauthenticated") !== "1") return;
-    setReauthenticated(true);
+    const marker = url.searchParams.get("reauthenticated");
+    if (marker !== "1" && marker !== "stale") return;
+    setReauthenticated(marker === "1" ? "fresh" : "stale");
     url.searchParams.delete("reauthenticated");
     window.history.replaceState(window.history.state, "", url.toString());
   }, []);
 
-  const reauthenticatedNotice = reauthenticated ? (
-    <p
-      aria-live="polite"
-      className="rounded-lg border border-success/40 bg-success-muted p-4 text-sm text-success-foreground"
-      role="status"
-    >
-      You&apos;re verified for the next 10 minutes. Retry the action that asked for recent
-      authentication.
-    </p>
-  ) : null;
+  const reauthenticatedNotice =
+    reauthenticated === "fresh" ? (
+      <p
+        aria-live="polite"
+        className="rounded-lg border border-success/40 bg-success-muted p-4 text-sm text-success-foreground"
+        role="status"
+      >
+        You&apos;re verified for the next 10 minutes. Retry the action that asked for recent
+        authentication.
+      </p>
+    ) : reauthenticated === "stale" ? (
+      <p
+        aria-live="polite"
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        role="status"
+      >
+        The link didn&apos;t start a new session. Sign out and sign in again to continue.
+      </p>
+    ) : null;
 
   // Follows one unfinished export until it reaches a terminal state, the cap is
   // reached, or the page goes away. Account reads are deliberately uncached.

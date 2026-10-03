@@ -6,13 +6,12 @@ import { attachMagicLinkCookies, type MagicLinkProvider } from "@/lib/auth/magic
 import {
   pendingSignInNextCookieOptions,
   PENDING_SIGN_IN_NEXT_COOKIE,
+  REAUTHENTICATED_RETURN_PATH,
   sealSignInNext,
 } from "@/lib/auth/sign-in-next";
 
 export type ReauthenticationProvider = MagicLinkProvider;
-
-/** Where a completed reauthentication returns; the Account page reads the marker. */
-export const REAUTHENTICATED_RETURN_PATH = "/account?reauthenticated=1";
+export { REAUTHENTICATED_RETURN_PATH };
 
 /**
  * Starts a new provider authentication ceremony for the already mapped account.

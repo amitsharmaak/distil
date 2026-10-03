@@ -133,6 +133,39 @@ describe("returning sign-in return path", () => {
     );
   });
 
+  it("sends a stale session that completed a reauthentication link to the plain fallback", async () => {
+    const sealed = sealSignInNext(
+      "/account?reauthenticated=1",
+      stateSecret,
+      new Date(),
+      "provider-subject"
+    );
+    const staleProvider = {
+      getSession: jest.fn().mockResolvedValue({
+        data: {
+          user: { id: "provider-subject", email: "amit@example.com", emailVerified: true },
+          session: { id: "old-session", createdAt: new Date(Date.now() - 11 * 60 * 1000) },
+        },
+        error: null,
+      }),
+      requestMagicLink: jest.fn(),
+    };
+    const response = await createReturningMagicLinkCompletionHandler({
+      provider: staleProvider,
+      repositories: repositories(),
+      appOrigin: origin,
+      stateSecret,
+    })(
+      new Request(`${origin}/api/auth/sign-in/complete`, {
+        headers: { cookie: `${PENDING_SIGN_IN_NEXT_COOKIE}=${sealed}` },
+      })
+    );
+    expect(response.headers.get("location")).toBe(`${origin}/account?reauthenticated=stale`);
+    expect(response.headers.getSetCookie().join("\n")).toMatch(
+      new RegExp(`${PENDING_SIGN_IN_NEXT_COOKIE}=;.*Max-Age=0`, "i")
+    );
+  });
+
   it("sends a different identity completing a bound reauthentication link to the home page", async () => {
     const sealed = sealSignInNext(
       "/account?reauthenticated=1",
