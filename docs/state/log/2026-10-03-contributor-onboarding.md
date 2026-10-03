@@ -4,6 +4,7 @@ title: One-command local setup and contributor PR path
 date: 2026-10-03
 status: in-progress
 branch: claude/git-repo-local-setup-527da2
+pr: 144
 ---
 
 ## What changed
