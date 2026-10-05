@@ -4,7 +4,7 @@
 
 import { render, screen } from "@testing-library/react";
 import type { ContentItem } from "@/lib/types";
-import ItemDetailPage from "../page";
+import ItemDetailPage, { metadata } from "../page";
 
 jest.mock("next/headers", () => ({ headers: jest.fn().mockResolvedValue(new Headers()) }));
 jest.mock("@/lib/auth/account-service", () => ({ resolveRequestAuthContext: jest.fn() }));
@@ -213,6 +213,12 @@ beforeEach(() => {
   repositories.itemNotes.find.mockResolvedValue(undefined);
   repositories.annotations.listForItem.mockResolvedValue([]);
   jest.mocked(readPhase2FeatureFlags).mockReturnValue({ knowledgeUi: true } as never);
+});
+
+describe("reader page document policy", () => {
+  it("sends no Referer, so X's video CDN serves captured MP4s to the native player", () => {
+    expect(metadata.referrer).toBe("no-referrer");
+  });
 });
 
 describe("feed item detail page", () => {
