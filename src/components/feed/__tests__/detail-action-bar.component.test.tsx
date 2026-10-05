@@ -92,7 +92,7 @@ it("+ and - rate the item", async () => {
 
 it("Shift+U marks unread with { isRead: false } and flips state; only when read", async () => {
   setup({ isRead: true });
-  expect(screen.getByRole("button", { name: "Read" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Mark as unread" })).toBeEnabled();
   press({ key: "U", shiftKey: true });
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
@@ -105,6 +105,50 @@ it("Shift+U marks unread with { isRead: false } and flips state; only when read"
   fetchMock.mockClear();
   press({ key: "U", shiftKey: true });
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("renders Mark read as a secondary control with the r hint, and toggles through the button", async () => {
+  setup();
+  const button = screen.getByRole("button", { name: "Mark as read" });
+  expect(button).toHaveAttribute("data-variant", "ghost");
+  expect(button).toHaveAttribute("aria-keyshortcuts", "r");
+  expect(button).toHaveClass("h-11", "text-muted-foreground");
+  expect(button).not.toHaveClass("bg-primary");
+  expect(button).toHaveTextContent("Mark read");
+  const hint = button.querySelector("kbd");
+  expect(hint).toHaveTextContent("r");
+  expect(hint).toHaveClass("hidden", "pointer-fine:inline-flex");
+  for (const name of ["Like", "Dislike", "More reader actions"]) {
+    expect(screen.getByRole("button", { name })).toHaveAttribute("data-variant", "ghost");
+  }
+
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/items/one/state",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: true }) })
+    )
+  );
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/feed/n1"));
+  const readButton = await screen.findByRole("button", { name: "Mark as unread" });
+  expect(readButton).toHaveAttribute("data-read", "true");
+  expect(readButton).toHaveAttribute("aria-keyshortcuts", "Shift+U");
+  // Only the check is coloured; the label stays as muted as the unread label and the siblings.
+  expect(readButton).toHaveClass("text-muted-foreground");
+  expect(readButton).not.toHaveClass("text-success");
+  expect(readButton).toHaveTextContent("Mark unread");
+  expect(readButton.querySelector("kbd")).toBeNull();
+  expect(readButton.querySelector("svg")).toHaveClass("fill-current", "text-success");
+
+  fetchMock.mockClear();
+  fireEvent.click(readButton);
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/items/one/state",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ isRead: false }) })
+    )
+  );
+  expect(await screen.findByRole("button", { name: "Mark as read" })).toBeEnabled();
 });
 
 it("Shift+D opens Deep research, and Escape-style shortcuts stay quiet while it is open", async () => {
