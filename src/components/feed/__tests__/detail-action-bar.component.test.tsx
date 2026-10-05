@@ -133,10 +133,12 @@ it("renders Mark read as a secondary control with the r hint, and toggles throug
   const readButton = await screen.findByRole("button", { name: "Mark as unread" });
   expect(readButton).toHaveAttribute("data-read", "true");
   expect(readButton).toHaveAttribute("aria-keyshortcuts", "Shift+U");
-  expect(readButton).toHaveClass("text-success");
+  // Only the check is coloured; the label stays as muted as the unread label and the siblings.
+  expect(readButton).toHaveClass("text-muted-foreground");
+  expect(readButton).not.toHaveClass("text-success");
   expect(readButton).toHaveTextContent("Mark unread");
   expect(readButton.querySelector("kbd")).toBeNull();
-  expect(readButton.querySelector("svg")).toHaveClass("fill-current");
+  expect(readButton.querySelector("svg")).toHaveClass("fill-current", "text-success");
 
   fetchMock.mockClear();
   fireEvent.click(readButton);

@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -243,13 +242,11 @@ export function DetailActionBar({
             </Button>
           )}
           {/* A secondary control like its neighbours: the r shortcut does the same job, so the
-              button only needs to be findable. The read state keeps a filled success check. */}
+              button only needs to be findable. The read state colours only the filled check;
+              the label stays as muted as its siblings. */}
           <Button
             variant="ghost"
-            className={cn(
-              "h-11 shrink-0 gap-1.5 px-3 text-muted-foreground hover:text-foreground",
-              read && "text-success hover:text-success"
-            )}
+            className="h-11 shrink-0 gap-1.5 px-3 text-muted-foreground hover:text-foreground"
             onClick={() => void (read ? handleMarkUnread() : handleMarkRead())}
             aria-label={read ? "Mark as unread" : "Mark as read"}
             aria-keyshortcuts={read ? "Shift+U" : "r"}
@@ -258,7 +255,7 @@ export function DetailActionBar({
             title={read ? "Mark as unread · Shift+U" : "Mark as read · R"}
           >
             {read ? (
-              <CircleCheck className="h-4 w-4 fill-current [&_path]:stroke-background" />
+              <CircleCheck className="h-4 w-4 fill-current text-success [&_path]:stroke-background" />
             ) : (
               <Check className="h-4 w-4" />
             )}
