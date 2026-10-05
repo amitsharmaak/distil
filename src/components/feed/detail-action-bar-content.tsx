@@ -13,12 +13,14 @@ import {
   ThumbsUp,
   ThumbsDown,
   Check,
+  CircleCheck,
   Link2,
   Undo2,
   MoreHorizontal,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -239,16 +241,26 @@ export function DetailActionBar({
               <ChevronRight className="h-4 w-4" />
             </Button>
           )}
+          {/* A secondary control like its neighbours: the r shortcut does the same job, so the
+              button only needs to be findable. The read state colours only the filled check;
+              the label stays as muted as its siblings. */}
           <Button
-            className="h-11 min-w-24 shrink-0 gap-1.5 px-3"
-            onClick={() => void handleMarkRead()}
-            aria-label={read ? "Read" : "Mark as read"}
-            aria-keyshortcuts="r"
-            disabled={read || markingRead}
-            title={read ? "Read" : "Mark as read · R"}
+            variant="ghost"
+            className="h-11 shrink-0 gap-1.5 px-3 text-muted-foreground hover:text-foreground"
+            onClick={() => void (read ? handleMarkUnread() : handleMarkRead())}
+            aria-label={read ? "Mark as unread" : "Mark as read"}
+            aria-keyshortcuts={read ? "Shift+U" : "r"}
+            data-read={read ? "true" : "false"}
+            disabled={markingRead}
+            title={read ? "Mark as unread · Shift+U" : "Mark as read · R"}
           >
-            <Check className="h-4 w-4" />
-            {read ? "Read" : "Mark read"}
+            {read ? (
+              <CircleCheck className="h-4 w-4 fill-current text-success [&_path]:stroke-background" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+            {read ? "Mark unread" : "Mark read"}
+            {!read && <Kbd className="hidden pointer-fine:inline-flex">r</Kbd>}
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>

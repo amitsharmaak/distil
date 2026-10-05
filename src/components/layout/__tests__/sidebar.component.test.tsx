@@ -58,7 +58,13 @@ describe("Sidebar", () => {
     const logo = screen.getByRole("img", { name: "Distil logo" });
     expect(logo.tagName.toLowerCase()).toBe("svg");
     expect(logo).toHaveAttribute("height", "28");
+    // 28 px tall lockup with the 24-unit gap: 28 × 316.87 / 104.
+    expect(Number(logo.getAttribute("width"))).toBeCloseTo(85.31, 2);
     expect(logo.querySelectorAll("path")).toHaveLength(2);
+    // Brand row padding (20 px) matches nav px-2 + row px-3, so the mark's ink shares the icons'
+    // left edge.
+    expect(logo.parentElement).toHaveClass("px-5");
+    expect(logo.parentElement).not.toHaveClass("justify-center");
     expect(screen.getAllByRole("link")).toHaveLength(5);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Feed" })).toHaveAttribute("href", "/feed");
@@ -141,6 +147,13 @@ describe("Sidebar", () => {
       expect(control).not.toHaveClass("justify-start");
     }
     expect(shortcuts).not.toHaveTextContent("?");
+
+    // The compact mark is centred in the 64 px rail like the icons, not inset by px-4.
+    const logo = screen.getByRole("img", { name: "Distil logo" });
+    expect(logo).toHaveAttribute("width", "28");
+    expect(logo.querySelectorAll("path")).toHaveLength(1);
+    expect(logo.parentElement).toHaveClass("justify-center", "px-0");
+    expect(logo.parentElement).not.toHaveClass("px-5");
   });
 
   it("collapses and expands while keeping an accessible toggle", () => {
