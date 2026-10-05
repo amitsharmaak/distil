@@ -48,8 +48,10 @@ export async function dispatchGatedNeonAuth(
   const needsAllowedOrigins = path.join("/") === "magic-link/verify" || request.method === "POST";
   const allowedOrigins = needsAllowedOrigins ? dependencies.loadAllowedOrigins() : undefined;
   if (path.join("/") === "magic-link/verify") {
+    // Only completion routes may receive the callback: they run the SDK middleware that
+    // exchanges the one-time verifier for a session. A page callback never mints a session.
     const expectedPaths: Record<string, readonly string[]> = {
-      callbackURL: ["/api/auth/invitations/complete", "/api/auth/sign-in/complete", "/account"],
+      callbackURL: ["/api/auth/invitations/complete", "/api/auth/sign-in/complete"],
       newUserCallbackURL: [
         "/api/auth/invitations/complete",
         "/api/auth/sign-in/complete",

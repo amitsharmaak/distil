@@ -97,6 +97,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [freshAuthAction, setFreshAuthAction] = useState<FreshAuthAction>();
+  const [reauthenticated, setReauthenticated] = useState<"fresh" | "stale">();
   const [passwordError, setPasswordError] = useState<string>();
   const [passwordNotice, setPasswordNotice] = useState<string>();
   const [changingPassword, setChangingPassword] = useState(false);
@@ -174,6 +175,38 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
         setError(caught instanceof Error ? caught.message : "Could not load your account.")
       );
   }, []);
+
+  // A completed reauthentication link returns here with `?reauthenticated=1` (see
+  // `src/lib/auth/reauthentication.ts`). The marker is one-shot: it is dropped from the address
+  // bar so a refresh or a shared link does not claim a verification that may have expired.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const marker = url.searchParams.get("reauthenticated");
+    if (marker !== "1" && marker !== "stale") return;
+    setReauthenticated(marker === "1" ? "fresh" : "stale");
+    url.searchParams.delete("reauthenticated");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, []);
+
+  const reauthenticatedNotice =
+    reauthenticated === "fresh" ? (
+      <p
+        aria-live="polite"
+        className="rounded-lg border border-success/40 bg-success-muted p-4 text-sm text-success-foreground"
+        role="status"
+      >
+        You&apos;re verified for the next 10 minutes. Retry the action that asked for recent
+        authentication.
+      </p>
+    ) : reauthenticated === "stale" ? (
+      <p
+        aria-live="polite"
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        role="status"
+      >
+        The link didn&apos;t start a new session. Sign out and sign in again to continue.
+      </p>
+    ) : null;
 
   // Follows one unfinished export until it reaches a terminal state, the cap is
   // reached, or the page goes away. Account reads are deliberately uncached.
@@ -459,6 +492,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
   if (accountStatus === "deletion_pending") {
     return (
       <div className="space-y-4">
+        {reauthenticatedNotice}
         <section className="rounded-xl border border-destructive/40 bg-card p-5">
           <div className="flex gap-3">
             <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" />
@@ -612,6 +646,7 @@ export function AccountCenter({ onboarding = false }: { onboarding?: boolean }) 
 
   return (
     <div className="space-y-6">
+      {reauthenticatedNotice}
       <form className="rounded-xl border border-border bg-card p-5" onSubmit={saveProfile}>
         <h2 className="text-base font-semibold">
           {onboarding ? "Set up your account" : "Profile and privacy"}

@@ -41,6 +41,16 @@ describe("sealed sign-in return path", () => {
     expect(openSignInNext(sealed, secret, later)).toBeUndefined();
   });
 
+  it("opens a subject-bound path only for that subject; unbound paths ignore the subject", () => {
+    const bound = sealSignInNext("/account?reauthenticated=1", secret, now, "subject-a");
+    expect(bound).not.toContain("subject-a");
+    expect(openSignInNext(bound, secret, now, "subject-a")).toBe("/account?reauthenticated=1");
+    expect(openSignInNext(bound, secret, now, "subject-b")).toBeUndefined();
+    expect(openSignInNext(bound, secret, now)).toBeUndefined();
+    const unbound = sealSignInNext(connectPath, secret, now);
+    expect(openSignInNext(unbound, secret, now, "subject-b")).toBe(connectPath);
+  });
+
   it("refuses a short secret instead of sealing weakly", () => {
     expect(() => sealSignInNext(connectPath, "short", now)).toThrow();
   });

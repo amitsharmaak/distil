@@ -15,9 +15,16 @@ import {
   openSignInNext,
   pendingSignInNextCookieOptions,
   PENDING_SIGN_IN_NEXT_COOKIE,
+  REAUTHENTICATED_RETURN_PATH,
+  REAUTHENTICATION_STALE_RETURN_PATH,
   sealSignInNext,
 } from "@/lib/auth/sign-in-next";
-import { readProviderIdentity, type ProviderIdentityPort } from "@/lib/auth/request-context";
+import {
+  freshAuthMarker,
+  readProviderIdentity,
+  type ProviderIdentityPort,
+} from "@/lib/auth/request-context";
+import { apiLogger } from "@/lib/logger";
 import type { AuthRepositoryPort } from "@/lib/auth/ports";
 import { AuthError } from "@/lib/auth/errors";
 
@@ -36,7 +43,15 @@ export interface MagicLinkProvider extends ProviderIdentityPort {
 
 const returningEmailSchema = z.string().trim().email().max(320);
 
-function attachMagicLinkCookies(response: NextResponse, setCookieHeaders: string[] = []): void {
+/**
+ * Issues the application-domain CSRF marker the SDK middleware requires before it will exchange
+ * the one-time `neon_auth_session_verifier` on the callback for a session cookie, and forwards any
+ * provider cookies from the dispatch. Without the marker a magic-link callback never mints a session.
+ */
+export function attachMagicLinkCookies(
+  response: NextResponse,
+  setCookieHeaders: string[] = []
+): void {
   response.cookies.set(NEON_AUTH_SESSION_CHALLENGE_COOKIE, crypto.randomUUID(), {
     httpOnly: true,
     secure: true,
@@ -283,10 +298,31 @@ export function createReturningMagicLinkCompletionHandler(dependencies: {
         providerSubject: identity.subject,
       });
       if (account?.status === "active") {
-        destination =
-          (dependencies.stateSecret
-            ? openSignInNext(pending, dependencies.stateSecret, dependencies.now?.())
-            : undefined) ?? "/";
+        const now = dependencies.now?.() ?? new Date();
+        // A reauthentication return path is bound to the subject that requested it; a link
+        // completed by a different provider identity signs that identity in at the home page.
+        const next = dependencies.stateSecret
+          ? openSignInNext(pending, dependencies.stateSecret, now, identity.subject)
+          : undefined;
+        if (
+          next === REAUTHENTICATED_RETURN_PATH &&
+          !freshAuthMarker(identity.authenticatedAt, now).isFresh
+        ) {
+          // The SDK exchange forwards the existing session cookie alongside the verifier and
+          // reports success on any 2xx, so the provider may have kept the old session. Only a
+          // fresh session may claim the "verified" landing; the lifecycle routes enforce the
+          // same window on every request.
+          apiLogger.warn(
+            {
+              event: "reauthentication_session_not_renewed",
+              sessionAgeMs: now.getTime() - identity.authenticatedAt.getTime(),
+            },
+            "Reauthentication link completed without a fresh provider session"
+          );
+          destination = REAUTHENTICATION_STALE_RETURN_PATH;
+        } else {
+          destination = next ?? "/";
+        }
       }
     } catch {
       destination = "/access-denied";
