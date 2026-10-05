@@ -63,8 +63,15 @@ export function Sidebar({
       data-collapsed={collapsed}
       className="distil-sidebar fixed left-0 top-0 z-40 hidden h-dvh flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 motion-reduce:transition-none md:flex"
     >
-      {/* Brand */}
-      <div className="flex h-20 shrink-0 items-center gap-2.5 px-4">
+      {/* Brand. Expanded, the mark's ink shares the nav icons' left edge (nav px-2 + row px-3 =
+          20 px; the mark's ink starts 0.2 px inside its box). Collapsed, the compact mark is
+          centred in the rail like the icons. */}
+      <div
+        className={cn(
+          "flex h-20 shrink-0 items-center",
+          collapsed ? "justify-center px-0" : "px-5"
+        )}
+      >
         <DistilLogo compact={collapsed} className="h-7 w-auto shrink-0 text-sidebar-foreground" />
       </div>
 

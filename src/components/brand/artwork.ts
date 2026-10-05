@@ -16,6 +16,12 @@ export const WORDMARK_PATH =
 
 /** Preserve the approved lockup's proportions: a 104-unit mark and an 80-unit wordmark. */
 export const WORDMARK_SCALE = 80 / WORDMARK_HEIGHT;
-export const WORDMARK_TRANSFORM = `translate(96 18) scale(${WORDMARK_SCALE})`;
-export const LOCKUP_WIDTH = 96 + WORDMARK_WIDTH * WORDMARK_SCALE;
+/**
+ * Where the wordmark's bounding box starts. The mark's ink ends at x=80 and the wordmark's ink
+ * begins 0.2 units inside its box, so the visible gap is 24 units (0.23 × the mark height;
+ * about 6.5 px at the 28 px sidebar size). Chosen on 2026-10-05; it was 96 (a 16-unit gap).
+ */
+export const WORDMARK_OFFSET = 104;
+export const WORDMARK_TRANSFORM = `translate(${WORDMARK_OFFSET} 18) scale(${WORDMARK_SCALE})`;
+export const LOCKUP_WIDTH = WORDMARK_OFFSET + WORDMARK_WIDTH * WORDMARK_SCALE;
 export const LOCKUP_VIEWBOX = `0 0 ${LOCKUP_WIDTH} 104`;
