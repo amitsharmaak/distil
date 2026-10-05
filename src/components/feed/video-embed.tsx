@@ -118,6 +118,7 @@ export function VideoDisclosure({
   ...video
 }: VideoEmbedProps & { nativeVideoUrl?: string }) {
   const [expanded, setExpanded] = useState(false);
+  const [nativeFailed, setNativeFailed] = useState(false);
   const playerId = useId();
   return (
     <div className="mb-4">
@@ -138,13 +139,14 @@ export function VideoDisclosure({
       <div id={playerId} hidden={!expanded}>
         {expanded && (
           <div className="mt-2 overflow-hidden rounded-lg">
-            {nativeVideoUrl ? (
+            {nativeVideoUrl && !nativeFailed ? (
               <video
                 src={nativeVideoUrl}
                 controls
                 autoPlay
                 preload="metadata"
                 className="aspect-video w-full bg-muted"
+                onError={() => setNativeFailed(true)}
               />
             ) : (
               <VideoEmbed {...video} />
