@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import sharp from "sharp";
 import manifest from "@/app/manifest";
+import { LOCKUP_WIDTH } from "../artwork";
 import { DistilLogo } from "../distil-logo";
 import { ICON_VERSION } from "../icon-version";
 
@@ -14,20 +15,47 @@ it.each(["export", "component"])(
       kind === "export"
         ? readFileSync(resolve("public/brand/distil-wordmark.svg"))
         : Buffer.from(renderToStaticMarkup(<DistilLogo />));
-    const width = kind === "export" ? 612 : 309;
+    const width = kind === "export" ? 612 : 317;
     const height = kind === "export" ? 230 : 104;
     const { data, info } = await sharp(svg, { density: 288 })
       .resize(width, height)
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
-    const [holeX, holeY] = kind === "export" ? [70, 140] : [120, 67];
-    const [strokeX, strokeY] = kind === "export" ? [15, 145] : [101, 68];
+    const [holeX, holeY] = kind === "export" ? [70, 140] : [128, 67];
+    const [strokeX, strokeY] = kind === "export" ? [15, 145] : [109, 68];
     const alphaAt = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
     expect(alphaAt(holeX, holeY)).toBe(0);
     expect(alphaAt(strokeX, strokeY)).toBeGreaterThan(240);
   }
 );
+
+/** The 2026-10-05 decision: 24 units of clear space between the mark's ink and the wordmark's. */
+it("separates the mark and the wordmark by 24 units in the lockup", async () => {
+  const scale = 10;
+  const svg = Buffer.from(renderToStaticMarkup(<DistilLogo />));
+  const { data, info } = await sharp(svg)
+    .resize(Math.round(LOCKUP_WIDTH * scale), 104 * scale)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  // Column coverage of ink, split by hue: the mark is cobalt, the wordmark is currentColor.
+  const inkColumns = new Set<number>();
+  const markColumns = new Set<number>();
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const offset = (y * info.width + x) * 4;
+      if (data[offset + 3] < 128) continue;
+      if (data[offset + 2] > 200 && data[offset] < 100) markColumns.add(x);
+      else inkColumns.add(x);
+    }
+  }
+  const markRight = (Math.max(...markColumns) + 1) / scale;
+  const wordmarkLeft = Math.min(...inkColumns) / scale;
+  expect(markRight).toBeCloseTo(80, 0);
+  expect(wordmarkLeft - markRight).toBeCloseTo(24, 0);
+  expect(LOCKUP_WIDTH).toBeCloseTo(104 + 612 * (80 / 230), 6);
+});
 
 it("keeps the complete maskable symbol inside the safe circle on an opaque background", async () => {
   const { data, info } = await sharp(resolve("public/icons/icon-maskable-512.png"))
