@@ -53,11 +53,16 @@ error; the fallback denied when tenant admission fails; and no reroute without a
 
 ## External resources
 
-none
+- Vercel project `project-evgf1` (team `pv-1850`): Amit replaced the Production
+  `ANTHROPIC_API_KEY` himself on 2026-10-13 after `npm run audit:ai-models` showed the local key
+  rejected with 401. An intermediate organisation-level key was refused with 400 ("not scoped to
+  a workspace"), which maps to `invalid_request` and is not covered by this fallback; the key
+  finally saved is workspace-scoped and passed the local audit. Vercel applies it on the next
+  deployment, so Production keeps the old key until the PR merges or a redeploy.
 
 ## Next
 
 1. Amit: review and merge the PR; the merge is a Production release and needs his authorization.
-2. After deploy, a detailed summary on `distilai.app` with the current Anthropic key should
-   either use Claude (key valid) or log one `provider_auth_fallback` and succeed on Gemini. If
-   the key is invalid, fixing it in Vercel is a separate, authorized env change.
+2. After deploy, a detailed summary on `distilai.app` should use Claude with the new key. If the
+   logs show `provider_auth_fallback` instead, the saved key differs from the one that passed the
+   local audit; re-check with `npm run audit:ai-models` and update Vercel again.
