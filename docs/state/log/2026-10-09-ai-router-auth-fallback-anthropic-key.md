@@ -24,10 +24,11 @@ Every long article (over roughly 2k estimated tokens) and every detailed summary
   retries once on the Gemini fallback model for that task. The tenant paths re-run
   `assertTenantAIBudget` before the retry, exactly as the existing quota fallback does; the
   unscoped paths re-run the in-process `checkBudget`.
-- The rejection is remembered per provider for the process lifetime (a `Map<ProviderName,
-boolean>` on the router singleton) and logged once as `provider_auth_rejected`. Later calls
-  resolve `getEffectiveModel` straight to the Gemini fallback, so the invalid key costs one failed
-  round trip per process, not one per call. A restart (or a fixed key plus a redeploy) clears it.
+- The rejection is remembered per provider for the process lifetime (a boolean `Map` keyed by
+  provider name on the router singleton) and logged once as `provider_auth_rejected`. Later
+  calls resolve `getEffectiveModel` straight to the Gemini fallback, so the invalid key costs one
+  failed round trip per process, not one per call. A restart (or a fixed key plus a redeploy)
+  clears it.
 - Gemini authentication failures are unchanged and still surface as `AI_AUTHENTICATION` config
   errors. Applies to `generateText`, `generateJSON`, `generateTenantText` and
   `generateTenantJSONWithMetadata`; the search path already runs on Gemini only.
