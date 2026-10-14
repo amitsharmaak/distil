@@ -77,22 +77,22 @@ Notes that apply to every table below:
 
 ### Reading
 
-| Keys      | Action                                        |
-| --------- | --------------------------------------------- |
-| ← or `k`  | Previous item                                 |
-| → or `j`  | Next item                                     |
-| `r`       | Mark as read and go to the next item          |
-| Shift+U   | Mark as unread                                |
-| `u` / Esc | Back to the list                              |
-| `o`       | Open the original in a new tab                |
-| `+`       | Like                                          |
-| `-`       | Dislike                                       |
-| `a`       | Change the item's area                        |
-| Shift+D   | Start deep research on the item               |
-| Shift+C   | Copy the link                                 |
-| `s`       | Show or hide the AI summary                   |
-| `d`       | Switch the summary between short and detailed |
-| Shift+S   | Regenerate the summary                        |
+| Keys      | Action                               |
+| --------- | ------------------------------------ |
+| ← or `k`  | Previous item                        |
+| → or `j`  | Next item                            |
+| `r`       | Mark as read and go to the next item |
+| Shift+U   | Mark as unread                       |
+| `u` / Esc | Back to the list                     |
+| `o`       | Open the original in a new tab       |
+| `+`       | Like                                 |
+| `-`       | Dislike                              |
+| `a`       | Change the item's area               |
+| Shift+D   | Start deep research on the item      |
+| Shift+C   | Copy the link                        |
+| `s`       | Show or hide the AI summary          |
+| `d`       | Go deeper / show less                |
+| Shift+S   | Regenerate the summary               |
 
 ### Research
 

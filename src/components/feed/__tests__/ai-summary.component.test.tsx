@@ -74,7 +74,7 @@ it("keeps the original readable after generation fails", async () => {
   await screen.findByText("Service unavailable");
   expect(screen.getByText("Original article remains readable")).toBeVisible();
 });
-it("retries the failed Detailed request and preserves the existing brief summary", async () => {
+it("retries a failed Go deeper request and keeps the brief on screen throughout", async () => {
   jest
     .mocked(global.fetch)
     .mockResolvedValueOnce({
@@ -83,14 +83,21 @@ it("retries the failed Detailed request and preserves the existing brief summary
     } as Response)
     .mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ summary: "Detailed result" }),
+      json: async () => ({
+        summary: "Existing brief\n\n## Going deeper\n\n## More\n\n- Detailed result",
+      }),
     } as Response);
   render(<AISummary itemId="one" ogSummary="original" initialBriefSummary="Existing brief" />);
-  fireEvent.click(screen.getByText("Detailed"));
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
   await screen.findByText("Temporary failure");
   expect(screen.getByText("Existing brief")).toBeVisible();
   fireEvent.click(screen.getByText("Try Again"));
-  await screen.findByText("Detailed result");
+  await screen.findByText("- Detailed result");
+  expect(screen.getByText("Existing brief")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute(
+    "aria-expanded",
+    "true"
+  );
   await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
   expect(JSON.parse(jest.mocked(global.fetch).mock.calls[1][1]!.body as string)).toEqual({
     itemId: "one",
@@ -153,7 +160,7 @@ const detailedMarkdown = [
   "## Limits\n\nCold starts are unchanged.",
 ].join("\n\n");
 
-it("stacks the detailed view: the brief once, a Going deeper divider, then the delta", () => {
+it("Go deeper stacks the delta under the brief: the brief once, a divider, then the delta", () => {
   const { container } = render(
     <AISummary
       itemId="one"
@@ -162,7 +169,15 @@ it("stacks the detailed view: the brief once, a Going deeper divider, then the d
       initialDetailedSummary={detailedMarkdown}
     />
   );
-  fireEvent.click(screen.getByText("Detailed"));
+  // The brief is the default; the cached delta is hidden until asked for.
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
+  const button = screen.getByRole("button", { name: "Go deeper" });
+  expect(button).toHaveAttribute("aria-expanded", "false");
+  expect(button).toHaveAttribute("aria-keyshortcuts", "d");
+  expect(button).toHaveAttribute("title", "Go deeper · D");
+  fireEvent.click(button);
+  expect(global.fetch).not.toHaveBeenCalled();
 
   expect(screen.getAllByText("A short overview.")).toHaveLength(1);
   const divider = screen.getByRole("separator", { name: "Going deeper" });
@@ -176,6 +191,42 @@ it("stacks the detailed view: the brief once, a Going deeper divider, then the d
     node.getAttribute("data-section-style")
   );
   expect(styles).toEqual(["bullets", "bullets"]);
+
+  // Show less folds the delta away again; the cached delta reopens without a request.
+  fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  expect(screen.getByText("A short overview.")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
+  expect(screen.getByText("Where the speed comes from")).toBeVisible();
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+it("opens an item that only has a detailed summary fully expanded, with Show less available", () => {
+  render(<AISummary itemId="one" ogSummary="original" initialDetailedSummary={detailedMarkdown} />);
+  expect(screen.getByText("Where the speed comes from")).toBeVisible();
+  expect(screen.getByRole("separator", { name: "Going deeper" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  expect(screen.getByText("A short overview.")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
+  expect(screen.getByText("Where the speed comes from")).toBeVisible();
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+it("keeps the brief visible while the delta loads and ignores d meanwhile", async () => {
+  jest.mocked(global.fetch).mockReturnValue(new Promise(() => {}));
+  render(<AISummary itemId="one" ogSummary="original" initialBriefSummary={briefMarkdown} />);
+  fireEvent.keyDown(window, { key: "d" });
+  expect(await screen.findByRole("status", { name: "Generating summary" })).toBeVisible();
+  expect(screen.getByText("A short overview.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Go deeper" })).toBeDisabled();
+  fireEvent.keyDown(window, { key: "d" });
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(jest.mocked(global.fetch).mock.calls[0][1]!.body as string)).toEqual({
+    itemId: "one",
+    length: "detailed",
+    force: false,
+  });
 });
 
 it("drops the detailed summary when the brief is regenerated, and takes a new brief from a detailed response", async () => {
@@ -203,15 +254,77 @@ it("drops the detailed summary when the brief is regenerated, and takes a new br
   );
   fireEvent.keyDown(window, { key: "S", shiftKey: true });
   await screen.findByText("New brief.");
+  // The delta was folded away, so only the brief was regenerated.
+  expect(global.fetch).toHaveBeenCalledTimes(1);
 
-  // The old detailed summary was built from the old brief, so Detailed asks the server again.
-  fireEvent.click(screen.getByText("Detailed"));
+  // The old delta was built from the old brief, so Go deeper asks the server again.
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
   await screen.findByText("- Detail");
   expect(JSON.parse(jest.mocked(global.fetch).mock.calls[1][1]!.body as string)).toMatchObject({
     length: "detailed",
   });
-  fireEvent.click(screen.getByText("Brief"));
+  fireEvent.click(screen.getByRole("button", { name: "Show less" }));
   expect(await screen.findByText("Newest brief.")).toBeVisible();
+  expect(screen.queryByText("- Detail")).toBeNull();
+});
+
+it("regenerating while the delta is open rebuilds the brief and then the delta", async () => {
+  jest
+    .mocked(global.fetch)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ summary: "## TL;DR\n\nNew brief.", cached: false }),
+    } as Response)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        summary: "## TL;DR\n\nNew brief.\n\n## Going deeper\n\n## More\n\n- New detail",
+        cached: false,
+      }),
+    } as Response);
+  render(
+    <AISummary
+      itemId="one"
+      ogSummary="original"
+      initialBriefSummary={briefMarkdown}
+      initialDetailedSummary={detailedMarkdown}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
+  expect(screen.getByText("Where the speed comes from")).toBeVisible();
+
+  fireEvent.keyDown(window, { key: "S", shiftKey: true });
+  expect(await screen.findByText("- New detail")).toBeVisible();
+  expect(screen.getByText("New brief.")).toBeVisible();
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  const bodies = jest
+    .mocked(global.fetch)
+    .mock.calls.map((call) => JSON.parse(call[1]!.body as string));
+  expect(bodies).toEqual([
+    { itemId: "one", length: "brief", force: true },
+    { itemId: "one", length: "detailed", force: false },
+  ]);
+  expect(screen.getByRole("button", { name: "Show less" })).toBeVisible();
+});
+
+it("keeps the open delta when a regenerate within the cooldown returns the cached brief", async () => {
+  jest.mocked(global.fetch).mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({ summary: briefMarkdown, cached: true }),
+  } as Response);
+  render(
+    <AISummary
+      itemId="one"
+      ogSummary="original"
+      initialBriefSummary={briefMarkdown}
+      initialDetailedSummary={detailedMarkdown}
+    />
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Go deeper" }));
+  fireEvent.keyDown(window, { key: "S", shiftKey: true });
+  await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText("Where the speed comes from")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Show less" })).toBeVisible();
 });
 
 it("keeps a regenerated summary visible while invalidating cached lists and refreshing the reader", async () => {
@@ -263,14 +376,14 @@ it("keeps a regenerated summary visible while invalidating cached lists and refr
 it("s, d and Shift+S drive the summary controls and expose their keys", async () => {
   jest.mocked(global.fetch).mockResolvedValue({
     ok: true,
-    json: async () => ({ summary: "Regenerated" }),
+    json: async () => ({ summary: "Regenerated", cached: true }),
   } as Response);
   render(
     <AISummary
       itemId="one"
       ogSummary="original"
-      initialBriefSummary="Brief text"
-      initialDetailedSummary="Detailed text"
+      initialBriefSummary={briefMarkdown}
+      initialDetailedSummary={detailedMarkdown}
     />
   );
   const aiBtn = await screen.findByRole("tab", { name: "Summary" });
@@ -278,21 +391,35 @@ it("s, d and Shift+S drive the summary controls and expose their keys", async ()
   expect(aiBtn).toHaveAttribute("aria-selected", "true");
   expect(aiBtn).toHaveAttribute("aria-keyshortcuts", "s");
 
+  // d toggles the delta.
   fireEvent.keyDown(window, { key: "d" });
-  expect(await screen.findByText("Detailed text")).toBeVisible();
-  expect(screen.getByRole("radio", { name: "Detailed" })).toHaveAttribute("aria-checked", "true");
+  expect(await screen.findByText("Where the speed comes from")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute(
+    "aria-expanded",
+    "true"
+  );
+  fireEvent.keyDown(window, { key: "d" });
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  expect(screen.getByRole("button", { name: "Go deeper" })).toHaveAttribute(
+    "aria-expanded",
+    "false"
+  );
 
+  // d does nothing on the Original tab.
   fireEvent.keyDown(window, { key: "s" });
   expect(screen.getByRole("tab", { name: "Original" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(window, { key: "d" });
   fireEvent.keyDown(window, { key: "s" });
   expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByText("Where the speed comes from")).toBeNull();
+  expect(global.fetch).not.toHaveBeenCalled();
 
   fireEvent.keyDown(window, { key: "S", shiftKey: true });
   await waitFor(() =>
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/ai/summarize",
       expect.objectContaining({
-        body: JSON.stringify({ itemId: "one", length: "detailed", force: true }),
+        body: JSON.stringify({ itemId: "one", length: "brief", force: true }),
       })
     )
   );
