@@ -21,6 +21,7 @@ import { IntentLink as Link } from "@/components/navigation/intent-link";
 import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
+import { AreaPills, useAreaShortcuts } from "@/components/feed/area-pills";
 import { ContentCard } from "@/components/feed/content-card";
 import { FeedFilterSheet } from "@/components/feed/feed-filters";
 import { FilterBar } from "@/components/feed/filter-bar";
@@ -49,9 +50,16 @@ import {
   normalizeSearchQuery,
   type FeedFilterState,
 } from "@/lib/feed/feed-url";
-import { activeFilterChips, filtersUrl, type FilterUpdates } from "@/lib/feed/quick-filters";
+import { readRememberedArea, rememberArea } from "@/lib/feed/area-memory";
+import {
+  activeFilterChips,
+  areaUpdate,
+  filtersUrl,
+  selectedArea,
+  type FilterUpdates,
+} from "@/lib/feed/quick-filters";
 import type { ShortcutDef } from "@/lib/shortcuts/types";
-import type { ContentItemSummary } from "@/lib/types";
+import type { ContentItemSummary, LifeArea } from "@/lib/types";
 
 export interface FeedInitialPage {
   /** `feedFilterKey` of the URL the server rendered for; must match to be used. */
@@ -307,7 +315,10 @@ export function FeedList({
       ? searchParamsForFeedUrl(pendingUrl)
       : new URLSearchParams(searchParams.toString());
     const nextUrl = nextFeedUrl(currentParams, updates);
-    const nextKey = feedFilterKey(feedFilterState(searchParamsForFeedUrl(nextUrl)));
+    const nextState = feedFilterState(searchParamsForFeedUrl(nextUrl));
+    const nextKey = feedFilterKey(nextState);
+    // The Feed remembers the chosen area for its next open; All (or Clear) forgets it.
+    if ("area" in updates) rememberArea(selectedArea(nextState));
     setPendingNavigation({
       url: nextUrl,
       key: nextKey,
@@ -317,6 +328,17 @@ export function FeedList({
     });
     window.history.replaceState(null, "", nextUrl);
   };
+  const selectArea = (area: LifeArea | undefined) => replaceFilters(areaUpdate(area));
+
+  // Opened with no area in the URL: navigate to the one remembered from the
+  // last visit, so the URL stays the single source of truth (Back and sharing
+  // keep working). Once per open; later changes come from the pills or sheet.
+  useEffect(() => {
+    if (searchParams.has("area")) return;
+    const remembered = readRememberedArea();
+    if (remembered) selectArea(remembered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Optimistically mark an item as read in local state. */
   function handleMarkRead(id: string, read: boolean) {
@@ -349,6 +371,7 @@ export function FeedList({
   useShortcut(FILTERS_SHORTCUT, () => setFiltersOpen(true));
   useShortcut(UNREAD_SHORTCUT, () => replaceFilters({ read: filters.showRead ? "false" : "true" }));
   useShortcut(LAYOUT_SHORTCUT, () => setViewMode((mode) => (mode === "card" ? "compact" : "card")));
+  useAreaShortcuts(selectArea);
 
   const emptyMessage = filters.searchQuery
     ? `Nothing matches “${filters.searchQuery}” with these filters.`
@@ -359,11 +382,13 @@ export function FeedList({
   return (
     <PageContainer size="list">
       <div ref={listRef} className="space-y-5">
-        {/* Page header: title and links, with the search and Filters on the right. */}
+        {/* Page header: title and links, with the search and Filters on the right,
+            then the reading-mode pills (All, Personal, Work, Learning, Updates). */}
         <FilterBar
           filters={filters}
           onChange={replaceFilters}
           onSearchDraftChange={setSearchDraft}
+          areaPills={<AreaPills value={selectedArea(filters)} onSelect={selectArea} />}
           leading={
             <PageHeader
               title="Feed"

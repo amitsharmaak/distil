@@ -143,6 +143,55 @@ describe("FilterBar layout", () => {
   });
 });
 
+describe("FilterBar area pills (Feed)", () => {
+  const pills = <div role="radiogroup" aria-label="Reading mode" />;
+
+  it("renders the pill row under the header row and lets it stand in for the area chip", () => {
+    const onChange = jest.fn();
+    render(
+      <FilterBar
+        filters={feedFilterState(new URLSearchParams("area=work&source=gmail"))}
+        onChange={onChange}
+        leading={<h1>Feed</h1>}
+        areaPills={pills}
+      />
+    );
+    const heading = screen.getByRole("heading", { name: "Feed" });
+    const row = screen.getByRole("radiogroup", { name: "Reading mode" });
+    const chips = screen.getByRole("group", { name: "Active filters" });
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(heading, row)).toBe(true);
+    expect(follows(row, chips)).toBe(true);
+
+    expect(screen.queryByRole("button", { name: "Remove filter: Work" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove filter: Gmail" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ area: undefined, source: undefined })
+    );
+  });
+
+  it("shows no chip row when the area is the only filter and the pills already show it", () => {
+    render(
+      <FilterBar
+        filters={feedFilterState(new URLSearchParams("area=work"))}
+        onChange={jest.fn()}
+        areaPills={pills}
+      />
+    );
+    expect(screen.queryByRole("group", { name: "Active filters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the area chip without the pill row (Today)", () => {
+    render(
+      <FilterBar filters={feedFilterState(new URLSearchParams("area=work"))} onChange={jest.fn()} />
+    );
+    expect(screen.getByRole("button", { name: "Remove filter: Work" })).toBeInTheDocument();
+  });
+});
+
 describe("FilterBar active filter chips", () => {
   it("shows every active filter as a removable chip and clears everything at once", () => {
     const { onChange } = renderBar(

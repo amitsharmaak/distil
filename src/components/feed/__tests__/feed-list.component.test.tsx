@@ -9,6 +9,7 @@ import {
   render as rtlRender,
   screen,
   waitFor,
+  within,
   type RenderOptions,
 } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
@@ -92,7 +93,13 @@ jest.mock("@/components/feed/feed-filters", () => ({
   }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    filters: { sources: string[]; contentTypes: string[]; priorities: string[]; showRead: boolean };
+    filters: {
+      sources: string[];
+      contentTypes: string[];
+      priorities: string[];
+      areas: string[];
+      showRead: boolean;
+    };
     onChange: (updates: Record<string, string | string[] | undefined>) => void;
     activeCount: number;
     viewMode: "card" | "compact";
@@ -105,8 +112,11 @@ jest.mock("@/components/feed/feed-filters", () => ({
       </button>
       <output data-testid="sheet-state">
         {viewMode}|{filters.sources.join(",")}|{filters.contentTypes.join(",")}|
-        {filters.priorities.join(",")}|{activeCount}
+        {filters.priorities.join(",")}|{activeCount}|{filters.areas.join(",")}
       </output>
+      <button type="button" onClick={() => onChange({ area: "learning" })}>
+        Learning area
+      </button>
       <button type="button" onClick={() => onViewModeChange("compact")}>
         Compact view
       </button>
@@ -640,6 +650,112 @@ describe("FeedList with a server-rendered page", () => {
       "/api/v1/feed?archive=exclude&sort=for_you&limit=100&read=false&cursor=cursor-2",
       expect.objectContaining({ signal: expect.anything() })
     );
+  });
+});
+
+describe("FeedList reading-mode pills", () => {
+  const STORAGE_KEY = "distil.feed.area";
+  const key = "archive=exclude&sort=for_you&limit=100&read=false";
+  const serverPage = { key, items: [makeItem()], nextCursor: undefined };
+  const pills = () => within(screen.getByRole("radiogroup", { name: "Reading mode" }));
+  const checked = (name: string) =>
+    expect(pills().getByRole("radio", { name })).toHaveAttribute("aria-checked", "true");
+
+  beforeEach(() => {
+    cleanup();
+    mockSearch = "";
+    Object.defineProperty(window.history, "replaceState", {
+      configurable: true,
+      value: mockHistoryReplace,
+    });
+    window.localStorage.clear();
+    jest
+      .mocked(global.fetch)
+      .mockReset()
+      .mockResolvedValue(itemsResponse([makeItem()]));
+  });
+  afterEach(() => jest.clearAllMocks());
+
+  it("shows the pill row under the Feed header with All selected", () => {
+    render(<FeedList initialPage={serverPage} />);
+    const heading = screen.getByRole("heading", { name: "Feed" });
+    const row = screen.getByRole("radiogroup", { name: "Reading mode" });
+    expect(heading.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      pills()
+        .getAllByRole("radio")
+        .map((pill) => pill.textContent)
+    ).toEqual(["All", "Personal", "Work", "Learning", "Updates"]);
+    checked("All");
+    expect(mockHistoryReplace).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("selects an area through the URL, keeps the sheet in sync both ways and shows no area chip", () => {
+    render(<FeedList initialPage={serverPage} />);
+    fireEvent.click(pills().getByRole("radio", { name: "Work" }));
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?area=work");
+    checked("Work");
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("|1|work");
+    expect(screen.queryByRole("button", { name: "Remove filter: Work" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("work");
+
+    // The sheet's Area control writes the same parameter; the pill follows.
+    fireEvent.click(screen.getByRole("button", { name: "Learning area" }));
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?area=learning");
+    checked("Learning");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("learning");
+  });
+
+  it("opens on the remembered area when the URL names none; a URL area wins", () => {
+    window.localStorage.setItem(STORAGE_KEY, "personal");
+    render(<FeedList initialPage={serverPage} />);
+    expect(mockHistoryReplace).toHaveBeenCalledTimes(1);
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?area=personal");
+    checked("Personal");
+    expect(screen.getByTestId("sheet-state")).toHaveTextContent("|personal");
+    cleanup();
+    jest.clearAllMocks();
+
+    mockSearch = "area=work&q=rust";
+    render(<FeedList initialPage={null} />);
+    expect(mockHistoryReplace).not.toHaveBeenCalled();
+    checked("Work");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("personal");
+  });
+
+  it("forgets the area on All and on Clear, keeping the other filters' behaviour", () => {
+    window.localStorage.setItem(STORAGE_KEY, "work");
+    mockSearch = "area=work&source=gmail";
+    render(<FeedList initialPage={null} />);
+    checked("Work");
+    expect(screen.getByRole("button", { name: "Remove filter: Gmail" })).toBeInTheDocument();
+    fireEvent.click(pills().getByRole("radio", { name: "All" }));
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?source=gmail");
+    checked("All");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    cleanup();
+    jest.clearAllMocks();
+
+    window.localStorage.setItem(STORAGE_KEY, "work");
+    render(<FeedList initialPage={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed");
+    checked("All");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("1 to 5 pick the pills from the keyboard", () => {
+    render(<FeedList initialPage={serverPage} />);
+    press("3");
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?area=work");
+    checked("Work");
+    press("5");
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed?area=updates");
+    press("1");
+    expect(mockHistoryReplace).toHaveBeenLastCalledWith(null, "", "/feed");
+    checked("All");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 

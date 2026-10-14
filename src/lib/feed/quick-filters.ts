@@ -92,19 +92,32 @@ export interface ActiveFilterChip {
   remove: FilterUpdates;
 }
 
+export interface ActiveFilterChipOptions {
+  /**
+   * Whether the area counts as a chip. The Feed's pill row already shows the
+   * selected area, so the Feed passes `false`; Today keeps the chip.
+   */
+  includeArea?: boolean;
+}
+
 /**
  * Every filter that narrows the list beyond the default unread view, each
  * with the update that removes it. All filters live in the Filters sheet, so
  * the bar shows these as removable chips and nothing is ever active silently.
  */
-export function activeFilterChips(state: FeedFilterState): ActiveFilterChip[] {
+export function activeFilterChips(
+  state: FeedFilterState,
+  { includeArea = true }: ActiveFilterChipOptions = {}
+): ActiveFilterChip[] {
   const chips: ActiveFilterChip[] = [];
-  for (const area of state.areas) {
-    chips.push({
-      key: `area:${area}`,
-      label: AREA_LABELS[area] ?? area,
-      remove: { area: state.areas.filter((entry) => entry !== area) },
-    });
+  if (includeArea) {
+    for (const area of state.areas) {
+      chips.push({
+        key: `area:${area}`,
+        label: AREA_LABELS[area] ?? area,
+        remove: { area: state.areas.filter((entry) => entry !== area) },
+      });
+    }
   }
   if (state.showRead) {
     chips.push({

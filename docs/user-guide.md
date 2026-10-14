@@ -26,6 +26,20 @@ The Shortcut's saved credential uses iCloud Drive; devices on the same Apple Acc
 that pairing. See the [iPhone guide](iphone-shortcut.md) for installation, account switching,
 recovery, the Home Screen app and the build-it-yourself recipe.
 
+## Reading modes
+
+The Feed has one row of pills under its title: **All · Personal · Work · Learning · Updates**.
+Choose one to read in that mindset only; the pill stays put until you change it. The pills select
+the item's area, the same four areas every item is sorted into at capture, so the **Area** control
+in the Filters sheet always shows the same choice and either one changes the other. There are no
+custom modes or presets: fun reading (football, films, music, games and the like) is sorted under
+Personal.
+
+The Feed remembers the mode in this browser. Open the Feed later and it comes back on the last
+pill you chose; choose **All** to forget it. A link that already names an area (`?area=work`)
+wins over the memory, and Today and Archive are not affected. Keys `1` to `5` pick the pills in
+order from anywhere on the Feed.
+
 ## Keyboard shortcuts
 
 Distil can be driven from the keyboard on desktop. Press `?` (or ⌘/ on Mac, Ctrl+/ elsewhere) at
@@ -64,16 +78,17 @@ Notes that apply to every table below:
 
 ### Lists (Feed and Today)
 
-| Keys        | Action                                | Where       |
-| ----------- | ------------------------------------- | ----------- |
-| `j`         | Move to the next item                 | Feed, Today |
-| `k`         | Move to the previous item             | Feed, Today |
-| `o` / Enter | Open the focused item                 | Feed, Today |
-| `r`         | Mark the focused item read            | Feed        |
-| `a`         | Change the focused item's area        | Feed        |
-| `f`         | Open the filters                      | Feed        |
-| `u`         | Toggle the unread filter              | Feed        |
-| `c`         | Toggle compact and comfortable layout | Feed        |
+| Keys        | Action                                               | Where       |
+| ----------- | ---------------------------------------------------- | ----------- |
+| `j`         | Move to the next item                                | Feed, Today |
+| `k`         | Move to the previous item                            | Feed, Today |
+| `o` / Enter | Open the focused item                                | Feed, Today |
+| `r`         | Mark the focused item read                           | Feed        |
+| `a`         | Change the focused item's area                       | Feed        |
+| `f`         | Open the filters                                     | Feed        |
+| `u`         | Toggle the unread filter                             | Feed        |
+| `c`         | Toggle compact and comfortable layout                | Feed        |
+| `1` … `5`   | Reading mode: All, Personal, Work, Learning, Updates | Feed        |
 
 ### Reading
 
