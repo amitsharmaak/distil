@@ -4,6 +4,7 @@ title: One-tap iPhone pairing via a shortcuts:// deep link; recipe accepts the c
 date: 2026-10-14
 status: in-progress
 branch: claude/musing-cerf-eef4a6
+pr: 155
 ---
 
 ## What changed
