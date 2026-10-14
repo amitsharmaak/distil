@@ -17,13 +17,18 @@ is the recipe for building it yourself.
 ## 2. Pair once
 
 1. In **Settings → Capture → iPhone**, tap **Pair this iPhone**.
-2. Run **Save to Distil** from Shortcuts, or share an article to it, and type the displayed
-   eight-character code when asked.
+2. On the iPhone itself, tap **Pair on this iPhone** under the code. Safari asks to open
+   Shortcuts; allow it. The Shortcut starts with the code filled in and nothing to type.
+   Anywhere else, run **Save to Distil** from Shortcuts, or share an article to it, and type the
+   displayed eight-character code when asked.
 3. Wait for **iPhone paired**. If you started by sharing an article, the same run then saves it.
 
 The code lasts ten minutes and works once. Generating another code replaces the previous one. If
 pairing fails, return to Settings, generate a fresh code and try again. Do not put pairing codes
-in screenshots, messages or logs.
+in screenshots, messages or logs. **Pair on this iPhone** needs the Shortcut installed first; if
+Shortcuts cannot find **Save to Distil**, install it and tap again. The button hands the code to
+Shortcuts in a link that only iOS opens; Distil never sends or records that link, and the code is
+useless after one use or ten minutes.
 
 ## 3. Share articles
 
@@ -43,8 +48,8 @@ shows:
 
 > Distil disconnected this iPhone. Share again to pair.
 
-Generate a new code in Settings, then share again and enter it. You do not need to edit or reinstall
-the Shortcut. Disconnecting this connection leaves other phone connections, browser connections
+Generate a new code in Settings, then tap **Pair on this iPhone** or share again and enter the
+code. You do not need to edit or reinstall the Shortcut. Disconnecting this connection leaves other phone connections, browser connections
 and the manual capture token active. Regenerating the manual token also leaves paired connections
 active.
 
@@ -102,6 +107,13 @@ install link. Amit owns those device and environment steps.
 - [ ] Install using **Get the Shortcut**; no token or account information is requested at install.
 - [ ] First run with no shared input prompts for the code, reports **iPhone paired**, and exits
       without making a capture request. The connection appears in Settings after refresh.
+- [ ] One-tap pairing: in Safari on the iPhone with the Shortcut installed, tap **Pair this
+      iPhone**, then **Pair on this iPhone**. Safari asks to open Shortcuts; the Shortcut runs with
+      no code prompt, reports **iPhone paired**, makes no capture request, and the connection
+      appears in the card on returning to Safari. Repeat the same taps after **Disconnect** without
+      sharing a link first; pairing succeeds in one tap. Tap the button after the code has expired;
+      it reports pairing failure and saves nothing. On a Mac or Windows browser the button is
+      absent and the code is still shown.
 - [ ] Chrome: share a normal article; **Saved to Distil** appears and one receipt is created.
 - [ ] Safari: share the same article; it saves without a pairing prompt and returns the existing
       capture without creating another item.
@@ -137,33 +149,49 @@ explains **Get Contents of URL**, JSON request bodies and variables.
    **Shortcuts** folder and relative path `Distil/token.txt`. Turn **Error If Not Found** off and
    disable the document picker. The full path is `Shortcuts/Distil/token.txt`.
 3. If a file was found, use **Get Text from Input** on that file and set a variable named
-   **Capture Token** to its contents. Missing or empty content takes the pairing branch below.
-   Keep all secret-bearing variables out of **Show Result**, **Quick Look**, notifications,
-   clipboard actions and logs.
+   **Capture Token** to its contents. Missing or empty content takes the pairing branch below,
+   and so does a Shortcut Input that is a pairing code. Keep all secret-bearing variables out of
+   **Show Result**, **Quick Look**, notifications, clipboard actions and logs.
 
-### B. Pair when the file is missing or empty
+### B. Pair when the input is a code, or the file is missing or empty
 
-1. If **Capture Token** has no value, add **Ask for Input**, type **Text**, with the prompt
-   `Enter the code shown in Distil → Settings → Capture`. Keep the answer only in a variable.
-2. Add **Get Contents of URL**:
+1. Initialize **Pairing Code** to empty text. If there is **Shortcut Input**, add **Get Text
+   from Input** on it, then **Match Text** with the regular expression
+   `^[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}$` and **Case Sensitive** off (trim surrounding
+   whitespace first with **Trim Whitespace** if your iOS version offers it). A match is a pairing
+   code: set **Pairing Code** to it and set **Input Was Code** to true. This is how **Pair on
+   this iPhone** in Settings → Capture → iPhone hands over the code: it opens
+   `shortcuts://run-shortcut?name=Save%20to%20Distil&input=text&text=<code>`, and the code
+   arrives as text input. Code-shaped input takes this branch even when a credential file exists:
+   **Disconnect** leaves a stale file until the next share, a code is never a link worth saving,
+   and a successful exchange simply replaces the stored credential. The code travels in a URL
+   that only iOS opens; it works once and expires within ten minutes, so this is acceptable, but
+   never show, log or store it.
+2. If **Pairing Code** is still empty and **Capture Token** has a value, skip to section C. If
+   both are empty, add **Ask for Input**, type **Text**, with the prompt
+   `Enter the code shown in Distil → Settings → Capture`, and set **Pairing Code** to the answer.
+   Keep the answer only in that variable.
+3. Add **Get Contents of URL**:
    - URL: `https://distilai.app/api/v1/shortcut-pairings/exchange`
    - Method: `POST`
    - Header: `Content-Type` = `application/json`
-   - Request body: JSON, with `code` set to the Ask for Input result
+   - Request body: JSON, with `code` set to **Pairing Code**
    - Optional `deviceName`: a short connection label, such as `iPhone`; omit it for the default
-3. This exchange does not require a Safari session or an Authorization header. Convert the result
+4. This exchange does not require a Safari session or an Authorization header. Convert the result
    with **Get Dictionary from Input**, then **Get Dictionary Value** for `token`.
-4. If `token` is missing or empty, show `Could not pair. Get a new code in Distil and try again.`
+5. If `token` is missing or empty, show `Could not pair. Get a new code in Distil and try again.`
    and **Stop This Shortcut**. Do not display the response, echo the code, save a file or continue
    to capture. Wrong, expired and consumed codes all return `error.code = UNAUTHORIZED` without
    further detail. If rate-limited, wait before requesting another code and retrying.
-5. If `token` exists, set **Capture Token** to it. Ensure the `Distil` folder exists under the
+6. If `token` exists, set **Capture Token** to it. Ensure the `Distil` folder exists under the
    user's **Shortcuts** folder, then use **Save File** to write its text to `Distil/token.txt`.
    Turn **Ask Where to Save** off and **Overwrite If File Exists** on. Use the same base folder
    and path as the read action. Store only the credential, not the whole JSON response or code.
-6. After the save succeeds, show `iPhone paired`. If there is no **Shortcut Input**, stop here.
-   If there is shared input, continue below. A later direct run with a stored credential and no
-   input should also stop without a capture request.
+7. After the save succeeds, show `iPhone paired`. If **Input Was Code** is true or there is no
+   **Shortcut Input**, stop here; never try to save the code as a link. Only when the code came
+   from **Ask for Input** and an article was shared, continue below so the same run saves it. A
+   later direct run with a stored credential and no input should also stop without a capture
+   request.
 
 The file is a credential in the user's iCloud Drive, not a hardware-bound or Keychain secret.
 Never include it, a pairing code, or a literal token in the shared Shortcut. Do not share its

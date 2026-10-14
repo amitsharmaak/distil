@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isIosDevice } from "@/lib/platform";
 import { apiBaseUrl, iosShortcutUrl } from "@/lib/public-config";
 
 interface PhoneSummary {
@@ -26,6 +27,19 @@ interface ConnectionState {
   paired: boolean;
 }
 
+/** Name of the distributed Shortcut; the deep link targets it by name on the user's phone. */
+const SHORTCUT_NAME = "Save to Distil";
+
+/**
+ * Opens the installed Shortcut with the pairing code as its text input, so the
+ * phone never asks the user to retype the code. The code travels in a URL that
+ * only the OS opens: it is never fetched, logged or sent to analytics by Distil,
+ * and it is acceptable in a URL because it works once and expires within ten
+ * minutes. Do not pass this value to any request or logger.
+ */
+const shortcutPairingLink = (code: string) =>
+  `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}&input=text&text=${encodeURIComponent(code)}`;
+
 const formatDate = (value: string) => new Date(value).toLocaleDateString();
 const lastUsed = (value: string) =>
   new Date(value).toDateString() === new Date().toDateString() ? "today" : formatDate(value);
@@ -36,6 +50,8 @@ export function IphoneShortcutCard() {
     paired: false,
   });
   const [now, setNow] = useState(() => Date.now());
+  // Decided after hydration so the server-rendered markup matches every device.
+  const [ios, setIos] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string>();
   const [loadError, setLoadError] = useState<string>();
@@ -68,6 +84,10 @@ export function IphoneShortcutCard() {
     } catch {
       if (!controller.signal.aborted) setLoadError("Could not load your paired iPhones.");
     }
+  }, []);
+
+  useEffect(() => {
+    setIos(isIosDevice());
   }, []);
 
   useEffect(() => {
@@ -205,19 +225,30 @@ export function IphoneShortcutCard() {
         <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
           {active ? (
             <>
-              <p className="text-sm">Enter this code when the Shortcut asks to pair.</p>
+              <p className="text-sm">
+                {ios
+                  ? "Tap Pair on this iPhone, or enter this code when the Shortcut asks to pair."
+                  : "Enter this code when the Shortcut asks to pair."}
+              </p>
               <p
                 className="mt-3 font-mono text-2xl font-semibold tracking-widest"
                 aria-label={`Pairing code ${pairing.code}`}
               >
                 {pairing.code}
               </p>
+              {ios && (
+                <Button asChild className="mt-3 min-h-11 min-w-11">
+                  <a href={shortcutPairingLink(pairing.code)}>Pair on this iPhone</a>
+                </Button>
+              )}
               <p role="timer" aria-live="off" className="mt-2 text-xs text-muted-foreground">
                 Expires in {Math.floor(secondsLeft / 60)}:
                 {String(secondsLeft % 60).padStart(2, "0")}
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Open a link’s Share Sheet and run Save to Distil. A new code replaces this one.
+                {ios
+                  ? "Pair on this iPhone opens the Save to Distil Shortcut with the code filled in; install the Shortcut first. A new code replaces this one."
+                  : "Open a link’s Share Sheet and run Save to Distil. A new code replaces this one."}
               </p>
             </>
           ) : (
