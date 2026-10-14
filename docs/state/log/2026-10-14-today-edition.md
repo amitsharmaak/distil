@@ -4,6 +4,7 @@ title: Today is a daily edition: 7-day window, fill from older unread, manual hi
 date: 2026-10-14
 status: in-progress
 branch: claude/today-edition-009116
+pr: 151
 ---
 
 ## What changed
