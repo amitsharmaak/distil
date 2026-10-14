@@ -283,7 +283,10 @@ from two sessions, stale worktrees) came from three habits. The routine below re
   end of this routine for Claude Code (worktree, branch, `npm ci`, state-log entry,
   `npm run check`, PR, squash merge on request, cleanup). Codex follows the same steps by hand.
 - `.worktreeinclude` copies `.env.local` into every Claude-created worktree; run `npm ci` there
-  before the dev server or tests.
+  before the dev server or tests. A `node_modules` copied from the main checkout can predate
+  `package-lock.json`: if `tsc` reports `Cannot find module '<package>'` followed by implicit-any
+  errors in files you did not touch, or Jest suites fail to load a package, the install is stale.
+  Run `npm ci` and re-check before treating it as a code defect (see the `typecheck-gate` topic).
 
 ## 8. What to record in the state log
 
