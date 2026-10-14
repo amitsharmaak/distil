@@ -6,7 +6,11 @@ jest.mock("../router", () => ({
 import { classifyItemArea, siteOf } from "../classify-area";
 import { createTenantAIRouter } from "../router";
 import { AIProviderError } from "../errors";
-import { AREA_MAX_EXAMPLES, classifyAreaPrompt } from "@/lib/prompts/classify-area";
+import {
+  AREA_MAX_EXAMPLES,
+  CLASSIFY_AREA_PROMPT_VERSION,
+  classifyAreaPrompt,
+} from "@/lib/prompts/classify-area";
 import { createAuthContext } from "@/lib/contracts/tenant-context";
 import type { AreaCorrection, ItemAreaState } from "@/lib/repositories/ports";
 import type { ContentItem } from "@/lib/types";
@@ -229,6 +233,21 @@ describe("classifyAreaPrompt", () => {
     expect(prompt).toContain("Pick exactly one area. Always choose the best fit");
     expect(prompt).toContain('"area": "personal" | "work" | "learning" | "updates"');
     expect(prompt).not.toContain("Amit's own corrections");
+  });
+
+  it("puts sports and entertainment followed for enjoyment under personal, headline digests under updates", () => {
+    const prompt = classifyAreaPrompt({ item: base });
+    const definition = (area: string) =>
+      prompt.split("\n").find((line) => line.startsWith(`- ${area}: `)) ?? "";
+    expect(definition("personal")).toMatch(
+      /sports, entertainment and interests he follows for enjoyment/
+    );
+    expect(definition("personal")).toMatch(/football articles, match reports/);
+    expect(definition("personal")).toMatch(/digest that merely lists headlines .* is updates/);
+    expect(definition("updates")).toMatch(/digests of headlines/);
+    expect(definition("learning")).not.toMatch(/football/);
+    expect(definition("updates")).not.toMatch(/football/);
+    expect(CLASSIFY_AREA_PROMPT_VERSION).toBe("area-v2");
   });
 
   it("marks saved content as data, not instructions", () => {

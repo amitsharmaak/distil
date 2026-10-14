@@ -5,7 +5,8 @@
  * beside the page title, the Filters sheet trigger, and a row of removable
  * chips for whatever filters are active. Every filter itself lives in the
  * sheet (`FeedFilterSheet`). The URL is the only state it changes; the parent
- * owns navigation through `onChange`.
+ * owns navigation through `onChange`. The Feed also passes its reading-mode
+ * pill row (`areaPills`), which then stands in for the area chip.
  *
  * Typing reports the draft immediately (`onSearchDraftChange`, for instant
  * filtering of what is already on screen) and commits it to the URL 250 ms
@@ -27,10 +28,12 @@ import { cn } from "@/lib/utils";
 
 export const SEARCH_DEBOUNCE_MS = 250;
 
-const rowClass =
+/** One horizontally scrolling row of pills, no wrapping, no visible scrollbar. */
+export const rowClass =
   "-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-const pillClass = (selected: boolean) =>
+/** The shared pill look: chips here and the Feed's reading-mode pills. */
+export const pillClass = (selected: boolean) =>
   cn(
     "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
     selected
@@ -47,6 +50,11 @@ export interface FilterBarProps {
   sheet?: React.ReactNode;
   /** Rendered at the start of the search row, typically the page title. */
   leading?: React.ReactNode;
+  /**
+   * The Feed's reading-mode pill row, rendered directly under the header row.
+   * When present it shows the selected area, so the area chip is dropped.
+   */
+  areaPills?: React.ReactNode;
   placeholder?: string;
   label?: string;
 }
@@ -57,6 +65,7 @@ export function FilterBar({
   onSearchDraftChange,
   sheet,
   leading,
+  areaPills,
   placeholder = "Search",
   label = "Search your items",
 }: FilterBarProps) {
@@ -108,7 +117,7 @@ export function FilterBar({
     if (committed) onChange({ q: undefined });
   };
 
-  const chips = activeFilterChips(filters);
+  const chips = activeFilterChips(filters, { includeArea: !areaPills });
   const anyActive = hasActiveFilters(filters);
 
   return (
@@ -167,6 +176,8 @@ export function FilterBar({
           {sheet}
         </div>
       </div>
+
+      {areaPills}
 
       {chips.length > 0 && (
         <div className={rowClass} role="group" aria-label="Active filters">

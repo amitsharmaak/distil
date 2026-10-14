@@ -42,7 +42,7 @@ reader
 | --- | -------------------------------- | ----------------------------------- | ----------------- | -------------------------------------------------------------------------- | ---------------------- | --------------------- |
 | S1  | Extraction and readability gate  | Every capture                       | Rules             | none                                                                       | n/a                    | No                    |
 | S2  | Brief summary                    | Every capture; regenerate in reader | Model             | `gemini-3.5-flash-lite` under ~2k tokens, `claude-sonnet-4-6` above        | `summary-v2`           | No                    |
-| S3  | Life area                        | Every capture                       | Model             | `gemini-3.5-flash-lite`                                                    | `area-v1` (not stored) | No                    |
+| S3  | Life area                        | Every capture                       | Model             | `gemini-3.5-flash-lite`                                                    | `area-v2` (not stored) | No                    |
 | S4  | Today selection and feed ranking | Every page load                     | SQL formula       | none                                                                       | none                   | No                    |
 | S5  | Feedback and preference learning | Each thumbs rating                  | Model + heuristic | `gemini-3.5-flash-lite`                                                    | none                   | No                    |
 | S6  | Detailed summary                 | On demand in the reader             | Model             | `claude-sonnet-4-6`, else `gemini-3.5-flash`                               | `summary-v2`           | By hand (delta check) |
@@ -196,10 +196,18 @@ Reading the table as a grid:
 - **Code:** `classifyItemArea` in `src/lib/ai/classify-area.ts`; prompt `classifyAreaPrompt` in
   `src/lib/prompts/classify-area.ts`.
 - **Model:** task `classify-area`, `gemini-3.5-flash-lite`, 15 seconds, one attempt, no fallback.
-- **Prompt (`area-v1`):** the four definitions; up to 20 of the reader's most recent corrections as
+- **Prompt (`area-v2`):** the four definitions; up to 20 of the reader's most recent corrections as
   examples; the item's title, capture channel, type, site, author, publication and topics; the
   brief's overview; the first 2,000 characters. It says to treat the item as material and ignore
   instructions in it, to always pick one area, and to return `{area, confidence, reason}`.
+- **Definitions (`area-v2`, 2026-10-14):** Personal is Amit's life outside work and, since v2,
+  the sports, entertainment and interests he follows for enjoyment (football articles, match
+  reports, club and player news, films, music, television, games), even when they read like news
+  or explain something. Work is his own job. Learning is material studied and kept, including
+  general craft advice. Updates is what he skims to stay current; a digest that merely lists
+  headlines, a match-day round-up included, stays updates. The four areas are fixed; there are
+  no custom areas. Existing items were not reclassified when the definition changed; the Feed's
+  per-item correction remains the fix.
 - **Stores:** `items.area`, `area_confidence`, `area_reason`, `area_model`, `area_classified_at`.
   The prompt version is not stored. A correction is `manual_area` and always wins.
 - **On failure:** log event `capture_area_skipped`; the item waits for the backfill.
@@ -782,7 +790,7 @@ SELECT rating, count(*) FROM feedback GROUP BY 1;
 | `briefSummaryPrompt`                                                                                                 | `src/lib/prompts/summarize.ts`              | `summary-v2`          | S2                      | Yes   |
 | `chunkNotesPrompt`                                                                                                   | `src/lib/prompts/summarize.ts`              | none                  | S2, S6 (long documents) | Yes   |
 | `detailedDeltaPrompt`                                                                                                | `src/lib/prompts/summarize.ts`              | `summary-v2`          | S6                      | Yes   |
-| `classifyAreaPrompt`                                                                                                 | `src/lib/prompts/classify-area.ts`          | `area-v1`             | S3                      | Yes   |
+| `classifyAreaPrompt`                                                                                                 | `src/lib/prompts/classify-area.ts`          | `area-v2`             | S3                      | Yes   |
 | `preferenceAnalysisPrompt`                                                                                           | `src/lib/prompts/prioritize.ts`             | none                  | S5                      | Yes   |
 | `researchPlanPrompt`                                                                                                 | `src/lib/prompts/research.ts`               | none                  | S7                      | Yes   |
 | `researchNotesPrompt`                                                                                                | `src/lib/prompts/research.ts`               | none                  | S7                      | Yes   |

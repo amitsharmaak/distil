@@ -9,7 +9,7 @@
 
 import { LIFE_AREAS, type LifeArea } from "@/lib/types";
 
-export const CLASSIFY_AREA_PROMPT_VERSION = "area-v1";
+export const CLASSIFY_AREA_PROMPT_VERSION = "area-v2";
 
 /** Caps that keep one classification a small, cheap call. */
 export const AREA_EXCERPT_MAX_CHARS = 2_000;
@@ -19,7 +19,7 @@ const EXAMPLE_TITLE_MAX_CHARS = 120;
 
 export const AREA_DEFINITIONS: Record<LifeArea, string> = {
   personal:
-    "Amit's own life outside work: family and children (school notices, activities), health, home, personal finances and admin, travel plans, friends, hobbies he takes part in.",
+    "Amit's own life outside work: family and children (school notices, activities), health, home, personal finances and admin, travel plans, friends, hobbies he takes part in, and the sports, entertainment and interests he follows for enjoyment: football articles, match reports, club and player news, films, music, television, games. These are personal even when they read like news or explain something, because he reads them for pleasure, not to stay current or to study; only a digest that merely lists headlines (for example a match-day round-up) is updates.",
   work: "Amit's job itself: meeting notes (for example Granola), his employer, colleagues, customers, projects, plans, internal documents and threads that exist because of his specific job.",
   learning:
     "Material he studies to understand something and wants to keep: explainers, tutorials, courses, deep essays, research, talks and long-form interviews, books. General advice and frameworks for doing a job well (management, leadership, career, productivity, product craft) are learning even though they help at work; they become work only when they are about his own employer, team or project.",
