@@ -4,6 +4,7 @@ title: Reading-mode pills on the Feed; Personal area widened to sports and enter
 date: 2026-10-14
 status: in-progress
 branch: claude/feed-area-pills-43260d
+pr: 153
 ---
 
 ## What changed
@@ -79,7 +80,7 @@ none
 
 ## Next
 
-1. Amit: review the PR (before/after screenshots in the description) and merge when CI is green;
+1. Amit: review PR #153 (before/after screenshots in the description) and merge when CI is green;
    the merge is a Production release and needs his authorization.
 2. Amit, after the deploy, on `distilai.app`: open the Feed, pick Work, go to Today and back, the
    Feed should open on Work; pick All, reload, it opens on All. Save a football article and check
