@@ -1,5 +1,14 @@
 # Distil user guide
 
+## Today and the Feed
+
+**Today** is a daily edition: the best of what you saved in the last 7 days, ranked by priority,
+six items at most. When fewer than six unread items were saved in that week, older unread items
+fill the remaining places and are marked **Older, still unread**; an item you marked high priority
+stays on Today whatever its age, until you read or archive it. **Worth Revisiting** below it brings
+back items you have not opened for two weeks, and the **Feed** is everything you saved, with its
+own filters and sorts.
+
 ## Save from iPhone
 
 1. Open **Settings → Capture → iPhone** and choose **Get the Shortcut** to install **Save to
