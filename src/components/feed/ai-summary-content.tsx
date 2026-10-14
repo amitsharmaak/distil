@@ -3,11 +3,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { ChevronUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useReaderExperience } from "@/components/feed/reader-experience";
 import { useShortcut } from "@/components/shortcuts/shortcuts-provider";
 import { useContentCache } from "@/lib/client-cache/content-cache";
@@ -21,10 +20,10 @@ const TOGGLE_VIEW: ShortcutDef = {
   group: "Reading",
   scope: "reader",
 };
-const TOGGLE_LENGTH: ShortcutDef = {
-  id: "reader.toggleLength",
+const TOGGLE_DEEPER: ShortcutDef = {
+  id: "reader.goDeeper",
   keys: [{ key: "d" }],
-  label: "Toggle brief / detailed",
+  label: "Go deeper / show less",
   group: "Reading",
   scope: "reader",
 };
@@ -89,6 +88,21 @@ function parseSummarySections(content: string): SummarySectionBlock[] {
   });
 }
 
+interface DetailedSplit {
+  /** The brief as the detailed summary repeats it. */
+  brief: SummarySectionBlock[];
+  /** The "Going deeper" divider and the delta sections; null for a pre-v2 standalone detailed summary. */
+  delta: SummarySectionBlock[] | null;
+}
+
+/** Split a stored detailed summary at its "Going deeper" divider. */
+function splitDetailedSummary(content: string): DetailedSplit {
+  const sections = parseSummarySections(content);
+  const divider = sections.findIndex((section) => section.key === GOING_DEEPER_KEY);
+  if (divider < 0) return { brief: sections, delta: null };
+  return { brief: sections.slice(0, divider), delta: sections.slice(divider) };
+}
+
 type SectionStyle = "lead" | "bullets" | "steps" | "quotes" | "callout" | "prose";
 
 /**
@@ -112,9 +126,7 @@ const sectionLabel =
   "font-sans text-xs font-medium tracking-widest uppercase text-muted-foreground";
 
 /** Renders structured AI summary in reader typography — same aesthetic as tweet/article content. */
-function StructuredSummaryMarkdown({ content }: { content: string }) {
-  const sections = useMemo(() => parseSummarySections(content), [content]);
-
+function SummarySections({ sections }: { sections: SummarySectionBlock[] }) {
   // Element styling comes from `.distil-reader` in globals.css.
   const baseProse = "max-w-none";
 
@@ -262,10 +274,9 @@ export function AISummary({
     initialDetailedSummary ?? null
   );
   const hasInitialSummary = !!(initialBriefSummary || initialDetailedSummary);
-  const [summaryLength, setSummaryLength] = useState<SummaryLength>(
-    !initialBriefSummary && initialDetailedSummary ? "detailed" : "brief"
-  );
-  const [loading, setLoading] = useState(false);
+  // An item that only has a detailed summary opens fully expanded; "Show less" folds it.
+  const [expanded, setExpanded] = useState(!initialBriefSummary && !!initialDetailedSummary);
+  const [loading, setLoading] = useState<SummaryLength | null>(null);
   const [retryRequest, setRetryRequest] = useState<{
     length: SummaryLength;
     force: boolean;
@@ -273,11 +284,9 @@ export function AISummary({
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(hasInitialSummary ? "ai" : "original");
 
-  const aiSummary = summaryLength === "brief" ? briefSummary : detailedSummary;
-
   const generate = useCallback(
-    async (length: SummaryLength, force = false) => {
-      setLoading(true);
+    async (length: SummaryLength, force = false): Promise<{ ok: boolean; cached: boolean }> => {
+      setLoading(length);
       setRetryRequest({ length, force });
       setError(null);
       try {
@@ -302,28 +311,61 @@ export function AISummary({
         } else {
           setDetailedSummary(data.summary);
           if (data.briefSummary) setBriefSummary(data.briefSummary);
+          setExpanded(true);
         }
-        setSummaryLength(length);
         setViewMode("ai");
         // Cards show the summary too, and it is part of the server-rendered reader props.
         void Promise.allSettled([cache.invalidate(["feed"]), cache.invalidate(["today"])]);
         router.refresh();
+        return { ok: true, cached: !!data.cached };
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
+        return { ok: false, cached: false };
       } finally {
-        setLoading(false);
+        setLoading(null);
       }
     },
     [cache, itemId, router]
   );
 
-  async function handleLengthChange(length: SummaryLength) {
-    const cached = length === "brief" ? briefSummary : detailedSummary;
-    if (cached) {
-      setSummaryLength(length);
+  /**
+   * Regenerate the brief. When the delta is open it is rebuilt afterwards, because the delta
+   * expands one particular brief and a new brief makes it stale; a brief the server kept
+   * (regenerated moments ago) keeps its delta too.
+   */
+  const regenerate = useCallback(async () => {
+    const result = await generate("brief", true);
+    if (result.ok && !result.cached && expanded) await generate("detailed");
+  }, [expanded, generate]);
+
+  const detailedSplit = useMemo(
+    () => (detailedSummary ? splitDetailedSummary(detailedSummary) : null),
+    [detailedSummary]
+  );
+  const briefSections = useMemo(
+    () => (briefSummary ? parseSummarySections(briefSummary) : (detailedSplit?.brief ?? [])),
+    [briefSummary, detailedSplit]
+  );
+  const deltaSections = detailedSplit?.delta ?? null;
+  // A pre-v2 detailed summary has no divider and stands in for the brief when it is all there is.
+  const canDeepen = !!briefSummary || deltaSections !== null;
+  const sections =
+    expanded && detailedSplit
+      ? deltaSections
+        ? [...briefSections, ...deltaSections]
+        : detailedSplit.brief
+      : briefSections;
+
+  async function toggleDeeper() {
+    if (expanded) {
+      setExpanded(false);
       return;
     }
-    await generate(length);
+    if (detailedSummary) {
+      setExpanded(true);
+      return;
+    }
+    await generate("detailed");
   }
 
   const hasAISummary = !!briefSummary || !!detailedSummary;
@@ -331,12 +373,10 @@ export function AISummary({
   const setSummaryAction = reader?.setSummaryAction;
   useEffect(() => {
     setSummaryAction?.(
-      hasAISummary
-        ? { regenerate: () => void generate(summaryLength, true), disabled: loading }
-        : null
+      hasAISummary ? { regenerate: () => void regenerate(), disabled: loading !== null } : null
     );
     return () => setSummaryAction?.(null);
-  }, [setSummaryAction, hasAISummary, generate, summaryLength, loading]);
+  }, [setSummaryAction, hasAISummary, regenerate, loading]);
 
   useShortcut(
     TOGGLE_VIEW,
@@ -344,14 +384,14 @@ export function AISummary({
     hasAISummary
   );
   useShortcut(
-    TOGGLE_LENGTH,
-    () => void handleLengthChange(summaryLength === "brief" ? "detailed" : "brief"),
-    hasAISummary && viewMode === "ai" && !loading
+    TOGGLE_DEEPER,
+    () => void toggleDeeper(),
+    hasAISummary && canDeepen && viewMode === "ai" && loading === null
   );
   useShortcut(
     REGENERATE,
-    () => void generate(summaryLength, true),
-    hasAISummary && viewMode === "ai" && !loading
+    () => void regenerate(),
+    hasAISummary && viewMode === "ai" && loading === null
   );
 
   const original =
@@ -369,12 +409,47 @@ export function AISummary({
     <Button
       variant="outline"
       className="mt-5 min-h-11 gap-2"
-      disabled={loading}
-      onClick={() => void generate(summaryLength)}
+      disabled={loading !== null}
+      onClick={() => void generate("brief")}
     >
       <Sparkles className="h-4 w-4" /> Generate AI Summary
     </Button>
   );
+  const deeperButton = canDeepen && (
+    <Button
+      variant="outline"
+      className="mt-5 min-h-11 gap-2"
+      disabled={loading !== null}
+      aria-expanded={expanded}
+      aria-keyshortcuts="d"
+      title={expanded ? "Show less · D" : "Go deeper · D"}
+      onClick={() => void toggleDeeper()}
+    >
+      {expanded ? <ChevronUp className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+      {expanded ? "Show less" : "Go deeper"}
+    </Button>
+  );
+  const errorBlock = error && (
+    <div className="mb-4 text-sm text-danger" role="alert">
+      <p>{error}</p>
+      <Button
+        variant="outline"
+        className="mt-2 min-h-11"
+        onClick={() => void generate(retryRequest?.length ?? "brief", retryRequest?.force ?? false)}
+      >
+        Try Again
+      </Button>
+    </div>
+  );
+  const skeleton = (
+    <div role="status" aria-label="Generating summary" className="space-y-3 py-4">
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-4/5" />
+      <Skeleton className="h-4 w-3/5" />
+    </div>
+  );
+  // A failed or running delta request reports below the brief, where "Go deeper" sits.
+  const deltaRequest = retryRequest?.length === "detailed" && hasAISummary;
   return (
     <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-2 border-b">
@@ -386,46 +461,18 @@ export function AISummary({
             Original
           </TabsTrigger>
         </TabsList>
-        {hasAISummary && viewMode === "ai" && (
-          <div aria-keyshortcuts="d" title="Brief / detailed · D">
-            <SegmentedControl
-              aria-label="Summary length"
-              value={summaryLength}
-              onValueChange={(length) => void handleLengthChange(length)}
-              className="bg-transparent p-0 [&_button]:bg-transparent [&_button]:shadow-none [&_button]:underline-offset-8 [&_button[aria-checked=true]]:underline"
-              options={[
-                { value: "brief", label: "Brief", disabled: loading },
-                { value: "detailed", label: "Detailed", disabled: loading },
-              ]}
-            />
-          </div>
-        )}
       </div>
-      {error && (
-        <div className="mb-4 text-sm text-danger" role="alert">
-          <p>{error}</p>
-          <Button
-            variant="outline"
-            className="mt-2 min-h-11"
-            onClick={() =>
-              void generate(retryRequest?.length ?? summaryLength, retryRequest?.force ?? false)
-            }
-          >
-            Try Again
-          </Button>
-        </div>
-      )}
-      {loading && (
-        <div role="status" aria-label="Generating summary" className="space-y-3 py-4">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-4/5" />
-          <Skeleton className="h-4 w-3/5" />
-        </div>
-      )}
+      {!deltaRequest && errorBlock}
+      {loading === "brief" && skeleton}
       <TabsContent value="ai" className="mt-0">
-        {!loading &&
-          (aiSummary ? (
-            <StructuredSummaryMarkdown content={aiSummary} />
+        {loading !== "brief" &&
+          (hasAISummary ? (
+            <div>
+              <SummarySections sections={sections} />
+              {loading === "detailed" && skeleton}
+              {deltaRequest && errorBlock}
+              {deeperButton}
+            </div>
           ) : (
             <div>
               <p className="distil-reader">
