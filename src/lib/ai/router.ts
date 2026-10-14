@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { toAIProviderError } from "./errors";
+import { toAIProviderError, type AIProviderError } from "./errors";
 import type { AIProvider, GenerateOptions, ProviderResult, ProviderUsage } from "./providers";
 import { createProviders } from "./providers";
 import type { GeminiProvider, GroundingSource, SearchProviderResult } from "./providers";
@@ -174,6 +174,13 @@ function getUsageTrackerInstance(): AIUsageTracker {
 
 class AIRouter {
   private readonly providers: Map<ProviderName, AIProvider>;
+  /**
+   * Optional providers whose key the API rejected (401/403) during this process.
+   * Once set, routing skips the provider and goes straight to the Gemini fallback
+   * model for the task, so an invalid optional key costs one failed round trip
+   * per process instead of one per call.
+   */
+  private readonly rejectedProviders = new Map<ProviderName, boolean>();
 
   constructor() {
     this.providers = createProviders();
@@ -188,6 +195,10 @@ class AIRouter {
   getEffectiveModel(task: AITask): ModelAssignment {
     const preferred = DEFAULT_MODEL_CONFIG[task];
     if (this.providers.has(preferred.provider)) {
+      if (this.rejectedProviders.get(preferred.provider)) {
+        const fallback = this.geminiFallbackFor(preferred.provider, task);
+        if (fallback) return fallback;
+      }
       return preferred;
     }
     for (const provider of this.providers.keys()) {
@@ -199,6 +210,56 @@ class AIRouter {
     throw new Error(
       "No AI providers available. Configure at least one of GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY."
     );
+  }
+
+  /**
+   * The Gemini assignment that stands in for an optional provider on `task`, or
+   * undefined when the call already runs on Gemini or no Gemini provider is
+   * registered. Gemini is the required default provider, so its own failures
+   * never reroute.
+   */
+  private geminiFallbackFor(provider: ProviderName, task: AITask): ModelAssignment | undefined {
+    if (provider === "gemini" || !this.providers.has("gemini")) return undefined;
+    const model = PROVIDER_FALLBACK_MODELS.gemini[task];
+    return model ? { provider: "gemini", model } : undefined;
+  }
+
+  /**
+   * Decide whether a failed call should be retried once on Gemini because the
+   * optional provider rejected its key. Returns the fallback assignment after
+   * logging the reroute and remembering the rejection for the process lifetime;
+   * returns undefined for every other failure so the caller rethrows it.
+   */
+  private authFallbackFor(
+    failure: AIProviderError,
+    provider: ProviderName,
+    model: string,
+    task: AITask,
+    traceId: string | undefined
+  ): ModelAssignment | undefined {
+    if (failure.category !== "authentication") return undefined;
+    const fallback = this.geminiFallbackFor(provider, task);
+    if (!fallback) return undefined;
+    aiLogger.warn(
+      {
+        event: "provider_auth_fallback",
+        provider,
+        model,
+        task,
+        fallbackModel: fallback.model,
+        errorCode: failure.code,
+        traceId,
+      },
+      "Optional AI provider rejected its API key; routing this task to Gemini"
+    );
+    if (!this.rejectedProviders.get(provider)) {
+      this.rejectedProviders.set(provider, true);
+      aiLogger.warn(
+        { event: "provider_auth_rejected", provider },
+        "Provider key rejected; later calls skip it for the lifetime of this process"
+      );
+    }
+    return fallback;
   }
 
   private getProvider(name: ProviderName): AIProvider {
@@ -241,14 +302,23 @@ class AIRouter {
   }
 
   async generateText(prompt: string, task: AITask, options?: GenerateOptions): Promise<string> {
-    const { provider, model } = this.getEffectiveModel(task);
+    let { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
     const start = Date.now();
 
     this.checkBudget();
 
-    const p = this.getProvider(provider);
-    const result = await p.generateText(prompt, model, options);
+    let result: ProviderResult<string>;
+    try {
+      result = await this.getProvider(provider).generateText(prompt, model, options);
+    } catch (error) {
+      const failure = toAIProviderError(error, provider, model);
+      const fallback = this.authFallbackFor(failure, provider, model, task, traceId);
+      if (!fallback) throw failure;
+      this.checkBudget();
+      ({ provider, model } = fallback);
+      result = await this.getProvider(provider).generateText(prompt, model, options);
+    }
 
     const latencyMs = Date.now() - start;
     const usage = measuredUsage(result.usage, prompt, result.value);
@@ -295,9 +365,24 @@ class AIRouter {
   ): Promise<string> {
     const tenant = parseAuthContext(context);
     await assertTenantAIBudget(repositories);
-    const { provider, model } = this.getEffectiveModel(task);
+    let { provider, model } = this.getEffectiveModel(task);
     const start = Date.now();
-    const result = await this.getProvider(provider).generateText(prompt, model, options);
+    let result: ProviderResult<string>;
+    try {
+      result = await this.getProvider(provider).generateText(prompt, model, options);
+    } catch (error) {
+      const failure = toAIProviderError(error, provider, model);
+      const fallback = this.authFallbackFor(failure, provider, model, task, tenant.requestId);
+      if (!fallback) throw failure;
+      // The fallback must pass tenant admission independently.
+      await assertTenantAIBudget(repositories);
+      ({ provider, model } = fallback);
+      try {
+        result = await this.getProvider(provider).generateText(prompt, model, options);
+      } catch (fallbackError) {
+        throw toAIProviderError(fallbackError, provider, model);
+      }
+    }
     this.accountTenantText(tenant, repositories, { task, provider, model, prompt, result, start });
     return result.value;
   }
@@ -415,14 +500,23 @@ class AIRouter {
   }
 
   async generateJSON<T>(prompt: string, task: AITask, options?: GenerateOptions): Promise<T> {
-    const { provider, model } = this.getEffectiveModel(task);
+    let { provider, model } = this.getEffectiveModel(task);
     const traceId = getTraceId();
     const start = Date.now();
 
     this.checkBudget();
 
-    const p = this.getProvider(provider);
-    const result = await p.generateJSON<T>(prompt, model, options);
+    let result: ProviderResult<T>;
+    try {
+      result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+    } catch (error) {
+      const failure = toAIProviderError(error, provider, model);
+      const fallback = this.authFallbackFor(failure, provider, model, task, traceId);
+      if (!fallback) throw failure;
+      this.checkBudget();
+      ({ provider, model } = fallback);
+      result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
+    }
 
     const latencyMs = Date.now() - start;
     const resultStr = JSON.stringify(result.value);
@@ -482,37 +576,39 @@ class AIRouter {
   ): Promise<{ value: T; model: string; provider: ProviderName }> {
     const tenant = parseAuthContext(context);
     await assertTenantAIBudget(repositories);
-    const assignment = this.getEffectiveModel(task);
-    const provider = assignment.provider;
-    let model = assignment.model;
+    let { provider, model } = this.getEffectiveModel(task);
     const start = Date.now();
     let result: ProviderResult<T>;
     try {
       result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
     } catch (error) {
       const failure = toAIProviderError(error, provider, model);
-      // Recover from model-specific availability failures without switching provider accounts.
-      if (
+      const authFallback = this.authFallbackFor(failure, provider, model, task, tenant.requestId);
+      if (authFallback) {
+        ({ provider, model } = authFallback);
+      } else if (
+        // Recover from model-specific availability failures without switching provider accounts.
         !["quota", "timeout", "server"].includes(failure.category) ||
         provider !== "gemini" ||
         !["summarize", "summarize-complex"].includes(task) ||
         model === GEMINI_SUMMARY_FALLBACK_MODEL
       ) {
         throw failure;
+      } else {
+        aiLogger.warn(
+          {
+            event: "summary_model_fallback",
+            provider,
+            model,
+            errorCode: failure.code,
+            traceId: tenant.requestId,
+          },
+          "Summary model quota fallback"
+        );
+        model = GEMINI_SUMMARY_FALLBACK_MODEL;
       }
-      aiLogger.warn(
-        {
-          event: "summary_model_fallback",
-          provider,
-          model,
-          errorCode: failure.code,
-          traceId: tenant.requestId,
-        },
-        "Summary model quota fallback"
-      );
       // The fallback must pass tenant admission independently.
       await assertTenantAIBudget(repositories);
-      model = GEMINI_SUMMARY_FALLBACK_MODEL;
       try {
         result = await this.getProvider(provider).generateJSON<T>(prompt, model, options);
       } catch (fallbackError) {
