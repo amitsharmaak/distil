@@ -32,17 +32,19 @@ the extension and the Shortcut afterwards.
 
 ## 3. Install the browser extension (Chrome, Edge, Brave, Arc)
 
-The extension is not on the Chrome Web Store yet, so it is installed from a folder.
+The extension is on the Chrome Web Store as an unlisted item, so only this link reaches it:
 
-1. Unzip the `browser-extension` folder Amit sent you and keep it somewhere permanent, such as
-   `~/Distil/browser-extension`. Chrome loads the extension from that folder, so do not delete
-   or move it later.
-2. Open `chrome://extensions` and switch on **Developer mode** (top right).
-3. Choose **Load unpacked** and select the `browser-extension` folder.
-4. Open the extension's **Options** page (click the puzzle icon, then **Distil — Save to
-   Distil**, then the three dots and **Options**).
-5. Leave the origin as `https://distilai.app`, paste your capture token, and save. Approve the
-   access prompt for `distilai.app` when it appears.
+`https://chromewebstore.google.com/detail/malhlcmmheemmdebmjpgliligpjlnama`
+
+1. Open the link and choose **Add to Chrome**. It asks for access to `distilai.app` only.
+2. Pin the Distil icon from the puzzle menu so it stays visible.
+3. Click the icon and choose **Sign in to Distil**. Distil opens in a tab; sign in if asked, then
+   choose **Connect this browser**. The popup now reads "Ready to save." No capture token is
+   needed for the extension.
+
+If you installed an earlier build from a folder, remove it in `chrome://extensions` first. The
+sign-in step connects the first Distil build it finds, so an old folder build would take the
+connection instead of the store build.
 
 Then save a page in any of three ways:
 

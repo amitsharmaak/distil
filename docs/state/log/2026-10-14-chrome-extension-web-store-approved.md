@@ -8,10 +8,19 @@ branch: claude/distil-feed-ingestion-sorting-da1d37
 
 ## What changed
 
-Docs only. This entry follows `2026-10-02-chrome-extension-web-store-submitted.md` and records
-three things from one session with Amit: the Chrome Web Store build is approved and works; the
-delay Amit sees between saving and the Feed is not ingestion; and the extension's keyboard
-shortcut exists but is only assigned on a fresh install.
+This entry follows `2026-10-02-chrome-extension-web-store-submitted.md` and records three
+things from one session with Amit: the Chrome Web Store build is approved and works; the delay
+Amit sees between saving and the Feed is not ingestion; and the extension's keyboard shortcut
+exists but is only assigned on a fresh install. One code change, authorized by Amit in the
+session on 2026-10-14 after the install was verified:
+
+- `DISTIL_EXTENSION_INSTALL_URL` (`src/lib/extension/constants.ts`) now carries the store id
+  `malhlcmmheemmdebmjpgliligpjlnama` instead of the development id. The connect page's "Install
+  the extension" link and anything else that reads the constant now reach the Unlisted listing.
+  `DISTIL_EXTENSION_IDS` is unchanged, so unpacked builds still connect.
+- `docs/onboarding.md` §3 describes the store install and the sign-in handoff instead of "Load
+  unpacked" plus a pasted capture token; `browser-extension/README.md` points users at the
+  listing and keeps the unpacked steps for development.
 
 ### Store build approved and verified (Amit, 2026-10-14)
 
@@ -64,8 +73,10 @@ with the open Today-vs-Feed definition (`2026-10-03-backlog-reading-modes-feedba
   session on 2026-10-14. No capture, item or setting was changed.
 - Store install, sign-in, save and shortcut: reported by Amit on 2026-10-14 (not independently
   observed, see above).
-- `npm run state:check` and `npm run format:check` pass with this entry.
-- No code, package, environment variable or deployment changed in this branch.
+- Locally: `npm run lint`, `npm run typecheck` and the connect page tests pass with the
+  constant change (results in the pull request). Not yet deployed at the time of writing; the
+  merge is the release.
+- No package, environment variable, Vercel or Neon setting changed.
 
 ## External resources
 
@@ -75,13 +86,11 @@ with the open Today-vs-Feed definition (`2026-10-03-backlog-reading-modes-feedba
 
 ## Next
 
-1. Amit: merge the pull request (docs only; nothing to deploy).
-2. Point `DISTIL_EXTENSION_INSTALL_URL` (`src/lib/extension/constants.ts`) at the store id; it
-   still points at the development id, so the Settings card and connect page link invitees to a
-   build they cannot install. One-line change plus a release; it needs Amit's authorization
-   because it changes the extension's production URL (`AGENTS.md` §9). Share the Unlisted store
-   link with invitees afterwards. The README, Settings card and `docs/onboarding.md` follow-ups
-   from the earlier store entries still apply.
+1. Amit: merge the pull request. The merge is a Production release (the install link changes);
+   Amit authorized the change in the session, the merge is his to do. Afterwards, on
+   `distilai.app/extension/connect` in a browser without the extension, the "Install the
+   extension" link should open the store listing.
+2. Share the Unlisted store link with invitees, with `docs/onboarding.md` §3 as the steps.
 3. Feed freshness after a save: its own task when Amit picks it (candidate fixes above).
 4. Feed default sort and the Today-vs-Feed definition: Amit decides in a later session.
 5. Revisit the trader declaration if Distil becomes a commercial product (unchanged).
