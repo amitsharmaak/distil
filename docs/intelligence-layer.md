@@ -224,9 +224,21 @@ Reading the table as a grid:
 - **Code:** `TODAY_FEED_QUERY` in `src/lib/feed/today-selection.ts:18-23`; `PostgresFeedQuery.list`
   and `explainFeedRank` in `src/lib/feed/feed-query.ts`; `loadFeedPage` in
   `src/lib/feed/feed-params.ts`.
-- **Today's formula** (`sort=priority`, unread, limit 6):
+- **Today's definition (decided 2026-10-14):** Today is a daily edition, the best of what was saved
+  in the last 7 days ranked by score; when the week holds fewer than six unread items, older unread
+  items fill the rest and say so ("Older, still unread"); manual priority high qualifies at any
+  age until read or archived. The two sentences under "Today and the Feed" in `docs/user-guide.md`
+  are the labelling rule Q5 asks for (`2026-10-01-intelligence-layer.md`): a rater judges must,
+  nice or skip against them.
+- **Today's formula** (`sort=priority`, unread, limit 6, `recentDays=7`):
   `score = bucket + 10 × e^(−age in days ÷ 10)`, where bucket is 90 for high, 50 for medium and 20
-  for low. A manual priority replaces the bucket with 300, 200 or −100.
+  for low. A manual priority replaces the bucket with 300, 200 or −100. The edition adds
+  `RECENT_WINDOW_TIER` (10 000) to every item saved within the window or marked manual high
+  (`inRecentWindow`, `FeedQuery.recentWindowDays`), so one ordered query returns the window first
+  and the fill after it, and the keyset cursor stays a score comparison. The first reason, which
+  Today's card shows, is "Saved in the last 7 days", "Older, still unread" or "Marked high
+  priority · stays on Today until read". The Feed never sends `recentDays`, so its sorts are
+  unchanged.
 - **Where `priority` comes from:** every capture is stored as `medium`
   (`src/lib/capture/schema.ts:12`); the extension sends `medium`. The manual control is behind
   `FEATURE_KNOWLEDGE_UI`. So with no thumbs ratings, every item scores 50 plus recency and Today is

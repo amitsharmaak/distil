@@ -176,6 +176,12 @@ function TodayDefaultSections({
       onAreaOpenChange={(open) => onAreaOpenChange?.(item.id, open)}
     />
   );
+  // The edition's one-line reason (why this item is on Today: saved this
+  // week, older fill, or manual high). Legacy "Item priority" lines stay hidden.
+  const reason = (item: KnowledgeItem) =>
+    item.reason && !/^(?:Item priority|Why now):/i.test(item.reason) ? (
+      <p className="mt-2 text-xs text-muted-foreground">{item.reason}</p>
+    ) : null;
   return (
     <>
       <section aria-labelledby="priority-reading-heading">
@@ -187,15 +193,22 @@ function TodayDefaultSections({
             <ul className="lg:grid lg:grid-cols-2 lg:gap-x-8">
               <li className="lg:row-span-4 lg:border-r lg:border-border lg:pr-8">
                 {story(priority[0], "lead")}
+                {reason(priority[0])}
               </li>
               {priority.slice(1, 5).map((item) => (
-                <li key={item.id}>{story(item, "standard")}</li>
+                <li key={item.id}>
+                  {story(item, "standard")}
+                  {reason(item)}
+                </li>
               ))}
             </ul>
             {priority.length > 5 && (
               <ul>
                 {priority.slice(5).map((item) => (
-                  <li key={item.id}>{story(item, "compact")}</li>
+                  <li key={item.id}>
+                    {story(item, "compact")}
+                    {reason(item)}
+                  </li>
                 ))}
               </ul>
             )}
@@ -216,9 +229,7 @@ function TodayDefaultSections({
             {revisiting.map((item) => (
               <li key={item.id}>
                 {story(item, "compact")}
-                {item.reason && !/^(?:Item priority|Why now):/i.test(item.reason) && (
-                  <p className="mt-2 text-xs text-muted-foreground">{item.reason}</p>
-                )}
+                {reason(item)}
               </li>
             ))}
           </ul>

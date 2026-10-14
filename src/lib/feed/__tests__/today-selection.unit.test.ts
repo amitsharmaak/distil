@@ -1,7 +1,10 @@
 import type { FeedItem } from "@/lib/feed/feed-query";
 import { filtersUrl } from "@/lib/feed/quick-filters";
+import { feedListQuery, todayFeedParams } from "@/lib/feed/feed-params";
 import {
+  TODAY_FEED_QUERY,
   TODAY_RESULTS_LIMIT,
+  TODAY_WINDOW_DAYS,
   isTodayFiltered,
   todayFilterState,
   todayResultsSearch,
@@ -27,7 +30,7 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     isRead: false,
     createdAt: "2026-09-07T00:00:00.000Z",
     processingStatus: "ready",
-    rank: { sort: "priority", score: 1, reasons: [], components: {} },
+    rank: { sort: "priority", score: 1, reasons: [], components: { itemPriority: "high" } },
     ...overrides,
   } as FeedItem;
 }
@@ -164,5 +167,57 @@ describe("filtersUrl", () => {
     expect(filtersUrl("/feed", current, { site: ["x.com"] })).toBe(
       "/feed?q=queues&sort=relevance&area=work&site=x.com"
     );
+  });
+});
+
+describe("Today's daily edition query", () => {
+  it("asks for the six best unread items saved in the last 7 days, filled from older ones", () => {
+    expect(TODAY_WINDOW_DAYS).toBe(7);
+    expect(TODAY_FEED_QUERY).toEqual({
+      sort: "priority",
+      read: "false",
+      limit: "6",
+      resurface: "stale",
+      recentDays: "7",
+    });
+    expect(feedListQuery(todayFeedParams(), false)).toMatchObject({
+      sort: "priority",
+      read: false,
+      limit: 6,
+      recentWindowDays: 7,
+    });
+  });
+
+  it("keeps the window out of filtered Today, Search everything and the Feed's own queries", () => {
+    expect(todayResultsSearch(state("area=work")).has("recentDays")).toBe(false);
+    expect(todaySearchEverythingHref(new URLSearchParams("q=queues"))).not.toContain("recentDays");
+  });
+
+  it("shows the edition's own line on each card, including that an item is fill", () => {
+    const sections = todayView(state(""), {
+      items: [
+        item({
+          id: "recent",
+          rank: {
+            sort: "priority",
+            score: 1,
+            reasons: ["Saved in the last 7 days", "x"],
+            components: { itemPriority: "high" },
+          },
+        }),
+        item({
+          id: "fill",
+          rank: {
+            sort: "priority",
+            score: 0,
+            reasons: ["Older, still unread"],
+            components: { itemPriority: "high" },
+          },
+        }),
+      ],
+    });
+    expect(
+      sections.mode === "sections" && sections.sections.priority.map((entry) => entry.reason)
+    ).toEqual(["Saved in the last 7 days", "Older, still unread"]);
   });
 });

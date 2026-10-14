@@ -131,7 +131,9 @@ describe("TodayExperience", () => {
 
     expect(await screen.findByText("Important reading")).toBeInTheDocument();
     expect(screen.getByText("Worth revisiting")).toBeInTheDocument();
-    expect(feedCalls()).toEqual(["/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale"]);
+    expect(feedCalls()).toEqual([
+      "/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale&recentDays=7",
+    ]);
   });
 
   it("renders Markdown summaries as plain text", async () => {

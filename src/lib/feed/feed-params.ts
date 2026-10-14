@@ -41,6 +41,8 @@ export const feedQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().min(1).max(1024).optional(),
   resurface: z.enum(["stale"]).optional(),
+  /** Today's edition window in days; see `FeedQuery.recentWindowDays`. */
+  recentDays: z.coerce.number().int().min(1).max(90).optional(),
 });
 
 export type FeedQueryParams = z.infer<typeof feedQuerySchema>;
@@ -78,6 +80,7 @@ export function parseFeedQuery(input: FeedSearchInput): ParsedFeedQuery {
     limit: optional("limit"),
     cursor: optional("cursor"),
     resurface: optional("resurface"),
+    recentDays: optional("recentDays"),
   });
   if (!parsed.success) {
     return { ok: false, message: "Invalid feed query", issues: parsed.error.issues };
@@ -111,6 +114,7 @@ export function feedListQuery(
     sort: data.sort,
     limit: data.limit,
     cursor: data.cursor,
+    recentWindowDays: data.recentDays,
     personalizationEnabled,
   };
 }
