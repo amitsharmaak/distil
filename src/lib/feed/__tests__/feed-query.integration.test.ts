@@ -5,7 +5,7 @@ import { createAuthContext } from "@/lib/contracts/tenant-context";
 import { applyTenantMigrationStage } from "@/lib/postgres/tenant-migration/migrator";
 import { buildTenantMigrationReport } from "@/lib/postgres/tenant-migration/verifier";
 import { createPostgresRepositoryAccess } from "@/lib/postgres/tenant-repositories";
-import { explainFeedRank } from "@/lib/feed/feed-query";
+import { RECENT_WINDOW_REASONS, explainFeedRank } from "@/lib/feed/feed-query";
 
 const context = createAuthContext({
   userId: "10000000-0000-4000-8000-000000000001",
@@ -172,6 +172,79 @@ describe("PostgresFeedQuery", () => {
     expect(
       (await feed.list({ archive: "only", sort: "recent" })).items.map((entry) => entry.id)
     ).toEqual(["old"]);
+  });
+
+  it("selects Today's daily edition: the window by score, then older fill, manual high at any age", async () => {
+    const now = new Date("2026-09-07T00:00:00Z");
+    const repos = createPostgresRepositoryAccess(harness.sql).getTenantRepositories(context);
+    await repos.items.insert(
+      item("recent-low", { priority: "low", createdAt: "2026-09-05T00:00:00Z" })
+    );
+    await repos.items.insert(item("recent-medium", { createdAt: "2026-09-03T00:00:00Z" }));
+    await repos.items.insert(
+      item("old-high", { priority: "high", createdAt: "2026-08-01T00:00:00Z" })
+    );
+    await repos.items.insert(item("old-medium", { createdAt: "2026-08-10T00:00:00Z" }));
+    await repos.items.insert(
+      item("old-manual-high", {
+        priority: "low",
+        manualPriority: "high",
+        createdAt: "2026-06-01T00:00:00Z",
+      })
+    );
+    await repos.items.insert(
+      item("read-manual-high", {
+        manualPriority: "high",
+        isRead: true,
+        createdAt: "2026-06-01T00:00:00Z",
+      })
+    );
+    await repos.items.insert(
+      item("archived-manual-high", {
+        manualPriority: "high",
+        archivedAt: "2026-09-06T00:00:00Z",
+        createdAt: "2026-06-01T00:00:00Z",
+      })
+    );
+    await repos.items.insert(item("recent-read", { priority: "high", isRead: true }));
+    const today = { read: false as const, sort: "priority" as const, recentWindowDays: 7, now };
+
+    const page = await repos.feed.list({ ...today, limit: 6 });
+    expect(page.items.map((entry) => entry.id)).toEqual([
+      "old-manual-high",
+      "recent-medium",
+      "recent-low",
+      "old-high",
+      "old-medium",
+    ]);
+    expect(page.items.map((entry) => entry.rank.reasons[0])).toEqual([
+      RECENT_WINDOW_REASONS.manualHigh,
+      RECENT_WINDOW_REASONS.recent(7),
+      RECENT_WINDOW_REASONS.recent(7),
+      RECENT_WINDOW_REASONS.fill,
+      RECENT_WINDOW_REASONS.fill,
+    ]);
+    expect(page.nextCursor).toBeUndefined();
+    for (const entry of page.items) {
+      expect(entry.rank.score).toBe(
+        explainFeedRank(entry, "priority", now, { recentWindowDays: 7 }).score
+      );
+    }
+
+    // The tier is part of the score, so keyset paging across the window/fill boundary holds.
+    const first = await repos.feed.list({ ...today, limit: 3 });
+    const second = await repos.feed.list({ ...today, limit: 3, cursor: first.nextCursor });
+    expect([...first.items, ...second.items].map((entry) => entry.id)).toEqual(
+      page.items.map((entry) => entry.id)
+    );
+
+    // The Feed's priority sort is untouched: no window, old high ranks first.
+    const feed = await repos.feed.list({ read: false, sort: "priority", now });
+    expect(feed.items.slice(0, 2).map((entry) => entry.id)).toEqual([
+      "old-manual-high",
+      "old-high",
+    ]);
+    expect(feed.items[1].rank.reasons).toEqual(["Recent items receive a small tie-break"]);
   });
 
   it("ranks explicit-signal affinity through the LATERAL join exactly like the rank explanation", async () => {

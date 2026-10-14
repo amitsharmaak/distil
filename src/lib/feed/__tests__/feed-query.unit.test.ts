@@ -1,6 +1,9 @@
 import {
   FeedQueryError,
   PostgresFeedQuery,
+  RECENT_WINDOW_REASONS,
+  RECENT_WINDOW_TIER,
+  inRecentWindow,
   decodeFeedCursor,
   decayAffinity,
   encodeFeedCursor,
@@ -540,5 +543,114 @@ describe("feed search input", () => {
     expect(normalizeFeedSite("twitter.com")).toBe("x.com");
     expect(normalizeFeedSite("mobile.twitter.com")).toBe("x.com");
     expect(normalizeFeedSite("x.com")).toBe("x.com");
+  });
+});
+
+describe("Today's daily edition (recentWindowDays)", () => {
+  const now = new Date("2026-09-07T00:00:00.000Z");
+  const edition = { recentWindowDays: 7 };
+  const rank = (item: Parameters<typeof explainFeedRank>[0]) =>
+    explainFeedRank(item, "priority", now, edition);
+  const recentLow = { priority: "low" as const, createdAt: "2026-09-05T00:00:00.000Z" };
+  const recentHigh = { priority: "high" as const, createdAt: "2026-09-03T00:00:00.000Z" };
+  const oldHigh = { priority: "high" as const, createdAt: "2026-08-01T00:00:00.000Z" };
+  const oldManualHigh = {
+    priority: "low" as const,
+    manualPriority: "high" as const,
+    createdAt: "2026-06-01T00:00:00.000Z",
+  };
+  const oldManualMedium = {
+    priority: "high" as const,
+    manualPriority: "medium" as const,
+    createdAt: "2026-06-01T00:00:00.000Z",
+  };
+
+  it("ranks anything saved in the window above older items regardless of score", () => {
+    expect(rank(recentLow).score).toBeGreaterThan(rank(oldHigh).score);
+    expect(rank(recentLow).components.recentWindowBoost).toBe(RECENT_WINDOW_TIER);
+    expect(rank(oldHigh).components.recentWindowBoost).toBe(0);
+    // Within the window the existing priority order still decides.
+    expect(rank(recentHigh).score).toBeGreaterThan(rank(recentLow).score);
+  });
+
+  it("lets manual high qualify at any age and sit above the windowed items", () => {
+    expect(inRecentWindow(oldManualHigh, 7, now)).toBe(true);
+    expect(inRecentWindow(oldManualMedium, 7, now)).toBe(false);
+    expect(rank(oldManualHigh).score).toBeGreaterThan(rank(recentHigh).score);
+    expect(rank(oldManualHigh).reasons[0]).toBe(RECENT_WINDOW_REASONS.manualHigh);
+    // Manual medium does not override the window: it fills like any older item.
+    expect(rank(oldManualMedium).score).toBeLessThan(rank(recentLow).score);
+    expect(rank(oldManualMedium).reasons[0]).toBe(RECENT_WINDOW_REASONS.fill);
+  });
+
+  it("orders a mixed set window first, then fill by score", () => {
+    const candidates = {
+      "old-manual-high": oldManualHigh,
+      "recent-high": recentHigh,
+      "recent-low": recentLow,
+      "old-high": oldHigh,
+      "old-manual-medium": oldManualMedium,
+      "old-medium": { priority: "medium" as const, createdAt: "2026-08-10T00:00:00.000Z" },
+    };
+    const ordered = Object.entries(candidates)
+      .map(([id, item]) => ({ id, score: rank(item).score }))
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.id);
+    expect(ordered).toEqual([
+      "old-manual-high",
+      "recent-high",
+      "recent-low",
+      "old-manual-medium",
+      "old-high",
+      "old-medium",
+    ]);
+  });
+
+  it("gives windowed, fill and manual-high items distinct first reasons and keeps the rest", () => {
+    expect(rank(recentLow).reasons).toEqual([
+      RECENT_WINDOW_REASONS.recent(7),
+      "Recent items receive a small tie-break",
+    ]);
+    expect(rank(oldHigh).reasons[0]).toBe("Older, still unread");
+    expect(rank({ ...oldHigh, isRead: true }).reasons[0]).toBe(RECENT_WINDOW_REASONS.fillRead(7));
+    expect(rank(oldManualHigh).reasons).toEqual([
+      RECENT_WINDOW_REASONS.manualHigh,
+      "Manual priority: high",
+      "Recent items receive a small tie-break",
+    ]);
+  });
+
+  it("changes nothing for the Feed, which never sends a window", () => {
+    const feed = explainFeedRank(oldHigh, "priority", now);
+    expect(feed.score).toBe(rank(oldHigh).score);
+    expect(feed.reasons).toEqual(["Recent items receive a small tie-break"]);
+    expect(feed.components).not.toHaveProperty("recentWindowBoost");
+    expect(explainFeedRank(recentLow, "priority", now).score).toBeLessThan(feed.score);
+  });
+
+  it("builds the window as one ordered PostgreSQL query over unread, active items", async () => {
+    const sql = fakeFeedSql([feedRow("today")]);
+    const page = await new PostgresFeedQuery(sql as never, context).list({
+      sort: "priority",
+      read: false,
+      limit: 6,
+      recentWindowDays: 7,
+      now,
+    });
+    expect(sql.statements).toHaveLength(1);
+    const statement = sql.statements[0];
+    expect(statement).toContain("i.is_read=?");
+    expect(statement).toContain("i.archived_at IS NULL");
+    expect(statement).toContain("WHEN i.manual_priority='high' THEN ?");
+    expect(statement).toContain(
+      "WHEN i.created_at >= ?::timestamptz - (?::integer * INTERVAL '1 day') THEN ?"
+    );
+    expect(statement).toContain("LIMIT ?");
+    // The rank explanation sees the same window as the SQL ordering.
+    expect(page.items[0].rank.reasons[0]).toBe(RECENT_WINDOW_REASONS.recent(7));
+
+    const feed = fakeFeedSql([feedRow("feed")]);
+    await new PostgresFeedQuery(feed as never, context).list({ sort: "priority", now });
+    expect(feed.statements[0]).not.toContain("INTERVAL '1 day'");
   });
 });

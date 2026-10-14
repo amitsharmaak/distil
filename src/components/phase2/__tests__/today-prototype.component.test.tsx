@@ -25,6 +25,26 @@ describe("TodayPrototype", () => {
     expect(screen.getByText(/opened 21 days ago/)).toBeInTheDocument();
   });
 
+  it("prints the edition's reason under each story so fill and manual high are visible", () => {
+    const [first, second] = todayFixture.priority;
+    const priority = [
+      { ...first, reason: "Saved in the last 7 days" },
+      { ...second, reason: "Older, still unread" },
+      {
+        ...second,
+        id: "manual",
+        href: "/feed/manual",
+        reason: "Marked high priority · stays on Today until read",
+      },
+      { ...second, id: "legacy", href: "/feed/legacy", reason: "Item priority: medium" },
+    ];
+    render(<TodayPrototype priority={priority} revisiting={[]} />);
+    expect(screen.getByText("Saved in the last 7 days")).toBeInTheDocument();
+    expect(screen.getByText("Older, still unread")).toBeInTheDocument();
+    expect(screen.getByText(/stays on Today until read/)).toBeInTheDocument();
+    expect(screen.queryByText(/Item priority:/)).not.toBeInTheDocument();
+  });
+
   it("marks each item as a row and does not nest a main landmark", () => {
     const { container } = render(<TodayPrototype {...todayFixture} />);
     expect(container.querySelectorAll("article[data-row][data-item-id]")).toHaveLength(3);

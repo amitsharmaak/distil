@@ -35,6 +35,14 @@ export interface FeedQuery extends FeedFilters {
   cursor?: string;
   /** Restrict the page to items last opened at least 14 days ago. */
   resurface?: "stale";
+  /**
+   * Today's daily edition: items saved within this many days (and any item
+   * with manual priority high, whatever its age) rank as one tier above the
+   * rest, which fill the remaining places by score. Applies to the
+   * score-ordered sorts (`priority`, `for_you`); `recent` and `relevance`
+   * ignore it. See `TODAY_FEED_QUERY` in today-selection.ts.
+   */
+  recentWindowDays?: number;
   /** Injectable clock keeps ordering and cursor tests deterministic. */
   now?: Date;
   /** Server-gated and user-controlled; never inferred from a client request. */
@@ -51,6 +59,8 @@ export interface FeedRankExplanation {
     aiPriorityScore?: number;
     recencyBoost?: number;
     affinityScore?: number;
+    /** `RECENT_WINDOW_TIER` when the item is in the edition's window, else 0. */
+    recentWindowBoost?: number;
   };
 }
 
@@ -153,6 +163,34 @@ function priorityScore(priority: Priority): number {
 function manualPriorityScore(priority: Priority): number {
   // A manual setting is deliberately outside the learned/baseline score range.
   return priority === "high" ? 300 : priority === "medium" ? 200 : -100;
+}
+
+/**
+ * The edition tier: added to the score of every item that qualifies for the
+ * recent window, so the window orders before the fill without a second query
+ * and the keyset cursor stays a plain score comparison. It exceeds every
+ * score a single item can reach without it (manual high is 300 + 10).
+ */
+export const RECENT_WINDOW_TIER = 10_000;
+
+/** The first ranking reason Today's cards show when the query carries a recent window. */
+export const RECENT_WINDOW_REASONS = {
+  /** Manual high qualifies at any age and stays until the item is read or archived. */
+  manualHigh: "Marked high priority · stays on Today until read",
+  recent: (days: number) => `Saved in the last ${days} days`,
+  /** Fill: an older unread item taking a place the window left empty. */
+  fill: "Older, still unread",
+  fillRead: (days: number) => `Saved more than ${days} days ago`,
+} as const;
+
+/** True when `item` is in the edition's window: manual high at any age, or saved within `days`. */
+export function inRecentWindow(
+  item: Pick<ContentItem, "manualPriority" | "createdAt">,
+  days: number,
+  now = new Date()
+): boolean {
+  if (item.manualPriority === "high") return true;
+  return now.getTime() - new Date(item.createdAt).getTime() <= days * 86_400_000;
 }
 
 export const PERSONALIZATION_HALF_LIFE_DAYS = 60;
@@ -283,13 +321,15 @@ export function decodeFeedCursor(value: string | undefined, sort: FeedSort): Cur
  * explanation is the actual ordering decision rather than a best-effort copy.
  */
 export function explainFeedRank(
-  item: Pick<ContentItem, "priority" | "manualPriority" | "createdAt"> & {
-    aiPriorityScore?: number;
-    affinityScore?: number;
-    relevanceScore?: number;
-  },
+  item: Pick<ContentItem, "priority" | "manualPriority" | "createdAt"> &
+    Partial<Pick<ContentItem, "isRead">> & {
+      aiPriorityScore?: number;
+      affinityScore?: number;
+      relevanceScore?: number;
+    },
   sort: FeedSort,
-  now = new Date()
+  now = new Date(),
+  options: Pick<FeedQuery, "recentWindowDays"> = {}
 ): FeedRankExplanation {
   if (sort === "relevance") {
     return {
@@ -315,9 +355,13 @@ export function explainFeedRank(
       ? priorityScore(item.priority)
       : (item.aiPriorityScore ?? priorityScore(item.priority));
   const affinityScore = sort === "for_you" ? (item.affinityScore ?? 0) : 0;
-  const score = item.manualPriority
-    ? manualPriorityScore(item.manualPriority) + recencyBoost
-    : base + recencyBoost + affinityScore;
+  const windowDays = options.recentWindowDays;
+  const recentWindowBoost =
+    windowDays !== undefined && inRecentWindow(item, windowDays, now) ? RECENT_WINDOW_TIER : 0;
+  const score =
+    (item.manualPriority
+      ? manualPriorityScore(item.manualPriority) + recencyBoost
+      : base + recencyBoost + affinityScore) + recentWindowBoost;
   const reasons = item.manualPriority
     ? [`Manual priority: ${item.manualPriority}`, "Recent items receive a small tie-break"]
     : [
@@ -329,6 +373,18 @@ export function explainFeedRank(
   if (!item.manualPriority && affinityScore !== 0) {
     reasons.splice(1, 0, "Personalized from explicit feedback and reading actions");
   }
+  // The edition's own line goes first: Today's card shows reasons[0].
+  if (windowDays !== undefined) {
+    reasons.unshift(
+      item.manualPriority === "high"
+        ? RECENT_WINDOW_REASONS.manualHigh
+        : recentWindowBoost
+          ? RECENT_WINDOW_REASONS.recent(windowDays)
+          : item.isRead
+            ? RECENT_WINDOW_REASONS.fillRead(windowDays)
+            : RECENT_WINDOW_REASONS.fill
+    );
+  }
   return {
     sort,
     score: Number(score.toFixed(6)),
@@ -339,6 +395,7 @@ export function explainFeedRank(
       aiPriorityScore: item.aiPriorityScore,
       recencyBoost: Number(recencyBoost.toFixed(6)),
       affinityScore: Number(affinityScore.toFixed(6)),
+      ...(windowDays !== undefined ? { recentWindowBoost } : {}),
     },
   };
 }
@@ -468,6 +525,17 @@ export class PostgresFeedQuery {
           ) affinity_signal ON TRUE`
       : this.sql``;
     const affinity = personalized ? this.sql`COALESCE(affinity_signal.score, 0)` : this.sql`0`;
+    // The daily edition (see FeedQuery.recentWindowDays and inRecentWindow):
+    // one tier lifts manual-high and recently saved items above the rest, so
+    // one ordered query yields the window first and the fill after it.
+    const windowDays = query.recentWindowDays;
+    const recentWindowBoost =
+      windowDays === undefined
+        ? this.sql`0`
+        : this.sql`CASE
+      WHEN i.manual_priority='high' THEN ${RECENT_WINDOW_TIER}
+      WHEN i.created_at >= ${now}::timestamptz - (${windowDays}::integer * INTERVAL '1 day') THEN ${RECENT_WINDOW_TIER}
+      ELSE 0 END`;
     const unroundedScore = this.sql`CASE
       WHEN i.manual_priority='high' THEN 300 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
       WHEN i.manual_priority='medium' THEN 200 + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
@@ -475,7 +543,7 @@ export class PostgresFeedQuery {
       ELSE ${baseline}
         + exp(-GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - i.created_at)) / 86400) / 10) * 10
         + ${affinity}
-    END`;
+    END + ${recentWindowBoost}`;
     // Keyset cursors cross the PostgreSQL/JSON boundary. Quantize once in SQL
     // so ordering, equality checks, and the serialized cursor use the same
     // stable value instead of comparing a binary float after a JS round-trip.
@@ -541,7 +609,8 @@ export class PostgresFeedQuery {
           relevanceScore: rowRelevanceScore(row),
         },
         sort,
-        new Date(now)
+        new Date(now),
+        { recentWindowDays: query.recentWindowDays }
       );
       // PostgreSQL's value is retained verbatim for an exact keyset cursor.
       // Recent order is keyed by createdAt, so its explanation keeps the timestamp score.
