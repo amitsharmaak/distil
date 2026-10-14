@@ -85,7 +85,7 @@ describe("GET /api/v1/feed contract", () => {
 
     const response = await GET(
       new Request(
-        "https://distil.example/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale"
+        "https://distil.example/api/v1/feed?sort=priority&read=false&limit=6&resurface=stale&recentDays=7"
       )
     );
 
@@ -95,9 +95,10 @@ describe("GET /api/v1/feed contract", () => {
       resurfacedItems: stale.items,
     });
     expect(withTenantRepositories).toHaveBeenCalledTimes(1);
+    // Today's edition window rides on the same read; the Feed never sends it.
     expect(list).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ sort: "priority", read: false, limit: 6 })
+      expect.objectContaining({ sort: "priority", read: false, limit: 6, recentWindowDays: 7 })
     );
     expect(list).toHaveBeenNthCalledWith(
       2,

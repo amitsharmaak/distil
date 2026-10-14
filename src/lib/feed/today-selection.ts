@@ -10,17 +10,29 @@ import {
 import { hasActiveFilters } from "@/lib/feed/quick-filters";
 import { publisherLabel } from "@/lib/display";
 
+/** Today is a daily edition: the best of what was saved in the last this many days. */
+export const TODAY_WINDOW_DAYS = 7;
+
 /**
- * Today's selection is one feed read: the six highest-priority unread items,
- * plus the stale-resurfacing strip. Server (page) and client (fallback) ask
- * for exactly this; the mapping to the presentation shape lives here so both
- * render identically. Client-safe: no zod or other server-only imports.
+ * Today's selection is one feed read: the six best unread items saved in the
+ * last `TODAY_WINDOW_DAYS` days, ranked by priority score, plus the
+ * stale-resurfacing strip. When the window holds fewer than six, older unread
+ * items fill the remaining places by score and their reason line says so
+ * ("Older, still unread"). An item with manual priority high qualifies at any
+ * age until it is read or archived, and the ranking already puts it on top.
+ * The window and fill are one ordered query (`recentDays`, see
+ * `FeedQuery.recentWindowDays`), so the page needs no second round trip.
+ *
+ * Server (page) and client (fallback) ask for exactly this; the mapping to
+ * the presentation shape lives here so both render identically. Client-safe:
+ * no zod or other server-only imports.
  */
 export const TODAY_FEED_QUERY = {
   sort: "priority",
   read: "false",
   limit: "6",
   resurface: "stale",
+  recentDays: String(TODAY_WINDOW_DAYS),
 } as const;
 
 export const REVISIT_REASON = "Unopened for two weeks · worth another look";
