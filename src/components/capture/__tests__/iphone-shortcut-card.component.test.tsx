@@ -21,6 +21,11 @@ const phone = {
 };
 const pairing = { code: "ABCD-EFGH", expiresAt: "2026-10-01T12:10:00Z" };
 const mutableConfig = publicConfig as { iosShortcutUrl: string; apiBaseUrl: string };
+const deepLink = (code: string) =>
+  `shortcuts://run-shortcut?name=Save%20to%20Distil&input=text&text=${code}`;
+const originalPlatform = navigator.platform;
+const setPlatform = (value: string) =>
+  Object.defineProperty(navigator, "platform", { value, configurable: true });
 
 let tokens: unknown[];
 let pairingResponse: Response;
@@ -53,6 +58,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   jest.useRealTimers();
+  setPlatform(originalPlatform);
 });
 
 describe("IphoneShortcutCard", () => {
@@ -86,6 +92,8 @@ describe("IphoneShortcutCard", () => {
       expect.objectContaining({ method: "POST", signal: expect.any(AbortSignal) })
     );
     expect(screen.getByRole("timer")).toHaveTextContent("Expires in 10:00");
+    expect(screen.queryByRole("link", { name: "Pair on this iPhone" })).not.toBeInTheDocument();
+    expect(screen.getByText("Enter this code when the Shortcut asks to pair.")).toBeInTheDocument();
     await act(async () => {
       jest.advanceTimersByTime(1_000);
     });
@@ -106,6 +114,48 @@ describe("IphoneShortcutCard", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(callsAtExpiry);
     expect(screen.getByRole("button", { name: "Get a new code" })).toBeEnabled();
+  });
+
+  it("offers a one-tap Shortcut link with the code on iOS and keeps the typed code visible", async () => {
+    setPlatform("iPhone");
+    render(<IphoneShortcutCard />);
+    await pair();
+    const link = screen.getByRole("link", { name: "Pair on this iPhone" });
+    expect(link).toHaveAttribute("href", deepLink(pairing.code));
+    expect(link).not.toHaveAttribute("target");
+    expect(screen.getByText(pairing.code)).toBeInTheDocument();
+    expect(screen.getByText(/Tap Pair on this iPhone, or enter this code/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.every(([input]) => !String(input).includes("shortcuts://"))).toBe(
+      true
+    );
+
+    pairingResponse = response({ code: "JKLM-NPQR", expiresAt: "2026-10-01T12:00:03Z" }, 201);
+    fireEvent.click(screen.getByRole("button", { name: "Get a new code" }));
+    await screen.findByText("JKLM-NPQR");
+    expect(screen.getByRole("link", { name: "Pair on this iPhone" })).toHaveAttribute(
+      "href",
+      deepLink("JKLM-NPQR")
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(3_000);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("This code has expired.");
+    expect(screen.queryByRole("link", { name: "Pair on this iPhone" })).not.toBeInTheDocument();
+  });
+
+  it("hides the one-tap link once the phone is paired", async () => {
+    setPlatform("iPhone");
+    tokens = [phone];
+    render(<IphoneShortcutCard />);
+    await pair();
+    expect(screen.getByRole("link", { name: "Pair on this iPhone" })).toBeInTheDocument();
+    tokens = [phone, { ...phone, id: "new-phone", label: "New iPhone" }];
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(await screen.findByText("New iPhone")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pair on this iPhone" })).not.toBeInTheDocument();
+    expect(screen.queryByText(pairing.code)).not.toBeInTheDocument();
   });
 
   it("lists only active phones with paired and last-used dates, never credential prefixes", async () => {
