@@ -144,8 +144,10 @@ explains **Get Contents of URL**, JSON request bodies and variables.
 
 1. Create **Save to Distil** in Shortcuts. Enable **Show in Share Sheet**, accept **Anything**, and
    allow the Shortcut to run with no input so it can pair when launched directly.
-2. Initialize **Capture Token** to empty text. Add **Get File from Folder** (called **Get File** in
-   some versions). Use the user's iCloud Drive
+2. Leave **Capture Token** unset until a file is read. Do not initialize it to empty text:
+   Shortcuts treats empty text as a value, so **does not have any value** is false and the
+   pairing branch is skipped (observed on device, 2026-10-14). Add **Get File from Folder**
+   (called **Get File** in some versions). Use the user's iCloud Drive
    **Shortcuts** folder and relative path `Distil/token.txt`. Turn **Error If Not Found** off and
    disable the document picker. The full path is `Shortcuts/Distil/token.txt`.
 3. If a file was found, use **Get Text from Input** on that file and set a variable named
@@ -155,7 +157,7 @@ explains **Get Contents of URL**, JSON request bodies and variables.
 
 ### B. Pair when the input is a code, or the file is missing or empty
 
-1. Initialize **Pairing Code** to empty text. If there is **Shortcut Input**, add **Get Text
+1. Leave **Pairing Code** unset for the same reason as **Capture Token** in section A. If there is **Shortcut Input**, add **Get Text
    from Input** on it, then **Match Text** with the regular expression
    `^[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}$` and **Case Sensitive** off (trim surrounding
    whitespace first with **Trim Whitespace** if your iOS version offers it). A match is a pairing
@@ -217,8 +219,11 @@ folder. Only the ordinary Production origin and action definitions belong in the
 5. Add **Get Dictionary from Input** on the capture response. Read `receipt` with **Get Dictionary
    Value**, then check that it has a value. If so, show `Saved to Distil` and stop. Both a new
    capture (`202`) and a duplicate (`200`) contain `receipt`.
-6. Otherwise read `error` from the response, then `code` from that dictionary. If the code is
-   `UNAUTHORIZED`, get the stored `Distil/token.txt` file, **Delete Files** for that file only,
+6. Otherwise read `error.code` from the parsed response with one **Get Dictionary Value** whose
+   key is the path `error.code`. Do not chain two lookups: every lookup output is named
+   **Dictionary Value**, and a second lookup silently binds to the `receipt` lookup, which is
+   empty here, so a revoked credential showed the generic failure instead of disconnecting
+   (observed on device, 2026-10-14). If the code is `UNAUTHORIZED`, get the stored `Distil/token.txt` file, **Delete Files** for that file only,
    show `Distil disconnected this iPhone. Share again to pair.` and stop. The next share must
    return to the pairing branch; do not retry with the revoked credential.
 7. For any other response without a receipt, show `Distil could not save this link. Try again.`
