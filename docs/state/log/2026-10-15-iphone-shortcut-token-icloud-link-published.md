@@ -1,6 +1,6 @@
 ---
 topic: iphone-shortcut-token
-title: Save to Distil Shortcut published as a public iCloud link; env var still unset
+title: Save to Distil Shortcut published as a public iCloud link; Get the Shortcut live
 date: 2026-10-15
 status: in-progress
 branch: claude/distil-account-achal-walia-a4f56a
@@ -26,27 +26,26 @@ and the link is updated; confirm the link still resolves after any edit.
 
 ## Verification
 
-Not verified by the session: the link was provided by Amit in chat and not opened (the browser
-pane cannot load icloud.com Shortcut pages headlessly, and installing is a phone action). Docs
-gate: `npm run state:check` on this branch.
+- Observed on `https://distilai.app/settings` (Capture → iPhone) from the browser pane signed in
+  as Amit on 2026-10-15: **Get the Shortcut** renders as a link to the iCloud URL above, so the
+  variable is applied in the deployed Production build.
+- The link itself was not opened and no install was exercised; installing is a phone action.
+- Docs gate: `npm run state:check` on this branch.
 
 ## External resources
 
 - Public iCloud Shortcut link above (non-secret; it is the intended distribution URL).
-- Vercel Production `NEXT_PUBLIC_IOS_SHORTCUT_URL` is still unset, so **Get the Shortcut** stays
-  hidden in the Settings card.
+- Vercel Production `NEXT_PUBLIC_IOS_SHORTCUT_URL` is set to the link above; Amit set it and
+  redeployed on 2026-10-15.
 
 ## Next
 
-1. **Amit:** set `NEXT_PUBLIC_IOS_SHORTCUT_URL` to the iCloud link above for Production in
-   Vercel, redeploy, and confirm **Get the Shortcut** appears in Settings → Capture → iPhone.
-   Record the deployment in a new entry for this topic.
-2. **Amit, on the phone:** apply the code-as-input branch (appendix B steps 1 and 7) and the 401
+1. **Amit, on the phone:** apply the code-as-input branch (appendix B steps 1 and 7) and the 401
    correction (appendix C step 6) to the installed Shortcut, re-share so the public link carries
    the fixed version, then run the one-tap and Disconnect checklist items.
-3. Finish the rest of the real-device checklist in `docs/iphone-shortcut.md` and record pass/fail
+2. Finish the rest of the real-device checklist in `docs/iphone-shortcut.md` and record pass/fail
    per item in a new entry.
-4. After one successful share with the published Shortcut: delete **Save to Distil Old** and
+3. After one successful share with the published Shortcut: delete **Save to Distil Old** and
    regenerate or revoke the manual token named `iPhone Shortcut` in Settings → Capture.
-5. Refresh `docs/onboarding.md`, which still describes the pre-pairing token flow and the
+4. Refresh `docs/onboarding.md`, which still describes the pre-pairing token flow and the
    load-unpacked extension install.
