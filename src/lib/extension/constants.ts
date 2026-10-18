@@ -15,8 +15,11 @@ export const DISTIL_EXTENSION_IDS: readonly string[] = [
   DISTIL_STORE_EXTENSION_ID,
 ];
 
-/** Where users install the extension from. Replaced with the store listing URL once X3 ships. */
-export const DISTIL_EXTENSION_INSTALL_URL = `https://chromewebstore.google.com/detail/${DISTIL_EXTENSION_ID}`;
+/**
+ * Where users install the extension from: the Unlisted Chrome Web Store listing, approved and
+ * verified on 2026-10-14. The development id has no listing; unpacked builds are loaded by hand.
+ */
+export const DISTIL_EXTENSION_INSTALL_URL = `https://chromewebstore.google.com/detail/${DISTIL_STORE_EXTENSION_ID}`;
 
 /** Message `type` the connect page sends to the extension through `chrome.runtime.sendMessage`. */
 export const EXTENSION_CONNECT_MESSAGE = "distil-connect";

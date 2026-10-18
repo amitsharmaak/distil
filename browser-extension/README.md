@@ -2,6 +2,10 @@
 
 A Chrome Manifest V3 extension that sends pages to Distil's durable capture API.
 
+Users install the store build from the Unlisted listing linked in `DISTIL_EXTENSION_INSTALL_URL`
+(`src/lib/extension/constants.ts`). The steps below load the source for development; remove the
+store build first, or the connect page hands the token to whichever build it reaches first.
+
 ## Load for development
 
 1. Open `chrome://extensions` and enable **Developer mode**.
