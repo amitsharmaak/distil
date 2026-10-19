@@ -83,7 +83,7 @@ residential proxy for the YouTube requests.
 ## External resources
 
 - Production runtime logs: `npx vercel logs --scope pv-1850 --project project-evgf1 --since 7d
-  --query transcript` (the CLI on this machine is logged in).
+--query transcript` (the CLI on this machine is logged in).
 
 ## Next
 
