@@ -36,8 +36,9 @@ import { VideoTranscriptButton } from "@/components/feed/video-transcript-button
  * X's video CDN (video.twimg.com) answers 403 to any request that carries a
  * third-party Referer, so the native player for captured X videos never loads
  * under the site-wide `strict-origin-when-cross-origin` header. `referrerpolicy`
- * is not an attribute `<video>` supports; the document policy is the only lever,
- * and the reader page has no outbound request that needs a Referer.
+ * is not an attribute `<video>` supports; the document policy is the only lever.
+ * The one outbound request that does need a Referer, the YouTube embed, opts back
+ * in with its own `referrerPolicy` attribute in `video-embed.tsx`.
  */
 export const metadata: Metadata = { referrer: "no-referrer" };
 
