@@ -22,6 +22,7 @@ import {
   type YouTubeVideoDetails,
 } from "@/lib/youtube";
 import { config } from "@/lib/config";
+import { youtubeFetch } from "@/lib/youtube-fetch";
 import {
   CAPTURE_JUNK_ERROR_CODE,
   junkRejectionMessage,
@@ -339,7 +340,11 @@ export function createDefaultCaptureProcessor(
           fromPage ??
           (await (dependencies.fetchVideoDetails
             ? dependencies.fetchVideoDetails(videoId)
-            : fetchYouTubeVideoDetails(videoId, { apiKey: config.youtubeApiKey, attempts })));
+            : fetchYouTubeVideoDetails(videoId, {
+                apiKey: config.youtubeApiKey,
+                fetchImpl: await youtubeFetch(),
+                attempts,
+              })));
         if (!fromPage) {
           // Which source answered is only learnable per egress; keep it in the logs.
           apiLogger.info(
