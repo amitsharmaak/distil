@@ -1,4 +1,4 @@
-import { hasTranscript, loadVideoTranscript } from "../video-transcript";
+import { hasTranscript, loadVideoTranscript, youtubeRefused } from "../video-transcript";
 
 const baseItem = {
   id: "v1",
@@ -44,7 +44,7 @@ it("resolves a YouTube video linked from an X post", async () => {
   });
   const fetchTranscript = jest.fn().mockResolvedValue([{ start: 0, text: "Hi." }]);
   await loadVideoTranscript(repos as never, "v1", { fetchTranscript });
-  expect(fetchTranscript).toHaveBeenCalledWith("mUAsaprJ66s");
+  expect(fetchTranscript).toHaveBeenCalledWith("mUAsaprJ66s", expect.any(Array));
   const patch = repos.items.update.mock.calls[0][1];
   expect(patch.detectedMedia[0]).toEqual({
     type: "video",
@@ -82,4 +82,39 @@ it("rejects non-video items and videos without captions", async () => {
   await expect(loadVideoTranscript(repositories(undefined) as never, "v1")).rejects.toMatchObject({
     code: "ITEM_NOT_FOUND",
   });
+});
+
+it("reports a refusal by YouTube as blocked, not as a video without captions", async () => {
+  // Production: every innertube client answers LOGIN_REQUIRED from Vercel's egress.
+  const refused = jest.fn(
+    async (_videoId: string, attempts: { client: string; outcome: string }[]) => {
+      attempts.push(
+        { client: "ANDROID", outcome: "LOGIN_REQUIRED" },
+        { client: "WEB", outcome: "LOGIN_REQUIRED" }
+      );
+      return [];
+    }
+  );
+  await expect(
+    loadVideoTranscript(repositories(baseItem) as never, "v1", { fetchTranscript: refused })
+  ).rejects.toMatchObject({
+    code: "TRANSCRIPT_BLOCKED",
+    status: 502,
+    message: expect.stringContaining("YouTube refused"),
+  });
+
+  // A client that answered (playable, no caption tracks) means the video has none.
+  const answered = jest.fn(
+    async (_videoId: string, attempts: { client: string; outcome: string }[]) => {
+      attempts.push({ client: "ANDROID", outcome: "OK" });
+      return [];
+    }
+  );
+  await expect(
+    loadVideoTranscript(repositories(baseItem) as never, "v1", { fetchTranscript: answered })
+  ).rejects.toMatchObject({ code: "TRANSCRIPT_UNAVAILABLE", status: 404 });
+
+  expect(youtubeRefused([])).toBe(false);
+  expect(youtubeRefused([{ client: "ANDROID", outcome: "ok" }])).toBe(false);
+  expect(youtubeRefused([{ client: "ANDROID", outcome: "ERROR" }])).toBe(true);
 });

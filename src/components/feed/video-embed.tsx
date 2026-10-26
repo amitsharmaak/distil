@@ -61,6 +61,10 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
         <iframe
           src={ytEmbed}
           className="w-full aspect-video"
+          // The reader page sends no Referer (X's video CDN rejects one), but YouTube's
+          // player refuses an embed that arrives without one ("Error 153"). The attribute
+          // overrides the document policy for this request alone; YouTube only needs the origin.
+          referrerPolicy="strict-origin-when-cross-origin"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           title="YouTube video player"
@@ -112,12 +116,12 @@ export function VideoEmbed({ url, contentType, duration }: VideoEmbedProps) {
   );
 }
 
-/** Keep the reader about the text until its video player is requested. */
+/** The video opens with the reader; the control hides it (and unloads the player) on request. */
 export function VideoDisclosure({
   nativeVideoUrl,
   ...video
 }: VideoEmbedProps & { nativeVideoUrl?: string }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [nativeFailed, setNativeFailed] = useState(false);
   const playerId = useId();
   return (
