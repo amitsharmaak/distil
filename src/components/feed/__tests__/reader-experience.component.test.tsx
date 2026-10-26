@@ -74,7 +74,7 @@ it("ignores malformed storage values and leaves readable defaults", () => {
   );
 });
 
-it("keeps video collapsed until requested and unloads the player when hidden", () => {
+it("opens the video with the reader and unloads the player when hidden", () => {
   render(
     <VideoDisclosure
       contentType="video"
@@ -82,19 +82,17 @@ it("keeps video collapsed until requested and unloads the player when hidden", (
       duration="12:30"
     />
   );
-  const control = screen.getByRole("button", { name: /Play video/ });
-  expect(control).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  expect(screen.queryByTitle("YouTube video player")).not.toBeInTheDocument();
+  const control = screen.getByRole("button", { name: /Hide video/ });
+  expect(control).toHaveAttribute("aria-expanded", "true");
+  const player = screen.getByTitle("YouTube video player");
+  expect(player).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/example123");
+  // The reader page is `no-referrer` for X's CDN; YouTube's player needs the origin or it
+  // shows "Error 153", so the embed carries its own policy.
+  expect(player).toHaveAttribute("referrerpolicy", "strict-origin-when-cross-origin");
   fireEvent.click(control);
-  expect(screen.getByTitle("YouTube video player")).toHaveAttribute(
-    "src",
-    "https://www.youtube-nocookie.com/embed/example123"
-  );
-  fireEvent.click(screen.getByRole("button", { name: /Hide video/ }));
   expect(screen.queryByTitle("YouTube video player")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Play video/ })).toHaveAttribute(
-    "aria-expanded",
-    "false"
-  );
+  const reopen = screen.getByRole("button", { name: /Play video/ });
+  expect(reopen).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(reopen);
+  expect(screen.getByTitle("YouTube video player")).toBeInTheDocument();
 });

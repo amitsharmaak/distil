@@ -91,8 +91,9 @@ export class ReaderError extends Error {
       | "ITEM_NOT_FOUND"
       | "ANNOTATION_NOT_FOUND"
       | "TRANSCRIPT_UNAVAILABLE"
+      | "TRANSCRIPT_BLOCKED"
       | "CONFLICT",
-    readonly status: 400 | 404 | 409,
+    readonly status: 400 | 404 | 409 | 502,
     message: string
   ) {
     super(message);

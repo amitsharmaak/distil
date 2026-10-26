@@ -8,11 +8,8 @@ const X_POST = "https://x.com/someone/status/1";
 const NATIVE_MP4 = "https://video.twimg.com/amplify_video/1/vid/avc1/1920x1080/clip.mp4?tag=29";
 
 describe("VideoDisclosure with a captured X video", () => {
-  it("plays the native MP4 once the reader asks for the video", () => {
+  it("plays the native MP4 as soon as the reader opens", () => {
     render(<VideoDisclosure url={X_POST} contentType="video" nativeVideoUrl={NATIVE_MP4} />);
-
-    expect(document.querySelector("video")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /play video/i }));
 
     const player = document.querySelector("video");
     expect(player).not.toBeNull();
@@ -21,7 +18,6 @@ describe("VideoDisclosure with a captured X video", () => {
 
   it("falls back to an Open on X link when the MP4 cannot be loaded", () => {
     render(<VideoDisclosure url={X_POST} contentType="video" nativeVideoUrl={NATIVE_MP4} />);
-    fireEvent.click(screen.getByRole("button", { name: /play video/i }));
 
     fireEvent.error(document.querySelector("video")!);
 

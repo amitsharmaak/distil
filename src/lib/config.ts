@@ -93,6 +93,14 @@ export const config = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? "",
 
   /**
+   * Residential proxy URL (`http://user:pass@host:port`) for YouTube requests
+   * only. YouTube refuses captions and metadata to datacenter IPs such as
+   * Vercel's; through a residential egress they are served. Optional.
+   * NEVER commit real values — store in .env.local only.
+   */
+  youtubeProxyUrl: process.env.YOUTUBE_PROXY_URL ?? "",
+
+  /**
    * OpenAI API key for GPT models.
    * Obtain from https://platform.openai.com/api-keys
    * NEVER commit real values — store in .env.local only.

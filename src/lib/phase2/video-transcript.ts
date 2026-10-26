@@ -9,6 +9,7 @@ import {
   type YouTubeVideoDetails,
 } from "@/lib/youtube";
 import { apiLogger } from "@/lib/logger";
+import { youtubeFetch, youtubeProxyConfigured } from "@/lib/youtube-fetch";
 
 export const TRANSCRIPT_MEDIA_KEY = "transcript";
 
@@ -34,7 +35,16 @@ export function hasTranscript(item: { detectedMedia?: unknown[] }): boolean {
 }
 
 export interface LoadTranscriptDependencies {
-  fetchTranscript?: (videoId: string) => Promise<TranscriptSegment[]>;
+  fetchTranscript?: (videoId: string, attempts: InnertubeAttempt[]) => Promise<TranscriptSegment[]>;
+}
+
+/**
+ * True when no innertube client got as far as a playable response: YouTube
+ * turned the server away (datacenter egress gets `LOGIN_REQUIRED`), which is
+ * not the same as the video having no captions.
+ */
+export function youtubeRefused(attempts: InnertubeAttempt[]): boolean {
+  return attempts.length > 0 && !attempts.some((entry) => entry.outcome.toLowerCase() === "ok");
 }
 
 /**
@@ -61,15 +71,19 @@ export async function loadVideoTranscript(
 
   const attempts: InnertubeAttempt[] = [];
   const segments = dependencies.fetchTranscript
-    ? await dependencies.fetchTranscript(videoId)
-    : await fetchYouTubeTranscript(videoId, fetch, 10_000, attempts);
+    ? await dependencies.fetchTranscript(videoId, attempts)
+    : await fetchYouTubeTranscript(videoId, await youtubeFetch(), 10_000, attempts);
   // The logger allowlists fields; fold the per-client outcomes into `status`.
   apiLogger.info(
     {
       event: "youtube_transcript_fetch",
       code: videoId,
-      status: attempts
-        .map((entry) => `${entry.client}:${entry.outcome.replace(/[^A-Za-z0-9_.-]+/g, "_")}`)
+      status: [
+        `proxy:${youtubeProxyConfigured() ? "on" : "off"}`,
+        ...attempts.map(
+          (entry) => `${entry.client}:${entry.outcome.replace(/[^A-Za-z0-9_.-]+/g, "_")}`
+        ),
+      ]
         .join(".")
         .slice(0, 160),
       count: segments.length,
@@ -77,6 +91,13 @@ export async function loadVideoTranscript(
     "YouTube transcript fetch"
   );
   if (segments.length === 0) {
+    if (youtubeRefused(attempts)) {
+      throw new ReaderError(
+        "TRANSCRIPT_BLOCKED",
+        502,
+        "YouTube refused the request from Distil's server. The captions exist; try again later."
+      );
+    }
     throw new ReaderError("TRANSCRIPT_UNAVAILABLE", 404, "This video has no captions to load");
   }
 
